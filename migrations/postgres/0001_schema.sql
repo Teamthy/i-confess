@@ -1,4 +1,4 @@
--- i-confess — canonical PostgreSQL schema (production target)
+-- i-confess â€” canonical PostgreSQL schema (production target)
 -- Mirrors internal/db/schema.sql (SQLite dev schema). Use this for `goose`/`atlas`/`golang-migrate`.
 
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";

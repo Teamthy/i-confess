@@ -13,7 +13,7 @@ import (
 // Real audio comes from the production TTS/recording pipeline.
 func WriteTone(path string, seconds int) error {
 	const sampleRate = 8000
-	const freq = 220.0 // A3 — calm, low tone
+	const freq = 220.0 // A3 â€” calm, low tone
 
 	n := sampleRate * seconds
 	data := make([]byte, n)

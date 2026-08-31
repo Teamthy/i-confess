@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/Teamthy/i-confess/internal/adminui"
 	"github.com/Teamthy/i-confess/internal/auth"
 )
 
@@ -17,6 +18,10 @@ func (h *Handler) Routes() http.Handler {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
 	})
+
+	// Admin console (SPA)
+	mux.Handle("GET /admin", http.RedirectHandler("/admin/", http.StatusMovedPermanently))
+	mux.Handle("GET /admin/", http.StripPrefix("/admin/", adminui.Handler()))
 
 	// Placeholder/dev audio assets (generated locally; replaced by CDN in production).
 	mediaPath := os.Getenv("MEDIA_DIR")

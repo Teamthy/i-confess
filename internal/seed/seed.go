@@ -36,8 +36,8 @@ func Seed(db *sql.DB) error {
 
 	// ---- Collections ----
 	for _, c := range []models.Collection{
-		{Name: "The 28", Slug: "the-28", Status: "published", SortOrder: 1, Description: "Launch collection — 28 core categories."},
-		{Name: "The 38", Slug: "the-38", Status: "published", SortOrder: 2, Description: "Principal expanded content architecture — 38 categories."},
+		{Name: "The 28", Slug: "the-28", Status: "published", SortOrder: 1, Description: "Launch collection â€” 28 core categories."},
+		{Name: "The 38", Slug: "the-38", Status: "published", SortOrder: 2, Description: "Principal expanded content architecture â€” 38 categories."},
 	} {
 		if err := content.CreateCollection(bg, &c); err != nil {
 			return err
@@ -78,7 +78,7 @@ func Seed(db *sql.DB) error {
 		categoryIDs = append(categoryIDs, c.ID)
 	}
 
-	// Attach all categories to both collections (28 → subset of 38 for demo).
+	// Attach all categories to both collections (28 â†’ subset of 38 for demo).
 	cols, _ := content.ListCollections(bg, true)
 	for _, col := range cols {
 		for i, cid := range categoryIDs {

@@ -109,7 +109,7 @@ func (e *Engine) resolveVoice(ctx context.Context, req Request) (*models.Voice, 
 		if plan == "premium" {
 			return v, nil
 		}
-		// Premium voice requested by a free user → fall back to a free voice.
+		// Premium voice requested by a free user â†’ fall back to a free voice.
 	}
 	// Default: first free voice.
 	voices, err := e.audio.ListVoices(ctx)
@@ -126,7 +126,7 @@ func (e *Engine) resolveVoice(ctx context.Context, req Request) (*models.Voice, 
 
 // pack greedily fills the budget by cycling categories round-robin and, within
 // each category, cycling its confessions. Confessions repeat as needed to reach
-// the requested duration (matching PRD §19), and the longest variant that still
+// the requested duration (matching PRD Â§19), and the longest variant that still
 // fits the remaining budget is preferred so sessions fill efficiently.
 func (e *Engine) pack(ctx context.Context, req Request, voiceID string, byCat map[string][]*models.Confession) ([]models.SessionItem, int) {
 	type variantOption struct {

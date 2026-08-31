@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>i-confess Â· Admin Console</title>
+<style>
+  :root {
+    --bg: #0f1220;
+    --bg-2: #161a2e;
+    --panel: #1c2138;
+    --panel-2: #232946;
+    --border: #2d3350;
+    --text: #e8eaf6;
+    --muted: #9aa1c0;
+    --accent: #7c8cf8;
+    --accent-2: #b7a1ff;
+    --gold: #e8c67a;
+    --ok: #4ade80;
+    --warn: #fbbf24;
+    --err: #f87171;
+    --radius: 12px;
+    --serif: Georgia, 'Times New Roman', serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  a { color: var(--accent); }
+  /* ---------- login ---------- */
+  .login-wrap {
+    min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(1200px 600px at 50% -10%, #232946 0%, var(--bg) 60%);
+  }
+  .login-card {
+    width: 380px; background: var(--panel); border: 1px solid var(--border);
+    border-radius: 16px; padding: 36px 32px;
+  }
+  .brand { font-family: var(--serif); font-size: 26px; color: var(--gold); margin: 0 0 4px; }
+  .brand span { color: var(--text); }
+  .login-sub { color: var(--muted); margin: 0 0 24px; font-size: 13px; }
+  /* ---------- shell ---------- */
+  .shell { display: grid; grid-template-columns: 220px 1fr; min-height: 100vh; }
+  .sidebar {
+    background: var(--bg-2); border-right: 1px solid var(--border); padding: 20px 14px;
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .sidebar .brand { font-size: 22px; padding: 0 8px 16px; }
+  .nav-btn {
+    display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px;
+    background: none; border: none; color: var(--muted); cursor: pointer; font-size: 14px;
+    text-align: left; width: 100%;
+  }
+  .nav-btn:hover { background: var(--panel-2); color: var(--text); }
+  .nav-btn.active { background: var(--panel-2); color: var(--accent-2); }
+  .nav-btn .ico { width: 18px; text-align: center; }
+  .sidebar .spacer { flex: 1; }
+  .sidebar .who { padding: 10px 8px; color: var(--muted); font-size: 12px; border-top: 1px solid var(--border); }
+  .sidebar .who b { color: var(--text); display: block; }
+  .logout { background: none; border: 1px solid var(--border); color: var(--muted); border-radius: 8px; padding: 8px; cursor: pointer; width: 100%; margin-top: 8px; }
+  .logout:hover { color: var(--err); border-color: var(--err); }
+  /* ---------- content ---------- */
+  .main { padding: 28px 32px; max-width: 1100px; }
+  .page-title { font-family: var(--serif); font-size: 24px; margin: 0 0 4px; color: var(--gold); }
+  .page-sub { color: var(--muted); margin: 0 0 24px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px; margin-bottom: 28px; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; }
+  .card .num { font-size: 30px; font-weight: 700; font-family: var(--serif); }
+  .card .lbl { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 22px; }
+  .panel h3 { margin: 0 0 14px; font-size: 15px; color: var(--accent-2); }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--border); font-size: 13px; vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+  tr:hover td { background: var(--panel-2); }
+  .badge { display: inline-block; padding: 2px 9px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+  .b-published { background: rgba(74,222,128,.15); color: var(--ok); }
+  .b-draft { background: rgba(251,191,36,.15); color: var(--warn); }
+  .b-other { background: rgba(154,161,192,.15); color: var(--muted); }
+  .b-premium { background: rgba(232,198,122,.18); color: var(--gold); }
+  .b-free { background: rgba(124,140,248,.15); color: var(--accent-2); }
+  /* ---------- forms ---------- */
+  label { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 4px; }
+  input, select, textarea {
+    width: 100%; background: var(--bg-2); border: 1px solid var(--border); color: var(--text);
+    border-radius: 8px; padding: 9px 11px; font-size: 13px; font-family: inherit;
+  }
+  textarea { resize: vertical; min-height: 70px; }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
+  .row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0 16px; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px; background: var(--accent); color: #0b0e1c;
+    border: none; border-radius: 8px; padding: 10px 16px; font-size: 13px; font-weight: 600; cursor: pointer;
+  }
+  .btn:hover { filter: brightness(1.08); }
+  .btn.ghost { background: transparent; border: 1px solid var(--border); color: var(--text); }
+  .btn.sm { padding: 5px 10px; font-size: 12px; }
+  .btn.danger { background: transparent; border: 1px solid var(--err); color: var(--err); }
+  .btn.gold { background: var(--gold); color: #241b05; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .muted { color: var(--muted); }
+  .toast {
+    position: fixed; bottom: 22px; right: 22px; background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 12px 18px; font-size: 13px; z-index: 50; box-shadow: 0 8px 30px rgba(0,0,0,.4);
+    animation: fade .2s ease;
+  }
+  .toast.ok { border-color: var(--ok); }
+  .toast.err { border-color: var(--err); }
+  @keyframes fade { from { opacity: 0; transform: translateY(6px);} to { opacity: 1; } }
+  .hidden { display: none !important; }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .empty { color: var(--muted); padding: 18px; text-align: center; }
+  .mt { margin-top: 16px; }
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+  @media (max-width: 760px) { .split, .row, .row3 { grid-template-columns: 1fr; } .shell { grid-template-columns: 1fr; } .sidebar { flex-direction: row; flex-wrap: wrap; } }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+const API = ''; // same origin
+
+// ---------- state ----------
+const state = { token: localStorage.getItem('ic_token') || '', user: null };
+
+function api(path, opts = {}) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (state.token) headers['Authorization'] = 'Bearer ' + state.token;
+  return fetch(API + path, { ...opts, headers: { ...headers, ...(opts.headers || {}) } })
+    .then(async r => {
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(body.error || ('HTTP ' + r.status));
+      return body;
+    });
+}
+
+// ---------- toast ----------
+function toast(msg, ok = true) {
+  const el = document.createElement('div');
+  el.className = 'toast ' + (ok ? 'ok' : 'err');
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 2800);
+}
+
+// ---------- helpers ----------
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function badge(status) {
+  const cls = status === 'published' ? 'b-published' : status === 'draft' ? 'b-draft' : 'b-other';
+  return `<span class="badge ${cls}">${esc(status)}</span>`;
+}
+function fmtDate(s) { return s ? new Date(s).toLocaleString() : 'â€”'; }
+
+// ---------- router ----------
+const views = ['dashboard','categories','confessions','voices','audio','users'];
+let current = 'dashboard';
+
+function nav(btn, view) {
+  current = view;
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('active', b === btn));
+  render();
+}
+
+function shell(inner) {
+  return `
+  <div class="shell">
+    <div class="sidebar">
+      <div class="brand">i-<span>confess</span></div>
+      ${[['dashboard','â–¦','Dashboard'],['categories','â–¤','Categories'],['confessions','â‰¡','Confessions'],['voices','â—‰','Voices'],['audio','â™ª','Audio'],['users','â›','Users']].map(([v,i,l]) =>
+        `<button class="nav-btn ${current===v?'active':''}" onclick="nav(this,'${v}')"><span class="ico">${i}</span>${l}</button>`).join('')}
+      <div class="spacer"></div>
+      <div class="who"><b>${esc(state.user?.email || '')}</b>${esc(state.user?.display_name || '')}</div>
+      <button class="logout" onclick="logout()">Sign out</button>
+    </div>
+    <div class="main">${inner}</div>
+  </div>`;
+}
+
+// ---------- login ----------
+function loginScreen() {
+  document.getElementById('app').innerHTML = `
+  <div class="login-wrap">
+    <div class="login-card">
+      <h1 class="brand">i-<span>confess</span></h1>
+      <p class="login-sub">Admin Console Â· sign in</p>
+      <label>Email</label>
+      <input id="lg-email" type="email" placeholder="admin@iconfess.dev">
+      <label>Password</label>
+      <input id="lg-pass" type="password" placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢">
+      <div class="mt"><button class="btn" style="width:100%;justify-content:center" onclick="doLogin()">Sign in</button></div>
+      <p class="hint" id="lg-err" style="color:var(--err)"></p>
+    </div>
+  </div>`;
+  document.getElementById('lg-pass').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+}
+
+async function doLogin() {
+  const email = document.getElementById('lg-email').value.trim();
+  const password = document.getElementById('lg-pass').value;
+  try {
+    const res = await fetch(API + '/auth/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || 'Login failed');
+    state.token = body.token; state.user = body.user;
+    localStorage.setItem('ic_token', state.token);
+    render();
+  } catch (e) {
+    document.getElementById('lg-err').textContent = e.message;
+  }
+}
+
+function logout() {
+  state.token = ''; state.user = null;
+  localStorage.removeItem('ic_token');
+  render();
+}
+
+// ---------- views ----------
+async function viewDashboard() {
+  const s = await api('/admin/stats');
+  const cats = s.categories, conf = s.confessions, pub = s.published, voices = s.voices;
+  return `
+    <h1 class="page-title">Dashboard</h1>
+    <p class="page-sub">Content health and publishing status</p>
+    <div class="grid">
+      <div class="card"><div class="num">${cats}</div><div class="lbl">Categories</div></div>
+      <div class="card"><div class="num">${conf}</div><div class="lbl">Confessions</div></div>
+      <div class="card"><div class="num">${pub}</div><div class="lbl">Published</div></div>
+      <div class="card"><div class="num">${voices}</div><div class="lbl">Voices</div></div>
+    </div>
+    <div class="panel"><h3>Confessions by status</h3>
+      ${Object.keys(s.confessions_by_status || {}).length
+        ? `<table><tr><th>Status</th><th>Count</th></tr>${Object.entries(s.confessions_by_status).map(([k,v]) => `<tr><td>${badge(k)}</td><td>${v}</td></tr>`).join('')}</table>`
+        : '<div class="empty">No confessions yet</div>'}
+    </div>`;
+}
+
+async function viewCategories() {
+  const cats = await api('/admin/categories');
+  return `
+    <h1 class="page-title">Categories</h1>
+    <p class="page-sub">The category system (28 / 38 collections are built from these)</p>
+    <div class="panel"><h3>New category</h3>
+      <div class="row">
+        <div><label>Name *</label><input id="c-name" placeholder="e.g. Healing"></div>
+        <div><label>Slug *</label><input id="c-slug" placeholder="e.g. healing"></div>
+      </div>
+      <div class="row">
+        <div><label>Description</label><input id="c-desc" placeholder="Short description"></div>
+        <div><label>Icon</label><input id="c-icon" placeholder="emoji or icon key"></div>
+      </div>
+      <div class="row3">
+        <div><label>Status</label><select id="c-status"><option value="draft">draft</option><option value="published" selected>published</option></select></div>
+        <div><label>Premium</label><select id="c-premium"><option value="false">Free</option><option value="true">Premium</option></select></div>
+        <div><label>Sort order</label><input id="c-sort" type="number" value="0"></div>
+      </div>
+      <div class="mt"><button class="btn" onclick="createCategory()">Create category</button></div>
+    </div>
+    <div class="panel"><h3>All categories (${cats.length})</h3>
+      ${cats.length ? `<table><tr><th>Name</th><th>Slug</th><th>Premium</th><th>Status</th><th>Created</th></tr>
+        ${cats.map(c => `<tr><td><b>${esc(c.name)}</b>${c.description ? `<div class="muted">${esc(c.description)}</div>` : ''}</td><td>${esc(c.slug)}</td><td>${c.premium ? '<span class="badge b-premium">premium</span>' : '<span class="badge b-free">free</span>'}</td><td>${badge(c.status)}</td><td>${fmtDate(c.created_at)}</td></tr>`).join('')}</table>`
+      : '<div class="empty">No categories yet</div>'}
+    </div>`;
+}
+
+async function createCategory() {
+  const body = {
+    name: document.getElementById('c-name').value.trim(),
+    slug: document.getElementById('c-slug').value.trim().toLowerCase(),
+    description: document.getElementById('c-desc').value.trim(),
+    icon: document.getElementById('c-icon').value.trim(),
+    status: document.getElementById('c-status').value,
+    premium: document.getElementById('c-premium').value === 'true',
+    sort_order: parseInt(document.getElementById('c-sort').value || '0', 10),
+  };
+  if (!body.name || !body.slug) { toast('Name and slug are required', false); return; }
+  try { await api('/admin/categories', { method: 'POST', body: JSON.stringify(body) }); toast('Category created'); render(); }
+  catch (e) { toast(e.message, false); }
+}
+
+async function viewVoices() {
+  const voices = await api('/admin/voices');
+  return `
+    <h1 class="page-title">Voices</h1>
+    <p class="page-sub">Voice library (premium voices require licensing per policy)</p>
+    <div class="panel"><h3>New voice</h3>
+      <div class="row">
+        <div><label>Name *</label><input id="v-name" placeholder="e.g. Grace"></div>
+        <div><label>Type</label><select id="v-type"><option value="professional" selected>professional</option><option value="minister">minister</option><option value="generic">generic</option></select></div>
+      </div>
+      <div class="row">
+        <div><label>Provider</label><input id="v-provider" placeholder="e.g. i-confess"></div>
+        <div><label>Gender</label><select id="v-gender"><option value="">â€”</option><option value="female">female</option><option value="male">male</option><option value="neutral">neutral</option></select></div>
+      </div>
+      <div class="row3">
+        <div><label>Language</label><input id="v-lang" value="en"></div>
+        <div><label>Tier</label><select id="v-premium"><option value="false" selected>Free</option><option value="true">Premium</option></select></div>
+        <div><label>Status</label><select id="v-status"><option value="active" selected>active</option><option value="inactive">inactive</option></select></div>
+      </div>
+      <label>Description</label><input id="v-desc">
+      <div class="mt"><button class="btn" onclick="createVoice()">Create voice</button></div>
+    </div>
+    <div class="panel"><h3>All voices (${voices.length})</h3>
+      ${voices.length ? `<table><tr><th>Name</th><th>Type</th><th>Tier</th><th>Status</th></tr>
+        ${voices.map(v => `<tr><td><b>${esc(v.name)}</b>${v.description ? `<div class="muted">${esc(v.description)}</div>` : ''}</td><td>${esc(v.type)}</td><td>${v.premium ? '<span class="badge b-premium">premium</span>' : '<span class="badge b-free">free</span>'}</td><td>${badge(v.status)}</td></tr>`).join('')}</table>`
+      : '<div class="empty">No voices yet</div>'}
+    </div>`;
+}
+
+async function createVoice() {
+  const body = {
+    name: document.getElementById('v-name').value.trim(),
+    type: document.getElementById('v-type').value,
+    provider: document.getElementById('v-provider').value.trim(),
+    gender: document.getElementById('v-gender').value,
+    language: document.getElementById('v-lang').value.trim() || 'en',
+    premium: document.getElementById('v-premium').value === 'true',
+    status: document.getElementById('v-status').value,
+    description: document.getElementById('v-desc').value.trim(),
+  };
+  if (!body.name) { toast('Name is required', false); return; }
+  try { await api('/admin/voices', { method: 'POST', body: JSON.stringify(body) }); toast('Voice created'); render(); }
+  catch (e) { toast(e.message, false); }
+}
+
+async function viewConfessions() {
+  const [confs, cats] = await Promise.all([api('/admin/confessions'), api('/admin/categories')]);
+  return `
+    <h1 class="page-title">Confessions</h1>
+    <p class="page-sub">Manage confession content, variants and scripture references</p>
+    <div class="panel"><h3>New confession</h3>
+      <div class="row">
+        <div><label>Category *</label><select id="f-cat">${cats.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select></div>
+        <div><label>Title *</label><input id="f-title" placeholder="e.g. I Am Healed"></div>
+      </div>
+      <div class="row3">
+        <div><label>Status</label><select id="f-status"><option value="draft">draft</option><option value="published" selected>published</option><option value="content_review">content_review</option><option value="theological_review">theological_review</option></select></div>
+        <div><label>Intensity (1â€“5)</label><input id="f-intensity" type="number" min="1" max="5" value="1"></div>
+        <div><label>Author</label><input id="f-author" placeholder="content team"></div>
+      </div>
+      <label>Short text</label><textarea id="f-short" placeholder="One-line declaration"></textarea>
+      <label>Medium text (used in session player)</label><textarea id="f-medium"></textarea>
+      <label>Long text</label><textarea id="f-long"></textarea>
+      <label>Scriptures <span class="muted">â€” one per line: book|chapter|verse|translation|quote(0/1)</span></label>
+      <textarea id="f-scriptures" placeholder="Isaiah|53|5|KJV|1&#10;James|1|5|KJV|1"></textarea>
+      <label>Variants <span class="muted">â€” one per line: label|seconds</span></label>
+      <textarea id="f-variants" placeholder="30s|30&#10;1m|60&#10;3m|180&#10;5m|300"></textarea>
+      <div class="mt"><button class="btn" onclick="createConfession()">Create confession</button></div>
+    </div>
+    <div class="panel"><h3>All confessions (${confs.length})</h3>
+      ${confs.length ? `<table><tr><th>Title</th><th>Status</th><th>Intensity</th><th>Created</th><th></th></tr>
+        ${confs.map(c => `<tr>
+          <td><b>${esc(c.title)}</b><div class="muted">${esc((c.short_text||'').slice(0,70))}</div></td>
+          <td>${badge(c.status)}</td>
+          <td>${c.intensity}</td>
+          <td>${fmtDate(c.created_at)}</td>
+          <td><div class="actions">
+            ${c.status !== 'published' ? `<button class="btn sm gold" onclick="setStatus('${c.id}','published')">Publish</button>` : `<button class="btn sm ghost" onclick="setStatus('${c.id}','draft')">Unpublish</button>`}
+            <button class="btn sm ghost" onclick="setStatus('${c.id}','archived')">Archive</button>
+          </div></td>
+        </tr>`).join('')}</table>`
+      : '<div class="empty">No confessions yet</div>'}
+    </div>`;
+}
+
+async function createConfession() {
+  const cat = document.getElementById('f-cat').value;
+  const title = document.getElementById('f-title').value.trim();
+  if (!cat || !title) { toast('Category and title are required', false); return; }
+
+  const parseLines = (val) => val.trim().split('\n').map(l => l.trim()).filter(Boolean);
+  const scriptures = parseLines(document.getElementById('f-scriptures').value).map((l, i) => {
+    const [book, chapter, verse, translation, quote] = l.split('|');
+    return { book, chapter: parseInt(chapter||'0',10), verse: verse||'', translation: translation||'KJV', is_direct_quote: (quote||'1') === '1', sort_order: i };
+  });
+  const variants = parseLines(document.getElementById('f-variants').value).map((l, i) => {
+    const [label, sec] = l.split('|');
+    return { label, duration_seconds: parseInt(sec||'60',10), sort_order: i };
+  });
+
+  const body = {
+    category_id: cat, title,
+    short_text: document.getElementById('f-short').value,
+    medium_text: document.getElementById('f-medium').value,
+    long_text: document.getElementById('f-long').value,
+    status: document.getElementById('f-status').value,
+    intensity: parseInt(document.getElementById('f-intensity').value || '1', 10),
+    author: document.getElementById('f-author').value.trim(),
+    language: 'en', scriptures, variants,
+  };
+  try { await api('/admin/confessions', { method: 'POST', body: JSON.stringify(body) }); toast('Confession created'); render(); }
+  catch (e) { toast(e.message, false); }
+}
+
+async function setStatus(id, status) {
+  try { await api('/admin/confessions/' + id, { method: 'PATCH', body: JSON.stringify({ status }) }); toast('Status â†’ ' + status); render(); }
+  catch (e) { toast(e.message, false); }
+}
+
+async function viewAudio() {
+  const [confs, voices] = await Promise.all([api('/admin/confessions'), api('/admin/voices')]);
+  return `
+    <h1 class="page-title">Audio</h1>
+    <p class="page-sub">Attach audio assets to confessions (production audio via TTS/recording pipeline)</p>
+    <div class="panel"><h3>Attach audio asset</h3>
+      <div class="row">
+        <div><label>Confession *</label><select id="a-conf">${confs.map(c => `<option value="${c.id}">${esc(c.title)}</option>`).join('')}</select></div>
+        <div><label>Voice *</label><select id="a-voice">${voices.map(v => `<option value="${v.id}">${esc(v.name)}${v.premium ? ' â˜…' : ''}</option>`).join('')}</select></div>
+      </div>
+      <div class="row">
+        <div><label>Variant label</label><input id="a-variant" placeholder="e.g. 1m, 5m (optional)"></div>
+        <div><label>Duration (seconds)</label><input id="a-duration" type="number" placeholder="e.g. 60"></div>
+      </div>
+      <label>Audio URL *</label><input id="a-url" placeholder="https://cdn.example.com/audio/healing-1m.mp3">
+      <div class="mt"><button class="btn" onclick="attachAudio()">Attach audio</button></div>
+      <p class="hint">In production, audio is generated asynchronously (queued â†’ processing â†’ ready) and stored on a CDN. Here you attach a ready URL directly.</p>
+    </div>`;
+}
+
+async function attachAudio() {
+  const body = {
+    confession_id: document.getElementById('a-conf').value,
+    voice_id: document.getElementById('a-voice').value,
+    url: document.getElementById('a-url').value.trim(),
+    duration_seconds: parseInt(document.getElementById('a-duration').value || '0', 10),
+    status: 'ready',
+  };
+  const vlabel = document.getElementById('a-variant').value.trim();
+  if (!body.url || !body.confession_id || !body.voice_id) { toast('Confession, voice and URL are required', false); return; }
+  if (vlabel) {
+    // find variant by label
+    const conf = await api('/admin/confessions/' + body.confession_id).catch(() => null);
+    const v = (conf?.variants || []).find(x => x.label === vlabel);
+    if (v) body.variant_id = v.id; else { toast('Variant label not found on this confession', false); return; }
+  }
+  try { await api('/admin/audio', { method: 'POST', body: JSON.stringify(body) }); toast('Audio attached'); render(); }
+  catch (e) { toast(e.message, false); }
+}
+
+async function viewUsers() {
+  return `
+    <h1 class="page-title">Users</h1>
+    <p class="page-sub">Manage admin roles and subscriptions</p>
+    <div class="split">
+      <div class="panel"><h3>Grant admin role</h3>
+        <label>User ID</label><input id="u-role-id" placeholder="uuid">
+        <label>Role</label><select id="u-role">
+          <option value="super_admin">super_admin</option><option value="content_admin">content_admin</option>
+          <option value="audio_producer">audio_producer</option><option value="theological_reviewer">theological_reviewer</option>
+          <option value="support_admin">support_admin</option><option value="analytics_admin">analytics_admin</option>
+        </select>
+        <div class="mt"><button class="btn" onclick="setRole()">Set role</button></div>
+      </div>
+      <div class="panel"><h3>Set subscription</h3>
+        <label>User ID</label><input id="u-sub-id" placeholder="uuid">
+        <label>Plan</label><select id="u-sub-plan"><option value="free">free</option><option value="premium">premium</option></select>
+        <div class="mt"><button class="btn" onclick="setSubscription()">Set plan</button></div>
+      </div>
+    </div>
+    <p class="hint">User IDs are visible via <code>GET /me</code> for the signed-in user, or from your database. The admin console intentionally avoids browsing private user content (per PRD Â§39).</p>`;
+}
+
+async function setRole() {
+  const body = { user_id: document.getElementById('u-role-id').value.trim(), role: document.getElementById('u-role').value };
+  if (!body.user_id) { toast('User ID required', false); return; }
+  try { await api('/admin/users/role', { method: 'POST', body: JSON.stringify(body) }); toast('Role set'); }
+  catch (e) { toast(e.message, false); }
+}
+async function setSubscription() {
+  const body = { user_id: document.getElementById('u-sub-id').value.trim(), plan: document.getElementById('u-sub-plan').value, status: 'active' };
+  if (!body.user_id) { toast('User ID required', false); return; }
+  try { await api('/admin/users/subscription', { method: 'POST', body: JSON.stringify(body) }); toast('Subscription set'); }
+  catch (e) { toast(e.message, false); }
+}
+
+// ---------- render ----------
+async function render() {
+  if (!state.token) { loginScreen(); return; }
+  // show shell immediately with a loading placeholder
+  document.getElementById('app').innerHTML = shell('<div class="muted">Loadingâ€¦</div>');
+  try {
+    let inner = '';
+    if (current === 'dashboard') inner = await viewDashboard();
+    else if (current === 'categories') inner = await viewCategories();
+    else if (current === 'confessions') inner = await viewConfessions();
+    else if (current === 'voices') inner = await viewVoices();
+    else if (current === 'audio') inner = await viewAudio();
+    else if (current === 'users') inner = await viewUsers();
+    document.getElementById('app').innerHTML = shell(inner);
+  } catch (e) {
+    if (e.message.includes('admin access') || e.message.includes('unauthorized') || e.message.includes('403')) {
+      logout();
+    } else {
+      document.getElementById('app').innerHTML = shell(`<div class="panel"><h3>Error</h3><p class="muted">${esc(e.message)}</p></div>`);
+    }
+  }
+}
+
+render();
+</script>
+</body>
+</html>

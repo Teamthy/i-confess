@@ -1,14 +1,14 @@
-# i-confess — Backend
+# i-confess â€” Backend
 
 The backend platform for **i-confess**, a scheduled spoken biblical-confession app
-(Wake → Listen → Declare → Reflect → Repeat).
+(Wake â†’ Listen â†’ Declare â†’ Reflect â†’ Repeat).
 
-This repository currently contains the **MVP backend** — a modular Go monolith that
+This repository currently contains the **MVP backend** â€” a modular Go monolith that
 implements the content, audio, session, scheduling, and subscription primitives
 defined in the PRD (v1.0). The mobile app (React Native/Expo) and admin console are
 the next layers and will consume this API.
 
-## Stack (per PRD §71)
+## Stack (per PRD Â§71)
 
 | Layer       | Choice                                   | Notes                                              |
 |-------------|------------------------------------------|----------------------------------------------------|
@@ -31,6 +31,7 @@ internal/
   httpx/              JSON helpers
   media/              local placeholder WAV generator (dev only)
   models/             shared structs
+  adminui/            embedded Admin Console SPA (served at /admin/)
   seed/               idempotent dev seed (content + demo users)
   store/              data access (users, content, audio, sessions, schedules, engagement)
 migrations/postgres/  canonical production schema
@@ -56,6 +57,12 @@ Defaults (override with env vars):
 | `TOKEN_TTL`  | `720h`             | JWT lifetime                     |
 | `ENV`        | `development`      | `development` auto-seeds on boot |
 
+### Admin Console
+
+The Admin Console is a single-page web app embedded in the server, served at
+**`http://localhost:8080/admin/`**. It manages categories, confessions, voices,
+audio attachments, roles and subscriptions. Sign in with the demo admin below.
+
 On first boot in development the database is seeded with a representative MVP
 library: **2 collections** (The 28, The 38), **16 categories**, **16 confessions**
 (each with 30s/1m/3m/5m variants + scripture references), **1 voice** ("Grace"),
@@ -74,11 +81,11 @@ Given `{categories, duration, voice}` it returns an ordered session:
 
 1. Only **published** confessions with a **ready** audio asset for the resolved voice are used.
 2. Categories are cycled **round-robin**; confessions within a category cycle and
-   repeat as needed to reach the requested duration (PRD §19).
+   repeat as needed to reach the requested duration (PRD Â§19).
 3. The **longest variant that fits** the remaining budget is preferred, so sessions
    fill to the exact requested duration.
 4. A **premium voice** requested by a free user falls back to an available free voice
-   (PRD §87 fallback rule).
+   (PRD Â§87 fallback rule).
 
 ## Testing the loop
 
@@ -102,14 +109,15 @@ See `docs/API.md` for the complete contract.
 
 ## MVP scope vs. roadmap
 
-Implemented now (backend): auth, users, collections, categories, confessions,
-variants, scripture references, voices, audio assets, sessions + session engine,
-schedules, favorites, playback history, user confessions, subscriptions
-(free/premium flags), admin RBAC + audit-ready endpoints, content lifecycle status.
+Implemented now (backend + admin console): auth, users, collections, categories,
+confessions, variants, scripture references, voices, audio assets, sessions +
+session engine, schedules, favorites, playback history, user confessions,
+subscriptions (free/premium flags), admin RBAC + audit-ready endpoints, content
+lifecycle status, and an embedded Admin Console UI.
 
-Not yet built (next layers): mobile app, admin console UI, async audio
-job/queue/worker (PRD §77), Redis caching, observability (§79), offline download
-orchestration, premium entitlement gating in the player.
+Not yet built (next layers): mobile app, async audio job/queue/worker (PRD Â§77),
+Redis caching, observability (Â§79), offline download orchestration, premium
+entitlement gating in the player.
 
 ## Notes / conventions
 
@@ -118,8 +126,8 @@ orchestration, premium entitlement gating in the player.
   structurally equivalent (`migrations/postgres/0001_schema.sql`).
 - **Placeholder audio** is a locally generated sine-tone WAV so the playback loop
   can be exercised end-to-end. Real audio comes from the TTS/recording pipeline
-  (PRD §17) and will live on a CDN.
-- **Confession lifecycle** (`draft → … → published → archived`) and **scripture
+  (PRD Â§17) and will live on a CDN.
+- **Confession lifecycle** (`draft â†’ â€¦ â†’ published â†’ archived`) and **scripture
   quote-vs-paraphrase** flags (`is_direct_quote`) are enforced in the data model
-  per PRD §11–12.
-- **User confessions are private by default** (PRD §22).
+  per PRD Â§11â€“12.
+- **User confessions are private by default** (PRD Â§22).

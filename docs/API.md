@@ -1,4 +1,4 @@
-# i-confess — API Contract (MVP)
+# i-confess â€” API Contract (MVP)
 
 Base URL: `http://<host>:8080`
 
@@ -10,10 +10,10 @@ Base URL: `http://<host>:8080`
 
 | Method | Path              | Auth | Body                                  | Returns            |
 |--------|-------------------|------|---------------------------------------|--------------------|
-| POST   | `/auth/register`  | —    | `{email, password, display_name?, timezone?}` | `{token, user}` |
-| POST   | `/auth/login`     | —    | `{email, password}`                   | `{token, user}`    |
+| POST   | `/auth/register`  | â€”    | `{email, password, display_name?, timezone?}` | `{token, user}` |
+| POST   | `/auth/login`     | â€”    | `{email, password}`                   | `{token, user}`    |
 
-`password` must be ≥ 8 chars. `timezone` defaults to `UTC`.
+`password` must be â‰¥ 8 chars. `timezone` defaults to `UTC`.
 
 ## Content (public, published only)
 
@@ -29,55 +29,55 @@ Base URL: `http://<host>:8080`
 
 | Method | Path    | Auth | Returns                     |
 |--------|---------|------|------------------------------|
-| GET    | `/me`   | ✓    | `{user, plan}`               |
+| GET    | `/me`   | âœ“    | `{user, plan}`               |
 
 ## Sessions
 
 | Method | Path               | Auth | Body                                                  | Returns    |
 |--------|--------------------|------|-------------------------------------------------------|------------|
-| POST   | `/sessions`        | ✓    | `{category_ids[], duration_seconds, voice_id?}`       | `Session`  |
-| GET    | `/sessions/{id}`   | ✓    | —                                                     | `Session`  |
-| PATCH  | `/sessions/{id}`   | ✓    | `{status}` (`playing|completed|abandoned`)            | `{status}` |
-| GET    | `/sessions`        | ✓    | —                                                     | `Session[]`|
+| POST   | `/sessions`        | âœ“    | `{category_ids[], duration_seconds, voice_id?}`       | `Session`  |
+| GET    | `/sessions/{id}`   | âœ“    | â€”                                                     | `Session`  |
+| PATCH  | `/sessions/{id}`   | âœ“    | `{status}` (`playing|completed|abandoned`)            | `{status}` |
+| GET    | `/sessions`        | âœ“    | â€”                                                     | `Session[]`|
 
-`duration_seconds` ∈ [60, 10800]. The engine returns ordered `items`, each with
+`duration_seconds` âˆˆ [60, 10800]. The engine returns ordered `items`, each with
 `audio_url`, `title`, `category`, `text`, and `duration_seconds`.
 
 ## Schedules
 
 | Method | Path                | Auth | Body                                                                  | Returns     |
 |--------|---------------------|------|-----------------------------------------------------------------------|-------------|
-| GET    | `/schedules`        | ✓    | —                                                                     | `Schedule[]`|
-| POST   | `/schedules`        | ✓    | `{label, time "HH:MM", days_of_week[], timezone, duration_seconds, voice_id?, category_ids[]?, enabled?}` | `Schedule` |
-| PATCH  | `/schedules/{id}`   | ✓    | partial update of the above                                           | `Schedule`  |
-| DELETE | `/schedules/{id}`   | ✓    | —                                                                     | `204`       |
+| GET    | `/schedules`        | âœ“    | â€”                                                                     | `Schedule[]`|
+| POST   | `/schedules`        | âœ“    | `{label, time "HH:MM", days_of_week[], timezone, duration_seconds, voice_id?, category_ids[]?, enabled?}` | `Schedule` |
+| PATCH  | `/schedules/{id}`   | âœ“    | partial update of the above                                           | `Schedule`  |
+| DELETE | `/schedules/{id}`   | âœ“    | â€”                                                                     | `204`       |
 
-`days_of_week`: `1=Mon … 7=Sun`. Scheduling is **timezone-aware**; the mobile client
-is responsible for local alarm/notification delivery (PRD §27).
+`days_of_week`: `1=Mon â€¦ 7=Sun`. Scheduling is **timezone-aware**; the mobile client
+is responsible for local alarm/notification delivery (PRD Â§27).
 
 ## Favorites
 
 | Method | Path             | Auth | Body                                    | Returns     |
 |--------|------------------|------|-----------------------------------------|-------------|
-| POST   | `/me/favorites`  | ✓    | `{entity_type, entity_id}`              | `Favorite`  |
-| DELETE | `/me/favorites`  | ✓    | `{entity_type, entity_id}`              | `204`       |
-| GET    | `/me/favorites`  | ✓    | `?type=` optional filter                | `Favorite[]`|
+| POST   | `/me/favorites`  | âœ“    | `{entity_type, entity_id}`              | `Favorite`  |
+| DELETE | `/me/favorites`  | âœ“    | `{entity_type, entity_id}`              | `204`       |
+| GET    | `/me/favorites`  | âœ“    | `?type=` optional filter                | `Favorite[]`|
 
-`entity_type` ∈ `confession | category | session | voice`.
+`entity_type` âˆˆ `confession | category | session | voice`.
 
 ## History
 
 | Method | Path          | Auth | Body                                                       | Returns            |
 |--------|---------------|------|------------------------------------------------------------|--------------------|
-| GET    | `/me/history` | ✓    | —                                                          | `PlaybackRecord[]` |
-| POST   | `/me/history` | ✓    | `{session_id?, confession_id?, duration_seconds, completed, skipped}` | `PlaybackRecord` |
+| GET    | `/me/history` | âœ“    | â€”                                                          | `PlaybackRecord[]` |
+| POST   | `/me/history` | âœ“    | `{session_id?, confession_id?, duration_seconds, completed, skipped}` | `PlaybackRecord` |
 
 ## Personal confessions (private by default)
 
 | Method | Path               | Auth | Body                          | Returns            |
 |--------|--------------------|------|-------------------------------|--------------------|
-| POST   | `/me/confessions`  | ✓    | `{title, text, category_id?}` | `UserConfession`   |
-| GET    | `/me/confessions`  | ✓    | —                             | `UserConfession[]` |
+| POST   | `/me/confessions`  | âœ“    | `{title, text, category_id?}` | `UserConfession`   |
+| GET    | `/me/confessions`  | âœ“    | â€”                             | `UserConfession[]` |
 
 ## Admin (requires an admin role token)
 
@@ -88,23 +88,23 @@ is responsible for local alarm/notification delivery (PRD §27).
 | GET    | `/admin/categories`             | all categories (incl. unpublished)             |
 | POST   | `/admin/confessions`            | full confession incl. `variants[]` + `scriptures[]` |
 | GET    | `/admin/confessions`            | all confessions (incl. draft)                  |
-| GET    | `/admin/confessions/{id}`       | —                                              |
+| GET    | `/admin/confessions/{id}`       | â€”                                              |
 | PATCH  | `/admin/confessions/{id}`       | `{status}` (lifecycle transition)              |
 | POST   | `/admin/voices`                 | `{name, description?, type?, provider?, gender?, language?, premium?, status?, sample_url?}` |
-| GET    | `/admin/voices`                 | —                                              |
+| GET    | `/admin/voices`                 | â€”                                              |
 | POST   | `/admin/audio`                  | `{confession_id, variant_id?, voice_id, url, duration_seconds?, size_bytes?, status?}` |
 | POST   | `/admin/users/role`             | `{user_id, role}`                              |
 | POST   | `/admin/users/subscription`     | `{user_id, plan "free|premium", status?}`      |
 
-### Admin roles (PRD §75)
+### Admin roles (PRD Â§75)
 
-`super_admin` · `content_admin` · `audio_producer` · `theological_reviewer` ·
-`support_admin` · `analytics_admin`
+`super_admin` Â· `content_admin` Â· `audio_producer` Â· `theological_reviewer` Â·
+`support_admin` Â· `analytics_admin`
 
-### Confession lifecycle (PRD §12)
+### Confession lifecycle (PRD Â§12)
 
-`draft → content_review → theological_review → audio_production → audio_qa →
-approved → published → archived`
+`draft â†’ content_review â†’ theological_review â†’ audio_production â†’ audio_qa â†’
+approved â†’ published â†’ archived`
 
 ## Data model (summary)
 

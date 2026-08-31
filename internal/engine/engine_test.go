@@ -101,7 +101,7 @@ func TestBuildNoContent(t *testing.T) {
 	ctx := context.Background()
 	e, content, _, users := setup(t)
 
-	// A category with no confessions → no eligible content.
+	// A category with no confessions â†’ no eligible content.
 	c := &models.Category{Name: "empty", Slug: "empty", Status: "published"}
 	_ = content.CreateCategory(ctx, c)
 
