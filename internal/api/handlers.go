@@ -365,14 +365,14 @@ func (h *Handler) updateSchedule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		Label           *string   `json:"label"`
-		Time            *string   `json:"time"`
-		DaysOfWeek      []int     `json:"days_of_week"`
-		Timezone        *string   `json:"timezone"`
-		DurationSeconds *int      `json:"duration_seconds"`
-		VoiceID         *string   `json:"voice_id"`
-		CategoryIDs     []string  `json:"category_ids"`
-		Enabled         *bool     `json:"enabled"`
+		Label           *string  `json:"label"`
+		Time            *string  `json:"time"`
+		DaysOfWeek      []int    `json:"days_of_week"`
+		Timezone        *string  `json:"timezone"`
+		DurationSeconds *int     `json:"duration_seconds"`
+		VoiceID         *string  `json:"voice_id"`
+		CategoryIDs     []string `json:"category_ids"`
+		Enabled         *bool    `json:"enabled"`
 	}
 	if err := httpx.DecodeJSON(r, &req); err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid request body")

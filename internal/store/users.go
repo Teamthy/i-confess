@@ -6,8 +6,8 @@ import (
 	"errors"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/Teamthy/i-confess/internal/models"
+	"github.com/google/uuid"
 )
 
 var ErrNotFound = errors.New("not found")

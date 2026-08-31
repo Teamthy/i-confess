@@ -59,19 +59,19 @@ func (h *Handler) adminListCategories(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) adminCreateConfession(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		CategoryID string `json:"category_id"`
-		Title      string `json:"title"`
-		ShortText  string `json:"short_text"`
-		MediumText string `json:"medium_text"`
-		LongText   string `json:"long_text"`
-		Description string `json:"description"`
-		Tags       []string `json:"tags"`
-		Intensity  int    `json:"intensity"`
-		Language   string `json:"language"`
-		Status     string `json:"status"`
-		Author     string `json:"author"`
-		Variants   []models.ConfessionVariant `json:"variants"`
-		Scriptures []models.ScriptureRef      `json:"scriptures"`
+		CategoryID  string                     `json:"category_id"`
+		Title       string                     `json:"title"`
+		ShortText   string                     `json:"short_text"`
+		MediumText  string                     `json:"medium_text"`
+		LongText    string                     `json:"long_text"`
+		Description string                     `json:"description"`
+		Tags        []string                   `json:"tags"`
+		Intensity   int                        `json:"intensity"`
+		Language    string                     `json:"language"`
+		Status      string                     `json:"status"`
+		Author      string                     `json:"author"`
+		Variants    []models.ConfessionVariant `json:"variants"`
+		Scriptures  []models.ScriptureRef      `json:"scriptures"`
 	}
 	if err := httpx.DecodeJSON(r, &req); err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid request body")
@@ -305,10 +305,10 @@ func (h *Handler) adminStats(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{
-		"categories":          len(cats),
-		"confessions":         len(confs),
-		"published":           published,
-		"voices":              len(voices),
+		"categories":            len(cats),
+		"confessions":           len(confs),
+		"published":             published,
+		"voices":                len(voices),
 		"confessions_by_status": statusCounts(confs),
 	})
 }

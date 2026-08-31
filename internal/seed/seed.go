@@ -99,13 +99,13 @@ func Seed(db *sql.DB) error {
 	// ---- Confessions ----
 	// Each confession: title, texts, scripture refs, and duration variants.
 	type confessionSeed struct {
-		category    string
-		title       string
-		short       string
-		medium      string
-		long        string
-		scriptures  []models.ScriptureRef
-		intensity   int
+		category   string
+		title      string
+		short      string
+		medium     string
+		long       string
+		scriptures []models.ScriptureRef
+		intensity  int
 	}
 	seeds := []confessionSeed{
 		{category: "Healing", title: "I Am Healed", intensity: 3,

@@ -45,13 +45,13 @@ func WriteTone(path string, seconds int) error {
 	write(uint32(36 + n)) // chunk size
 	write([]byte("WAVE"))
 	write([]byte("fmt "))
-	write(uint32(16))            // fmt chunk size
-	write(uint16(1))             // PCM
-	write(uint16(1))             // mono
-	write(uint32(sampleRate))    // sample rate
-	write(uint32(sampleRate))    // byte rate
-	write(uint16(1))             // block align
-	write(uint16(8))             // bits per sample
+	write(uint32(16))         // fmt chunk size
+	write(uint16(1))          // PCM
+	write(uint16(1))          // mono
+	write(uint32(sampleRate)) // sample rate
+	write(uint32(sampleRate)) // byte rate
+	write(uint16(1))          // block align
+	write(uint16(8))          // bits per sample
 	write([]byte("data"))
 	write(uint32(n))
 	_, err = f.Write(data)

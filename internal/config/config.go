@@ -4,11 +4,11 @@ import "os"
 
 // Config holds runtime configuration sourced from environment variables.
 type Config struct {
-	Port       string
-	DBPath     string
-	JWTSecret  string
-	TokenTTL   string
-	Env        string
+	Port      string
+	DBPath    string
+	JWTSecret string
+	TokenTTL  string
+	Env       string
 }
 
 func Load() Config {
