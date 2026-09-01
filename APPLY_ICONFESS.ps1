@@ -58,6 +58,152 @@ $bytes = [System.Text.Encoding]::UTF8.GetByteCount($c)
 Write-Host ("    wrote {0} ({1} bytes)" -f '.gitignore', $bytes)
 $count++
 
+# ---- CONTRIBUTING.md ----
+$c = @'
+# Contributing to i-confess
+
+Thanks for contributing. i-confess is a scheduled spoken biblical-confession app
+(backend in Go, mobile + admin console). This guide covers the workflow everyone
+should follow so the repo stays clean and reviewable.
+
+## Table of contents
+
+1. [Workflow at a glance](#workflow-at-a-glance)
+2. [Branching model](#branching-model)
+3. [Conventional commits](#conventional-commits)
+4. [Pull requests](#pull-requests)
+5. [Local development](#local-development)
+6. [Code style](#code-style)
+
+## Workflow at a glance
+
+```text
+main (protected)
+   │
+   ├── create feature branch
+   │       │
+   │       ├── commit small, well-scoped changes
+   │       │
+   │       ├── push branch
+   │       │
+   │       ├── open Pull Request → review → merge
+   │       │
+   │       └── delete branch
+   └── repeat
+```
+
+**Never commit directly to `main`.** All changes land via a feature branch and a
+pull request. This keeps `main` always deployable.
+
+## Branching model
+
+Branch names follow `type/scope`:
+
+| Prefix   | Use for                                  | Example                    |
+|----------|------------------------------------------|----------------------------|
+| `feat/`  | new features                             | `feat/session-engine`      |
+| `fix/`   | bug fixes                                | `fix/premium-fallback`     |
+| `docs/`  | documentation                            | `docs/api-contract`        |
+| `chore/` | build, tooling, non-code changes         | `chore/ci-lint`            |
+| `refactor/` | restructuring without behavior change | `refactor/store-package`   |
+
+```powershell
+# 1. Start from a fresh main
+git checkout main
+git pull
+
+# 2. Create and switch to a feature branch
+git checkout -b feat/session-engine
+
+# 3. ... make changes ...
+
+# 4. Stage and commit (see conventional commits below)
+git add -A
+git commit -m "feat(sessions): cycle categories round-robin to fill duration"
+
+# 5. Push and open a PR
+git push -u origin feat/session-engine
+```
+
+## Conventional commits
+
+Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/):
+
+```text
+<type>(<scope>): <short summary>
+
+[optional body]
+[optional footer]
+```
+
+Types: `feat`, `fix`, `docs`, `chore`, `refactor`, `test`, `style`, `perf`, `ci`.
+
+Examples:
+
+```text
+feat(engine): deterministic session composition with voice fallback
+fix(auth): reject tokens signed with an unexpected algorithm
+docs(api): document schedule and favorite endpoints
+chore(db): add canonical postgres migration for v1
+test(engine): cover duration-fill and no-content paths
+```
+
+Rules:
+
+- First line ≤ 72 characters, imperative mood ("add", not "added").
+- One logical change per commit; don't bundle unrelated edits.
+- Reference issues in the footer when applicable: `Closes #12`.
+
+## Pull requests
+
+1. Open a PR from your feature branch into `main`.
+2. Fill the PR template (title, summary, test plan).
+3. Request at least one review; address feedback.
+4. Keep PRs small and focused — easier to review, fewer conflicts.
+5. CI must pass (build + vet + tests) before merge.
+6. Squash-merge when the branch contains WIP commits.
+
+## Local development
+
+See `README.md`. Quick start:
+
+```powershell
+go run ./cmd/server        # seeds a dev DB on first boot, listens on :8080
+go build ./...             # compile check
+go vet ./...               # static analysis
+go test ./...              # unit tests
+```
+
+Pre-push checklist:
+
+```powershell
+go fmt ./...
+go vet ./...
+go test ./...
+```
+
+## Code style
+
+- `gofmt` / `goimports` on every file (no manual alignment fights).
+- Package layout follows the existing `internal/` structure:
+  `api/`, `auth/`, `config/`, `db/`, `engine/`, `httpx/`, `models/`,
+  `store/`, `media/`, `adminui/`, `seed/`.
+- New handlers go in `internal/api/`; data access in `internal/store/`.
+- Keep the SQLite (dev) and PostgreSQL (prod) schemas in sync — both live in
+  `internal/db/schema.sql` and `migrations/postgres/` respectively.
+- Write a test for any new non-trivial logic (see `internal/engine/engine_test.go`).
+
+Questions? Open an issue or start a discussion.
+
+'@
+$full = Join-Path $RepoRoot 'CONTRIBUTING.md'
+$dir = Split-Path $full -Parent
+if ($dir -and -not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
+[System.IO.File]::WriteAllText($full, $c)
+$bytes = [System.Text.Encoding]::UTF8.GetByteCount($c)
+Write-Host ("    wrote {0} ({1} bytes)" -f 'CONTRIBUTING.md', $bytes)
+$count++
+
 # ---- Makefile ----
 $c = @'
 .PHONY: run build vet test seed-reset
@@ -332,6 +478,197 @@ if ($dir -and -not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path
 [System.IO.File]::WriteAllText($full, $c)
 $bytes = [System.Text.Encoding]::UTF8.GetByteCount($c)
 Write-Host ("    wrote {0} ({1} bytes)" -f 'README.md', $bytes)
+$count++
+
+# ---- .github\PULL_REQUEST_TEMPLATE.md ----
+$c = @'
+## Summary
+
+<!-- What does this PR do? One or two sentences. -->
+
+## Motivation & context
+
+<!-- Why is this change needed? Link any issue: Closes #123 -->
+
+## Type of change
+
+- [ ] Bug fix
+- [ ] New feature
+- [ ] Refactor
+- [ ] Documentation
+- [ ] Build / tooling / CI
+- [ ] Other
+
+## Test plan
+
+<!-- How did you verify this? Commands, manual steps, screenshots. -->
+
+```text
+go fmt ./...
+go vet ./...
+go test ./...
+```
+
+## Checklist
+
+- [ ] I have run `go fmt`, `go vet`, and `go test` locally.
+- [ ] I have added/updated tests for new behavior.
+- [ ] I have updated documentation (`README.md`, `docs/API.md`) where relevant.
+- [ ] I have kept the SQLite dev schema and PostgreSQL migration in sync (if schema changed).
+- [ ] The change follows the [contributing guide](CONTRIBUTING.md).
+
+'@
+$full = Join-Path $RepoRoot '.github\PULL_REQUEST_TEMPLATE.md'
+$dir = Split-Path $full -Parent
+if ($dir -and -not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
+[System.IO.File]::WriteAllText($full, $c)
+$bytes = [System.Text.Encoding]::UTF8.GetByteCount($c)
+Write-Host ("    wrote {0} ({1} bytes)" -f '.github\PULL_REQUEST_TEMPLATE.md', $bytes)
+$count++
+
+# ---- .github\ISSUE_TEMPLATE\bug_report.md ----
+$c = @'
+---
+name: Bug report
+about: Report a bug or unexpected behaviour
+title: "[bug] "
+labels: bug
+assignees: ""
+---
+
+## Description
+
+<!-- A clear description of the bug. -->
+
+## Steps to reproduce
+
+1.
+2.
+3.
+
+## Expected behaviour
+
+<!-- What should have happened? -->
+
+## Actual behaviour
+
+<!-- What actually happened? Include error messages / logs. -->
+
+## Environment
+
+- OS / platform:
+- Go version (`go version`):
+- Commit / branch:
+- Database (SQLite dev / PostgreSQL):
+
+## Additional context
+
+<!-- Anything else: screenshots, curl output, stack traces. -->
+
+'@
+$full = Join-Path $RepoRoot '.github\ISSUE_TEMPLATE\bug_report.md'
+$dir = Split-Path $full -Parent
+if ($dir -and -not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
+[System.IO.File]::WriteAllText($full, $c)
+$bytes = [System.Text.Encoding]::UTF8.GetByteCount($c)
+Write-Host ("    wrote {0} ({1} bytes)" -f '.github\ISSUE_TEMPLATE\bug_report.md', $bytes)
+$count++
+
+# ---- .github\ISSUE_TEMPLATE\feature_request.md ----
+$c = @'
+---
+name: Feature request
+about: Suggest a new feature or improvement
+title: "[feature] "
+labels: enhancement
+assignees: ""
+---
+
+## Problem
+
+<!-- What problem does this solve? -->
+
+## Proposed solution
+
+<!-- Describe the feature. Link to the relevant PRD section if any. -->
+
+## Alternatives considered
+
+<!-- Any other approaches you thought about. -->
+
+## Scope
+
+<!-- Is this MVP, V1.1, V2, V3? See PRD roadmap. -->
+
+## Additional context
+
+'@
+$full = Join-Path $RepoRoot '.github\ISSUE_TEMPLATE\feature_request.md'
+$dir = Split-Path $full -Parent
+if ($dir -and -not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
+[System.IO.File]::WriteAllText($full, $c)
+$bytes = [System.Text.Encoding]::UTF8.GetByteCount($c)
+Write-Host ("    wrote {0} ({1} bytes)" -f '.github\ISSUE_TEMPLATE\feature_request.md', $bytes)
+$count++
+
+# ---- .github\workflows\ci.yml ----
+$c = @'
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Build, vet & test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go-version: ["1.25.x"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go-version }}
+          cache: true
+
+      - name: Verify dependencies
+        run: go mod verify
+
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test -race ./...
+
+      - name: gofmt check
+        run: |
+          files=$(gofmt -l .)
+          if [ -n "$files" ]; then
+            echo "The following files are not gofmt-formatted:"
+            echo "$files"
+            exit 1
+          fi
+
+'@
+$full = Join-Path $RepoRoot '.github\workflows\ci.yml'
+$dir = Split-Path $full -Parent
+if ($dir -and -not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
+[System.IO.File]::WriteAllText($full, $c)
+$bytes = [System.Text.Encoding]::UTF8.GetByteCount($c)
+Write-Host ("    wrote {0} ({1} bytes)" -f '.github\workflows\ci.yml', $bytes)
 $count++
 
 # ---- cmd\server\main.go ----
@@ -843,19 +1180,19 @@ func (h *Handler) adminListCategories(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) adminCreateConfession(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		CategoryID string `json:"category_id"`
-		Title      string `json:"title"`
-		ShortText  string `json:"short_text"`
-		MediumText string `json:"medium_text"`
-		LongText   string `json:"long_text"`
-		Description string `json:"description"`
-		Tags       []string `json:"tags"`
-		Intensity  int    `json:"intensity"`
-		Language   string `json:"language"`
-		Status     string `json:"status"`
-		Author     string `json:"author"`
-		Variants   []models.ConfessionVariant `json:"variants"`
-		Scriptures []models.ScriptureRef      `json:"scriptures"`
+		CategoryID  string                     `json:"category_id"`
+		Title       string                     `json:"title"`
+		ShortText   string                     `json:"short_text"`
+		MediumText  string                     `json:"medium_text"`
+		LongText    string                     `json:"long_text"`
+		Description string                     `json:"description"`
+		Tags        []string                   `json:"tags"`
+		Intensity   int                        `json:"intensity"`
+		Language    string                     `json:"language"`
+		Status      string                     `json:"status"`
+		Author      string                     `json:"author"`
+		Variants    []models.ConfessionVariant `json:"variants"`
+		Scriptures  []models.ScriptureRef      `json:"scriptures"`
 	}
 	if err := httpx.DecodeJSON(r, &req); err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid request body")
@@ -1089,10 +1426,10 @@ func (h *Handler) adminStats(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{
-		"categories":          len(cats),
-		"confessions":         len(confs),
-		"published":           published,
-		"voices":              len(voices),
+		"categories":            len(cats),
+		"confessions":           len(confs),
+		"published":             published,
+		"voices":                len(voices),
 		"confessions_by_status": statusCounts(confs),
 	})
 }
@@ -1483,14 +1820,14 @@ func (h *Handler) updateSchedule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		Label           *string   `json:"label"`
-		Time            *string   `json:"time"`
-		DaysOfWeek      []int     `json:"days_of_week"`
-		Timezone        *string   `json:"timezone"`
-		DurationSeconds *int      `json:"duration_seconds"`
-		VoiceID         *string   `json:"voice_id"`
-		CategoryIDs     []string  `json:"category_ids"`
-		Enabled         *bool     `json:"enabled"`
+		Label           *string  `json:"label"`
+		Time            *string  `json:"time"`
+		DaysOfWeek      []int    `json:"days_of_week"`
+		Timezone        *string  `json:"timezone"`
+		DurationSeconds *int     `json:"duration_seconds"`
+		VoiceID         *string  `json:"voice_id"`
+		CategoryIDs     []string `json:"category_ids"`
+		Enabled         *bool    `json:"enabled"`
 	}
 	if err := httpx.DecodeJSON(r, &req); err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid request body")
@@ -2389,8 +2726,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/Teamthy/i-confess/internal/httpx"
+	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -2516,11 +2853,11 @@ import "os"
 
 // Config holds runtime configuration sourced from environment variables.
 type Config struct {
-	Port       string
-	DBPath     string
-	JWTSecret  string
-	TokenTTL   string
-	Env        string
+	Port      string
+	DBPath    string
+	JWTSecret string
+	TokenTTL  string
+	Env       string
 }
 
 func Load() Config {
@@ -3374,13 +3711,13 @@ func WriteTone(path string, seconds int) error {
 	write(uint32(36 + n)) // chunk size
 	write([]byte("WAVE"))
 	write([]byte("fmt "))
-	write(uint32(16))            // fmt chunk size
-	write(uint16(1))             // PCM
-	write(uint16(1))             // mono
-	write(uint32(sampleRate))    // sample rate
-	write(uint32(sampleRate))    // byte rate
-	write(uint16(1))             // block align
-	write(uint16(8))             // bits per sample
+	write(uint32(16))         // fmt chunk size
+	write(uint16(1))          // PCM
+	write(uint16(1))          // mono
+	write(uint32(sampleRate)) // sample rate
+	write(uint32(sampleRate)) // byte rate
+	write(uint16(1))          // block align
+	write(uint16(8))          // bits per sample
 	write([]byte("data"))
 	write(uint32(n))
 	_, err = f.Write(data)
@@ -3701,13 +4038,13 @@ func Seed(db *sql.DB) error {
 	// ---- Confessions ----
 	// Each confession: title, texts, scripture refs, and duration variants.
 	type confessionSeed struct {
-		category    string
-		title       string
-		short       string
-		medium      string
-		long        string
-		scriptures  []models.ScriptureRef
-		intensity   int
+		category   string
+		title      string
+		short      string
+		medium     string
+		long       string
+		scriptures []models.ScriptureRef
+		intensity  int
 	}
 	seeds := []confessionSeed{
 		{category: "Healing", title: "I Am Healed", intensity: 3,
@@ -4811,8 +5148,8 @@ import (
 	"errors"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/Teamthy/i-confess/internal/models"
+	"github.com/google/uuid"
 )
 
 var ErrNotFound = errors.New("not found")

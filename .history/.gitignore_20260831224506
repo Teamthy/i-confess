@@ -10,4 +10,3 @@
 
 # Go
 /go/        # (only relevant if GOROOT is vendored in this workspace)
-.ps1

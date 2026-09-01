@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: iconfess-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: iconfess
+      POSTGRES_USER: iconfess
+      POSTGRES_PASSWORD: iconfess-dev-password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U iconfess" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: iconfess-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: iconfess-server
+    ports:
+      - "8080:8080"
+    environment:
+      PORT: "8080"
+      ENV: development
+      POSTGRES_DSN: postgres://iconfess:iconfess-dev-password@postgres:5432/iconfess
+      REDIS_ADDR: redis:6379
+      JWT_SECRET: dev-only-change-me-for-production
+      TOKEN_TTL: 720h
+      QUEUE_WORKERS: 4
+      LOG_LEVEL: debug
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./data:/app/data
+    command: /app/iconfess-server
+
+volumes:
+  postgres_data:
+  redis_data:
