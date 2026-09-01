@@ -52,6 +52,19 @@ type Config struct {
 	GoogleClientID string
 	// AppleClientID is the Services ID / bundle id for Sign in with Apple.
 	AppleClientID string
+
+	// --- Push notifications (PRD S47) ---
+	// APNsKeyPath is the .p8 signing key. Token auth rather than certificates:
+	// one key serves every environment and does not expire annually.
+	APNsKeyPath    string
+	APNsKeyID      string
+	APNsTeamID     string
+	APNsTopic      string
+	APNsProduction bool
+	// FCMServiceAccountPath is a Google service-account JSON key. The server
+	// mints and refreshes its own OAuth2 tokens from it; the project id is
+	// read from the key so it cannot be misconfigured separately.
+	FCMServiceAccountPath string
 }
 
 func Load() Config {
@@ -80,6 +93,13 @@ func Load() Config {
 
 		GoogleClientID: os.Getenv("GOOGLE_CLIENT_ID"),
 		AppleClientID:  os.Getenv("APPLE_CLIENT_ID"),
+
+		APNsKeyPath:           os.Getenv("APNS_KEY_PATH"),
+		APNsKeyID:             os.Getenv("APNS_KEY_ID"),
+		APNsTeamID:            os.Getenv("APNS_TEAM_ID"),
+		APNsTopic:             getenv("APNS_TOPIC", "app.iconfess"),
+		APNsProduction:        os.Getenv("APNS_PRODUCTION") == "true",
+		FCMServiceAccountPath: os.Getenv("FCM_SERVICE_ACCOUNT"),
 	}
 }
 

@@ -122,3 +122,29 @@ func strToDays(s string) []int {
 	}
 	return out
 }
+
+// AllEnabled returns every enabled schedule, for the dispatcher sweep.
+//
+// Not filtered by time in SQL: whether a schedule is due depends on the user's
+// IANA timezone and DST rules, which the database cannot evaluate. The row
+// count is bounded by active users with routines, which is small enough to
+// scan each tick.
+func (s *ScheduleStore) AllEnabled(ctx context.Context) ([]models.Schedule, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id,user_id,label,time,days_of_week,timezone,duration_seconds,COALESCE(voice_id,''),COALESCE(category_ids,''),enabled,created_at,updated_at
+		 FROM schedules WHERE enabled = 1`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []models.Schedule{}
+	for rows.Next() {
+		sc, err := scanSchedule(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *sc)
+	}
+	return out, rows.Err()
+}

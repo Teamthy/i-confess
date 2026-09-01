@@ -849,3 +849,63 @@ ALTER TABLE mfa_secrets ADD COLUMN recovery_hashes TEXT;
 -- be reused within it.
 ALTER TABLE mfa_secrets ADD COLUMN last_counter    INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE mfa_secrets ADD COLUMN confirmed_at    TEXT;
+
+-- ==================== PUSH NOTIFICATIONS (PRD S47, S19, S34) ====================
+
+-- Push credentials live on the device row. Stored separately from `metadata`
+-- so a token can be cleared on logout or unregistration without touching
+-- anything else, and so it is never accidentally serialised with device info.
+ALTER TABLE user_devices ADD COLUMN push_token    TEXT;
+ALTER TABLE user_devices ADD COLUMN push_provider TEXT;   -- apns | fcm
+-- push_failures counts consecutive delivery rejections. A token that keeps
+-- failing is dead (app uninstalled, token rotated); continuing to send to it
+-- wastes quota and harms sender reputation with the provider.
+ALTER TABLE user_devices ADD COLUMN push_failures INTEGER NOT NULL DEFAULT 0;
+
+CREATE INDEX IF NOT EXISTS idx_user_devices_push
+    ON user_devices(user_id) WHERE push_token IS NOT NULL AND revoked_at IS NULL;
+
+-- Scheduled-notification dispatch log.
+--
+-- Exists to make delivery idempotent: a schedule fires once per local
+-- occurrence, and a sweeper that runs twice (restart, overlapping tick, second
+-- replica) must not wake someone up twice. The UNIQUE constraint is the
+-- guarantee, not application logic.
+CREATE TABLE IF NOT EXISTS scheduled_deliveries (
+    id            TEXT PRIMARY KEY,
+    schedule_id   TEXT NOT NULL REFERENCES schedules(id) ON DELETE CASCADE,
+    user_id       TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    -- occurrence_key is the schedule's local date+time, e.g. "2026-09-02T06:00".
+    -- Keyed on local wall-clock rather than UTC so a timezone change does not
+    -- create a duplicate for the same intended moment.
+    occurrence_key TEXT NOT NULL,
+    status        TEXT NOT NULL DEFAULT 'sent',   -- sent | failed | skipped
+    detail        TEXT,
+    created_at    TEXT NOT NULL,
+    UNIQUE(schedule_id, occurrence_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_scheduled_deliveries_user
+    ON scheduled_deliveries(user_id, created_at);
+
+-- ==================== OFFLINE DOWNLOADS (PRD S28, S44) ====================
+--
+-- A download is a licence to hold audio locally for a bounded time, not a
+-- permanent copy. The expiry is what makes a lapsed subscription eventually
+-- stop working offline without the app needing to police it itself.
+ALTER TABLE audio_downloads ADD COLUMN storage_key   TEXT;
+ALTER TABLE audio_downloads ADD COLUMN confession_id TEXT;
+ALTER TABLE audio_downloads ADD COLUMN voice_id      TEXT;
+ALTER TABLE audio_downloads ADD COLUMN duration_seconds INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE audio_downloads ADD COLUMN checksum      TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_downloads_user_active
+    ON audio_downloads(user_id) WHERE removed_at IS NULL;
+
+-- Audit log detail (PRD S51). `actor` and `detail` record who did what and on
+-- what authority, which is the difference between a log and evidence.
+ALTER TABLE audit_logs ADD COLUMN actor  TEXT;
+ALTER TABLE audit_logs ADD COLUMN detail TEXT;
+ALTER TABLE audit_logs ADD COLUMN result TEXT;
+CREATE INDEX IF NOT EXISTS idx_audit_entity ON audit_logs(entity, entity_id);
+CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs(created_at);

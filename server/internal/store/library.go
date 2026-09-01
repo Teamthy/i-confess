@@ -358,3 +358,107 @@ func (s *LibraryStore) UpdateNotificationPreferences(ctx context.Context, userID
 	}
 	return cur, nil
 }
+
+// ---------------------------------------------------------------------------
+// Push tokens and scheduled delivery (PRD S45, S47)
+// ---------------------------------------------------------------------------
+
+// PushTarget is a device that can receive a notification.
+type PushTarget struct {
+	DeviceID string
+	Token    string
+	Platform string
+}
+
+// SetPushToken records a device's push credential.
+//
+// Registering a token clears the failure count: the app is evidently alive, so
+// a device previously written off as dead becomes deliverable again.
+func (s *LibraryStore) SetPushToken(ctx context.Context, userID, deviceID, token, provider string) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE user_devices SET push_token = ?, push_provider = ?, push_failures = 0
+		 WHERE user_id = ? AND device_id = ?`,
+		nullIfEmpty(token), nullIfEmpty(provider), userID, deviceID)
+	return err
+}
+
+// PushTargetsFor returns a user's deliverable devices.
+//
+// Excludes revoked devices and tokens that have failed repeatedly: continuing
+// to send to a dead token wastes quota and damages standing with the provider.
+func (s *LibraryStore) PushTargetsFor(ctx context.Context, userID string) ([]PushTarget, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT device_id, push_token, COALESCE(platform,'')
+		 FROM user_devices
+		 WHERE user_id = ? AND revoked_at IS NULL
+		   AND push_token IS NOT NULL AND push_token != ''
+		   AND push_failures < 5`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []PushTarget{}
+	for rows.Next() {
+		var t PushTarget
+		if err := rows.Scan(&t.DeviceID, &t.Token, &t.Platform); err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
+// ClearPushToken removes a token the provider rejected as dead.
+func (s *LibraryStore) ClearPushToken(ctx context.Context, userID, deviceID string) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE user_devices SET push_token = NULL, push_provider = NULL
+		 WHERE user_id = ? AND device_id = ?`, userID, deviceID)
+	return err
+}
+
+// RecordPushFailure increments the consecutive-failure counter.
+func (s *LibraryStore) RecordPushFailure(ctx context.Context, userID, deviceID string) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE user_devices SET push_failures = push_failures + 1
+		 WHERE user_id = ? AND device_id = ?`, userID, deviceID)
+	return err
+}
+
+// ClaimDelivery reserves an occurrence, returning false if it was already sent.
+//
+// The UNIQUE(schedule_id, occurrence_key) constraint does the work: two
+// sweepers racing on the same occurrence both attempt the insert and exactly
+// one succeeds. Idempotency is a database guarantee here, not application
+// logic that a restart could skip.
+func (s *LibraryStore) ClaimDelivery(ctx context.Context, scheduleID, userID, occurrenceKey string) (bool, error) {
+	res, err := s.db.ExecContext(ctx,
+		`INSERT INTO scheduled_deliveries (id, schedule_id, user_id, occurrence_key, status, created_at)
+		 VALUES (?,?,?,?,'sent',?)
+		 ON CONFLICT(schedule_id, occurrence_key) DO NOTHING`,
+		uuid.New().String(), scheduleID, userID, occurrenceKey, now())
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
+// MarkDelivery records the outcome of a claimed occurrence.
+func (s *LibraryStore) MarkDelivery(ctx context.Context, scheduleID, occurrenceKey, status, detail string) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE scheduled_deliveries SET status = ?, detail = ?
+		 WHERE schedule_id = ? AND occurrence_key = ?`,
+		status, truncateDetail(detail), scheduleID, occurrenceKey)
+	return err
+}
+
+func truncateDetail(s string) string {
+	if len(s) > 500 {
+		return s[:500]
+	}
+	return s
+}

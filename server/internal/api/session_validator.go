@@ -14,6 +14,15 @@ import (
 // authority"): the token carries claims, but the database decides.
 type sessionValidator struct{ h *Handler }
 
+// emailFor looks up an address for a security notification. Best effort: a
+// failed lookup must not prevent the revocation itself.
+func (v sessionValidator) emailFor(ctx context.Context, userID string) string {
+	if u, err := v.h.users.ByID(ctx, userID); err == nil {
+		return u.Email
+	}
+	return ""
+}
+
 // ValidateSession implements auth.SessionValidator.
 func (v sessionValidator) ValidateSession(ctx context.Context, userID, sessionID string) auth.SessionState {
 	// Account status first: a suspended or deleted account must lose access
@@ -50,7 +59,25 @@ func (v sessionValidator) ValidateSession(ctx context.Context, userID, sessionID
 		return auth.SessionState{Reason: auth.ReasonTokenInvalid}
 	}
 	switch {
-	case !st.Exists, st.Revoked:
+	case !st.Exists:
+		return auth.SessionState{Reason: auth.ReasonSessionRevoked}
+	case st.Revoked:
+		// Distinguish an ordinary revocation from a REPLAYED rotated session.
+		// If this session was superseded by rotation and is still being
+		// presented, someone kept a copy of it. There is no way to tell
+		// whether the replay is the attacker or the legitimate client, so the
+		// entire descendant chain is revoked and both must re-authenticate
+		// (PRD S23).
+		if replacedBy, _, rerr := v.h.users.SessionRotationState(ctx, sessionID); rerr == nil && replacedBy != "" {
+			n, _ := v.h.users.RevokeSessionFamily(ctx, userID, sessionID)
+			log.Printf("auth: refresh-token reuse detected for user=%s session=%s; revoked %d sessions in the family",
+				userID, sessionID, n)
+			v.h.notifySecurityEvent(v.emailFor(ctx, userID),
+				"You were signed out for security",
+				"A sign-in token from this account was reused, which can mean it was copied. "+
+					"Everything has been signed out. Please sign in again and change your password.")
+			return auth.SessionState{Reason: auth.ReasonTokenReused}
+		}
 		return auth.SessionState{Reason: auth.ReasonSessionRevoked}
 	case st.Expired:
 		return auth.SessionState{Reason: auth.ReasonSessionExpired}

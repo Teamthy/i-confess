@@ -818,3 +818,100 @@ func (s *UserStore) DisableMFA(ctx context.Context, userID string) error {
 	}
 	return tx.Commit()
 }
+
+// ---------------------------------------------------------------------------
+// Refresh rotation and reuse detection (PRD S23)
+// ---------------------------------------------------------------------------
+
+// SessionFamily groups the sessions descended from one original login.
+//
+// Rotation replaces a session with a successor and records the link. If a
+// superseded session is ever presented again, the original token was stolen —
+// either the attacker or the legitimate user is replaying it, and there is no
+// way to tell which. The only safe response is to revoke the whole family.
+type SessionFamily struct {
+	ID         string
+	UserID     string
+	ReplacedBy string
+	Revoked    bool
+}
+
+// RotateSession issues a successor and marks the old session replaced.
+//
+// Both writes happen in one transaction: a rotation that revoked the old
+// session without creating the new one would sign the user out mid-request.
+func (s *UserStore) RotateSession(ctx context.Context, userID, oldSessionID, platform, userAgent, ip string, ttl time.Duration) (string, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return "", err
+	}
+	defer tx.Rollback()
+
+	newID := uuid.New().String()
+	expires := time.Now().UTC().Add(ttl).Format(time.RFC3339)
+
+	if _, err := tx.ExecContext(ctx,
+		`INSERT INTO refresh_tokens (id,user_id,token_hash,platform,user_agent,ip_address,expires_at,created_at,last_used_at)
+		 VALUES (?,?,?,?,?,?,?,?,?)`,
+		newID, userID, newID, nullIfEmpty(platform), nullIfEmpty(userAgent),
+		nullIfEmpty(ip), expires, now(), now()); err != nil {
+		return "", err
+	}
+
+	// The old session is revoked and linked to its successor. The link is what
+	// makes reuse detectable: a replaced-but-presented session is proof of
+	// replay, not merely an expired one.
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE refresh_tokens SET revoked_at = ?, replaced_by = ? WHERE id = ? AND user_id = ?`,
+		now(), newID, oldSessionID, userID); err != nil {
+		return "", err
+	}
+	if err := tx.Commit(); err != nil {
+		return "", err
+	}
+	return newID, nil
+}
+
+// SessionRotationState reports whether a session was superseded by rotation.
+func (s *UserStore) SessionRotationState(ctx context.Context, sessionID string) (replacedBy string, revoked bool, err error) {
+	var rb, ra sql.NullString
+	err = s.db.QueryRowContext(ctx,
+		`SELECT replaced_by, revoked_at FROM refresh_tokens WHERE id = ?`, sessionID).Scan(&rb, &ra)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false, ErrNotFound
+	}
+	if err != nil {
+		return "", false, err
+	}
+	return rb.String, ra.Valid && ra.String != "", nil
+}
+
+// RevokeSessionFamily revokes every session descended from one login.
+//
+// Called when a superseded refresh token is replayed. Walking the chain rather
+// than revoking all of a user's sessions is deliberate: a compromise on one
+// device should not sign the user out of every other device they own.
+func (s *UserStore) RevokeSessionFamily(ctx context.Context, userID, sessionID string) (int, error) {
+	// Walk forward through replaced_by to the newest descendant, revoking as
+	// we go. Bounded to avoid looping forever on corrupt data.
+	revoked := 0
+	current := sessionID
+	for i := 0; i < 100 && current != ""; i++ {
+		res, err := s.db.ExecContext(ctx,
+			`UPDATE refresh_tokens SET revoked_at = ? WHERE id = ? AND user_id = ? AND revoked_at IS NULL`,
+			now(), current, userID)
+		if err != nil {
+			return revoked, err
+		}
+		if n, _ := res.RowsAffected(); n > 0 {
+			revoked += int(n)
+		}
+		var next sql.NullString
+		if err := s.db.QueryRowContext(ctx,
+			`SELECT replaced_by FROM refresh_tokens WHERE id = ?`, current).Scan(&next); err != nil {
+			break
+		}
+		current = next.String
+	}
+	return revoked, nil
+}

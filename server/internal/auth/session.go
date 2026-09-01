@@ -35,6 +35,9 @@ const (
 	ReasonAccountSuspended = "AUTH_ACCOUNT_SUSPENDED"
 	ReasonAccountDeleted   = "AUTH_ACCOUNT_DELETED"
 	ReasonTokenInvalid     = "AUTH_TOKEN_INVALID"
+	// ReasonTokenReused signals that a rotated session was presented again,
+	// which indicates the token was copied (PRD S49).
+	ReasonTokenReused = "AUTH_TOKEN_REUSED"
 )
 
 // SessionValidator answers whether a token's session is still honoured.
@@ -130,6 +133,8 @@ func reasonMessage(code string) string {
 		return "your session has ended, please sign in again"
 	case ReasonSessionExpired:
 		return "your session has expired, please sign in again"
+	case ReasonTokenReused:
+		return "you were signed out for security, please sign in again"
 	case ReasonAccountSuspended:
 		return "this account is not available"
 	case ReasonAccountDeleted:

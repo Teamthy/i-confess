@@ -174,3 +174,74 @@ func (s *AudioStore) ConfessionIDsWithVoice(ctx context.Context, voiceID string)
 	}
 	return out, rows.Err()
 }
+
+// RecordAudit writes a privileged-action record (PRD S51, S80).
+//
+// Audit writes must never fail the request that succeeded: losing a log line is
+// bad, but rolling back a completed rights change because the log table was
+// busy is worse. Callers log the error and continue.
+func (s *AudioStore) RecordAudit(ctx context.Context, actor, action, entity, entityID, detail, result string) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO audit_logs (id, admin_user_id, actor, action, entity, entity_id, detail, result, created_at)
+		 VALUES (?,?,?,?,?,?,?,?,?)`,
+		newID(), nullIfEmpty(actor), actor, action, entity, nullIfEmpty(entityID),
+		truncateAudit(detail), result, now())
+	return err
+}
+
+// AuditEntry is one recorded privileged action.
+type AuditEntry struct {
+	ID        string `json:"id"`
+	Actor     string `json:"actor,omitempty"`
+	Action    string `json:"action"`
+	Entity    string `json:"entity"`
+	EntityID  string `json:"entity_id,omitempty"`
+	Detail    string `json:"detail,omitempty"`
+	Result    string `json:"result,omitempty"`
+	CreatedAt string `json:"created_at"`
+}
+
+// AuditTrail returns recent privileged actions, newest first.
+func (s *AudioStore) AuditTrail(ctx context.Context, entity, entityID string, limit int) ([]AuditEntry, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	q := `SELECT id, COALESCE(actor,''), action, entity, COALESCE(entity_id,''),
+	             COALESCE(detail,''), COALESCE(result,''), created_at
+	      FROM audit_logs`
+	args := []any{}
+	if entity != "" {
+		q += ` WHERE entity = ?`
+		args = append(args, entity)
+		if entityID != "" {
+			q += ` AND entity_id = ?`
+			args = append(args, entityID)
+		}
+	}
+	q += ` ORDER BY created_at DESC LIMIT ?`
+	args = append(args, limit)
+
+	rows, err := s.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []AuditEntry{}
+	for rows.Next() {
+		var e AuditEntry
+		if err := rows.Scan(&e.ID, &e.Actor, &e.Action, &e.Entity, &e.EntityID,
+			&e.Detail, &e.Result, &e.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
+func truncateAudit(s string) string {
+	if len(s) > 1000 {
+		return s[:1000]
+	}
+	return s
+}

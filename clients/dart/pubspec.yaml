@@ -1,0 +1,16 @@
+name: iconfess_api
+description: Typed Dart client for the i-confess API, generated against contracts/openapi.json.
+version: 1.0.0
+publish_to: none
+
+environment:
+  sdk: ">=3.4.0 <4.0.0"
+
+# No runtime dependencies on purpose. The client uses dart:io and dart:convert
+# from the SDK, so it adds nothing to an app's dependency tree and cannot pull
+# a transitive package into a codebase that handles credentials.
+dependencies:
+
+dev_dependencies:
+  test: ^1.25.0
+  lints: ^4.0.0

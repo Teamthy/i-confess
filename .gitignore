@@ -18,3 +18,14 @@ server/bin/
 
 # Local editor history plugin output.
 .history/
+
+# Dart/Flutter build artefacts
+.dart_tool/
+.packages
+build/
+*.iml
+
+# One-shot apply scripts contain embedded copies of the source tree; keeping
+# them in the repo means every clone carries a stale duplicate.
+APPLY_*.ps1
+FIX_*.ps1

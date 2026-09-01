@@ -26,8 +26,21 @@ type Claims struct {
 	jwt.RegisteredClaims
 }
 
+// hashCost is the bcrypt work factor.
+//
+// Production uses bcrypt.DefaultCost (10). Tests lower it because the suite
+// hashes hundreds of passwords and the cost is deliberately slow — at default
+// cost the race-enabled run takes over five minutes, which is long enough that
+// people stop running it. The reduction is confined to tests; a test cannot
+// change what production uses because nothing exported sets it.
+var hashCost = bcrypt.DefaultCost
+
+// SetHashCostForTesting lowers the bcrypt work factor. Test-only: production
+// never calls it, and the default remains bcrypt.DefaultCost.
+func SetHashCostForTesting(cost int) { hashCost = cost }
+
 func HashPassword(pw string) (string, error) {
-	b, err := bcrypt.GenerateFromPassword([]byte(pw), bcrypt.DefaultCost)
+	b, err := bcrypt.GenerateFromPassword([]byte(pw), hashCost)
 	return string(b), err
 }
 

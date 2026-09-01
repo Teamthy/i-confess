@@ -18,6 +18,7 @@ import (
 	"github.com/Teamthy/i-confess/internal/models"
 	"github.com/Teamthy/i-confess/internal/oauth"
 	"github.com/Teamthy/i-confess/internal/ratelimit"
+	"github.com/Teamthy/i-confess/internal/scheduler"
 	"github.com/Teamthy/i-confess/internal/storage"
 	"github.com/Teamthy/i-confess/internal/store"
 	"github.com/Teamthy/i-confess/internal/voice"
@@ -62,6 +63,15 @@ type Handler struct {
 	library *store.LibraryStore
 	// deletion performs account erasure under an explicit retention policy.
 	deletion *deletion.Service
+	// dispatcher delivers scheduled-session reminders (S19, S47).
+	dispatcher *scheduler.Dispatcher
+	// downloads manages offline licences (S28).
+	downloads *store.DownloadStore
+	// metrics counts security-relevant events for alerting (S83, S84).
+	metrics *AuthMetrics
+	// routes records every registered endpoint, so the API spec is generated
+	// from the same calls that serve traffic and cannot drift.
+	routes *routeRecorder
 }
 
 // SetLimiter installs a rate limiter. Production passes a Redis-backed
@@ -103,6 +113,9 @@ func NewHandler(cfg Config, db *sql.DB) *Handler {
 		verifiers: map[string]oauth.Verifier{},
 		library:   store.NewLibraryStore(db),
 		deletion:  deletion.NewService(db),
+		downloads: store.NewDownloadStore(db),
+		metrics:   NewAuthMetrics(),
+		routes:    &routeRecorder{},
 	}
 }
 
@@ -110,10 +123,6 @@ func NewHandler(cfg Config, db *sql.DB) *Handler {
 // swallowed: the rights change itself already succeeded, and losing an audit
 // line must not roll it back.
 func (h *Handler) auditRights(r *http.Request, voiceID string, aiGranted bool, attestation string) {
-	actor := ""
-	if c := auth.FromContext(r); c != nil {
-		actor = c.Email
-	}
 	action := "voice_rights_updated"
 	if aiGranted {
 		action = "voice_rights_ai_generation_granted"
@@ -121,7 +130,10 @@ func (h *Handler) auditRights(r *http.Request, voiceID string, aiGranted bool, a
 	if attestation == "" {
 		attestation = "no attestation supplied"
 	}
-	log.Printf("audit action=%s voice=%s actor=%s detail=%q", action, voiceID, actor, attestation)
+	// Persisted, not merely logged: a rights dispute needs a queryable record,
+	// and log retention is measured in days while a licence decision matters
+	// for years (S51).
+	h.recordAudit(r, action, "voice", voiceID, attestation, "success")
 }
 
 // usersDB exposes the underlying database handle for tests that need to
@@ -238,6 +250,7 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 
 	u, hash, err := h.users.ByEmail(r.Context(), req.Email)
 	if err != nil || !auth.CheckPassword(hash, req.Password) {
+		h.metrics.Inc(MetricLoginFailure)
 		// One generic message for both "no such account" and "wrong password",
 		// so the endpoint cannot be used to discover who has an account (S19).
 		httpx.WriteError(w, http.StatusUnauthorized, "invalid credentials")
@@ -255,6 +268,7 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 	// A successful sign-in clears the counter, so a user who finally remembers
 	// their password is not left throttled.
 	h.limiter.Reset(acctKey)
+	h.metrics.Inc(MetricLoginSuccess)
 
 	// Second factor, if enrolled. The password alone must not yield a session
 	// (S41): everything below this point requires the factor to be satisfied.
@@ -262,6 +276,7 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 		if req.Code == "" {
 			// Signals the client to prompt. Deliberately not an error: the
 			// credentials were correct, the login is simply incomplete.
+			h.metrics.Inc(MetricMFAChallenge)
 			httpx.WriteJSON(w, http.StatusOK, map[string]any{
 				"mfa_required": true,
 				"message":      "Enter the code from your authenticator app.",
@@ -274,6 +289,7 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 		}
 		usedRecovery, ok := h.verifySecondFactor(r, u.ID, enrolment, req.Code)
 		if !ok {
+			h.metrics.Inc(MetricMFAFailure)
 			httpx.WriteJSON(w, http.StatusUnauthorized, map[string]string{
 				"error": "that code is not valid", "code": "MFA_CODE_INVALID",
 			})
@@ -417,7 +433,11 @@ func (h *Handler) changePassword(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// refreshToken issues a new access token for an authenticated user.
+// refreshToken rotates the session and issues a new access token (PRD S23).
+//
+// Rotation, not renewal: the presented session is retired and replaced. That is
+// what makes theft detectable — if the retired session is ever presented again,
+// someone kept a copy, and ValidateSession revokes the whole family.
 func (h *Handler) refreshToken(w http.ResponseWriter, r *http.Request) {
 	claims := auth.FromContext(r)
 	if claims == nil {
@@ -428,8 +448,25 @@ func (h *Handler) refreshToken(w http.ResponseWriter, r *http.Request) {
 	// Role is re-read rather than copied from the old token: a demoted admin
 	// must not be able to refresh their way into keeping privileges (S56).
 	role, _ := h.users.AdminRole(r.Context(), claims.Sub)
+
+	ttl, err := time.ParseDuration(h.cfg.TokenTTL)
+	if err != nil {
+		ttl = 720 * time.Hour
+	}
+
+	sessionID := claims.SessionID
+	if sessionID != "" {
+		rotated, rerr := h.users.RotateSession(r.Context(), claims.Sub, sessionID,
+			r.Header.Get("X-Platform"), r.UserAgent(), clientIP(r), ttl)
+		if rerr != nil {
+			httpx.WriteError(w, http.StatusInternalServerError, "failed to rotate session")
+			return
+		}
+		sessionID = rotated
+	}
+
 	tok, err := auth.SignSessionToken(h.cfg.JWTSecret, h.cfg.TokenTTL,
-		claims.Sub, claims.Email, role, claims.SessionID)
+		claims.Sub, claims.Email, role, sessionID)
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to issue token")
 		return
