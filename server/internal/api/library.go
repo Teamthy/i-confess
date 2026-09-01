@@ -2,6 +2,7 @@ package api
 
 import (
 	"errors"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -201,16 +202,38 @@ func (h *Handler) registerDevice(w http.ResponseWriter, r *http.Request) {
 		writeCode(w, http.StatusBadRequest, "PROFILE_INVALID", "platform must be ios, android or web")
 		return
 	}
-	// The push token is accepted but not echoed back: it is a delivery
+	userID := h.userID(r)
+	deviceID := strings.TrimSpace(req.DeviceID)
+
+	// The push token is accepted but never echoed back: it is a delivery
 	// credential, not profile data.
-	if err := h.library.RegisterDevice(r.Context(), h.userID(r), &models.UserDevice{
-		DeviceID: strings.TrimSpace(req.DeviceID), Platform: req.Platform,
+	if err := h.library.RegisterDevice(r.Context(), userID, &models.UserDevice{
+		DeviceID: deviceID, Platform: req.Platform,
 		Name: req.DeviceName, AppVersion: req.AppVersion,
 	}); err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to register device")
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, map[string]string{"message": "device registered"})
+
+	// Persist the token separately. Without this it is accepted and silently
+	// discarded, so scheduled reminders have nowhere to be delivered.
+	if strings.TrimSpace(req.PushToken) != "" {
+		provider := "fcm"
+		if req.Platform == "ios" {
+			provider = "apns"
+		}
+		if err := h.library.SetPushToken(r.Context(), userID, deviceID,
+			strings.TrimSpace(req.PushToken), provider); err != nil {
+			// Registration already succeeded; a token that failed to save can
+			// be re-sent on the next app launch.
+			log.Printf("push: failed to store token for user=%s device=%s: %v", userID, deviceID, err)
+		}
+	}
+
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{
+		"message":      "device registered",
+		"push_enabled": strings.TrimSpace(req.PushToken) != "",
+	})
 }
 
 func (h *Handler) listDevices(w http.ResponseWriter, r *http.Request) {

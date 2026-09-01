@@ -82,14 +82,22 @@ type Voice struct {
 	UpdatedAt   string `json:"updated_at"`
 }
 
+// AudioAsset is a rendered audio file (PRD S12).
+//
+// URL holds the object-storage KEY, never a public link, and is json:"-" so it
+// cannot leak into a client payload. Callers exchange the key for a
+// short-lived signed URL at read time, which is what keeps access tied to
+// entitlement rather than to whoever once saw the response.
 type AudioAsset struct {
 	ID              string `json:"id"`
 	ConfessionID    string `json:"confession_id"`
 	VariantID       string `json:"variant_id,omitempty"`
 	VoiceID         string `json:"voice_id"`
-	URL             string `json:"url"`
+	URL             string `json:"-"`
 	DurationSeconds int    `json:"duration_seconds,omitempty"`
 	SizeBytes       int64  `json:"size_bytes,omitempty"`
+	Checksum        string `json:"checksum,omitempty"`
+	Language        string `json:"language,omitempty"`
 	Status          string `json:"status"`
 	CreatedAt       string `json:"created_at"`
 	UpdatedAt       string `json:"updated_at"`
@@ -617,4 +625,31 @@ type NotificationPreferences struct {
 	Recommendations   bool   `json:"recommendations"`
 	ProductUpdates    bool   `json:"product_updates"`
 	UpdatedAt         string `json:"updated_at,omitempty"`
+}
+
+// Download is an offline licence for one audio asset (PRD §28).
+//
+// StorageKey is the object key, never a URL: the client exchanges it for a
+// signed download link, so a licence that has lapsed cannot be redeemed even
+// if the record is still on the device.
+type Download struct {
+	ID              string `json:"id"`
+	UserID          string `json:"user_id"`
+	AudioAssetID    string `json:"audio_asset_id"`
+	ConfessionID    string `json:"confession_id,omitempty"`
+	VoiceID         string `json:"voice_id,omitempty"`
+	StorageKey      string `json:"-"`
+	Title           string `json:"title,omitempty"`
+	DurationSeconds int    `json:"duration_seconds"`
+	SizeBytes       int64  `json:"size_bytes,omitempty"`
+	Checksum        string `json:"checksum,omitempty"`
+	Status          string `json:"status"`
+	// ExpiresAt is when the offline licence lapses. Surfaced so the client can
+	// warn before content stops working rather than failing silently.
+	ExpiresAt string `json:"expires_at,omitempty"`
+	// Expired is computed at read time so a stale client cannot decide for
+	// itself that a licence is still good.
+	Expired   bool   `json:"expired"`
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at,omitempty"`
 }

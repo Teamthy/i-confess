@@ -93,6 +93,11 @@ var Policies = []TablePolicy{
 		Reason: "removed via their parent session"},
 	{Table: "sessions", Action: Erase},
 
+	// ---- Notification dispatch log. Erased with the account: it records when
+	// someone was reminded to pray, which is behavioural data about them, and
+	// the schedules it references are going too.
+	{Table: "scheduled_deliveries", Action: Erase},
+
 	// ---- Listening behaviour. Erased rather than anonymised: a listening
 	// history is a record of what a person prayed about, which is exactly the
 	// kind of data a deletion request is usually about.

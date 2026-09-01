@@ -15,6 +15,7 @@ import (
 	"github.com/Teamthy/i-confess/internal/email"
 	"github.com/Teamthy/i-confess/internal/jobs"
 	"github.com/Teamthy/i-confess/internal/oauth"
+	"github.com/Teamthy/i-confess/internal/push"
 	"github.com/Teamthy/i-confess/internal/ratelimit"
 	"github.com/Teamthy/i-confess/internal/seed"
 	"github.com/Teamthy/i-confess/internal/storage"
@@ -134,6 +135,63 @@ func main() {
 	worker := jobs.NewWorker(queue, cfg.QueueWorkers)
 	worker.Start(context.Background())
 	defer worker.Stop()
+
+	// Push notifications. Without a configured provider, scheduled reminders
+	// are logged rather than delivered - the schedule still fires, so the
+	// behaviour is visible in development (PRD S47).
+	router := &push.Router{}
+	if cfg.APNsKeyPath != "" && cfg.APNsKeyID != "" && cfg.APNsTeamID != "" {
+		if pem, rerr := os.ReadFile(cfg.APNsKeyPath); rerr != nil {
+			log.Printf("push: cannot read APNs key: %v", rerr)
+		} else if apns, aerr := push.NewAPNs(string(pem), cfg.APNsTeamID, cfg.APNsKeyID,
+			cfg.APNsTopic, cfg.APNsProduction); aerr != nil {
+			log.Printf("push: APNs disabled: %v", aerr)
+		} else {
+			router.APNs = apns
+			log.Printf("push: APNs enabled (topic=%s production=%t)", cfg.APNsTopic, cfg.APNsProduction)
+		}
+	}
+	if cfg.FCMServiceAccountPath != "" {
+		if key, kerr := os.ReadFile(cfg.FCMServiceAccountPath); kerr != nil {
+			log.Printf("push: cannot read FCM service account: %v", kerr)
+		} else if fcm, ferr := push.NewFCMFromServiceAccount(key); ferr != nil {
+			log.Printf("push: FCM disabled: %v", ferr)
+		} else {
+			router.FCM = fcm
+			log.Printf("push: FCM enabled (project=%s)", fcm.ProjectID)
+		}
+	}
+
+	if router.Configured() {
+		h.SetPushSender(router)
+	} else {
+		log.Printf("push: no provider configured - scheduled reminders will be logged, not delivered")
+		h.SetPushSender(push.LogSender{})
+	}
+
+	// Fire scheduled session reminders. A one-minute tick keeps delivery
+	// within a minute of the user's chosen time; the occurrence key makes a
+	// double tick harmless.
+	schedCtx, stopSched := context.WithCancel(context.Background())
+	defer stopSched()
+	go func() {
+		t := time.NewTicker(1 * time.Minute)
+		defer t.Stop()
+		for {
+			select {
+			case <-schedCtx.Done():
+				return
+			case <-t.C:
+				rep, err := h.RunScheduleSweep(schedCtx)
+				if err != nil {
+					log.Printf("scheduler: sweep failed: %v", err)
+				} else if rep.Sent > 0 || rep.Failed > 0 {
+					log.Printf("scheduler: sent=%d failed=%d skipped=%d of %d schedules",
+						rep.Sent, rep.Failed, rep.Skipped, rep.Evaluated)
+				}
+			}
+		}
+	}()
 
 	// Erase accounts whose grace period has elapsed (PRD S50). Running it on a
 	// timer inside the API process is right for one instance; at multiple
