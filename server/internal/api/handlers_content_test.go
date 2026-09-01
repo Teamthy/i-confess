@@ -96,19 +96,19 @@ func TestContentWorkflow(t *testing.T) {
 		"tags":        []string{"sin", "pride", "repentance"},
 		"variants": []map[string]interface{}{
 			{
-				"label":             "30s",
-				"duration_seconds":  30,
-				"sort_order":        1,
+				"label":            "30s",
+				"duration_seconds": 30,
+				"sort_order":       1,
 			},
 			{
-				"label":             "1m",
-				"duration_seconds":  60,
-				"sort_order":        2,
+				"label":            "1m",
+				"duration_seconds": 60,
+				"sort_order":       2,
 			},
 			{
-				"label":             "3m",
-				"duration_seconds":  180,
-				"sort_order":        3,
+				"label":            "3m",
+				"duration_seconds": 180,
+				"sort_order":       3,
 			},
 		},
 	}

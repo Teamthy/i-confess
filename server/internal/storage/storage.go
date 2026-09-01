@@ -51,17 +51,21 @@ type StorageConfig struct {
 	S3Endpoint  string // Optional for S3-compatible services
 
 	// GCS-specific
-	GCSProject      string
-	GCSBucket       string
+	GCSProject         string
+	GCSBucket          string
 	GCSCredentialsJSON string // Path or inline JSON
 
 	// Azure-specific
-	AzureAccount    string
-	AzureContainer  string
-	AzureKey        string
+	AzureAccount   string
+	AzureContainer string
+	AzureKey       string
 
 	// Local-specific
 	LocalRootPath string // Absolute path for development/testing
+
+	// SigningSecret signs URLs for providers that sign in-process (local, and
+	// CDN token-auth schemes). MUST be set to a non-default value in production.
+	SigningSecret string
 
 	// Common
 	CDNDomain   string        // Optional CDN domain for signed URLs (e.g., audio.example.com)
@@ -87,16 +91,16 @@ func New(cfg *StorageConfig) (ObjectStorage, error) {
 
 // UploadOptions provides additional context for uploads (used by implementations as needed).
 type UploadOptions struct {
-	ContentType      string
-	CacheControl     string
+	ContentType       string
+	CacheControl      string
 	ServerSideEncrypt bool
 }
 
 // StorageError wraps storage-related errors with retry policy.
 type StorageError struct {
-	Op       string // "upload" | "download" | "delete" | "sign_url"
-	Key      string
-	Err      error
+	Op        string // "upload" | "download" | "delete" | "sign_url"
+	Key       string
+	Err       error
 	Retryable bool // Whether this error should trigger a retry
 }
 

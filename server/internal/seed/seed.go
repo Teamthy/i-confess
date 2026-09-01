@@ -9,18 +9,20 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"path/filepath"
 
 	"github.com/Teamthy/i-confess/internal/auth"
 	"github.com/Teamthy/i-confess/internal/media"
 	"github.com/Teamthy/i-confess/internal/models"
+	"github.com/Teamthy/i-confess/internal/storage"
 	"github.com/Teamthy/i-confess/internal/store"
 )
 
 const mediaDir = "data/media"
 
 // Seed runs idempotently: if the database already has categories, it returns early.
-func Seed(db *sql.DB) error {
+// Seed populates a fresh database. The signer receives placeholder audio so the
+// dev environment exercises the same keyed, signed delivery path as production.
+func Seed(db *sql.DB, signer storage.ObjectStorage) error {
 	bg := context.Background()
 	content := store.NewContentStore(db)
 	cats, err := content.ListCategories(bg, true)
@@ -263,13 +265,17 @@ func Seed(db *sql.DB) error {
 
 		// Generate placeholder audio for each variant and attach it to the voice.
 		for _, v := range c.Variants {
-			file := fmt.Sprintf("%s/%s-%s.wav", mediaDir, c.ID, v.ID)
-			if err := media.WriteTone(file, v.DurationSeconds); err != nil {
-				return fmt.Errorf("generate audio: %w", err)
+			// Store the canonical KEY, never a URL. The API mints a signed,
+			// expiring link per request (PRD S11).
+			key := storage.AudioKeyFor(c.ID, v.ID, voice.ID, "en", 1)
+			if err := signer.Upload(bg, key, media.ToneBytes(v.DurationSeconds), map[string]string{
+				"confession_id": c.ID, "voice_id": voice.ID, "language": "en",
+			}); err != nil {
+				return fmt.Errorf("store placeholder audio: %w", err)
 			}
 			asset := &models.AudioAsset{
 				ConfessionID: c.ID, VariantID: v.ID, VoiceID: voice.ID,
-				URL: "/media/" + filepath.Base(file), DurationSeconds: v.DurationSeconds, Status: "ready",
+				URL: key, DurationSeconds: v.DurationSeconds, Status: "ready",
 			}
 			if err := audio.UpsertAsset(bg, asset); err != nil {
 				return err

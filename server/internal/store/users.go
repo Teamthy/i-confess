@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/Teamthy/i-confess/internal/models"
@@ -495,4 +496,325 @@ func boolToInt(v bool) int {
 		return 1
 	}
 	return 0
+}
+
+// ---------------------------------------------------------------------------
+// Auth sessions (PRD S22, S28, S29, S54)
+// ---------------------------------------------------------------------------
+
+// CreateAuthSession opens a server-side session and returns its id, which is
+// embedded in the access token so the token can later be revoked.
+func (s *UserStore) CreateAuthSession(ctx context.Context, userID, platform, userAgent, ip string, ttl time.Duration) (string, error) {
+	id := uuid.New().String()
+	expires := time.Now().UTC().Add(ttl).Format(time.RFC3339)
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO refresh_tokens (id, user_id, token_hash, platform, user_agent, ip_address, expires_at, created_at, last_used_at)
+		 VALUES (?,?,?,?,?,?,?,?,?)`,
+		id, userID, id, nullIfEmpty(platform), nullIfEmpty(userAgent), nullIfEmpty(ip),
+		expires, now(), now())
+	return id, err
+}
+
+// SessionStatus reports whether a session row is live.
+type SessionStatus struct {
+	Exists  bool
+	Revoked bool
+	Expired bool
+}
+
+// AuthSessionStatus looks up a single session.
+func (s *UserStore) AuthSessionStatus(ctx context.Context, sessionID string) (SessionStatus, error) {
+	var revokedAt sql.NullString
+	var expiresAt string
+	err := s.db.QueryRowContext(ctx,
+		`SELECT revoked_at, expires_at FROM refresh_tokens WHERE id = ?`, sessionID).
+		Scan(&revokedAt, &expiresAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return SessionStatus{}, nil
+	}
+	if err != nil {
+		return SessionStatus{}, err
+	}
+	st := SessionStatus{Exists: true, Revoked: revokedAt.Valid && revokedAt.String != ""}
+	if t, perr := time.Parse(time.RFC3339, expiresAt); perr == nil {
+		st.Expired = time.Now().UTC().After(t)
+	}
+	return st, nil
+}
+
+// RevokeAuthSession revokes one session, used for "sign out this device".
+func (s *UserStore) RevokeAuthSession(ctx context.Context, userID, sessionID string) error {
+	// Scoped by user_id so one user cannot revoke another's session (S71).
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE refresh_tokens SET revoked_at = ? WHERE id = ? AND user_id = ? AND revoked_at IS NULL`,
+		now(), sessionID, userID)
+	return err
+}
+
+// RevokeSessionsExcept revokes every session but one, for "log out everywhere
+// else" after a password change.
+func (s *UserStore) RevokeSessionsExcept(ctx context.Context, userID, keepSessionID string) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE refresh_tokens SET revoked_at = ? WHERE user_id = ? AND id != ? AND revoked_at IS NULL`,
+		now(), userID, keepSessionID)
+	return err
+}
+
+// ListAuthSessions returns a user's live sessions for the security screen (S31).
+func (s *UserStore) ListAuthSessions(ctx context.Context, userID string) ([]models.AuthSession, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, COALESCE(platform,''), COALESCE(user_agent,''), COALESCE(last_used_at,''), created_at, expires_at
+		 FROM refresh_tokens
+		 WHERE user_id = ? AND revoked_at IS NULL
+		 ORDER BY created_at DESC`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []models.AuthSession{}
+	for rows.Next() {
+		var a models.AuthSession
+		if err := rows.Scan(&a.ID, &a.Platform, &a.UserAgent, &a.LastUsedAt, &a.CreatedAt, &a.ExpiresAt); err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
+// AccountState is the authoritative account status plus admin role, read fresh
+// on every authenticated request.
+type AccountState struct {
+	Status string
+	Role   string
+}
+
+// AccountStateFor loads status and role in one query. This runs on the hot
+// path, so it is a single indexed lookup rather than two round trips.
+func (s *UserStore) AccountStateFor(ctx context.Context, userID string) (AccountState, error) {
+	var st AccountState
+	var role sql.NullString
+	err := s.db.QueryRowContext(ctx,
+		`SELECT u.status, (SELECT role FROM admin_users WHERE user_id = u.id LIMIT 1)
+		 FROM users u WHERE u.id = ?`, userID).Scan(&st.Status, &role)
+	if errors.Is(err, sql.ErrNoRows) {
+		return AccountState{Status: "deleted"}, nil
+	}
+	if err != nil {
+		return AccountState{}, err
+	}
+	st.Role = role.String
+	return st, nil
+}
+
+// ---------------------------------------------------------------------------
+// Federated identities (PRD S5, S36, S37, S38)
+// ---------------------------------------------------------------------------
+
+// UserIDByIdentity finds the account linked to a provider subject.
+//
+// The lookup is by (provider, subject), never by email: emails change hands and
+// Apple issues per-app relay addresses, so keying on email would eventually
+// merge two different people into one account.
+func (s *UserStore) UserIDByIdentity(ctx context.Context, provider, subject string) (string, error) {
+	var userID string
+	err := s.db.QueryRowContext(ctx,
+		`SELECT user_id FROM user_identities WHERE provider = ? AND subject = ?`,
+		provider, subject).Scan(&userID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	return userID, err
+}
+
+// LinkIdentity attaches a provider identity to an account.
+func (s *UserStore) LinkIdentity(ctx context.Context, userID, provider, subject, email string, verified bool) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO user_identities (id,user_id,provider,subject,email,email_verified,created_at)
+		 VALUES (?,?,?,?,?,?,?)
+		 ON CONFLICT(provider, subject) DO UPDATE SET
+		   email = excluded.email, email_verified = excluded.email_verified`,
+		uuid.New().String(), userID, provider, subject, nullIfEmpty(email), boolInt(verified), now())
+	return err
+}
+
+// UnlinkIdentity removes a provider identity from an account.
+func (s *UserStore) UnlinkIdentity(ctx context.Context, userID, provider string) error {
+	_, err := s.db.ExecContext(ctx,
+		`DELETE FROM user_identities WHERE user_id = ? AND provider = ?`, userID, provider)
+	return err
+}
+
+// Identity is a linked provider account.
+type Identity struct {
+	Provider      string `json:"provider"`
+	Email         string `json:"email,omitempty"`
+	EmailVerified bool   `json:"email_verified"`
+	CreatedAt     string `json:"created_at"`
+}
+
+// ListIdentities returns a user's linked providers.
+func (s *UserStore) ListIdentities(ctx context.Context, userID string) ([]Identity, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT provider, COALESCE(email,''), email_verified, created_at
+		 FROM user_identities WHERE user_id = ? ORDER BY created_at`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []Identity{}
+	for rows.Next() {
+		var i Identity
+		if err := rows.Scan(&i.Provider, &i.Email, &i.EmailVerified, &i.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, i)
+	}
+	return out, rows.Err()
+}
+
+// HasPassword reports whether an account can sign in with a password.
+//
+// Used to refuse unlinking a user's last credential, which would lock them out
+// of their own account.
+func (s *UserStore) HasPassword(ctx context.Context, userID string) (bool, error) {
+	var hash sql.NullString
+	err := s.db.QueryRowContext(ctx,
+		`SELECT password_hash FROM users WHERE id = ?`, userID).Scan(&hash)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, ErrNotFound
+	}
+	if err != nil {
+		return false, err
+	}
+	return hash.Valid && hash.String != "", nil
+}
+
+// CreateFederated creates an account that has no password, for a user whose
+// first sign-in is through a provider.
+func (s *UserStore) CreateFederated(ctx context.Context, email, name, tz string, emailVerified bool) (*models.User, error) {
+	u := &models.User{
+		ID: uuid.New().String(), Email: email, DisplayName: name,
+		Timezone: tz, Status: "active", CreatedAt: now(),
+	}
+	// password_hash is stored empty, which is what marks the account as
+	// federated. CheckPassword can never match an empty bcrypt hash, so this
+	// cannot be signed into with a password (asserted by a test).
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO users (id,email,password_hash,display_name,timezone,status,email_verified,created_at,updated_at)
+		 VALUES (?,?,?,?,?,?,?,?,?)`,
+		u.ID, u.Email, "", u.DisplayName, u.Timezone, u.Status,
+		boolInt(emailVerified), u.CreatedAt, u.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return u, nil
+}
+
+// ---------------------------------------------------------------------------
+// MFA (PRD S41, S81)
+// ---------------------------------------------------------------------------
+
+// MFAEnrolment is a user's second-factor state.
+type MFAEnrolment struct {
+	Secret         string
+	Enabled        bool
+	RecoveryHashes []string
+	LastCounter    uint64
+	ConfirmedAt    string
+}
+
+// BeginMFAEnrolment stores a pending secret.
+//
+// The secret is generated server-side and stored unconfirmed: enrolment is only
+// complete once the user proves they can produce a code, which is what stops
+// someone locking themselves out with a mis-scanned QR code.
+func (s *UserStore) BeginMFAEnrolment(ctx context.Context, userID, secret string) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO mfa_secrets (user_id, secret, enabled, recovery_hashes, last_counter, updated_at)
+		 VALUES (?,?,0,'',0,?)
+		 ON CONFLICT(user_id) DO UPDATE SET
+		   secret = excluded.secret, enabled = 0, recovery_hashes = '',
+		   last_counter = 0, confirmed_at = NULL, updated_at = excluded.updated_at`,
+		userID, secret, now())
+	return err
+}
+
+// MFAEnrolmentFor loads a user's enrolment, if any.
+func (s *UserStore) MFAEnrolmentFor(ctx context.Context, userID string) (*MFAEnrolment, error) {
+	var e MFAEnrolment
+	var hashes, confirmed sql.NullString
+	err := s.db.QueryRowContext(ctx,
+		`SELECT secret, enabled, COALESCE(recovery_hashes,''), last_counter, confirmed_at
+		 FROM mfa_secrets WHERE user_id = ?`, userID).
+		Scan(&e.Secret, &e.Enabled, &hashes, &e.LastCounter, &confirmed)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	if hashes.String != "" {
+		e.RecoveryHashes = strings.Split(hashes.String, ",")
+	}
+	e.ConfirmedAt = confirmed.String
+	return &e, nil
+}
+
+// ConfirmMFA activates a verified enrolment and stores recovery hashes.
+func (s *UserStore) ConfirmMFA(ctx context.Context, userID string, recoveryHashes []string, counter uint64) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE mfa_secrets SET enabled = 1, recovery_hashes = ?, last_counter = ?,
+		        confirmed_at = ?, updated_at = ?
+		 WHERE user_id = ?`,
+		strings.Join(recoveryHashes, ","), counter, now(), now(), userID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE users SET mfa_enabled = 1, updated_at = ? WHERE id = ?`, now(), userID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// RecordMFACounter advances the replay guard.
+func (s *UserStore) RecordMFACounter(ctx context.Context, userID string, counter uint64) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE mfa_secrets SET last_counter = ?, updated_at = ? WHERE user_id = ?`,
+		counter, now(), userID)
+	return err
+}
+
+// ConsumeRecoveryCode removes a used recovery code so it cannot serve twice.
+func (s *UserStore) ConsumeRecoveryCode(ctx context.Context, userID string, remaining []string) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE mfa_secrets SET recovery_hashes = ?, updated_at = ? WHERE user_id = ?`,
+		strings.Join(remaining, ","), now(), userID)
+	return err
+}
+
+// DisableMFA removes the second factor entirely.
+func (s *UserStore) DisableMFA(ctx context.Context, userID string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx, `DELETE FROM mfa_secrets WHERE user_id = ?`, userID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE users SET mfa_enabled = 0, updated_at = ? WHERE id = ?`, now(), userID); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
