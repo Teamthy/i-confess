@@ -47,7 +47,7 @@ func (e *Engine) Build(ctx context.Context, req Request) (*models.Session, error
 		req.DurationSeconds = 1800
 	}
 
-	voice, err := e.resolveVoice(ctx, req)
+	voice, downgraded, err := e.resolveVoice(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -85,43 +85,55 @@ func (e *Engine) Build(ctx context.Context, req Request) (*models.Session, error
 		return nil, ErrNoContent
 	}
 
-	return &models.Session{
+	sess := &models.Session{
 		UserID:          req.UserID,
 		Type:            classifyType(total),
 		DurationSeconds: total,
 		VoiceID:         voice.ID,
 		Status:          "created",
 		Items:           items,
-	}, nil
+	}
+	if downgraded {
+		sess.VoiceDowngraded = true
+		sess.VoiceDowngradeReason = "premium_voice_requires_subscription"
+	}
+	return sess, nil
 }
 
 // resolveVoice validates the requested voice and applies the premium fallback.
-func (e *Engine) resolveVoice(ctx context.Context, req Request) (*models.Voice, error) {
+//
+// It returns whether a substitution occurred so the caller can tell the
+// listener. Silently swapping a voice the user deliberately chose makes a
+// deliberate paywall look like a bug.
+func (e *Engine) resolveVoice(ctx context.Context, req Request) (v *models.Voice, downgraded bool, err error) {
 	if req.VoiceID != "" {
-		v, err := e.audio.VoiceByID(ctx, req.VoiceID)
+		requested, err := e.audio.VoiceByID(ctx, req.VoiceID)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
-		if !v.Premium {
-			return v, nil
+		if !requested.Premium {
+			return requested, false, nil
 		}
+		// Entitlement is resolved server-side; the client never asserts a plan.
 		plan, _ := e.users.Subscription(ctx, req.UserID)
 		if plan == "premium" {
-			return v, nil
+			return requested, false, nil
 		}
-		// Premium voice requested by a free user â†’ fall back to a free voice.
+		// A premium voice requested on a free plan falls back, and the caller
+		// is told so.
+		downgraded = true
 	}
-	// Default: first free voice.
+	// Default: the first active free voice.
 	voices, err := e.audio.ListVoices(ctx)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	for _, v := range voices {
-		if v.Status == "active" && !v.Premium {
-			return &v, nil
+	for i := range voices {
+		if voices[i].Status == "active" && !voices[i].Premium {
+			return &voices[i], downgraded, nil
 		}
 	}
-	return nil, ErrNoVoice
+	return nil, false, ErrNoVoice
 }
 
 // pack greedily fills the budget by cycling categories round-robin and, within

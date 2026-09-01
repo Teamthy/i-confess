@@ -57,12 +57,15 @@ func TestRegister(t *testing.T) {
 			false,
 		},
 		{
-			"duplicate email",
+			// Registering an existing address must be indistinguishable from a
+			// fresh signup. Returning 409 here made the endpoint an account
+			// enumeration oracle (PRD S65); the real owner is emailed instead.
+			"duplicate email is not disclosed",
 			map[string]string{
 				"email":    "user@example.com",
 				"password": "password456",
 			},
-			http.StatusConflict,
+			http.StatusOK,
 			true,
 		},
 		{
@@ -99,7 +102,17 @@ func TestRegister(t *testing.T) {
 			if tt.expectCode == http.StatusOK {
 				var resp map[string]any
 				json.NewDecoder(w.Body).Decode(&resp)
-				if _, ok := resp["token"]; !ok {
+				_, hasToken := resp["token"]
+
+				if resp["pending"] == true {
+					// The duplicate-address path returns a neutral 200 so the
+					// endpoint cannot be used to discover who has an account.
+					// It must NOT return a token: that would sign the caller
+					// into an account they do not own.
+					if hasToken {
+						t.Fatal("duplicate registration returned a session token")
+					}
+				} else if !hasToken {
 					t.Fatal("expected token in response")
 				}
 			}

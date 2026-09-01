@@ -32,7 +32,7 @@ func (s *VoiceRightsStore) Create(ctx context.Context, vr *models.VoiceRights) e
 		                            territories, start_date, expiry_date, status, metadata, created_at, updated_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		vr.ID, vr.VoiceID, vr.RightsHolder, nullIfEmpty(vr.AuthorizationReference), vr.AllowedUse,
-		vr.Territories, nullIfEmpty(vr.StartDate), nullIfEmpty(vr.ExpiryDate), vr.Status, 
+		vr.Territories, nullIfEmpty(vr.StartDate), nullIfEmpty(vr.ExpiryDate), vr.Status,
 		nullIfEmpty(vr.Metadata), vr.CreatedAt, vr.UpdatedAt)
 	return err
 }
@@ -66,7 +66,7 @@ func (s *VoiceRightsStore) ByVoiceID(ctx context.Context, voiceID string) (*mode
 	if metadata.Valid {
 		vr.Metadata = metadata.String
 	}
-	
+
 	return &vr, nil
 }
 

@@ -765,3 +765,87 @@ CREATE INDEX IF NOT EXISTS idx_audio_assets_confession_voice ON audio_assets(con
 CREATE INDEX IF NOT EXISTS idx_session_items_session ON session_items(session_id);
 CREATE INDEX IF NOT EXISTS idx_schedules_user ON schedules(user_id);
 CREATE INDEX IF NOT EXISTS idx_favorites_user ON favorites(user_id);
+
+-- ===================== USER LIBRARY (PRD S35-S37, S45, S46) =====================
+
+-- User-created collections. Distinct from the editorial `collections` table:
+-- these belong to a person, not to the catalogue.
+CREATE TABLE IF NOT EXISTS user_collections (
+    id          TEXT PRIMARY KEY,
+    user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name        TEXT NOT NULL,
+    description TEXT,
+    cover_url   TEXT,
+    visibility  TEXT NOT NULL DEFAULT 'private',
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_user_collections_user ON user_collections(user_id);
+
+CREATE TABLE IF NOT EXISTS user_collection_items (
+    id            TEXT PRIMARY KEY,
+    collection_id TEXT NOT NULL REFERENCES user_collections(id) ON DELETE CASCADE,
+    confession_id TEXT NOT NULL REFERENCES confessions(id) ON DELETE CASCADE,
+    position      INTEGER NOT NULL DEFAULT 0,
+    created_at    TEXT NOT NULL,
+    UNIQUE(collection_id, confession_id)
+);
+CREATE INDEX IF NOT EXISTS idx_user_collection_items ON user_collection_items(collection_id, position);
+
+-- Notification preferences. Separate from user_preferences so adding a channel
+-- does not require touching the main preference row.
+CREATE TABLE IF NOT EXISTS notification_preferences (
+    user_id            TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    scheduled_sessions INTEGER NOT NULL DEFAULT 1,
+    new_content        INTEGER NOT NULL DEFAULT 1,
+    recommendations    INTEGER NOT NULL DEFAULT 1,
+    product_updates    INTEGER NOT NULL DEFAULT 0,
+    updated_at         TEXT NOT NULL
+);
+
+-- ==================== ACCOUNT DELETION (PRD S40, S50, S84, S85) ====================
+--
+-- Deletion is two-phase. A request starts a grace period during which the
+-- account is unusable but recoverable; erasure then anonymises the identity and
+-- destroys personal data.
+--
+-- The grace period exists because account deletion is irreversible and is a
+-- common target of account-takeover: an attacker who briefly holds a session
+-- should not be able to destroy someone's account before they can react.
+
+ALTER TABLE users ADD COLUMN deletion_requested_at TEXT;
+ALTER TABLE users ADD COLUMN deleted_at            TEXT;
+-- anonymised_at records when identifying fields were tombstoned, which is the
+-- point after which the row exists only to satisfy foreign keys on retained
+-- records.
+ALTER TABLE users ADD COLUMN anonymised_at         TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_users_pending_deletion
+    ON users(deletion_requested_at) WHERE deleted_at IS NULL;
+
+-- A durable log of erasures, kept after the account is gone.
+--
+-- It holds no personal data: only the tombstoned id, timestamps and counts, so
+-- the platform can demonstrate a deletion was honoured without retaining the
+-- person it concerned.
+CREATE TABLE IF NOT EXISTS deletion_records (
+    id                 TEXT PRIMARY KEY,
+    user_ref           TEXT NOT NULL,
+    requested_at       TEXT NOT NULL,
+    erased_at          TEXT,
+    reason             TEXT,
+    rows_deleted       INTEGER NOT NULL DEFAULT 0,
+    tables_affected    TEXT,
+    -- retained_categories names what was deliberately kept and why, so a
+    -- regulator question has an answer that is not "we think nothing".
+    retained_categories TEXT,
+    created_at         TEXT NOT NULL
+);
+
+-- MFA enrolment state (PRD S41, S81).
+ALTER TABLE mfa_secrets ADD COLUMN recovery_hashes TEXT;
+-- last_counter defeats replay: a TOTP code stays valid for its whole 30-second
+-- window, so without remembering the last accepted counter an observed code can
+-- be reused within it.
+ALTER TABLE mfa_secrets ADD COLUMN last_counter    INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE mfa_secrets ADD COLUMN confirmed_at    TEXT;

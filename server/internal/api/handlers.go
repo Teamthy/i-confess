@@ -3,16 +3,24 @@ package api
 import (
 	"database/sql"
 	"errors"
+	"log"
+	"net"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/Teamthy/i-confess/internal/auth"
+	"github.com/Teamthy/i-confess/internal/deletion"
+	"github.com/Teamthy/i-confess/internal/email"
 	"github.com/Teamthy/i-confess/internal/engine"
 	"github.com/Teamthy/i-confess/internal/httpx"
 	"github.com/Teamthy/i-confess/internal/jobs"
 	"github.com/Teamthy/i-confess/internal/models"
+	"github.com/Teamthy/i-confess/internal/oauth"
+	"github.com/Teamthy/i-confess/internal/ratelimit"
+	"github.com/Teamthy/i-confess/internal/storage"
 	"github.com/Teamthy/i-confess/internal/store"
+	"github.com/Teamthy/i-confess/internal/voice"
 )
 
 // Handler bundles all stores and config needed by the API.
@@ -26,7 +34,52 @@ type Handler struct {
 	eng   *store.EngagementStore
 	engn  *engine.Engine
 	queue *jobs.MemoryQueue
+	// signer mints short-lived audio URLs. Audio bytes never pass through this
+	// API (PRD S11); the client is handed a signed CDN link instead.
+	signer storage.ObjectStorage
+	// mediaHandler is the development-only signed audio origin.
+	mediaHandler http.Handler
+	// pipeline renders text to audio. Nil when synthesis is unconfigured, in
+	// which case generation endpoints report 503 rather than failing obscurely.
+	pipeline *voice.Pipeline
+	// vrights stores voice authorization metadata.
+	vrights *store.VoiceRightsStore
+	db      *sql.DB
+	// devTokenSink receives one-time tokens in development and tests. Nil in
+	// production, where tokens go only to the email queue.
+	devTokenSink func(purpose, email, token string)
+	// limiter throttles authentication abuse (S20, S21).
+	limiter ratelimit.Enforcer
+	// profiles owns profile, preferences and interests (S5, S14, S20).
+	profiles *store.ProfileStore
+	// mail delivers transactional authentication email asynchronously, so a
+	// slow provider cannot fail a registration (S57, S58).
+	mail    *email.Queue
+	mailCfg email.Config
+	// verifiers validate third-party identity tokens (S36, S37).
+	verifiers map[string]oauth.Verifier
+	// library owns collections, devices and notification preferences.
+	library *store.LibraryStore
+	// deletion performs account erasure under an explicit retention policy.
+	deletion *deletion.Service
 }
+
+// SetLimiter installs a rate limiter. Production passes a Redis-backed
+// enforcer so limits hold across replicas; without it each instance would allow
+// the full burst independently.
+func (h *Handler) SetLimiter(e ratelimit.Enforcer) {
+	if e != nil {
+		h.limiter = e
+	}
+}
+
+// SetMailer installs the transactional email queue and templates.
+func (h *Handler) SetMailer(q *email.Queue, cfg email.Config) {
+	h.mail, h.mailCfg = q, cfg
+}
+
+// SetDevTokenSink installs a development/test hook for one-time tokens.
+func (h *Handler) SetDevTokenSink(f func(purpose, email, token string)) { h.devTokenSink = f }
 
 type Config struct {
 	JWTSecret string
@@ -35,16 +88,45 @@ type Config struct {
 
 func NewHandler(cfg Config, db *sql.DB) *Handler {
 	return &Handler{
-		cfg:   cfg,
-		users: store.NewUserStore(db),
-		cont:  store.NewContentStore(db),
-		audio: store.NewAudioStore(db),
-		sess:  store.NewSessionStore(db),
-		sched: store.NewScheduleStore(db),
-		eng:   store.NewEngagementStore(db),
-		queue: jobs.NewMemoryQueue(),
+		cfg:       cfg,
+		users:     store.NewUserStore(db),
+		cont:      store.NewContentStore(db),
+		audio:     store.NewAudioStore(db),
+		sess:      store.NewSessionStore(db),
+		sched:     store.NewScheduleStore(db),
+		eng:       store.NewEngagementStore(db),
+		queue:     jobs.NewMemoryQueue(),
+		vrights:   store.NewVoiceRightsStore(db),
+		db:        db,
+		limiter:   ratelimit.New(),
+		profiles:  store.NewProfileStore(db),
+		verifiers: map[string]oauth.Verifier{},
+		library:   store.NewLibraryStore(db),
+		deletion:  deletion.NewService(db),
 	}
 }
+
+// auditRights records a change to a voice licence. Failures are logged and
+// swallowed: the rights change itself already succeeded, and losing an audit
+// line must not roll it back.
+func (h *Handler) auditRights(r *http.Request, voiceID string, aiGranted bool, attestation string) {
+	actor := ""
+	if c := auth.FromContext(r); c != nil {
+		actor = c.Email
+	}
+	action := "voice_rights_updated"
+	if aiGranted {
+		action = "voice_rights_ai_generation_granted"
+	}
+	if attestation == "" {
+		attestation = "no attestation supplied"
+	}
+	log.Printf("audit action=%s voice=%s actor=%s detail=%q", action, voiceID, actor, attestation)
+}
+
+// usersDB exposes the underlying database handle for tests that need to
+// manipulate subscription state directly.
+func (h *Handler) usersDB() *sql.DB { return h.db }
 
 // BuildEngine wires the session engine after handler construction.
 func (h *Handler) BuildEngine() {
@@ -87,10 +169,21 @@ func (h *Handler) register(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusBadRequest, "email and a password of at least 8 characters are required")
 		return
 	}
-	if _, _, err := h.users.ByEmail(r.Context(), req.Email); err == nil {
-		httpx.WriteError(w, http.StatusConflict, "an account with this email already exists")
+	// An existing address must not be confirmed to the caller (S65). Instead of
+	// 409 (which turns registration into a membership oracle), the response is
+	// indistinguishable from a fresh signup and the real owner is emailed that
+	// someone tried to register with their address.
+	if existing, _, err := h.users.ByEmail(r.Context(), req.Email); err == nil && existing != nil {
+		h.notifySecurityEvent(existing.Email,
+			"Someone tried to create an account with your email",
+			"If this was you, you already have an account and can sign in or reset your password.")
+		httpx.WriteJSON(w, http.StatusOK, map[string]any{
+			"message": "Check your email to continue setting up your account.",
+			"pending": true,
+		})
 		return
 	}
+
 	hash, err := auth.HashPassword(req.Password)
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to hash password")
@@ -105,6 +198,17 @@ func (h *Handler) register(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to create account")
 		return
 	}
+
+	// Issue and send the verification link. Failure to create the token must
+	// not fail registration: the account exists and "resend" can recover it.
+	if plaintext, hashed, terr := auth.NewOneTimeToken(); terr == nil {
+		if err := h.users.CreateVerificationToken(r.Context(), u.ID, "email", hashed, 60); err == nil {
+			h.deliverToken("email_verification", u.Email, plaintext)
+		} else {
+			log.Printf("auth: failed to store verification token for %s: %v", u.ID, err)
+		}
+	}
+
 	h.issueToken(w, r, u)
 }
 
@@ -112,27 +216,99 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Email    string `json:"email"`
 		Password string `json:"password"`
+		// Code carries the second factor when the client already has it, so a
+		// user with MFA can sign in with one round trip.
+		Code string `json:"code"`
 	}
 	if err := httpx.DecodeJSON(r, &req); err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
+
+	// Throttle per account as well as per IP. Keying on the account stops a
+	// distributed attack spreading guesses across many addresses; keying on the
+	// address stops one host grinding through many accounts. Neither ever locks
+	// the account, which would let anyone lock anyone else out (S20, S21).
+	acctKey := "login:acct:" + req.Email
+	if ok, retry := h.limiter.Allow(acctKey, ratelimit.LoginPerAccount); !ok {
+		ratelimit.TooManyRequests(w, retry)
+		return
+	}
+
 	u, hash, err := h.users.ByEmail(r.Context(), req.Email)
 	if err != nil || !auth.CheckPassword(hash, req.Password) {
+		// One generic message for both "no such account" and "wrong password",
+		// so the endpoint cannot be used to discover who has an account (S19).
 		httpx.WriteError(w, http.StatusUnauthorized, "invalid credentials")
 		return
 	}
-	if u.Status != "active" {
-		httpx.WriteError(w, http.StatusForbidden, "account is disabled")
+	// pending_deletion must still be able to sign in, otherwise the grace
+	// period is meaningless: the owner of an account someone else scheduled for
+	// deletion could never get back in to cancel it.
+	if u.Status != "active" && u.Status != "pending_deletion" {
+		// Deliberately vague: moderation state is not the caller's business (S80).
+		httpx.WriteError(w, http.StatusForbidden, "this account is not available")
 		return
 	}
+
+	// A successful sign-in clears the counter, so a user who finally remembers
+	// their password is not left throttled.
+	h.limiter.Reset(acctKey)
+
+	// Second factor, if enrolled. The password alone must not yield a session
+	// (S41): everything below this point requires the factor to be satisfied.
+	if enrolment, mErr := h.users.MFAEnrolmentFor(r.Context(), u.ID); mErr == nil && enrolment.Enabled {
+		if req.Code == "" {
+			// Signals the client to prompt. Deliberately not an error: the
+			// credentials were correct, the login is simply incomplete.
+			httpx.WriteJSON(w, http.StatusOK, map[string]any{
+				"mfa_required": true,
+				"message":      "Enter the code from your authenticator app.",
+			})
+			return
+		}
+		if ok, retry := h.limiter.Allow("mfa:login:"+u.ID, mfaAttemptRule); !ok {
+			ratelimit.TooManyRequests(w, retry)
+			return
+		}
+		usedRecovery, ok := h.verifySecondFactor(r, u.ID, enrolment, req.Code)
+		if !ok {
+			httpx.WriteJSON(w, http.StatusUnauthorized, map[string]string{
+				"error": "that code is not valid", "code": "MFA_CODE_INVALID",
+			})
+			return
+		}
+		h.limiter.Reset("mfa:login:" + u.ID)
+		if usedRecovery {
+			// Using a recovery code means the authenticator is probably gone,
+			// which is worth telling the owner about.
+			h.notifySecurityEvent(u.Email, "A recovery code was used to sign in",
+				"If this was not you, change your password and review your devices.")
+		}
+	}
+
 	h.issueToken(w, r, u)
 }
 
+// issueToken opens a server-side session and returns an access token bound to
+// it. The binding is what makes logout, suspension and password changes able to
+// invalidate a token that has already been handed out (PRD S22, S28, S54).
 func (h *Handler) issueToken(w http.ResponseWriter, r *http.Request, u *models.User) {
 	role, _ := h.users.AdminRole(r.Context(), u.ID)
-	tok, err := auth.SignToken(h.cfg.JWTSecret, h.cfg.TokenTTL, u.ID, u.Email, role)
+
+	ttl, err := time.ParseDuration(h.cfg.TokenTTL)
+	if err != nil {
+		ttl = 720 * time.Hour
+	}
+	sessionID, err := h.users.CreateAuthSession(r.Context(), u.ID,
+		r.Header.Get("X-Platform"), r.UserAgent(), clientIP(r), ttl)
+	if err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, "failed to create session")
+		return
+	}
+
+	tok, err := auth.SignSessionToken(h.cfg.JWTSecret, h.cfg.TokenTTL, u.ID, u.Email, role, sessionID)
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to issue token")
 		return
@@ -141,6 +317,24 @@ func (h *Handler) issueToken(w http.ResponseWriter, r *http.Request, u *models.U
 		"token": tok,
 		"user":  u,
 	})
+}
+
+// clientIP extracts the caller address for session metadata. It reads
+// X-Forwarded-For only because the service runs behind a trusted proxy; the
+// value is descriptive metadata for the security screen and is never used for
+// an authorization decision.
+func clientIP(r *http.Request) string {
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		if i := strings.IndexByte(xff, ','); i > 0 {
+			return strings.TrimSpace(xff[:i])
+		}
+		return strings.TrimSpace(xff)
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
 }
 
 func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
@@ -203,7 +397,24 @@ func (h *Handler) changePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httpx.WriteJSON(w, http.StatusOK, map[string]string{"message": "password updated successfully"})
+	// The usual reason to change a password is that someone else may have it,
+	// so every other session is ended. The caller keeps theirs, to avoid the
+	// hostile UX of being signed out of the device they just used (§34, §35).
+	sessionID := ""
+	if c := auth.FromContext(r); c != nil {
+		sessionID = c.SessionID
+	}
+	if err := h.users.RevokeSessionsExcept(r.Context(), userID, sessionID); err != nil {
+		log.Printf("auth: failed to revoke sessions after password change for %s: %v", userID, err)
+	}
+
+	h.notifySecurityEvent(u.Email, "Your password was changed",
+		"If you made this change, no action is needed. You have been signed out on all other devices.")
+
+	httpx.WriteJSON(w, http.StatusOK, map[string]string{
+		"message": "password updated successfully",
+		"note":    "You have been signed out on all other devices.",
+	})
 }
 
 // refreshToken issues a new access token for an authenticated user.
@@ -214,8 +425,11 @@ func (h *Handler) refreshToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Role is re-read rather than copied from the old token: a demoted admin
+	// must not be able to refresh their way into keeping privileges (S56).
 	role, _ := h.users.AdminRole(r.Context(), claims.Sub)
-	tok, err := auth.SignToken(h.cfg.JWTSecret, h.cfg.TokenTTL, claims.Sub, claims.Email, role)
+	tok, err := auth.SignSessionToken(h.cfg.JWTSecret, h.cfg.TokenTTL,
+		claims.Sub, claims.Email, role, claims.SessionID)
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to issue token")
 		return
@@ -232,12 +446,14 @@ func (h *Handler) verifyEmail(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid verification token")
 		return
 	}
-	userID, err := h.users.UserIDByVerificationToken(r.Context(), req.Token)
+	// Look up by hash: only hashes are stored.
+	hashed := auth.HashToken(req.Token)
+	userID, err := h.users.UserIDByVerificationToken(r.Context(), hashed)
 	if err != nil || userID == "" {
 		httpx.WriteError(w, http.StatusUnauthorized, "invalid or expired verification token")
 		return
 	}
-	if ok, err := h.users.VerifyEmailToken(r.Context(), userID, req.Token); err != nil || !ok {
+	if ok, err := h.users.VerifyEmailToken(r.Context(), userID, hashed); err != nil || !ok {
 		httpx.WriteError(w, http.StatusBadRequest, "verification failed")
 		return
 	}
@@ -252,20 +468,34 @@ func (h *Handler) resendVerification(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusBadRequest, "email is required")
 		return
 	}
-	user, hash, err := h.users.ByEmail(r.Context(), strings.ToLower(strings.TrimSpace(req.Email)))
+
+	// Always answer identically, whether or not the address is known. Any
+	// difference in status, body or wording is an account-enumeration oracle
+	// (S17, S65).
+	const neutral = "If an account exists for that email, a verification link has been sent."
+
+	user, _, err := h.users.ByEmail(r.Context(), strings.ToLower(strings.TrimSpace(req.Email)))
 	if err != nil || user == nil {
-		httpx.WriteError(w, http.StatusNotFound, "user not found")
+		httpx.WriteJSON(w, http.StatusOK, map[string]string{"message": neutral})
 		return
 	}
-	if hash == "" {
-		httpx.WriteError(w, http.StatusInternalServerError, "user record is invalid")
-		return
-	}
-	if err := h.users.CreateVerificationToken(r.Context(), user.ID, "email", "verify-"+user.ID, 60); err != nil {
+
+	plaintext, hash, err := auth.NewOneTimeToken()
+	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to create verification token")
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, map[string]string{"message": "verification email sent"})
+	if err := h.users.CreateVerificationToken(r.Context(), user.ID, "email", hash, 60); err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, "failed to create verification token")
+		return
+	}
+
+	// The link is delivered by email. In development the token is logged so the
+	// flow is testable; it must never appear in the HTTP response, which would
+	// hand it to anyone who can guess an address.
+	h.deliverToken("email_verification", user.Email, plaintext)
+
+	httpx.WriteJSON(w, http.StatusOK, map[string]string{"message": neutral})
 }
 
 func (h *Handler) requestPasswordReset(w http.ResponseWriter, r *http.Request) {
@@ -276,16 +506,80 @@ func (h *Handler) requestPasswordReset(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusBadRequest, "email is required")
 		return
 	}
+
+	// Identical response either way (S33, S65). Previously an unknown address
+	// returned 404, which confirmed which emails were registered.
+	const neutral = "If an account exists for that email, a reset link has been sent."
+
 	user, _, err := h.users.ByEmail(r.Context(), strings.ToLower(strings.TrimSpace(req.Email)))
 	if err != nil || user == nil {
-		httpx.WriteError(w, http.StatusNotFound, "user not found")
+		httpx.WriteJSON(w, http.StatusOK, map[string]string{"message": neutral})
 		return
 	}
-	if err := h.users.CreatePasswordReset(r.Context(), user.ID, "reset-"+user.ID, 30); err != nil {
+
+	// Cryptographically random, stored only as a hash. The previous token was
+	// "reset-" + user id: guessable by anyone who learned an id, which made
+	// password reset an account-takeover primitive (S34).
+	plaintext, hash, err := auth.NewOneTimeToken()
+	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to create reset token")
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, map[string]string{"message": "password reset requested"})
+	if err := h.users.CreatePasswordReset(r.Context(), user.ID, hash, 30); err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, "failed to create reset token")
+		return
+	}
+
+	h.deliverToken("password_reset", user.Email, plaintext)
+
+	httpx.WriteJSON(w, http.StatusOK, map[string]string{"message": neutral})
+}
+
+// deliverToken hands a one-time token to the delivery channel.
+//
+// Delivery is asynchronous (S58): the queue accepts the message and returns
+// immediately, so SMTP latency never becomes authentication latency. The token
+// is never written to a production log and never returned in a response.
+func (h *Handler) deliverToken(purpose, email_, token string) {
+	// Test hook, when set, takes precedence so suites can assert on tokens
+	// without a provider.
+	if h.devTokenSink != nil {
+		h.devTokenSink(purpose, email_, token)
+		return
+	}
+	if h.mail == nil {
+		log.Printf("auth: %s token issued for %s (email delivery not configured)",
+			purpose, maskEmail(email_))
+		return
+	}
+	switch purpose {
+	case "email_verification":
+		h.mail.Enqueue(h.mailCfg.VerificationMessage(email_, token))
+	case "password_reset":
+		h.mail.Enqueue(h.mailCfg.PasswordResetMessage(email_, token))
+	default:
+		log.Printf("auth: unknown token purpose %q, not sending", purpose)
+	}
+}
+
+// notifySecurityEvent tells a user about a meaningful account change (S52).
+//
+// Failures are ignored on purpose: the action already succeeded, and a mail
+// outage must not roll back a password change.
+func (h *Handler) notifySecurityEvent(addr, event, detail string) {
+	if h.mail == nil || addr == "" {
+		return
+	}
+	h.mail.Enqueue(h.mailCfg.SecurityAlertMessage(addr, event, detail))
+}
+
+// maskEmail redacts an address for logs (S70).
+func maskEmail(email string) string {
+	at := strings.IndexByte(email, '@')
+	if at <= 1 {
+		return "***"
+	}
+	return email[:1] + "***" + email[at:]
 }
 
 func (h *Handler) resetPassword(w http.ResponseWriter, r *http.Request) {
@@ -297,7 +591,9 @@ func (h *Handler) resetPassword(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusBadRequest, "token and a password of at least 8 characters are required")
 		return
 	}
-	userID, err := h.users.UserIDByPasswordResetToken(r.Context(), req.Token)
+	// Only hashes are stored, so hash the presented token before lookup.
+	hashed := auth.HashToken(req.Token)
+	userID, err := h.users.UserIDByPasswordResetToken(r.Context(), hashed)
 	if err != nil || userID == "" {
 		httpx.WriteError(w, http.StatusUnauthorized, "invalid or expired reset token")
 		return
@@ -307,11 +603,23 @@ func (h *Handler) resetPassword(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to hash password")
 		return
 	}
-	if err := h.users.ResetPassword(r.Context(), userID, req.Token, newHash); err != nil {
-		httpx.WriteError(w, http.StatusBadRequest, err.Error())
+	if err := h.users.ResetPassword(r.Context(), userID, hashed, newHash); err != nil {
+		// Do not surface the store error: it can distinguish "already used"
+		// from "expired", which leaks token state.
+		httpx.WriteError(w, http.StatusBadRequest, "invalid or expired reset token")
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, map[string]string{"message": "password reset successfully"})
+
+	// A reset is a recovery action: whoever held the old password may be an
+	// attacker, so every existing session is ended (S34).
+	if err := h.users.RevokeAllSessions(r.Context(), userID); err != nil {
+		log.Printf("auth: failed to revoke sessions after password reset for %s: %v", userID, err)
+	}
+
+	httpx.WriteJSON(w, http.StatusOK, map[string]string{
+		"message": "password reset successfully",
+		"note":    "You have been signed out on all devices.",
+	})
 }
 
 func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
@@ -320,7 +628,14 @@ func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusUnauthorized, "authentication required")
 		return
 	}
-	if err := h.users.RevokeAllSessions(r.Context(), claims.Sub); err != nil {
+	// Logout ends this session only; other devices stay signed in. Ending all
+	// of them is a separate, explicit action (S28 vs S29).
+	if claims.SessionID != "" {
+		if err := h.users.RevokeAuthSession(r.Context(), claims.Sub, claims.SessionID); err != nil {
+			httpx.WriteError(w, http.StatusInternalServerError, "failed to revoke session")
+			return
+		}
+	} else if err := h.users.RevokeAllSessions(r.Context(), claims.Sub); err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to revoke sessions")
 		return
 	}
@@ -360,26 +675,6 @@ func (h *Handler) recordConsent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, map[string]string{"message": "consent recorded"})
-}
-
-func (h *Handler) enableMFA(w http.ResponseWriter, r *http.Request) {
-	claims := auth.FromContext(r)
-	if claims == nil {
-		httpx.WriteError(w, http.StatusUnauthorized, "authentication required")
-		return
-	}
-	var req struct {
-		Secret string `json:"secret"`
-	}
-	if err := httpx.DecodeJSON(r, &req); err != nil || req.Secret == "" {
-		httpx.WriteError(w, http.StatusBadRequest, "mfa secret is required")
-		return
-	}
-	if err := h.users.EnableMFA(r.Context(), claims.Sub, req.Secret); err != nil {
-		httpx.WriteError(w, http.StatusInternalServerError, "failed to enable MFA")
-		return
-	}
-	httpx.WriteJSON(w, http.StatusOK, map[string]string{"message": "MFA enabled"})
 }
 
 func (h *Handler) securityEvent(w http.ResponseWriter, r *http.Request) {
@@ -594,6 +889,20 @@ func (h *Handler) createSession(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusBadRequest, "duration must be between 1 minute and 3 hours")
 		return
 	}
+
+	// Session length is a plan capability (PRD S25/S26). Enforced server-side:
+	// the client is never the authority on what it may request.
+	ent := h.entitlementsFor(r.Context(), h.userID(r))
+	if max := ent.MaxSessionSeconds(); req.DurationSeconds > max {
+		httpx.WriteJSON(w, http.StatusPaymentRequired, map[string]any{
+			"error":       "session length exceeds your plan limit",
+			"reason":      "session_duration_exceeds_plan_limit",
+			"max_seconds": max,
+			"plan":        ent.Plan,
+		})
+		return
+	}
+
 	sess, err := h.engn.Build(r.Context(), engine.Request{
 		UserID:          h.userID(r),
 		CategoryIDs:     req.CategoryIDs,
@@ -612,6 +921,7 @@ func (h *Handler) createSession(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to save session")
 		return
 	}
+	h.signSessionAudio(r.Context(), sess, ent)
 	httpx.WriteJSON(w, http.StatusCreated, sess)
 }
 
@@ -629,6 +939,9 @@ func (h *Handler) getSession(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusForbidden, "not your session")
 		return
 	}
+	// Re-evaluated on every read: a plan can lapse between creating a session
+	// and playing it.
+	h.signSessionAudio(r.Context(), sess, h.entitlementsFor(r.Context(), h.userID(r)))
 	httpx.WriteJSON(w, http.StatusOK, sess)
 }
 
@@ -934,4 +1247,51 @@ func validEntityType(t string) bool {
 		return true
 	}
 	return false
+}
+
+// ---------------------------------------------------------------------------
+// Session management (PRD S30, S31, S54)
+// ---------------------------------------------------------------------------
+
+// listSessions returns the caller's live sign-ins for the security screen.
+//
+// It deliberately reports no geolocation: an IP-derived city is frequently
+// wrong and turns a security feature into a source of false alarms. Device and
+// last-used time are enough to recognise a session (S31).
+func (h *Handler) listAuthSessions(w http.ResponseWriter, r *http.Request) {
+	claims := auth.FromContext(r)
+	if claims == nil {
+		httpx.WriteError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+	sessions, err := h.users.ListAuthSessions(r.Context(), claims.Sub)
+	if err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, "failed to load sessions")
+		return
+	}
+	for i := range sessions {
+		sessions[i].Current = sessions[i].ID == claims.SessionID
+	}
+	httpx.WriteJSON(w, http.StatusOK, sessions)
+}
+
+// revokeAuthSession signs out one device.
+func (h *Handler) revokeAuthSession(w http.ResponseWriter, r *http.Request) {
+	claims := auth.FromContext(r)
+	if claims == nil {
+		httpx.WriteError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+	id := r.PathValue("id")
+	if id == "" {
+		httpx.WriteError(w, http.StatusBadRequest, "session id is required")
+		return
+	}
+	// Scoped to the caller in SQL, so one user cannot revoke another's session
+	// even by guessing an id (S71).
+	if err := h.users.RevokeAuthSession(r.Context(), claims.Sub, id); err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, "failed to revoke session")
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]string{"message": "session revoked"})
 }

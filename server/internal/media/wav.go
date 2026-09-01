@@ -1,46 +1,48 @@
 package media
 
 import (
+	"bytes"
 	"encoding/binary"
 	"math"
 	"os"
 	"path/filepath"
 )
 
-// WriteTone generates a gentle sine-tone WAV file (8 kHz, 8-bit, mono) of the
-// given duration. It exists only to provide local placeholder audio for the
-// demo/dev environment so the full playback loop can be exercised end-to-end.
-// Real audio comes from the production TTS/recording pipeline.
-func WriteTone(path string, seconds int) error {
-	const sampleRate = 8000
-	const freq = 220.0 // A3 â€” calm, low tone
+const (
+	sampleRate = 8000
+	toneFreq   = 220.0 // A3 — calm, low tone
+)
 
+// ToneBytes generates a gentle sine-tone WAV (8 kHz, 8-bit, mono) of the given
+// duration and returns it in memory.
+//
+// It exists only to provide placeholder audio for the demo/dev environment so
+// the full playback loop — signed URLs, range requests, seeking, queueing —
+// can be exercised end to end without a TTS bill. Real audio comes from the
+// production voice pipeline.
+func ToneBytes(seconds int) []byte {
+	if seconds <= 0 {
+		seconds = 1
+	}
 	n := sampleRate * seconds
-	data := make([]byte, n)
+	pcm := make([]byte, n)
+	fade := sampleRate / 10
 	for i := 0; i < n; i++ {
 		t := float64(i) / sampleRate
-		// Soft sine with a slow fade-in/out to avoid clicks.
+		// Slow fade in/out avoids clicks at segment boundaries.
 		env := 1.0
-		if i < sampleRate/10 {
-			env = float64(i) / (sampleRate / 10)
-		} else if i > n-sampleRate/10 {
-			env = float64(n-i) / (sampleRate / 10)
+		if i < fade {
+			env = float64(i) / float64(fade)
+		} else if i > n-fade {
+			env = float64(n-i) / float64(fade)
 		}
-		sample := math.Sin(2*math.Pi*freq*t) * 0.35 * env
-		data[i] = uint8(int8(sample * 127))
+		sample := math.Sin(2*math.Pi*toneFreq*t) * 0.35 * env
+		pcm[i] = uint8(int8(sample * 127))
 	}
 
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	f, err := os.Create(path)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
+	var buf bytes.Buffer
+	write := func(v any) { _ = binary.Write(&buf, binary.LittleEndian, v) }
 	// RIFF header
-	write := func(v any) { _ = binary.Write(f, binary.LittleEndian, v) }
 	write([]byte("RIFF"))
 	write(uint32(36 + n)) // chunk size
 	write([]byte("WAVE"))
@@ -54,6 +56,16 @@ func WriteTone(path string, seconds int) error {
 	write(uint16(8))          // bits per sample
 	write([]byte("data"))
 	write(uint32(n))
-	_, err = f.Write(data)
-	return err
+	buf.Write(pcm)
+	return buf.Bytes()
+}
+
+// WriteTone writes a placeholder tone directly to a filesystem path. Retained
+// for tooling; the seeder now writes through the storage layer instead so it
+// exercises the same signed-delivery path as production.
+func WriteTone(path string, seconds int) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, ToneBytes(seconds), 0o644)
 }

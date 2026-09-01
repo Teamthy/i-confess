@@ -19,6 +19,10 @@ type Claims struct {
 	Sub   string `json:"sub"`
 	Email string `json:"email"`
 	Role  string `json:"role,omitempty"` // admin role if present, else ""
+	// SessionID binds the token to a server-side session row so it can be
+	// revoked. Without it a signed token is valid until expiry no matter what
+	// the user or an admin does (S28, S54).
+	SessionID string `json:"sid,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -31,15 +35,23 @@ func CheckPassword(hash, pw string) bool {
 	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(pw)) == nil
 }
 
+// SignToken issues an access token. Prefer SignSessionToken: a token with no
+// session id cannot be revoked.
 func SignToken(secret, ttl, sub, email, role string) (string, error) {
+	return SignSessionToken(secret, ttl, sub, email, role, "")
+}
+
+// SignSessionToken issues an access token bound to a server-side session.
+func SignSessionToken(secret, ttl, sub, email, role, sessionID string) (string, error) {
 	d, err := time.ParseDuration(ttl)
 	if err != nil {
 		d = 720 * time.Hour
 	}
 	claims := Claims{
-		Sub:   sub,
-		Email: email,
-		Role:  role,
+		Sub:       sub,
+		Email:     email,
+		Role:      role,
+		SessionID: sessionID,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   sub,
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(d)),
@@ -127,8 +139,10 @@ func RoleBasedMiddleware(secret string, allowedRoles ...string) func(http.Handle
 				return
 			}
 
-			// Check if user's role is in the allowed list
-			allowed := false
+			// SUPER_ADMIN is admitted everywhere. Without this, a super admin
+			// would be locked out of every role-scoped route, which in an
+			// incident is exactly when full access is needed.
+			allowed := c.Role == RoleSuperAdmin
 			for _, role := range allowedRoles {
 				if c.Role == role {
 					allowed = true
@@ -177,4 +191,7 @@ const (
 	RoleTheologicalRev = "theological_reviewer"
 	RoleSupportAdmin   = "support_admin"
 	RoleAnalyticsAdmin = "analytics_admin"
+	// RoleVoiceManager administers voice rights: the highest-consequence
+	// permission in the product, held separately from content and audio roles.
+	RoleVoiceManager = "voice_manager"
 )

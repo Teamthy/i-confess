@@ -75,7 +75,6 @@ func (q *MemoryQueue) Enqueue(job Job) (string, error) {
 		job.CreatedAt = time.Now().UTC()
 	}
 	job.UpdatedAt = job.CreatedAt
-	job.ID = job.ID
 	if job.ID == "" {
 		job.ID = randomID()
 	}

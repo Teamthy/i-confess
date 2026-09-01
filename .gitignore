@@ -11,3 +11,10 @@
 # Go
 /go/        # (only relevant if GOROOT is vendored in this workspace)
 .ps1
+# Compiled binaries must not be committed: they bloat every clone and go stale
+# against the source they were built from.
+/server/bin/
+server/bin/
+
+# Local editor history plugin output.
+.history/

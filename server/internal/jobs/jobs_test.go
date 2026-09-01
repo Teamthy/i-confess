@@ -113,3 +113,16 @@ func TestWorkerProcessesQueuedJobs(t *testing.T) {
 		t.Fatalf("handler calls = %d; want 1", got)
 	}
 }
+
+// Stop is called from both a signal handler and a deferred call during
+// shutdown. Closing an already-closed channel panics, which turned a clean
+// shutdown into a crash.
+func TestWorkerStopIsIdempotent(t *testing.T) {
+	q := NewMemoryQueue()
+	w := NewWorker(q, 2)
+	w.Start(context.Background())
+
+	w.Stop()
+	w.Stop() // must not panic
+	w.Stop()
+}

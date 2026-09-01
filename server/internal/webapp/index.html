@@ -1,0 +1,690 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#12100E" />
+<title>i-confess — Speak the Word over your life</title>
+<style>
+/* ------------------------------------------------------------------
+   Design system. One source of truth: no arbitrary values below.
+   Palette: warm ink + parchment + a single brass accent. Deliberately
+   not the purple/blue "AI app" register.
+------------------------------------------------------------------ */
+:root{
+  --ink:#12100E; --ink-2:#1C1916; --ink-3:#2A2621;
+  --paper:#F6F1E7; --paper-2:#EBE3D5; --paper-dim:#C9BFAC;
+  --muted:#8C8272; --line:rgba(246,241,231,.10); --line-2:rgba(246,241,231,.18);
+  --brass:#C9A227; --brass-soft:rgba(201,162,39,.14);
+  --danger:#D2694A;
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px; --s7:48px; --s8:72px;
+  --r1:6px; --r2:10px; --r3:18px; --r-pill:999px;
+  --serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+  --sans:ui-sans-serif,-apple-system,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+  --shadow:0 18px 48px rgba(0,0,0,.45);
+  --player-h:96px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{
+  background:var(--ink); color:var(--paper); font-family:var(--sans);
+  font-size:16px; line-height:1.5; -webkit-font-smoothing:antialiased;
+  overscroll-behavior-y:none;
+}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer;background:none;border:0}
+a{color:inherit}
+:focus-visible{outline:2px solid var(--brass);outline-offset:3px;border-radius:var(--r1)}
+::selection{background:var(--brass-soft)}
+h1,h2,h3{margin:0;font-family:var(--serif);font-weight:600;letter-spacing:-.01em;line-height:1.15}
+h1{font-size:30px} h2{font-size:21px} h3{font-size:17px}
+p{margin:0}
+.eyebrow{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.muted{color:var(--muted)}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* ---------- shell ---------- */
+#app{min-height:100%;display:flex;flex-direction:column}
+.screen{flex:1;padding:var(--s5) var(--s5) calc(var(--player-h) + var(--s8));max-width:1080px;margin:0 auto;width:100%}
+@media(max-width:640px){ .screen{padding:var(--s4) var(--s4) calc(var(--player-h) + var(--s8))} h1{font-size:25px} }
+
+/* ---------- auth ---------- */
+.auth{min-height:100vh;display:grid;place-items:center;padding:var(--s5)}
+.auth-card{width:100%;max-width:400px}
+.mark{display:flex;align-items:baseline;gap:var(--s2);margin-bottom:var(--s6)}
+.mark b{font-family:var(--serif);font-size:26px;font-weight:600;letter-spacing:-.02em}
+.mark span{width:6px;height:6px;border-radius:50%;background:var(--brass);transform:translateY(-6px)}
+.field{margin-bottom:var(--s3)}
+.field label{display:block;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:var(--s2)}
+.field input{width:100%;padding:13px var(--s4);background:var(--ink-2);border:1px solid var(--line-2);border-radius:var(--r2);color:var(--paper)}
+.field input::placeholder{color:#5E574C}
+.field input:focus{border-color:var(--brass);outline:none}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:var(--s2);padding:12px var(--s5);border-radius:var(--r-pill);font-weight:600;font-size:15px;transition:transform .12s ease,background .15s ease,border-color .15s ease}
+.btn:active{transform:scale(.985)}
+.btn-primary{background:var(--paper);color:var(--ink)}
+.btn-primary:hover{background:#fff}
+.btn-ghost{border:1px solid var(--line-2);color:var(--paper)}
+.btn-ghost:hover{border-color:var(--paper-dim)}
+.btn-block{width:100%}
+.btn[disabled]{opacity:.5;pointer-events:none}
+.switch{margin-top:var(--s4);font-size:14px;color:var(--muted);text-align:center}
+.switch button{color:var(--paper);text-decoration:underline;text-underline-offset:3px}
+.notice{margin-bottom:var(--s3);padding:10px var(--s3);border-radius:var(--r1);font-size:14px;background:rgba(210,105,74,.12);border:1px solid rgba(210,105,74,.35);color:#F0B39D}
+.hint{margin-top:var(--s5);padding-top:var(--s4);border-top:1px solid var(--line);font-size:13px;color:var(--muted)}
+.hint code{color:var(--paper-dim)}
+
+/* ---------- header ---------- */
+.topbar{display:flex;align-items:center;justify-content:space-between;gap:var(--s4);margin-bottom:var(--s6)}
+.greet{display:flex;flex-direction:column;gap:var(--s1)}
+.avatar{width:38px;height:38px;border-radius:50%;background:var(--ink-3);border:1px solid var(--line-2);display:grid;place-items:center;font-size:13px;font-weight:600;letter-spacing:.04em}
+
+/* ---------- nav ---------- */
+.nav{position:fixed;left:0;right:0;bottom:0;z-index:40;background:rgba(18,16,14,.94);backdrop-filter:blur(14px);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
+.nav-inner{max-width:1080px;margin:0 auto;display:flex}
+.nav button{flex:1;padding:11px var(--s1) 13px;display:flex;flex-direction:column;align-items:center;gap:5px;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.nav button[aria-current="page"]{color:var(--paper)}
+.nav .dot{width:5px;height:5px;border-radius:50%;background:transparent}
+.nav button[aria-current="page"] .dot{background:var(--brass)}
+.nav svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+
+/* ---------- cards / lists ---------- */
+.section{margin-bottom:var(--s7)}
+.section-head{display:flex;align-items:baseline;justify-content:space-between;gap:var(--s4);margin-bottom:var(--s4)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(158px,1fr));gap:var(--s3)}
+.cat{position:relative;text-align:left;padding:var(--s4);min-height:104px;border-radius:var(--r3);background:var(--ink-2);border:1px solid var(--line);display:flex;flex-direction:column;justify-content:space-between;transition:border-color .15s ease,background .15s ease}
+.cat:hover{border-color:var(--line-2);background:var(--ink-3)}
+.cat.sel{border-color:var(--brass);background:var(--brass-soft)}
+.cat .name{font-family:var(--serif);font-size:17px}
+.cat .meta{font-size:12px;color:var(--muted)}
+.cat .tick{position:absolute;top:var(--s3);right:var(--s3);width:20px;height:20px;border-radius:50%;border:1px solid var(--line-2)}
+.cat .tick:hover{border-color:var(--paper-dim)}
+.cat.sel .tick{background:var(--brass);border-color:var(--brass)}
+.cat .name{padding-right:var(--s5)}
+.rows{display:flex;flex-direction:column}
+.row{display:flex;align-items:center;gap:var(--s4);padding:var(--s3) 0;border-bottom:1px solid var(--line);text-align:left;width:100%}
+.row:last-child{border-bottom:0}
+.row .idx{width:22px;font-variant-numeric:tabular-nums;font-size:13px;color:var(--muted)}
+.row .body{flex:1;min-width:0}
+.row .title{font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row .sub{font-size:12.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row.active .title{color:var(--brass)}
+.row .dur{font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+.panel{padding:var(--s5);border-radius:var(--r3);background:var(--ink-2);border:1px solid var(--line)}
+.chips{display:flex;flex-wrap:wrap;gap:var(--s2)}
+.chip{padding:8px var(--s4);border-radius:var(--r-pill);border:1px solid var(--line-2);font-size:14px;color:var(--paper-dim)}
+.chip[aria-pressed="true"]{background:var(--paper);color:var(--ink);border-color:var(--paper)}
+.badge{display:inline-block;padding:3px 9px;border-radius:var(--r-pill);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;background:var(--brass-soft);color:var(--brass);border:1px solid rgba(201,162,39,.3)}
+.stack{display:flex;flex-direction:column;gap:var(--s4)}
+.split{display:flex;align-items:center;justify-content:space-between;gap:var(--s4)}
+
+/* ---------- states ---------- */
+.empty{padding:var(--s7) var(--s5);text-align:center;border:1px dashed var(--line-2);border-radius:var(--r3)}
+.empty h3{margin-bottom:var(--s2)}
+.empty p{color:var(--muted);font-size:14px;max-width:34ch;margin:0 auto var(--s4)}
+.skel{height:104px;border-radius:var(--r3);background:linear-gradient(90deg,var(--ink-2),var(--ink-3),var(--ink-2));background-size:200% 100%;animation:sheen 1.4s linear infinite}
+@keyframes sheen{to{background-position:-200% 0}}
+@media(prefers-reduced-motion:reduce){*{animation-duration:.001ms!important;transition-duration:.001ms!important}}
+
+/* ---------- player ---------- */
+.player{position:fixed;left:0;right:0;bottom:0;z-index:60;background:var(--ink-2);border-top:1px solid var(--line-2);box-shadow:var(--shadow);padding-bottom:env(safe-area-inset-bottom)}
+.mini{max-width:1080px;margin:0 auto;display:flex;align-items:center;gap:var(--s4);padding:var(--s3) var(--s5)}
+@media(max-width:640px){.mini{padding:var(--s3) var(--s4)}}
+.mini .info{flex:1;min-width:0}
+.mini .t{font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mini .s{font-size:12px;color:var(--muted)}
+.icon-btn{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;color:var(--paper)}
+.icon-btn:hover{background:var(--ink-3)}
+.icon-btn svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.play-btn{width:44px;height:44px;border-radius:50%;background:var(--paper);color:var(--ink);display:grid;place-items:center}
+.play-btn svg{width:18px;height:18px;fill:currentColor;stroke:none}
+.bar{height:2px;background:var(--line);position:relative;cursor:pointer}
+.bar .fill{height:100%;background:var(--brass);width:0}
+.bar .knob{position:absolute;top:50%;width:10px;height:10px;border-radius:50%;background:var(--brass);transform:translate(-50%,-50%);left:0;opacity:0;transition:opacity .15s}
+.bar:hover .knob{opacity:1}
+
+/* ---------- now playing sheet ---------- */
+.sheet{position:fixed;inset:0;z-index:70;background:var(--ink);display:flex;flex-direction:column;padding:var(--s5);padding-bottom:calc(var(--s5) + env(safe-area-inset-bottom));animation:rise .22s ease}
+@keyframes rise{from{transform:translateY(18px);opacity:.6}to{transform:none;opacity:1}}
+.sheet-inner{max-width:640px;margin:0 auto;width:100%;flex:1;display:flex;flex-direction:column}
+.verse{flex:1;display:flex;flex-direction:column;justify-content:center;gap:var(--s4);padding:var(--s6) 0}
+.verse .text{font-family:var(--serif);font-size:24px;line-height:1.45}
+@media(max-width:640px){.verse .text{font-size:20px}}
+.transport{display:flex;align-items:center;justify-content:center;gap:var(--s5);margin:var(--s5) 0}
+.transport .play-btn{width:64px;height:64px}
+.transport .play-btn svg{width:24px;height:24px}
+.times{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;margin-top:var(--s2)}
+.aux{display:flex;justify-content:center;gap:var(--s5);font-size:12.5px;color:var(--muted)}
+.aux button[aria-pressed="true"]{color:var(--brass)}
+.queue{max-height:34vh;overflow:auto;margin-top:var(--s4);border-top:1px solid var(--line);padding-top:var(--s2)}
+select{padding:11px var(--s3);background:var(--ink-2);border:1px solid var(--line-2);border-radius:var(--r2);color:var(--paper)}
+.toast{position:fixed;left:50%;bottom:calc(var(--player-h) + 20px);transform:translateX(-50%);z-index:90;background:var(--paper);color:var(--ink);padding:10px var(--s5);border-radius:var(--r-pill);font-size:14px;font-weight:600;box-shadow:var(--shadow)}
+</style>
+</head>
+<body>
+<div id="app" aria-live="polite"></div>
+<audio id="audio" preload="auto"></audio>
+
+<script>
+"use strict";
+/* =====================================================================
+   i-confess — listener web client.
+   Vanilla, zero-dependency. Talks only to the Go API on the same origin;
+   the client is never the authority on entitlement (§55) — it renders
+   whatever the backend authorises.
+===================================================================== */
+
+/* ---------------------- API layer ---------------------- */
+const TOKEN_KEY = "iconfess.token";
+const api = {
+  token: localStorage.getItem(TOKEN_KEY) || "",
+  setToken(t){ this.token = t || ""; t ? localStorage.setItem(TOKEN_KEY,t) : localStorage.removeItem(TOKEN_KEY); },
+  async call(method, path, body){
+    const headers = {};
+    if (body) headers["Content-Type"] = "application/json";
+    if (this.token) headers.Authorization = "Bearer " + this.token;
+    let res;
+    try {
+      res = await fetch(path, { method, headers, body: body ? JSON.stringify(body) : undefined });
+    } catch (e) {
+      throw new ApiError(0, "You appear to be offline. Check your connection and try again.");
+    }
+    if (res.status === 401) { this.setToken(""); state.user = null; render(); throw new ApiError(401,"Your session expired. Please sign in again."); }
+    if (res.status === 204) return null;
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new ApiError(res.status, data.error || "Something went wrong. Please try again.");
+    return data;
+  },
+  get(p){ return this.call("GET",p); },
+  post(p,b){ return this.call("POST",p,b); },
+  patch(p,b){ return this.call("PATCH",p,b); },
+  del(p,b){ return this.call("DELETE",p,b); },
+};
+class ApiError extends Error { constructor(status,msg){ super(msg); this.status = status; } }
+
+/* ---------------------- app state ---------------------- */
+const state = {
+  booting: true,
+  user: null, plan: "free",
+  tab: "home",
+  categories: [], voices: [], sessions: [], schedules: [], favorites: [], history: [], myConfessions: [],
+  selectedCats: [], duration: 600, voiceId: "",
+  session: null, index: 0, playing: false, sheet: false, busy: false, error: "",
+  browseCat: null, browseConfessions: [],
+  speed: 1, repeat: false,
+};
+const audio = document.getElementById("audio");
+
+/* ---------------------- helpers ---------------------- */
+const h = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+const mmss = (s) => { s = Math.max(0, Math.floor(s||0)); return Math.floor(s/60) + ":" + String(s%60).padStart(2,"0"); };
+const durLabel = (s) => s >= 3600 ? (s/3600).toFixed(s%3600?1:0) + " hr" : Math.round(s/60) + " min";
+const greeting = () => { const hr = new Date().getHours(); return hr < 12 ? "Good morning" : hr < 17 ? "Good afternoon" : "Good evening"; };
+const initials = (u) => (u?.display_name || u?.email || "?").trim().slice(0,2).toUpperCase();
+let toastTimer;
+function toast(msg){
+  clearTimeout(toastTimer);
+  let el = document.querySelector(".toast");
+  if (!el) { el = document.createElement("div"); el.className = "toast"; el.setAttribute("role","status"); document.body.appendChild(el); }
+  el.textContent = msg;
+  toastTimer = setTimeout(() => el.remove(), 2600);
+}
+async function guard(fn){ state.busy = true; state.error = ""; render(); try { await fn(); } catch(e){ state.error = e.message; toast(e.message); } finally { state.busy = false; render(); } }
+
+/* ---------------------- data loading ---------------------- */
+async function boot(){
+  if (!api.token) { state.booting = false; return render(); }
+  try {
+    const me = await api.get("/me");
+    state.user = me.user; state.plan = me.plan || "free";
+    await loadLibrary();
+  } catch(e){ api.setToken(""); state.user = null; }
+  state.booting = false; render();
+}
+async function loadLibrary(){
+  const [cats, voices, sessions, schedules] = await Promise.all([
+    api.get("/categories"), api.get("/voices"), api.get("/sessions"), api.get("/schedules"),
+  ]);
+  state.categories = cats || []; state.voices = voices || [];
+  state.sessions = sessions || []; state.schedules = schedules || [];
+  if (!state.voiceId && state.voices.length) state.voiceId = state.voices[0].id;
+  if (!state.selectedCats.length && state.categories.length) state.selectedCats = [state.categories[0].id];
+}
+
+/* ---------------------- auth ---------------------- */
+let authMode = "login";
+async function submitAuth(e){
+  e.preventDefault();
+  const f = new FormData(e.target);
+  const payload = { email: (f.get("email")||"").trim().toLowerCase(), password: f.get("password")||"" };
+  if (authMode === "register") {
+    payload.display_name = (f.get("name")||"").trim();
+    payload.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  }
+  await guard(async () => {
+    const res = await api.post(authMode === "login" ? "/auth/login" : "/auth/register", payload);
+    api.setToken(res.token); state.user = res.user;
+    await loadLibrary();
+    const me = await api.get("/me"); state.plan = me.plan || "free";
+  });
+}
+function signOut(){ stopPlayback(); api.setToken(""); Object.assign(state,{user:null,session:null,tab:"home"}); render(); }
+
+/* ---------------------- playback engine ---------------------- */
+function currentItem(){ return state.session?.items?.[state.index] || null; }
+function loadItem(i, autoplay){
+  const items = state.session?.items || [];
+  if (i < 0 || i >= items.length) return;
+  state.index = i;
+  audio.src = items[i].audio_url;
+  audio.playbackRate = state.speed;
+  if (autoplay) audio.play().catch(() => { state.playing = false; render(); });
+  updateMediaSession();
+  render();
+}
+function togglePlay(){ audio.paused ? audio.play().catch(()=>toast("Playback was blocked. Tap play again.")) : audio.pause(); }
+function next(){
+  const items = state.session?.items || [];
+  reportPlayback(false, true);
+  if (state.index + 1 < items.length) loadItem(state.index + 1, true);
+  else if (state.repeat) loadItem(0, true);
+  else { state.playing = false; completeSession(); render(); }
+}
+function prev(){ if (audio.currentTime > 3) { audio.currentTime = 0; return; } loadItem(Math.max(0, state.index - 1), true); }
+function stopPlayback(){ audio.pause(); audio.removeAttribute("src"); audio.load(); state.session = null; state.playing = false; state.sheet = false; }
+
+audio.addEventListener("play",  () => { state.playing = true;  render(); });
+audio.addEventListener("pause", () => { state.playing = false; render(); });
+audio.addEventListener("timeupdate", () => { paintProgress(); });
+audio.addEventListener("ended", () => { reportPlayback(true, false); next(); });
+audio.addEventListener("error", () => { if (audio.src) toast("This track could not be loaded. Skipping."), next(); });
+
+function paintProgress(){
+  const pct = audio.duration ? (audio.currentTime / audio.duration) * 100 : 0;
+  document.querySelectorAll(".bar .fill").forEach(el => el.style.width = pct + "%");
+  document.querySelectorAll(".bar .knob").forEach(el => el.style.left = pct + "%");
+  const cur = document.getElementById("t-cur"), tot = document.getElementById("t-tot");
+  if (cur) cur.textContent = mmss(audio.currentTime);
+  if (tot) tot.textContent = mmss(audio.duration || currentItem()?.duration_seconds);
+}
+function seekFromEvent(e){
+  const r = e.currentTarget.getBoundingClientRect();
+  const ratio = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+  if (audio.duration) audio.currentTime = ratio * audio.duration;
+}
+/* Lock-screen / Bluetooth controls (§18). */
+function updateMediaSession(){
+  if (!("mediaSession" in navigator)) return;
+  const it = currentItem(); if (!it) return;
+  navigator.mediaSession.metadata = new MediaMetadata({
+    title: it.title || "Confession", artist: "i-confess",
+    album: state.session?.type ? state.session.type + " session" : "Session",
+  });
+  navigator.mediaSession.setActionHandler("play", () => audio.play());
+  navigator.mediaSession.setActionHandler("pause", () => audio.pause());
+  navigator.mediaSession.setActionHandler("nexttrack", next);
+  navigator.mediaSession.setActionHandler("previoustrack", prev);
+}
+/* History is fire-and-forget: playback must never block on analytics (§32). */
+function reportPlayback(completed, skipped){
+  const it = currentItem(); if (!it || !state.session) return;
+  api.post("/me/history", {
+    session_id: state.session.id, confession_id: it.confession_id,
+    duration_seconds: Math.round(audio.currentTime || 0), completed, skipped,
+  }).catch(()=>{});
+}
+function completeSession(){
+  if (!state.session) return;
+  api.patch("/sessions/" + state.session.id, { status: "completed" }).catch(()=>{});
+  toast("Session complete. Well done.");
+}
+
+/* ---------------------- actions ---------------------- */
+async function createSession(){
+  if (!state.selectedCats.length) return toast("Choose at least one focus.");
+  await guard(async () => {
+    const s = await api.post("/sessions", {
+      category_ids: state.selectedCats, duration_seconds: state.duration, voice_id: state.voiceId,
+    });
+    state.session = s; state.index = 0; state.sheet = true;
+    api.patch("/sessions/" + s.id, { status: "playing" }).catch(()=>{});
+    state.sessions = await api.get("/sessions") || [];
+    loadItem(0, true);
+  });
+}
+async function openSession(id){
+  await guard(async () => {
+    const s = await api.get("/sessions/" + id);
+    state.session = s; state.index = 0; state.sheet = true;
+    loadItem(0, true);
+  });
+}
+function openCategoryById(id){ const c = state.categories.find(x => x.id === id); if (c) openCategory(c); }
+async function openCategory(cat){
+  state.browseCat = cat; state.browseConfessions = null; state.tab = "category"; render();
+  await guard(async () => { state.browseConfessions = await api.get("/categories/" + cat.id + "/confessions") || []; });
+}
+async function toggleFavorite(type, id){
+  const has = state.favorites.some(f => f.entity_id === id);
+  await guard(async () => {
+    if (has) await api.del("/me/favorites", { entity_type: type, entity_id: id });
+    else await api.post("/me/favorites", { entity_type: type, entity_id: id });
+    state.favorites = await api.get("/me/favorites") || [];
+    toast(has ? "Removed from favourites" : "Saved to favourites");
+  });
+}
+async function createSchedule(e){
+  e.preventDefault();
+  const f = new FormData(e.target);
+  const days = [...e.target.querySelectorAll('input[name="day"]:checked')].map(i => Number(i.value));
+  await guard(async () => {
+    await api.post("/schedules", {
+      label: (f.get("label")||"Morning declaration").trim(),
+      time: f.get("time"), days_of_week: days.length ? days : [1,2,3,4,5],
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+      duration_seconds: Number(f.get("duration")), voice_id: state.voiceId, category_ids: state.selectedCats,
+    });
+    state.schedules = await api.get("/schedules") || [];
+    toast("Schedule saved");
+  });
+}
+async function deleteSchedule(id){ await guard(async () => { await api.del("/schedules/" + id); state.schedules = await api.get("/schedules") || []; }); }
+async function createMyConfession(e){
+  e.preventDefault();
+  const f = new FormData(e.target);
+  await guard(async () => {
+    await api.post("/me/confessions", { title: (f.get("title")||"").trim(), text: (f.get("text")||"").trim(), category_id: state.selectedCats[0] || "" });
+    state.myConfessions = await api.get("/me/confessions") || [];
+    e.target.reset(); toast("Confession saved");
+  });
+}
+function setTab(t){
+  state.tab = t; state.error = ""; render();
+  if (t === "library") guard(async () => {
+    const [fav, hist, mine] = await Promise.all([api.get("/me/favorites"), api.get("/me/history"), api.get("/me/confessions")]);
+    state.favorites = fav||[]; state.history = hist||[]; state.myConfessions = mine||[];
+  });
+}
+
+/* ---------------------- views ---------------------- */
+function viewAuth(){
+  const reg = authMode === "register";
+  return `<div class="auth"><div class="auth-card">
+    <div class="mark"><b>i&#8209;confess</b><span></span></div>
+    <h1 style="margin-bottom:8px">${reg ? "Begin your daily declaration." : "Welcome back."}</h1>
+    <p class="muted" style="margin-bottom:24px;font-size:15px">Scripture-based confessions, spoken over your day — on a schedule you keep.</p>
+    ${state.error ? `<div class="notice" role="alert">${h(state.error)}</div>` : ""}
+    <form onsubmit="submitAuth(event)" novalidate>
+      ${reg ? `<div class="field"><label for="f-name">Name</label><input id="f-name" name="name" autocomplete="name" placeholder="Your name" /></div>` : ""}
+      <div class="field"><label for="f-email">Email</label><input id="f-email" name="email" type="email" required autocomplete="email" placeholder="you@example.com" /></div>
+      <div class="field"><label for="f-pass">Password</label><input id="f-pass" name="password" type="password" required minlength="8" autocomplete="${reg?"new-password":"current-password"}" placeholder="At least 8 characters" /></div>
+      <button class="btn btn-primary btn-block" ${state.busy?"disabled":""} type="submit">${state.busy ? "One moment…" : (reg ? "Create account" : "Sign in")}</button>
+    </form>
+    <div class="switch">${reg ? "Already have an account?" : "New here?"}
+      <button type="button" onclick="authMode='${reg?"login":"register"}';state.error='';render()">${reg ? "Sign in" : "Create one"}</button>
+    </div>
+    <div class="hint">Demo account — <code>demo@iconfess.dev</code> / <code>password123</code></div>
+  </div></div>`;
+}
+
+function viewHome(){
+  const cats = state.categories;
+  const recent = state.sessions.slice(0,3);
+  return `
+  ${topbar(greeting() + (state.user.display_name ? ", " + state.user.display_name.split(" ")[0] : ""), "Speak the Word over today.")}
+  ${recent.length ? `<section class="section">
+    <div class="section-head"><h2>Continue</h2><span class="eyebrow">${recent.length} recent</span></div>
+    <div class="rows">${recent.map(s => `
+      <button class="row" onclick="openSession('${s.id}')">
+        <span class="idx">▸</span>
+        <span class="body"><span class="title">${h(s.type ? s.type[0].toUpperCase()+s.type.slice(1) : "Session")} session</span>
+        <span class="sub">${durLabel(s.duration_seconds)} · ${h(s.status)}</span></span>
+        <span class="dur">${mmss(s.duration_seconds)}</span>
+      </button>`).join("")}</div>
+  </section>` : ""}
+  <section class="section">
+    <div class="section-head"><h2>Choose your focus</h2><span class="eyebrow">${state.selectedCats.length} selected</span></div>
+    ${cats.length ? `<div class="grid">${cats.map(c => `
+      <div class="cat${state.selectedCats.includes(c.id)?' sel':''}" role="group">
+        <button class="tick" aria-label="${state.selectedCats.includes(c.id) ? "Remove" : "Add"} ${h(c.name)}" aria-pressed="${state.selectedCats.includes(c.id)}" onclick="toggleCat('${c.id}')"></button>
+        <button class="name" style="text-align:left" onclick="openCategoryById('${c.id}')">${h(c.name)}</button>
+        <span class="meta">${h(c.description || "").slice(0,54)}</span>
+      </div>`).join("")}</div>`
+      : `<div class="grid">${"<div class='skel'></div>".repeat(6)}</div>`}
+  </section>
+  <section class="section">
+    <div class="section-head"><h2>Build a session</h2></div>
+    <div class="panel stack">
+      <div><div class="eyebrow" style="margin-bottom:8px">Length</div>
+        <div class="chips">${[300,600,1800,3600,10800].map(d => `<button class="chip" aria-pressed="${state.duration===d}" onclick="state.duration=${d};render()">${durLabel(d)}</button>`).join("")}</div>
+      </div>
+      <div><div class="eyebrow" style="margin-bottom:8px">Voice</div>
+        <div class="chips">${state.voices.map(v => `<button class="chip" aria-pressed="${state.voiceId===v.id}" onclick="state.voiceId='${v.id}';render()">${h(v.name)}${v.premium?" ★":""}</button>`).join("") || `<span class="muted">No voices available yet.</span>`}</div>
+      </div>
+      <button class="btn btn-primary" ${state.busy?"disabled":""} onclick="createSession()">${state.busy ? "Composing…" : "Start session"}</button>
+      <p class="muted" style="font-size:13px">The session engine composes segments from your chosen focus areas to fill ${durLabel(state.duration)} — no duplicate audio is generated.</p>
+    </div>
+  </section>`;
+}
+
+function viewCategory(){
+  const c = state.browseCat, list = state.browseConfessions;
+  return `
+  ${topbar(c.name, c.description || "")}
+  <button class="btn btn-ghost" style="margin-bottom:24px" onclick="setTab('home')">← Back</button>
+  ${list === null ? `<div class="grid">${"<div class='skel' style='height:64px'></div>".repeat(4)}</div>`
+    : list.length ? `<div class="rows">${list.map((x,i) => `
+      <div class="row">
+        <span class="idx">${String(i+1).padStart(2,"0")}</span>
+        <span class="body"><span class="title">${h(x.title)}</span><span class="sub">${h(x.short_text || "")}</span></span>
+        <button class="icon-btn" title="Favourite" aria-pressed="${state.favorites.some(f=>f.entity_id===x.id)}" onclick="toggleFavorite('confession','${x.id}')">${icon("heart")}</button>
+      </div>`).join("")}</div>`
+    : emptyState("Nothing published here yet", "Content for this focus area is still in editorial review. Check back soon.")}
+  `;
+}
+
+function viewSessions(){
+  return `
+  ${topbar("Sessions", "Your saved and scheduled declarations.")}
+  <section class="section">
+    <div class="section-head"><h2>Schedules</h2></div>
+    ${state.schedules.length ? `<div class="rows">${state.schedules.map(s => `
+      <div class="row">
+        <span class="idx">${s.enabled ? "●" : "○"}</span>
+        <span class="body"><span class="title">${h(s.time)} · ${h(s.label)}</span>
+          <span class="sub">${dayLabel(s.days_of_week)} · ${durLabel(s.duration_seconds)} · ${h(s.timezone)}</span></span>
+        <button class="icon-btn" title="Delete schedule" onclick="deleteSchedule('${s.id}')">${icon("trash")}</button>
+      </div>`).join("")}</div>` : emptyState("No schedule yet", "A schedule is what turns listening into a habit. Set one below.")}
+  </section>
+  <section class="section">
+    <div class="section-head"><h2>New schedule</h2></div>
+    <form class="panel stack" onsubmit="createSchedule(event)">
+      <div class="field" style="margin:0"><label for="s-label">Label</label><input id="s-label" name="label" placeholder="Morning declaration" /></div>
+      <div class="split" style="gap:12px">
+        <div class="field" style="margin:0;flex:1"><label for="s-time">Time</label><input id="s-time" name="time" type="time" value="06:00" required /></div>
+        <div class="field" style="margin:0;flex:1"><label for="s-dur">Length</label>
+          <select id="s-dur" name="duration">${[300,600,1800,3600].map(d=>`<option value="${d}" ${d===1800?"selected":""}>${durLabel(d)}</option>`).join("")}</select>
+        </div>
+      </div>
+      <div><div class="eyebrow" style="margin-bottom:8px">Days</div>
+        <div class="chips">${["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map((d,i)=>`
+          <label class="chip" style="cursor:pointer"><input type="checkbox" name="day" value="${i}" ${i>=1&&i<=5?"checked":""} style="margin-right:6px" />${d}</label>`).join("")}</div>
+      </div>
+      <p class="muted" style="font-size:13px">Uses your current focus (${state.selectedCats.length} area${state.selectedCats.length===1?"":"s"}) and voice selection.</p>
+      <button class="btn btn-primary" type="submit" ${state.busy?"disabled":""}>Save schedule</button>
+    </form>
+  </section>
+  <section class="section">
+    <div class="section-head"><h2>Past sessions</h2></div>
+    ${state.sessions.length ? `<div class="rows">${state.sessions.map(s=>`
+      <button class="row" onclick="openSession('${s.id}')">
+        <span class="idx">▸</span>
+        <span class="body"><span class="title">${h(s.type||"Session")} · ${durLabel(s.duration_seconds)}</span><span class="sub">${h(s.created_at||"").slice(0,10)} · ${h(s.status)}</span></span>
+      </button>`).join("")}</div>` : emptyState("No sessions yet", "Build your first session from the home screen.")}
+  </section>`;
+}
+
+function viewLibrary(){
+  return `
+  ${topbar("Library", "Favourites, history and your own words.")}
+  <section class="section">
+    <div class="section-head"><h2>Your confessions</h2><span class="eyebrow">${state.myConfessions.length}</span></div>
+    <form class="panel stack" onsubmit="createMyConfession(event)" style="margin-bottom:16px">
+      <div class="field" style="margin:0"><label for="c-title">Title</label><input id="c-title" name="title" required placeholder="Over my household" /></div>
+      <div class="field" style="margin:0"><label for="c-text">Declaration</label><input id="c-text" name="text" required placeholder="I declare that…" /></div>
+      <button class="btn btn-ghost" type="submit">Save confession</button>
+    </form>
+    ${state.myConfessions.length ? `<div class="rows">${state.myConfessions.map(c=>`
+      <div class="row"><span class="idx">✎</span><span class="body"><span class="title">${h(c.title)}</span><span class="sub">${h(c.text)}</span></span></div>`).join("")}</div>` : ""}
+  </section>
+  <section class="section">
+    <div class="section-head"><h2>Favourites</h2></div>
+    ${state.favorites.length ? `<div class="rows">${state.favorites.map(f=>`
+      <div class="row"><span class="idx">♥</span><span class="body"><span class="title">${h(f.entity_type)}</span><span class="sub">${h(f.entity_id)}</span></span></div>`).join("")}</div>`
+      : emptyState("Nothing saved yet", "Long-press a category or tap the heart on a confession to keep it here.")}
+  </section>
+  <section class="section">
+    <div class="section-head"><h2>Recently played</h2></div>
+    ${state.history.length ? `<div class="rows">${state.history.slice(0,20).map(x=>`
+      <div class="row"><span class="idx">${x.completed?"✓":"·"}</span>
+        <span class="body"><span class="title">${h(x.confession_id||"Session")}</span><span class="sub">${h((x.listened_at||"").replace("T"," ").slice(0,16))}</span></span>
+        <span class="dur">${mmss(x.duration_seconds)}</span></div>`).join("")}</div>`
+      : emptyState("No listening history", "Your completed confessions will appear here.")}
+  </section>`;
+}
+
+function viewProfile(){
+  return `
+  ${topbar("Profile", state.user.email)}
+  <div class="panel stack" style="margin-bottom:24px">
+    <div class="split"><div><div class="eyebrow">Plan</div><h3 style="margin-top:4px">${state.plan === "premium" ? "Premium" : "Free"}</h3></div>
+      ${state.plan === "premium" ? `<span class="badge">Active</span>` : `<button class="btn btn-ghost" onclick="toast('Subscriptions are verified server-side — coming in V1.')">Upgrade</button>`}</div>
+    <p class="muted" style="font-size:13.5px">Entitlement is resolved by the backend on every request. The app never decides your plan.</p>
+  </div>
+  <div class="panel stack" style="margin-bottom:24px">
+    <div class="split"><span>Time zone</span><span class="muted">${h(state.user.timezone || "UTC")}</span></div>
+    <div class="split"><span>Playback speed</span>
+      <div class="chips">${[0.9,1,1.1,1.25].map(s=>`<button class="chip" aria-pressed="${state.speed===s}" onclick="state.speed=${s};audio.playbackRate=${s};render()">${s}×</button>`).join("")}</div></div>
+    <div class="split"><span>Repeat session</span><button class="chip" aria-pressed="${state.repeat}" onclick="state.repeat=!state.repeat;render()">${state.repeat?"On":"Off"}</button></div>
+  </div>
+  <button class="btn btn-ghost btn-block" onclick="signOut()">Sign out</button>`;
+}
+
+/* ---------------------- chrome ---------------------- */
+function topbar(title, sub){
+  return `<header class="topbar">
+    <div class="greet"><span class="eyebrow">i&#8209;confess</span><h1>${h(title)}</h1>${sub?`<p class="muted" style="font-size:14px">${h(sub)}</p>`:""}</div>
+    <button class="avatar" title="Profile" onclick="setTab('profile')">${h(initials(state.user))}</button>
+  </header>`;
+}
+function emptyState(title, body){ return `<div class="empty"><h3>${h(title)}</h3><p>${h(body)}</p></div>`; }
+function dayLabel(days){
+  if (!days || !days.length) return "Every day";
+  const n = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+  if (days.length === 7) return "Every day";
+  if (days.length === 5 && days.every(d => d >= 1 && d <= 5)) return "Weekdays";
+  return days.map(d => n[d]).join(" ");
+}
+function icon(name){
+  const p = {
+    home:'<path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z"/>',
+    compass:'<circle cx="12" cy="12" r="8.5"/><path d="m15 9-2 5-5 2 2-5z"/>',
+    clock:'<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
+    book:'<path d="M5 4h9a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z"/><path d="M17 7h2v13H8"/>',
+    user:'<circle cx="12" cy="8.5" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/>',
+    heart:'<path d="M12 20s-7-4.4-7-9a4 4 0 0 1 7-2.6A4 4 0 0 1 19 11c0 4.6-7 9-7 9z"/>',
+    trash:'<path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13"/>',
+    prev:'<path d="M18 6v12M16 12 8 6v12z" fill="currentColor" stroke="none"/>',
+    next:'<path d="M6 6v12M8 12l8-6v12z" fill="currentColor" stroke="none"/>',
+    play:'<path d="M8 5v14l11-7z"/>', pause:'<path d="M7 5h4v14H7zM13 5h4v14h-4z"/>',
+    chevron:'<path d="m6 15 6-6 6 6"/>', close:'<path d="m6 6 12 12M18 6 6 18"/>',
+  }[name] || "";
+  return `<svg viewBox="0 0 24 24" aria-hidden="true">${p}</svg>`;
+}
+function viewNav(){
+  const tabs = [["home","Home","home"],["sessions","Sessions","clock"],["library","Library","book"],["profile","Profile","user"]];
+  return `<nav class="nav" style="bottom:${state.session ? "var(--player-h)" : "0"}"><div class="nav-inner">
+    ${tabs.map(([id,label,ic]) => `<button aria-current="${state.tab===id?"page":"false"}" onclick="setTab('${id}')">${icon(ic)}<span>${label}</span><span class="dot"></span></button>`).join("")}
+  </div></nav>`;
+}
+function viewPlayer(){
+  const it = currentItem(); if (!it) return "";
+  return `<div class="player">
+    <div class="bar" onclick="seekFromEvent(event)" role="slider" aria-label="Seek" tabindex="0"><div class="fill"></div><div class="knob"></div></div>
+    <div class="mini">
+      <button class="icon-btn" title="Open player" onclick="state.sheet=true;render()">${icon("chevron")}</button>
+      <div class="info" onclick="state.sheet=true;render()" style="cursor:pointer">
+        <div class="t">${h(it.title || "Confession")}</div>
+        <div class="s">${state.index+1} of ${state.session.items.length} · ${mmss(it.duration_seconds)}</div>
+      </div>
+      <button class="icon-btn" title="Previous" onclick="prev()">${icon("prev")}</button>
+      <button class="play-btn" title="${state.playing?"Pause":"Play"}" onclick="togglePlay()">${icon(state.playing?"pause":"play")}</button>
+      <button class="icon-btn" title="Next" onclick="next()">${icon("next")}</button>
+    </div>
+  </div>`;
+}
+function viewSheet(){
+  const it = currentItem(); if (!it) return "";
+  const items = state.session.items;
+  return `<div class="sheet" role="dialog" aria-label="Now playing"><div class="sheet-inner">
+    <div class="split">
+      <button class="icon-btn" title="Close" onclick="state.sheet=false;render()">${icon("close")}</button>
+      <span class="eyebrow">${h(state.session.type || "session")} · ${durLabel(state.session.duration_seconds)}</span>
+      <button class="icon-btn" title="Favourite" aria-pressed="${state.favorites.some(f=>f.entity_id===it.confession_id)}" onclick="toggleFavorite('confession','${it.confession_id}')">${icon("heart")}</button>
+    </div>
+    <div class="verse">
+      <span class="eyebrow">Now declaring</span>
+      <h2 style="font-size:15px;letter-spacing:.02em;color:var(--paper-dim);font-family:var(--sans);font-weight:500">${h(it.title || "")}</h2>
+      <p class="text">${h(it.text || it.title || "")}</p>
+    </div>
+    <div class="bar" onclick="seekFromEvent(event)" role="slider" aria-label="Seek" tabindex="0"><div class="fill"></div><div class="knob"></div></div>
+    <div class="times"><span id="t-cur">0:00</span><span id="t-tot">${mmss(it.duration_seconds)}</span></div>
+    <div class="transport">
+      <button class="icon-btn" title="Previous" onclick="prev()">${icon("prev")}</button>
+      <button class="play-btn" title="${state.playing?"Pause":"Play"}" onclick="togglePlay()">${icon(state.playing?"pause":"play")}</button>
+      <button class="icon-btn" title="Next" onclick="next()">${icon("next")}</button>
+    </div>
+    <div class="aux">
+      <button aria-pressed="${state.repeat}" onclick="state.repeat=!state.repeat;render()">Repeat</button>
+      <button onclick="cycleSpeed()">${state.speed}× speed</button>
+      <button onclick="stopPlayback();render()">End session</button>
+    </div>
+    <div class="queue"><div class="rows">${items.map((x,i)=>`
+      <button class="row ${i===state.index?"active":""}" onclick="loadItem(${i},true)">
+        <span class="idx">${String(i+1).padStart(2,"0")}</span>
+        <span class="body"><span class="title">${h(x.title||"Confession")}</span></span>
+        <span class="dur">${mmss(x.duration_seconds)}</span>
+      </button>`).join("")}</div></div>
+  </div></div>`;
+}
+function cycleSpeed(){ const steps=[1,1.1,1.25,0.9]; state.speed = steps[(steps.indexOf(state.speed)+1) % steps.length]; audio.playbackRate = state.speed; render(); }
+function toggleCat(id){
+  const i = state.selectedCats.indexOf(id);
+  i === -1 ? state.selectedCats.push(id) : state.selectedCats.splice(i,1);
+  render();
+}
+
+/* ---------------------- render ---------------------- */
+function render(){
+  const app = document.getElementById("app");
+  if (state.booting) { app.innerHTML = `<div class="auth"><div class="auth-card"><div class="mark"><b>i&#8209;confess</b><span></span></div><div class="skel" style="height:12px"></div></div></div>`; return; }
+  if (!state.user) { app.innerHTML = viewAuth(); return; }
+  let body = "";
+  switch (state.tab) {
+    case "category": body = state.browseCat ? viewCategory() : viewHome(); break;
+    case "sessions": body = viewSessions(); break;
+    case "library":  body = viewLibrary();  break;
+    case "profile":  body = viewProfile();  break;
+    default:         body = viewHome();
+  }
+  app.innerHTML = `<main class="screen">${body}</main>${viewNav()}${viewPlayer()}${state.sheet ? viewSheet() : ""}`;
+  paintProgress();
+}
+window.addEventListener("keydown", (e) => {
+  if (e.target.matches("input,textarea,select")) return;
+  if (e.code === "Space" && state.session) { e.preventDefault(); togglePlay(); }
+  if (e.key === "Escape" && state.sheet) { state.sheet = false; render(); }
+});
+boot();
+</script>
+</body>
+</html>

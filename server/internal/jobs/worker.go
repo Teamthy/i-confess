@@ -3,6 +3,7 @@ package jobs
 import (
 	"context"
 	"log"
+	"sync"
 	"time"
 )
 
@@ -12,6 +13,8 @@ type Worker struct {
 	workers int
 	done    chan struct{}
 	ticker  *time.Ticker
+	// stopOnce makes Stop idempotent.
+	stopOnce sync.Once
 }
 
 // NewWorker creates a new worker manager that will poll the queue at regular intervals.
@@ -34,9 +37,15 @@ func (w *Worker) Start(ctx context.Context) {
 }
 
 // Stop gracefully shuts down all worker goroutines.
+//
+// Safe to call more than once. Shutdown is commonly triggered from both a
+// signal handler and a deferred call, and closing an already-closed channel
+// panics — turning a clean shutdown into a crash.
 func (w *Worker) Stop() {
-	close(w.done)
-	w.ticker.Stop()
+	w.stopOnce.Do(func() {
+		close(w.done)
+		w.ticker.Stop()
+	})
 }
 
 func (w *Worker) run(ctx context.Context, id int) {

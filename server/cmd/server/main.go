@@ -12,12 +12,22 @@ import (
 	"github.com/Teamthy/i-confess/internal/api"
 	"github.com/Teamthy/i-confess/internal/config"
 	"github.com/Teamthy/i-confess/internal/db"
+	"github.com/Teamthy/i-confess/internal/email"
 	"github.com/Teamthy/i-confess/internal/jobs"
+	"github.com/Teamthy/i-confess/internal/oauth"
+	"github.com/Teamthy/i-confess/internal/ratelimit"
 	"github.com/Teamthy/i-confess/internal/seed"
+	"github.com/Teamthy/i-confess/internal/storage"
+	"github.com/Teamthy/i-confess/internal/voice"
 )
 
 func main() {
 	cfg := config.Load()
+
+	// Refuse to start production with development secrets.
+	if err := cfg.Validate(); err != nil {
+		log.Fatalf("config: %v", err)
+	}
 
 	conn, err := db.Open(cfg.DBPath)
 	if err != nil {
@@ -25,15 +35,98 @@ func main() {
 	}
 	defer conn.Close()
 
+	// Object storage. Development uses a filesystem provider that enforces the
+	// same signature and expiry rules as the production CDN, so signed
+	// delivery is exercised in every environment (PRD S11).
+	objStore, err := storage.New(&storage.StorageConfig{
+		Provider:      "local",
+		LocalRootPath: cfg.MediaDir,
+		CDNDomain:     cfg.MediaBaseURL,
+		SigningSecret: cfg.AudioSignSecret,
+	})
+	if err != nil {
+		log.Fatalf("storage: %v", err)
+	}
+
 	// Seed dev content when the database is empty (development only).
 	if cfg.Env == "development" || os.Getenv("SEED") == "1" {
-		if err := seed.Seed(conn); err != nil {
+		if err := seed.Seed(conn, objStore); err != nil {
 			log.Printf("seed: %v", err)
 		}
 	}
 
 	h := api.NewHandler(api.Config{JWTSecret: cfg.JWTSecret, TokenTTL: cfg.TokenTTL}, conn)
 	h.BuildEngine()
+	h.SetSigner(objStore)
+
+	// The local origin stands in for the CDN. Production leaves this unset and
+	// serves audio from the edge.
+	if !cfg.IsProduction() {
+		if local, ok := objStore.(*storage.LocalStorage); ok {
+			h.SetMediaHandler(local.Handler("/media"))
+		}
+	}
+
+	// Social sign-in. A provider is enabled only when its client id is set:
+	// an empty audience would accept tokens minted for any other application,
+	// so absent configuration must disable the provider rather than open it.
+	verifiers := map[string]oauth.Verifier{}
+	if cfg.GoogleClientID != "" {
+		verifiers[oauth.ProviderGoogle] = oauth.NewGoogle(cfg.GoogleClientID)
+		log.Printf("auth: google sign-in enabled")
+	}
+	if cfg.AppleClientID != "" {
+		verifiers[oauth.ProviderApple] = oauth.NewApple(cfg.AppleClientID)
+		log.Printf("auth: apple sign-in enabled")
+	}
+	if len(verifiers) == 0 {
+		log.Printf("auth: no social providers configured")
+	}
+	h.SetVerifiers(verifiers)
+
+	// Transactional email. Delivery is asynchronous so a slow or failing
+	// provider can never turn a registration into a 500 (PRD S57, S58).
+	var sender email.Sender = email.LogSender{}
+	if cfg.EmailProvider == "postmark" {
+		sender = email.NewPostmark(cfg.PostmarkToken, cfg.EmailFrom)
+		log.Printf("email: postmark sender enabled")
+	} else {
+		log.Printf("email: using log sender - messages are printed, not delivered")
+	}
+	mailQueue := email.NewQueue(sender, 512)
+	mailQueue.Start(context.Background(), 2)
+	defer mailQueue.Stop()
+
+	h.SetMailer(mailQueue, email.Config{
+		AppName:        cfg.AppName,
+		BaseURL:        cfg.PublicBaseURL,
+		FromAddress:    cfg.EmailFrom,
+		SupportAddress: cfg.EmailSupport,
+	})
+
+	// Rate limiting. Without a shared store each replica enforces its own
+	// budget, so N replicas allow N times the intended rate (PRD S20).
+	if cfg.RedisAddr != "" {
+		rdb := redisStore(cfg)
+		defer rdb.Close()
+		h.SetLimiter(ratelimit.NewDistributed(rdb))
+		if err := rdb.Ping(); err != nil {
+			// Not fatal: the limiter degrades to per-instance rather than
+			// refusing all logins because Redis is briefly unavailable.
+			log.Printf("redis: unreachable at startup, rate limiting is degraded: %v", err)
+		} else {
+			log.Printf("redis: shared rate limiting enabled at %s", cfg.RedisAddr)
+		}
+	} else {
+		log.Printf("redis: REDIS_ADDR unset - rate limits are per-instance only")
+	}
+
+	if cfg.ElevenLabsAPIKey != "" {
+		h.SetPipeline(voice.NewPipeline(voice.NewElevenLabs(cfg.ElevenLabsAPIKey), objStore))
+		log.Printf("voice: elevenlabs synthesis enabled")
+	} else {
+		log.Printf("voice: ELEVENLABS_API_KEY unset - synthesis endpoints report 503")
+	}
 
 	// Start background job workers.
 	queue := h.GetQueue()
@@ -41,6 +134,29 @@ func main() {
 	worker := jobs.NewWorker(queue, cfg.QueueWorkers)
 	worker.Start(context.Background())
 	defer worker.Stop()
+
+	// Erase accounts whose grace period has elapsed (PRD S50). Running it on a
+	// timer inside the API process is right for one instance; at multiple
+	// replicas this needs a lock so two sweepers do not race, which the
+	// per-account transaction already makes safe but wasteful.
+	sweepCtx, stopSweep := context.WithCancel(context.Background())
+	defer stopSweep()
+	go func() {
+		t := time.NewTicker(1 * time.Hour)
+		defer t.Stop()
+		for {
+			select {
+			case <-sweepCtx.Done():
+				return
+			case <-t.C:
+				if n, err := h.RunDeletionSweep(sweepCtx); err != nil {
+					log.Printf("deletion: sweep failed: %v", err)
+				} else if n > 0 {
+					log.Printf("deletion: erased %d expired accounts", n)
+				}
+			}
+		}
+	}()
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
@@ -67,4 +183,9 @@ func main() {
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("server: %v", err)
 	}
+}
+
+// redisStore builds the shared counter backend for rate limiting.
+func redisStore(cfg config.Config) *ratelimit.RedisStore {
+	return ratelimit.NewRedisStore(cfg.RedisAddr, cfg.RedisPassword)
 }
