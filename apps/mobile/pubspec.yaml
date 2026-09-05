@@ -1,0 +1,26 @@
+name: iconfess
+description: I CONFESS — Daily confession ritual. Scripture. Audio. Habit.
+publish_to: none
+version: 0.1.0+1
+environment:
+  sdk: ">=3.2.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  http: ^1.2.0
+  provider: ^6.1.0
+  encrypt: ^5.0.3
+  crypto: ^3.0.0
+  # audio — real deps live in /tmp for CI to keep workspace budget (~3 MB):
+  # uncomment when bundling native player (see lib/src/player/just_audio_handler.dart)
+  # just_audio: ^0.9.39
+  # audio_service: ^0.18.15
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true

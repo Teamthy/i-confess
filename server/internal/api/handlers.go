@@ -19,6 +19,8 @@ import (
 	"github.com/Teamthy/i-confess/internal/oauth"
 	"github.com/Teamthy/i-confess/internal/ratelimit"
 	"github.com/Teamthy/i-confess/internal/scheduler"
+	"github.com/Teamthy/i-confess/internal/search"
+	"github.com/Teamthy/i-confess/internal/sessions"
 	"github.com/Teamthy/i-confess/internal/storage"
 	"github.com/Teamthy/i-confess/internal/store"
 	"github.com/Teamthy/i-confess/internal/voice"
@@ -34,6 +36,9 @@ type Handler struct {
 	sched *store.ScheduleStore
 	eng   *store.EngagementStore
 	engn  *engine.Engine
+	search *search.SearchStore
+	templates *store.TemplateStore
+	plans     *store.PlanStore
 	queue *jobs.MemoryQueue
 	// signer mints short-lived audio URLs. Audio bytes never pass through this
 	// API (PRD S11); the client is handed a signed CDN link instead.
@@ -69,6 +74,8 @@ type Handler struct {
 	downloads *store.DownloadStore
 	// metrics counts security-relevant events for alerting (S83, S84).
 	metrics *AuthMetrics
+	// cacheStats reports cache hit-rate for /metrics (§7.1)
+	cacheStats func() CacheStats
 	// routes records every registered endpoint, so the API spec is generated
 	// from the same calls that serve traffic and cannot drift.
 	routes *routeRecorder
@@ -105,6 +112,9 @@ func NewHandler(cfg Config, db *sql.DB) *Handler {
 		sess:      store.NewSessionStore(db),
 		sched:     store.NewScheduleStore(db),
 		eng:       store.NewEngagementStore(db),
+		search:    search.NewSearchStore(db),
+		templates: store.NewTemplateStore(db),
+		plans:     store.NewPlanStore(db),
 		queue:     jobs.NewMemoryQueue(),
 		vrights:   store.NewVoiceRightsStore(db),
 		db:        db,
@@ -115,6 +125,7 @@ func NewHandler(cfg Config, db *sql.DB) *Handler {
 		deletion:  deletion.NewService(db),
 		downloads: store.NewDownloadStore(db),
 		metrics:   NewAuthMetrics(),
+		cacheStats: cacheStatsSnapshot,
 		routes:    &routeRecorder{},
 	}
 }
@@ -910,9 +921,14 @@ func (h *Handler) listVoices(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) createSession(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		CategoryIDs     []string `json:"category_ids"`
-		DurationSeconds int      `json:"duration_seconds"`
-		VoiceID         string   `json:"voice_id"`
+		CategoryIDs     []string           `json:"category_ids"`
+		CategoryWeights map[string]float64 `json:"category_weights"`
+		DurationSeconds int                `json:"duration_seconds"`
+		DurationPreset  string             `json:"duration_preset"`
+		Strategy        string             `json:"strategy"`
+		VoiceID         string             `json:"voice_id"`
+		Title           string             `json:"title"`
+		Description     string             `json:"description"`
 	}
 	if err := httpx.DecodeJSON(r, &req); err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid request body")
@@ -922,9 +938,26 @@ func (h *Handler) createSession(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusBadRequest, "at least one category is required")
 		return
 	}
+	// Duration preset handling (§17): 10/15/30/45/60/90/120/180 + CUSTOM
+	if req.DurationSeconds == 0 && req.DurationPreset != "" {
+		if secs, ok := engine.PresetFor(req.DurationPreset); ok {
+			req.DurationSeconds = secs
+		} else {
+			httpx.WriteError(w, http.StatusBadRequest, "unknown duration_preset — use 10m|15m|30m|45m|60m|90m|120m|180m or duration_seconds")
+			return
+		}
+	}
 	if req.DurationSeconds < 60 || req.DurationSeconds > 3*3600 {
 		httpx.WriteError(w, http.StatusBadRequest, "duration must be between 1 minute and 3 hours")
 		return
+	}
+	if req.Strategy != "" && !engine.IsValidStrategy(req.Strategy) {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid strategy — use EXACT|CLOSEST|UNDER|OVER|BALANCED")
+		return
+	}
+	strat := engine.Strategy(req.Strategy)
+	if strat == "" {
+		strat = engine.StrategyBalanced
 	}
 
 	// Session length is a plan capability (PRD S25/S26). Enforced server-side:
@@ -940,11 +973,32 @@ func (h *Handler) createSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Favorites + recency for content selection (§18)
+	favs, _ := h.eng.ListFavorites(r.Context(), h.userID(r), "confession")
+	favMap := map[string]bool{}
+	for _, f := range favs {
+		favMap[f.EntityID] = true
+	}
+	history, _ := h.eng.History(r.Context(), h.userID(r), 20)
+	recentMap := map[string]bool{}
+	for i, rec := range history {
+		if i >= 10 {
+			break
+		}
+		if rec.ConfessionID != "" {
+			recentMap[rec.ConfessionID] = true
+		}
+	}
+
 	sess, err := h.engn.Build(r.Context(), engine.Request{
 		UserID:          h.userID(r),
 		CategoryIDs:     req.CategoryIDs,
+		CategoryWeights: req.CategoryWeights,
 		DurationSeconds: req.DurationSeconds,
+		Strategy:        strat,
 		VoiceID:         req.VoiceID,
+		FavoriteIDs:     favMap,
+		RecentIDs:       recentMap,
 	})
 	if errors.Is(err, engine.ErrNoContent) {
 		httpx.WriteError(w, http.StatusUnprocessableEntity, "no content available for the selected categories and voice")
@@ -953,6 +1007,13 @@ func (h *Handler) createSession(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to build session")
 		return
+	}
+	// Optional metadata — client can name a session (long-form §22)
+	if req.Title != "" {
+		sess.Title = req.Title
+	}
+	if req.Description != "" {
+		sess.Description = req.Description
 	}
 	if err := h.sess.Create(r.Context(), sess); err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to save session")
@@ -996,8 +1057,23 @@ func (h *Handler) updateSessionStatus(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Status string `json:"status"`
 	}
-	if err := httpx.DecodeJSON(r, &req); err != nil || !validSessionStatus(req.Status) {
-		httpx.WriteError(w, http.StatusBadRequest, "invalid status")
+	if err := httpx.DecodeJSON(r, &req); err != nil {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	// Normalize legacy values (created→READY etc.) then validate
+	req.Status = sessions.Normalize(req.Status)
+	if !sessions.IsValid(req.Status) {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid status — use DRAFT|READY|SCHEDULED|STARTING|ACTIVE|PAUSED|INTERRUPTED|COMPLETED|CANCELLED|EXPIRED|FAILED")
+		return
+	}
+	if !sessions.CanTransition(sess.Status, req.Status) {
+		httpx.WriteJSON(w, http.StatusConflict, map[string]any{
+			"error":   sessions.Reason(sess.Status, req.Status),
+			"from":    sess.Status,
+			"to":      req.Status,
+			"code":    "INVALID_TRANSITION",
+		})
 		return
 	}
 	if err := h.sess.UpdateStatus(r.Context(), id, req.Status); err != nil {
@@ -1016,13 +1092,7 @@ func (h *Handler) listMySessions(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, sess)
 }
 
-func validSessionStatus(s string) bool {
-	switch s {
-	case "created", "playing", "completed", "abandoned":
-		return true
-	}
-	return false
-}
+func validSessionStatus(s string) bool { return sessions.IsValid(sessions.Normalize(s)) }
 
 // ---------- Schedules ----------
 
