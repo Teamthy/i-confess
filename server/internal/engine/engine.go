@@ -37,6 +37,16 @@ type Request struct {
 	// Strategy controls how the requested duration is reconciled with the
 	// complete confessions available. Empty means DefaultStrategy.
 	Strategy Strategy
+	// CategoryWeights biases how often each category appears in the queue,
+	// keyed by category id. A category omitted from a non-empty map is not
+	// selected; see weightedOrder.
+	CategoryWeights map[string]float64
+	// FavoriteIDs are confessions the listener has favourited. They are
+	// selected ahead of other content in the same category.
+	FavoriteIDs map[string]bool
+	// RecentIDs are confessions the listener has lately played. They are held
+	// back so the same words are not repeated day after day.
+	RecentIDs map[string]bool
 }
 
 // Build assembles an ordered, deterministic session.
@@ -90,6 +100,7 @@ func (e *Engine) Build(ctx context.Context, req Request) (*models.Session, error
 	if len(byCat) == 0 {
 		return nil, ErrNoContent
 	}
+	applyPreferences(byCat, req.FavoriteIDs, req.RecentIDs)
 
 	items, actual, err := e.pack(ctx, req, voice.ID, byCat)
 	if err != nil {
@@ -189,17 +200,21 @@ func (e *Engine) pack(ctx context.Context, req Request, voiceID string, byCat ma
 		variants []variantOption // sorted descending by duration
 	}
 
+	// The walk order is the requested category order, expanded by weight.
+	// Never range byCat: Go map iteration is randomised, and that would make
+	// the queue — and therefore the session — differ between two identical
+	// requests. Reproducibility is a hard requirement, since a created
+	// session must stay stable as content changes.
+	order := weightedOrder(req.CategoryIDs, req.CategoryWeights)
+
 	catOptions := map[string][]*confessionOption{}
-	var catOrder []string
-	// Iterate the requested category order, not byCat: ranging a Go map is
-	// randomised, and that would make the queue — and therefore the session —
-	// differ between two identical requests. Reproducibility is a hard
-	// requirement, since a created session must stay stable as content changes.
-	for _, catID := range req.CategoryIDs {
+	built := map[string]bool{}
+	for _, catID := range order {
 		confs := byCat[catID]
-		if len(confs) == 0 {
+		if len(confs) == 0 || built[catID] {
 			continue
 		}
+		built[catID] = true
 		for _, c := range confs {
 			assets, _ := e.audio.AssetsFor(ctx, c.ID, voiceID)
 			if len(assets) == 0 {
@@ -219,6 +234,12 @@ func (e *Engine) pack(ctx context.Context, req Request, voiceID string, byCat ma
 			}
 			catOptions[catID] = append(catOptions[catID], &confessionOption{conf: c, variants: opts})
 		}
+	}
+
+	// Keep the weighted expansion, minus categories that produced no playable
+	// options, so a dominant category still gets its repeated slots.
+	var catOrder []string
+	for _, catID := range order {
 		if len(catOptions[catID]) > 0 {
 			catOrder = append(catOrder, catID)
 		}

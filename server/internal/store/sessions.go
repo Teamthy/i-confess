@@ -41,10 +41,11 @@ func (s *SessionStore) Create(ctx context.Context, sess *models.Session) error {
 	defer tx.Rollback()
 
 	_, err = tx.ExecContext(ctx,
-		`INSERT INTO sessions (id,user_id,type,duration_seconds,strategy,target_duration,actual_duration,voice_id,status,created_at)
-		 VALUES (?,?,?,?,?,?,?,?,?,?)`,
+		`INSERT INTO sessions (id,user_id,type,duration_seconds,strategy,target_duration,actual_duration,title,description,voice_id,status,created_at)
+		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
 		sess.ID, sess.UserID, sess.Type, sess.DurationSeconds, sess.Strategy,
-		sess.TargetDuration, sess.ActualDuration, nullIfEmpty(sess.VoiceID), sess.Status, sess.CreatedAt)
+		sess.TargetDuration, sess.ActualDuration, nullIfEmpty(sess.Title), nullIfEmpty(sess.Description),
+		nullIfEmpty(sess.VoiceID), sess.Status, sess.CreatedAt)
 	if err != nil {
 		return err
 	}
@@ -73,10 +74,11 @@ func (s *SessionStore) ByID(ctx context.Context, id string) (*models.Session, er
 	var voiceID, startedAt, completedAt sql.NullString
 	err := s.db.QueryRowContext(ctx,
 		`SELECT id,user_id,type,duration_seconds,COALESCE(strategy,''),COALESCE(target_duration,0),COALESCE(actual_duration,0),
-		        voice_id,status,created_at,started_at,completed_at
+		        COALESCE(title,''),COALESCE(description,''),voice_id,status,created_at,started_at,completed_at
 		 FROM sessions WHERE id = ?`, id).
 		Scan(&sess.ID, &sess.UserID, &sess.Type, &sess.DurationSeconds, &sess.Strategy,
-			&sess.TargetDuration, &sess.ActualDuration, &voiceID, &sess.Status, &sess.CreatedAt, &startedAt, &completedAt)
+			&sess.TargetDuration, &sess.ActualDuration, &sess.Title, &sess.Description,
+			&voiceID, &sess.Status, &sess.CreatedAt, &startedAt, &completedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -162,7 +164,8 @@ func (s *SessionStore) ListByUser(ctx context.Context, userID string, limit int)
 	}
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT id,user_id,type,duration_seconds,COALESCE(strategy,''),COALESCE(target_duration,0),COALESCE(actual_duration,0),
-		        COALESCE(voice_id,''),status,created_at,COALESCE(started_at,''),COALESCE(completed_at,'')
+		        COALESCE(title,''),COALESCE(description,''),COALESCE(voice_id,''),status,created_at,
+		        COALESCE(started_at,''),COALESCE(completed_at,'')
 		 FROM sessions WHERE user_id = ? ORDER BY created_at DESC LIMIT ?`, userID, limit)
 	if err != nil {
 		return nil, err
@@ -172,8 +175,8 @@ func (s *SessionStore) ListByUser(ctx context.Context, userID string, limit int)
 	for rows.Next() {
 		var sess models.Session
 		if err := rows.Scan(&sess.ID, &sess.UserID, &sess.Type, &sess.DurationSeconds, &sess.Strategy,
-			&sess.TargetDuration, &sess.ActualDuration, &sess.VoiceID, &sess.Status, &sess.CreatedAt,
-			&sess.StartedAt, &sess.CompletedAt); err != nil {
+			&sess.TargetDuration, &sess.ActualDuration, &sess.Title, &sess.Description,
+			&sess.VoiceID, &sess.Status, &sess.CreatedAt, &sess.StartedAt, &sess.CompletedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, sess)

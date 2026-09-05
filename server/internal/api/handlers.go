@@ -19,6 +19,7 @@ import (
 	"github.com/Teamthy/i-confess/internal/oauth"
 	"github.com/Teamthy/i-confess/internal/ratelimit"
 	"github.com/Teamthy/i-confess/internal/scheduler"
+	"github.com/Teamthy/i-confess/internal/search"
 	"github.com/Teamthy/i-confess/internal/sessions"
 	"github.com/Teamthy/i-confess/internal/storage"
 	"github.com/Teamthy/i-confess/internal/store"
@@ -27,15 +28,18 @@ import (
 
 // Handler bundles all stores and config needed by the API.
 type Handler struct {
-	cfg   Config
-	users *store.UserStore
-	cont  *store.ContentStore
-	audio *store.AudioStore
-	sess  *store.SessionStore
-	sched *store.ScheduleStore
-	eng   *store.EngagementStore
-	engn  *engine.Engine
-	queue *jobs.MemoryQueue
+	cfg       Config
+	users     *store.UserStore
+	cont      *store.ContentStore
+	audio     *store.AudioStore
+	sess      *store.SessionStore
+	sched     *store.ScheduleStore
+	eng       *store.EngagementStore
+	engn      *engine.Engine
+	search    *search.SearchStore
+	templates *store.TemplateStore
+	plans     *store.PlanStore
+	queue     *jobs.MemoryQueue
 	// signer mints short-lived audio URLs. Audio bytes never pass through this
 	// API (PRD S11); the client is handed a signed CDN link instead.
 	signer storage.ObjectStorage
@@ -70,6 +74,8 @@ type Handler struct {
 	downloads *store.DownloadStore
 	// metrics counts security-relevant events for alerting (S83, S84).
 	metrics *AuthMetrics
+	// cacheStats reports cache hit-rate for /metrics (§7.1)
+	cacheStats func() CacheStats
 	// routes records every registered endpoint, so the API spec is generated
 	// from the same calls that serve traffic and cannot drift.
 	routes *routeRecorder
@@ -99,24 +105,28 @@ type Config struct {
 
 func NewHandler(cfg Config, db *sql.DB) *Handler {
 	return &Handler{
-		cfg:       cfg,
-		users:     store.NewUserStore(db),
-		cont:      store.NewContentStore(db),
-		audio:     store.NewAudioStore(db),
-		sess:      store.NewSessionStore(db),
-		sched:     store.NewScheduleStore(db),
-		eng:       store.NewEngagementStore(db),
-		queue:     jobs.NewMemoryQueue(),
-		vrights:   store.NewVoiceRightsStore(db),
-		db:        db,
-		limiter:   ratelimit.New(),
-		profiles:  store.NewProfileStore(db),
-		verifiers: map[string]oauth.Verifier{},
-		library:   store.NewLibraryStore(db),
-		deletion:  deletion.NewService(db),
-		downloads: store.NewDownloadStore(db),
-		metrics:   NewAuthMetrics(),
-		routes:    &routeRecorder{},
+		cfg:        cfg,
+		users:      store.NewUserStore(db),
+		cont:       store.NewContentStore(db),
+		audio:      store.NewAudioStore(db),
+		sess:       store.NewSessionStore(db),
+		sched:      store.NewScheduleStore(db),
+		eng:        store.NewEngagementStore(db),
+		search:     search.NewSearchStore(db),
+		templates:  store.NewTemplateStore(db),
+		plans:      store.NewPlanStore(db),
+		queue:      jobs.NewMemoryQueue(),
+		vrights:    store.NewVoiceRightsStore(db),
+		db:         db,
+		limiter:    ratelimit.New(),
+		profiles:   store.NewProfileStore(db),
+		verifiers:  map[string]oauth.Verifier{},
+		library:    store.NewLibraryStore(db),
+		deletion:   deletion.NewService(db),
+		downloads:  store.NewDownloadStore(db),
+		metrics:    NewAuthMetrics(),
+		cacheStats: cacheStatsSnapshot,
+		routes:     &routeRecorder{},
 	}
 }
 
@@ -911,11 +921,14 @@ func (h *Handler) listVoices(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) createSession(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		CategoryIDs     []string `json:"category_ids"`
-		DurationSeconds int      `json:"duration_seconds"`
-		DurationPreset  string   `json:"duration_preset"`
-		Strategy        string   `json:"strategy"`
-		VoiceID         string   `json:"voice_id"`
+		CategoryIDs     []string           `json:"category_ids"`
+		CategoryWeights map[string]float64 `json:"category_weights"`
+		DurationSeconds int                `json:"duration_seconds"`
+		DurationPreset  string             `json:"duration_preset"`
+		Strategy        string             `json:"strategy"`
+		VoiceID         string             `json:"voice_id"`
+		Title           string             `json:"title"`
+		Description     string             `json:"description"`
 	}
 	if err := httpx.DecodeJSON(r, &req); err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid request body")
@@ -935,7 +948,7 @@ func (h *Handler) createSession(w http.ResponseWriter, r *http.Request) {
 		}
 		secs, ok := engine.PresetFor(req.DurationPreset)
 		if !ok {
-			httpx.WriteError(w, http.StatusBadRequest, "unknown duration_preset")
+			httpx.WriteError(w, http.StatusBadRequest, "unknown duration_preset — use 10m|15m|30m|45m|60m|90m|120m|180m, or send duration_seconds")
 			return
 		}
 		req.DurationSeconds = secs
@@ -945,7 +958,7 @@ func (h *Handler) createSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.Strategy != "" && !engine.IsValidStrategy(req.Strategy) {
-		httpx.WriteError(w, http.StatusBadRequest, "invalid strategy")
+		httpx.WriteError(w, http.StatusBadRequest, "invalid strategy — use EXACT|CLOSEST|UNDER|OVER|BALANCED")
 		return
 	}
 
@@ -962,12 +975,32 @@ func (h *Handler) createSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Favorites + recency for content selection (§18)
+	favs, _ := h.eng.ListFavorites(r.Context(), h.userID(r), "confession")
+	favMap := map[string]bool{}
+	for _, f := range favs {
+		favMap[f.EntityID] = true
+	}
+	history, _ := h.eng.History(r.Context(), h.userID(r), 20)
+	recentMap := map[string]bool{}
+	for i, rec := range history {
+		if i >= 10 {
+			break
+		}
+		if rec.ConfessionID != "" {
+			recentMap[rec.ConfessionID] = true
+		}
+	}
+
 	sess, err := h.engn.Build(r.Context(), engine.Request{
 		UserID:          h.userID(r),
 		CategoryIDs:     req.CategoryIDs,
+		CategoryWeights: req.CategoryWeights,
 		DurationSeconds: req.DurationSeconds,
 		Strategy:        engine.NormalizeStrategy(req.Strategy),
 		VoiceID:         req.VoiceID,
+		FavoriteIDs:     favMap,
+		RecentIDs:       recentMap,
 	})
 	if errors.Is(err, engine.ErrNoContent) {
 		httpx.WriteError(w, http.StatusUnprocessableEntity, "no content available for the selected categories and voice")
@@ -987,6 +1020,13 @@ func (h *Handler) createSession(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to build session")
 		return
+	}
+	// Optional metadata — client can name a session (long-form §22)
+	if req.Title != "" {
+		sess.Title = req.Title
+	}
+	if req.Description != "" {
+		sess.Description = req.Description
 	}
 	if err := h.sess.Create(r.Context(), sess); err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to save session")
@@ -1061,7 +1101,12 @@ func (h *Handler) updateSessionStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !sessions.CanTransition(from, to) {
-		httpx.WriteError(w, http.StatusConflict, sessions.Reason(from, to))
+		httpx.WriteJSON(w, http.StatusConflict, map[string]any{
+			"error": sessions.Reason(from, to),
+			"from":  string(from),
+			"to":    string(to),
+			"code":  "INVALID_TRANSITION",
+		})
 		return
 	}
 	if err := h.sess.UpdateStatus(r.Context(), id, string(to)); err != nil {

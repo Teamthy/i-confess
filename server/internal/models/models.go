@@ -159,7 +159,12 @@ type Session struct {
 	// the same request later must yield the same queue, so the rule that
 	// produced it has to travel with it.
 	Strategy string `json:"strategy,omitempty"`
-	VoiceID  string `json:"voice_id,omitempty"`
+	// Title and Description let the listener name a session they built, so a
+	// long-form routine reads as "Morning Healing" in history rather than as
+	// an anonymous 60-minute block.
+	Title       string `json:"title,omitempty"`
+	Description string `json:"description,omitempty"`
+	VoiceID     string `json:"voice_id,omitempty"`
 	// VoiceDowngraded reports that the requested voice was unavailable on the
 	// listener's plan and a permitted voice was substituted. Surfacing this
 	// keeps a gated experience from looking like a broken one.
