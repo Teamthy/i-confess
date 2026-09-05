@@ -913,6 +913,8 @@ func (h *Handler) createSession(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		CategoryIDs     []string `json:"category_ids"`
 		DurationSeconds int      `json:"duration_seconds"`
+		DurationPreset  string   `json:"duration_preset"`
+		Strategy        string   `json:"strategy"`
 		VoiceID         string   `json:"voice_id"`
 	}
 	if err := httpx.DecodeJSON(r, &req); err != nil {
@@ -923,8 +925,27 @@ func (h *Handler) createSession(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusBadRequest, "at least one category is required")
 		return
 	}
+	// The builder sends either an explicit length or a preset name. Presets
+	// exist so that deep links and schedules can say "30 minutes" without
+	// hardcoding 1800 on the client.
+	if req.DurationSeconds == 0 && req.DurationPreset != "" {
+		if engine.IsCustomPreset(req.DurationPreset) {
+			httpx.WriteError(w, http.StatusBadRequest, "custom duration_preset requires duration_seconds")
+			return
+		}
+		secs, ok := engine.PresetFor(req.DurationPreset)
+		if !ok {
+			httpx.WriteError(w, http.StatusBadRequest, "unknown duration_preset")
+			return
+		}
+		req.DurationSeconds = secs
+	}
 	if req.DurationSeconds < 60 || req.DurationSeconds > 3*3600 {
 		httpx.WriteError(w, http.StatusBadRequest, "duration must be between 1 minute and 3 hours")
+		return
+	}
+	if req.Strategy != "" && !engine.IsValidStrategy(req.Strategy) {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid strategy")
 		return
 	}
 
@@ -945,10 +966,22 @@ func (h *Handler) createSession(w http.ResponseWriter, r *http.Request) {
 		UserID:          h.userID(r),
 		CategoryIDs:     req.CategoryIDs,
 		DurationSeconds: req.DurationSeconds,
+		Strategy:        engine.NormalizeStrategy(req.Strategy),
 		VoiceID:         req.VoiceID,
 	})
 	if errors.Is(err, engine.ErrNoContent) {
 		httpx.WriteError(w, http.StatusUnprocessableEntity, "no content available for the selected categories and voice")
+		return
+	}
+	if errors.Is(err, engine.ErrNoExactFit) {
+		// Distinct from "no content": the library has material for these
+		// categories, it just cannot land exactly on the requested length
+		// without cutting a confession short, which we do not do.
+		httpx.WriteJSON(w, http.StatusUnprocessableEntity, map[string]any{
+			"error":  "no combination of complete confessions matches that exact length",
+			"reason": "exact_duration_unavailable",
+			"hint":   "choose a nearby length, or use the balanced strategy",
+		})
 		return
 	}
 	if err != nil {

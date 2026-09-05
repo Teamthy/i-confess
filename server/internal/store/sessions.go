@@ -12,6 +12,11 @@ import (
 // SessionStore manages sessions and session items.
 type SessionStore struct{ db *sql.DB }
 
+// defaultSessionStrategy is the duration strategy applied when a caller does
+// not name one. Keep in sync with engine.DefaultStrategy; the store cannot
+// import engine, because engine imports the store.
+const defaultSessionStrategy = "BALANCED"
+
 func NewSessionStore(db *sql.DB) *SessionStore { return &SessionStore{db: db} }
 
 func (s *SessionStore) Create(ctx context.Context, sess *models.Session) error {
@@ -21,6 +26,13 @@ func (s *SessionStore) Create(ctx context.Context, sess *models.Session) error {
 	if sess.Status == "" {
 		sess.Status = string(sessions.Ready)
 	}
+	if sess.Strategy == "" {
+		// Mirrors engine.DefaultStrategy. The store cannot import engine —
+		// engine imports the store, so that would be a cycle. engine.Build
+		// always sets this explicitly; the fallback only covers rows built
+		// elsewhere.
+		sess.Strategy = defaultSessionStrategy
+	}
 	sess.CreatedAt = now()
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -29,8 +41,10 @@ func (s *SessionStore) Create(ctx context.Context, sess *models.Session) error {
 	defer tx.Rollback()
 
 	_, err = tx.ExecContext(ctx,
-		`INSERT INTO sessions (id,user_id,type,duration_seconds,voice_id,status,created_at) VALUES (?,?,?,?,?,?,?)`,
-		sess.ID, sess.UserID, sess.Type, sess.DurationSeconds, nullIfEmpty(sess.VoiceID), sess.Status, sess.CreatedAt)
+		`INSERT INTO sessions (id,user_id,type,duration_seconds,strategy,target_duration,actual_duration,voice_id,status,created_at)
+		 VALUES (?,?,?,?,?,?,?,?,?,?)`,
+		sess.ID, sess.UserID, sess.Type, sess.DurationSeconds, sess.Strategy,
+		sess.TargetDuration, sess.ActualDuration, nullIfEmpty(sess.VoiceID), sess.Status, sess.CreatedAt)
 	if err != nil {
 		return err
 	}
@@ -58,8 +72,11 @@ func (s *SessionStore) ByID(ctx context.Context, id string) (*models.Session, er
 	var sess models.Session
 	var voiceID, startedAt, completedAt sql.NullString
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id,user_id,type,duration_seconds,voice_id,status,created_at,started_at,completed_at FROM sessions WHERE id = ?`, id).
-		Scan(&sess.ID, &sess.UserID, &sess.Type, &sess.DurationSeconds, &voiceID, &sess.Status, &sess.CreatedAt, &startedAt, &completedAt)
+		`SELECT id,user_id,type,duration_seconds,COALESCE(strategy,''),COALESCE(target_duration,0),COALESCE(actual_duration,0),
+		        voice_id,status,created_at,started_at,completed_at
+		 FROM sessions WHERE id = ?`, id).
+		Scan(&sess.ID, &sess.UserID, &sess.Type, &sess.DurationSeconds, &sess.Strategy,
+			&sess.TargetDuration, &sess.ActualDuration, &voiceID, &sess.Status, &sess.CreatedAt, &startedAt, &completedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -144,7 +161,8 @@ func (s *SessionStore) ListByUser(ctx context.Context, userID string, limit int)
 		limit = 20
 	}
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id,user_id,type,duration_seconds,COALESCE(voice_id,''),status,created_at,COALESCE(started_at,''),COALESCE(completed_at,'')
+		`SELECT id,user_id,type,duration_seconds,COALESCE(strategy,''),COALESCE(target_duration,0),COALESCE(actual_duration,0),
+		        COALESCE(voice_id,''),status,created_at,COALESCE(started_at,''),COALESCE(completed_at,'')
 		 FROM sessions WHERE user_id = ? ORDER BY created_at DESC LIMIT ?`, userID, limit)
 	if err != nil {
 		return nil, err
@@ -153,7 +171,9 @@ func (s *SessionStore) ListByUser(ctx context.Context, userID string, limit int)
 	var out []models.Session
 	for rows.Next() {
 		var sess models.Session
-		if err := rows.Scan(&sess.ID, &sess.UserID, &sess.Type, &sess.DurationSeconds, &sess.VoiceID, &sess.Status, &sess.CreatedAt, &sess.StartedAt, &sess.CompletedAt); err != nil {
+		if err := rows.Scan(&sess.ID, &sess.UserID, &sess.Type, &sess.DurationSeconds, &sess.Strategy,
+			&sess.TargetDuration, &sess.ActualDuration, &sess.VoiceID, &sess.Status, &sess.CreatedAt,
+			&sess.StartedAt, &sess.CompletedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, sess)

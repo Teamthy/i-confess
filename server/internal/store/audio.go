@@ -140,6 +140,10 @@ func (s *AudioStore) AssetsFor(ctx context.Context, confessionID, voiceID string
 		q += ` AND voice_id = ?`
 		args = append(args, voiceID)
 	}
+	// Ordered so that matchAsset's "first asset for this confession" fallback
+	// is stable. Without it the chosen audio could differ between calls.
+	// This must come last: the voice filter above appends to the WHERE clause.
+	q += ` ORDER BY created_at, id`
 	rows, err := s.db.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err

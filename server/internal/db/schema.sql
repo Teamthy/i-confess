@@ -618,6 +618,11 @@ CREATE TABLE IF NOT EXISTS sessions (
     user_id          TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     type             TEXT NOT NULL DEFAULT 'standard',   -- quick | standard | deep | custom | personal
     duration_seconds INTEGER NOT NULL,
+    strategy         TEXT NOT NULL DEFAULT 'BALANCED',
+    -- What was asked for vs what was actually built. They differ whenever
+    -- complete confessions could not land exactly on the request.
+    target_duration  INTEGER,
+    actual_duration  INTEGER,
     voice_id         TEXT,
     status           TEXT NOT NULL DEFAULT 'READY'
         -- Canonical session lifecycle; owned by internal/sessions. Legacy rows
