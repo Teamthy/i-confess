@@ -619,7 +619,12 @@ CREATE TABLE IF NOT EXISTS sessions (
     type             TEXT NOT NULL DEFAULT 'standard',   -- quick | standard | deep | custom | personal
     duration_seconds INTEGER NOT NULL,
     voice_id         TEXT,
-    status           TEXT NOT NULL DEFAULT 'created',    -- created | playing | completed | abandoned
+    status           TEXT NOT NULL DEFAULT 'READY'
+        -- Canonical session lifecycle; owned by internal/sessions. Legacy rows
+        -- may still hold created|playing|completed|abandoned and are folded
+        -- onto these states on read, but nothing new writes them.
+        CHECK (status IN ('DRAFT','READY','SCHEDULED','STARTING','ACTIVE','PAUSED',
+                          'INTERRUPTED','COMPLETED','CANCELLED','EXPIRED','FAILED')),
     created_at       TEXT NOT NULL,
     started_at       TEXT,
     completed_at     TEXT

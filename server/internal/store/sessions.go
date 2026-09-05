@@ -6,6 +6,7 @@ import (
 	"errors"
 
 	"github.com/Teamthy/i-confess/internal/models"
+	"github.com/Teamthy/i-confess/internal/sessions"
 )
 
 // SessionStore manages sessions and session items.
@@ -18,7 +19,7 @@ func (s *SessionStore) Create(ctx context.Context, sess *models.Session) error {
 		sess.ID = newID()
 	}
 	if sess.Status == "" {
-		sess.Status = "created"
+		sess.Status = string(sessions.Ready)
 	}
 	sess.CreatedAt = now()
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -107,18 +108,35 @@ func (s *SessionStore) Items(ctx context.Context, sessionID string) ([]models.Se
 	return out, rows.Err()
 }
 
+// UpdateStatus moves a session to a canonical lifecycle state and stamps the
+// timestamps that state implies.
+//
+// It deliberately does not validate the transition. Whether a move is legal is
+// domain policy and lives in the sessions package, enforced by the API layer
+// before this is reached. Keeping the policy in exactly one place means a
+// second caller cannot quietly get a different answer.
+//
+// started_at and completed_at are written once and never overwritten. Resuming
+// from PAUSED must not move started_at, or total listening time is understated;
+// replaying a completion must not move completed_at, or the recorded finish
+// time drifts on every retry.
 func (s *SessionStore) UpdateStatus(ctx context.Context, id, status string) error {
 	ts := now()
-	var err error
-	switch status {
-	case "playing":
-		_, err = s.db.ExecContext(ctx, `UPDATE sessions SET status=?, started_at=? WHERE id=?`, status, ts, id)
-	case "completed":
-		_, err = s.db.ExecContext(ctx, `UPDATE sessions SET status=?, completed_at=? WHERE id=?`, status, ts, id)
+	switch sessions.State(status) {
+	case sessions.Starting, sessions.Active:
+		_, err := s.db.ExecContext(ctx,
+			`UPDATE sessions SET status=?, started_at=COALESCE(NULLIF(started_at,''), ?) WHERE id=?`,
+			status, ts, id)
+		return err
+	case sessions.Completed:
+		_, err := s.db.ExecContext(ctx,
+			`UPDATE sessions SET status=?, completed_at=COALESCE(NULLIF(completed_at,''), ?) WHERE id=?`,
+			status, ts, id)
+		return err
 	default:
-		_, err = s.db.ExecContext(ctx, `UPDATE sessions SET status=? WHERE id=?`, status, id)
+		_, err := s.db.ExecContext(ctx, `UPDATE sessions SET status=? WHERE id=?`, status, id)
+		return err
 	}
-	return err
 }
 
 func (s *SessionStore) ListByUser(ctx context.Context, userID string, limit int) ([]models.Session, error) {

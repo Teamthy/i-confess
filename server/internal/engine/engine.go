@@ -8,6 +8,7 @@ import (
 	"sort"
 
 	"github.com/Teamthy/i-confess/internal/models"
+	"github.com/Teamthy/i-confess/internal/sessions"
 	"github.com/Teamthy/i-confess/internal/store"
 )
 
@@ -90,7 +91,7 @@ func (e *Engine) Build(ctx context.Context, req Request) (*models.Session, error
 		Type:            classifyType(total),
 		DurationSeconds: total,
 		VoiceID:         voice.ID,
-		Status:          "created",
+		Status:          string(sessions.Ready),
 		Items:           items,
 	}
 	if downgraded {

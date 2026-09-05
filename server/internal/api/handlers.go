@@ -19,6 +19,7 @@ import (
 	"github.com/Teamthy/i-confess/internal/oauth"
 	"github.com/Teamthy/i-confess/internal/ratelimit"
 	"github.com/Teamthy/i-confess/internal/scheduler"
+	"github.com/Teamthy/i-confess/internal/sessions"
 	"github.com/Teamthy/i-confess/internal/storage"
 	"github.com/Teamthy/i-confess/internal/store"
 	"github.com/Teamthy/i-confess/internal/voice"
@@ -982,6 +983,17 @@ func (h *Handler) getSession(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, sess)
 }
 
+// updateSessionStatus moves a session along its lifecycle.
+//
+// The transition is validated against the state machine in the sessions
+// package, not against a list of allowed values. That distinction is the whole
+// point: completion is a product metric the business reports on, and without a
+// transition check a client could PATCH a never-played session straight to
+// COMPLETED. The state machine makes that unreachable rather than merely
+// discouraged — see sessions.TestCompletionRequiresPlaybackOnEveryPath.
+//
+// An illegal move returns 409 with a reason the client can show the user; an
+// unrecognised status string returns 400.
 func (h *Handler) updateSessionStatus(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	sess, err := h.sess.ByID(r.Context(), id)
@@ -996,15 +1008,35 @@ func (h *Handler) updateSessionStatus(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Status string `json:"status"`
 	}
-	if err := httpx.DecodeJSON(r, &req); err != nil || !validSessionStatus(req.Status) {
-		httpx.WriteError(w, http.StatusBadRequest, "invalid status")
+	if err := httpx.DecodeJSON(r, &req); err != nil {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	if err := h.sess.UpdateStatus(r.Context(), id, req.Status); err != nil {
+	if !validSessionStatus(req.Status) {
+		httpx.WriteError(w, http.StatusBadRequest, "unknown session status")
+		return
+	}
+	to, _ := sessions.Parse(req.Status)
+
+	// Rows written before the canonical vocabulary was introduced still hold
+	// the legacy spellings; Normalize folds them onto the same states.
+	from, ok := sessions.Parse(sess.Status)
+	if !ok {
+		// A persisted status we do not recognise means the row is corrupt
+		// or from a schema we no longer understand. Refuse to guess.
+		httpx.WriteError(w, http.StatusConflict, "session is in an unrecognised state")
+		return
+	}
+	if !sessions.CanTransition(from, to) {
+		httpx.WriteError(w, http.StatusConflict, sessions.Reason(from, to))
+		return
+	}
+	if err := h.sess.UpdateStatus(r.Context(), id, string(to)); err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to update session")
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, map[string]string{"status": req.Status})
+	// Return the canonical state so clients converge on one vocabulary.
+	httpx.WriteJSON(w, http.StatusOK, map[string]string{"status": string(to)})
 }
 
 func (h *Handler) listMySessions(w http.ResponseWriter, r *http.Request) {
@@ -1016,12 +1048,11 @@ func (h *Handler) listMySessions(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, sess)
 }
 
+// validSessionStatus reports whether s names a session state the API accepts,
+// including the legacy spellings still sent by older clients.
 func validSessionStatus(s string) bool {
-	switch s {
-	case "created", "playing", "completed", "abandoned":
-		return true
-	}
-	return false
+	_, ok := sessions.Parse(s)
+	return ok
 }
 
 // ---------- Schedules ----------
@@ -1301,15 +1332,15 @@ func (h *Handler) listAuthSessions(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusUnauthorized, "authentication required")
 		return
 	}
-	sessions, err := h.users.ListAuthSessions(r.Context(), claims.Sub)
+	authSessions, err := h.users.ListAuthSessions(r.Context(), claims.Sub)
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to load sessions")
 		return
 	}
-	for i := range sessions {
-		sessions[i].Current = sessions[i].ID == claims.SessionID
+	for i := range authSessions {
+		authSessions[i].Current = authSessions[i].ID == claims.SessionID
 	}
-	httpx.WriteJSON(w, http.StatusOK, sessions)
+	httpx.WriteJSON(w, http.StatusOK, authSessions)
 }
 
 // revokeAuthSession signs out one device.
