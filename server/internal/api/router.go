@@ -149,6 +149,8 @@ func (h *Handler) Routes() http.Handler {
 	h.route(mux, "POST /sessions", "user", "sessions", "Compose a session; audio URLs are signed", authed, h.createSession)
 	h.route(mux, "GET /sessions/{id}", "user", "sessions", "Read a session with freshly signed audio", authed, h.getSession)
 	h.route(mux, "PATCH /sessions/{id}", "user", "sessions", "Update session status", authed, h.updateSessionStatus)
+	idempotent := h.idempotencyMiddleware
+
 	h.route(mux, "GET /sessions", "user", "sessions", "List sessions", authed, h.listMySessions)
 
 	h.route(mux, "GET /schedules", "user", "schedules", "List schedules", authed, h.listSchedules)
@@ -231,7 +233,6 @@ func (h *Handler) Routes() http.Handler {
 	// Every API route is also served under /v1/* for versioned clients.
 	// Legacy without prefix is kept for backward compat until minVersion forces upgrade.
 	// Idempotency (§47) is enforced on mutating session/progress/subscription/download endpoints.
-	idempotent := h.idempotencyMiddleware
 	// Public auth (v1)
 	h.route(mux, "POST /v1/auth/register", "public", "auth", "Create an account and send a verification email", registerLimit, h.register)
 	h.route(mux, "POST /v1/auth/login", "public", "auth", "Sign in; returns mfa_required when a second factor is enrolled", loginLimit, h.login)
@@ -278,7 +279,7 @@ func (h *Handler) Routes() http.Handler {
 	h.route(mux, "POST /v1/me/deletion", "user", "account", "Schedule account deletion", func(n http.Handler) http.Handler { return registerLimit(authed(n)) }, h.requestDeletion)
 	h.route(mux, "DELETE /v1/me/deletion", "user", "account", "Cancel a scheduled deletion", authed, h.cancelDeletion)
 	h.route(mux, "GET /v1/me/downloads", "user", "downloads", "List offline licences", authed, h.listDownloads)
-	h.route(mux, "POST /v1/me/downloads", "user", "downloads", "Take a confession offline (premium)", authed, func(n http.Handler) http.Handler { return authed(idempotent(n)) }, h.createDownload)
+	h.route(mux, "POST /v1/me/downloads", "user", "downloads", "Take a confession offline (premium)", func(n http.Handler) http.Handler { return authed(idempotent(n)) }, h.createDownload)
 	h.route(mux, "POST /v1/me/downloads/{id}/refresh", "user", "downloads", "Renew an offline licence", authed, h.refreshDownload)
 	h.route(mux, "DELETE /v1/me/downloads/{id}", "user", "downloads", "Release an offline licence", authed, h.deleteDownload)
 	h.route(mux, "GET /v1/me/export", "user", "account", "Download all personal data", authed, h.exportData)
@@ -360,7 +361,7 @@ func (h *Handler) Routes() http.Handler {
 	h.route(mux, "POST /v1/community/posts/{id}/react", "user", "community", "React amen/heart/pray", nil, h.reactCommunity)
 	h.route(mux, "POST /v1/ai/parse", "user", "ai", "AI NLU → categories/duration (never invents theology)", nil, h.aiParse)
 	h.route(mux, "POST /v1/analytics/batch", "user", "analytics", "Batch analytics events (no PII)", nil, h.analyticsBatch)
-	h.route(mux, "GET /v1/search", "public", "content", "Search confessions, categories, voices, Scripture", nil, h.search)
+	h.route(mux, "GET /v1/search", "public", "content", "Search confessions, categories, voices, Scripture", nil, h.searchAll)
 	// Admin (v1)
 	h.route(mux, "GET /v1/admin/stats", "admin", "admin-ops", "Platform totals", admin, h.adminStats)
 	h.route(mux, "POST /v1/admin/categories", "admin", "admin-content", "Create a category", admin, h.adminCreateCategory)

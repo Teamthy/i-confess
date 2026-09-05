@@ -630,6 +630,21 @@ CREATE TABLE IF NOT EXISTS sessions (
     completed_at     TEXT
 );
 
+-- Where a listener got to in a session, so an interrupted session can resume
+-- (§36). One row per session: the latest position wins, and the timestamp is
+-- what makes multi-device conflict resolution deterministic rather than
+-- whichever request happened to arrive last.
+CREATE TABLE IF NOT EXISTS session_progress (
+    session_id      TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+    user_id         TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    queue_item_id   TEXT REFERENCES session_items(id) ON DELETE SET NULL,
+    position_ms     INTEGER NOT NULL DEFAULT 0,
+    completed_items INTEGER NOT NULL DEFAULT 0,
+    device_id       TEXT,
+    last_updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_session_progress_user ON session_progress(user_id);
+
 CREATE TABLE IF NOT EXISTS session_items (
     id               TEXT PRIMARY KEY,
     session_id       TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,

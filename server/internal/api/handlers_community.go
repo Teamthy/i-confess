@@ -9,7 +9,8 @@ import (
 
 func (h *Handler) createCommunityPost(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Body, Visibility string `json:"body"`
+		Body       string `json:"body"`
+		Visibility string `json:"visibility"`
 	}
 	// support both keys
 	var raw map[string]any

@@ -177,6 +177,20 @@ type Session struct {
 	Items                []SessionItem `json:"items,omitempty"`
 }
 
+// SessionProgress is where a listener stopped, used to resume an interrupted
+// session (§36). PositionMS is milliseconds because clients track audio
+// position at that resolution and rounding to seconds makes the resume point
+// audibly wrong.
+type SessionProgress struct {
+	SessionID      string `json:"session_id"`
+	UserID         string `json:"user_id,omitempty"`
+	QueueItemID    string `json:"queue_item_id,omitempty"`
+	PositionMS     int64  `json:"position_ms"`
+	CompletedItems int    `json:"completed_items"`
+	DeviceID       string `json:"device_id,omitempty"`
+	LastUpdatedAt  string `json:"last_updated_at"`
+}
+
 type SessionItem struct {
 	ID              string `json:"id"`
 	SessionID       string `json:"session_id"`

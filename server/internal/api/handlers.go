@@ -72,6 +72,9 @@ type Handler struct {
 	dispatcher *scheduler.Dispatcher
 	// downloads manages offline licences (S28).
 	downloads *store.DownloadStore
+	// idem replays recorded responses so a retried mutation cannot execute
+	// twice (S47).
+	idem *store.IdempotencyStore
 	// metrics counts security-relevant events for alerting (S83, S84).
 	metrics *AuthMetrics
 	// cacheStats reports cache hit-rate for /metrics (§7.1)
@@ -124,6 +127,7 @@ func NewHandler(cfg Config, db *sql.DB) *Handler {
 		library:    store.NewLibraryStore(db),
 		deletion:   deletion.NewService(db),
 		downloads:  store.NewDownloadStore(db),
+		idem:       store.NewIdempotencyStore(db),
 		metrics:    NewAuthMetrics(),
 		cacheStats: cacheStatsSnapshot,
 		routes:     &routeRecorder{},

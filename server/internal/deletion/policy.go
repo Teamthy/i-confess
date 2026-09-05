@@ -107,6 +107,7 @@ var Policies = []TablePolicy{
 	{Table: "audio_downloads", Action: Erase},
 
 	// ---- Idempotency and templates. The listener's own working data.
+	{Table: "session_progress", Action: Erase},
 	{Table: "idempotency_keys", Action: Erase},
 	{Table: "user_templates", Action: Erase},
 

@@ -183,3 +183,127 @@ func (s *SessionStore) ListByUser(ctx context.Context, userID string, limit int)
 	}
 	return out, rows.Err()
 }
+
+// UpdateItemStatus sets one queue item's status.
+//
+// The status must already be canonical; the sessions package owns that
+// vocabulary and the API layer normalises before reaching here.
+func (s *SessionStore) UpdateItemStatus(ctx context.Context, itemID string, status string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE session_items SET status=? WHERE id=?`, status, itemID)
+	return err
+}
+
+// SetPlayingItem marks one item as playing and demotes any other item in the
+// session that still claimed to be. Without the demotion, an interrupted
+// playback leaves two items marked PLAYING and the queue view lies about what
+// is on screen.
+func (s *SessionStore) SetPlayingItem(ctx context.Context, sessionID, itemID string, playing string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE session_items SET status=? WHERE session_id=? AND status=?`,
+		string(sessions.ItemQueued), sessionID, playing); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE session_items SET status=? WHERE id=? AND session_id=?`,
+		playing, itemID, sessionID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// CountItems returns how many items are in each canonical status. Used to
+// compute completion percentage and to decide when a session has run to its
+// end.
+func (s *SessionStore) CountItems(ctx context.Context, sessionID string) (map[string]int, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT status, COUNT(*) FROM session_items WHERE session_id=? GROUP BY status`, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := map[string]int{}
+	for rows.Next() {
+		var status string
+		var n int
+		if err := rows.Scan(&status, &n); err != nil {
+			return nil, err
+		}
+		// Fold legacy spellings so counts are correct for sessions created
+		// before the canonical vocabulary existed.
+		if c := sessions.NormalizeItemStatus(status); c != "" {
+			status = c
+		}
+		out[status] += n
+	}
+	return out, rows.Err()
+}
+
+// SaveProgress records where the listener stopped, resolving multi-device
+// conflicts by timestamp (§36).
+//
+// The client's own last_updated_at is stored verbatim and compared verbatim, so
+// there is exactly one clock in play per device and the outcome does not depend
+// on arrival order: the later timestamp wins. If the incoming update is older
+// than what is stored it is discarded and the stored row is returned with
+// applied=false, which lets the caller tell the client "your other device is
+// further along" instead of silently rewinding it.
+func (s *SessionStore) SaveProgress(ctx context.Context, p *models.SessionProgress) (stored models.SessionProgress, applied bool, err error) {
+	existing, err := s.Progress(ctx, p.SessionID)
+	if err != nil && !errors.Is(err, ErrNotFound) {
+		return models.SessionProgress{}, false, err
+	}
+	if err == nil {
+		if p.LastUpdatedAt != "" && existing.LastUpdatedAt != "" && p.LastUpdatedAt < existing.LastUpdatedAt {
+			return *existing, false, nil
+		}
+	}
+
+	if p.LastUpdatedAt == "" {
+		p.LastUpdatedAt = now()
+	}
+	if _, err := s.db.ExecContext(ctx,
+		`INSERT INTO session_progress (session_id,user_id,queue_item_id,position_ms,completed_items,device_id,last_updated_at)
+		 VALUES (?,?,?,?,?,?,?)
+		 ON CONFLICT(session_id) DO UPDATE SET
+		   queue_item_id=excluded.queue_item_id,
+		   position_ms=excluded.position_ms,
+		   completed_items=excluded.completed_items,
+		   device_id=excluded.device_id,
+		   last_updated_at=excluded.last_updated_at`,
+		p.SessionID, p.UserID, nullIfEmpty(p.QueueItemID), p.PositionMS,
+		p.CompletedItems, nullIfEmpty(p.DeviceID), p.LastUpdatedAt); err != nil {
+		return models.SessionProgress{}, false, err
+	}
+	return *p, true, nil
+}
+
+// Progress reads the stored resume point, or ErrNotFound if the session has
+// never reported one.
+func (s *SessionStore) Progress(ctx context.Context, sessionID string) (*models.SessionProgress, error) {
+	var p models.SessionProgress
+	var itemID, deviceID sql.NullString
+	err := s.db.QueryRowContext(ctx,
+		`SELECT session_id,user_id,queue_item_id,position_ms,completed_items,device_id,last_updated_at
+		 FROM session_progress WHERE session_id=?`, sessionID).
+		Scan(&p.SessionID, &p.UserID, &itemID, &p.PositionMS, &p.CompletedItems, &deviceID, &p.LastUpdatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	if itemID.Valid {
+		p.QueueItemID = itemID.String
+	}
+	if deviceID.Valid {
+		p.DeviceID = deviceID.String
+	}
+	return &p, nil
+}
