@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Teamthy/i-confess/internal/auth"
+	"github.com/Teamthy/i-confess/internal/cache"
 	"github.com/Teamthy/i-confess/internal/deletion"
 	"github.com/Teamthy/i-confess/internal/email"
 	"github.com/Teamthy/i-confess/internal/engine"
@@ -75,6 +76,12 @@ type Handler struct {
 	// idem replays recorded responses so a retried mutation cannot execute
 	// twice (S47).
 	idem *store.IdempotencyStore
+	// Content caches, scoped to this Handler so it only ever serves content
+	// from the database it is connected to (S7.1).
+	catCache     *cache.Cache[[]models.Category]
+	catConfCache *cache.Cache[[]models.Confession]
+	voicesCache  *cache.Cache[[]models.Voice]
+	cacheMeter   *cache.Meter
 	// metrics counts security-relevant events for alerting (S83, S84).
 	metrics *AuthMetrics
 	// cacheStats reports cache hit-rate for /metrics (§7.1)
@@ -108,29 +115,32 @@ type Config struct {
 
 func NewHandler(cfg Config, db *sql.DB) *Handler {
 	return &Handler{
-		cfg:        cfg,
-		users:      store.NewUserStore(db),
-		cont:       store.NewContentStore(db),
-		audio:      store.NewAudioStore(db),
-		sess:       store.NewSessionStore(db),
-		sched:      store.NewScheduleStore(db),
-		eng:        store.NewEngagementStore(db),
-		search:     search.NewSearchStore(db),
-		templates:  store.NewTemplateStore(db),
-		plans:      store.NewPlanStore(db),
-		queue:      jobs.NewMemoryQueue(),
-		vrights:    store.NewVoiceRightsStore(db),
-		db:         db,
-		limiter:    ratelimit.New(),
-		profiles:   store.NewProfileStore(db),
-		verifiers:  map[string]oauth.Verifier{},
-		library:    store.NewLibraryStore(db),
-		deletion:   deletion.NewService(db),
-		downloads:  store.NewDownloadStore(db),
-		idem:       store.NewIdempotencyStore(db),
-		metrics:    NewAuthMetrics(),
-		cacheStats: cacheStatsSnapshot,
-		routes:     &routeRecorder{},
+		cfg:          cfg,
+		users:        store.NewUserStore(db),
+		cont:         store.NewContentStore(db),
+		audio:        store.NewAudioStore(db),
+		sess:         store.NewSessionStore(db),
+		sched:        store.NewScheduleStore(db),
+		eng:          store.NewEngagementStore(db),
+		search:       search.NewSearchStore(db),
+		templates:    store.NewTemplateStore(db),
+		plans:        store.NewPlanStore(db),
+		queue:        jobs.NewMemoryQueue(),
+		vrights:      store.NewVoiceRightsStore(db),
+		db:           db,
+		limiter:      ratelimit.New(),
+		profiles:     store.NewProfileStore(db),
+		verifiers:    map[string]oauth.Verifier{},
+		library:      store.NewLibraryStore(db),
+		deletion:     deletion.NewService(db),
+		downloads:    store.NewDownloadStore(db),
+		idem:         store.NewIdempotencyStore(db),
+		catCache:     cache.New[[]models.Category](5*time.Minute, 10*time.Minute),
+		catConfCache: cache.New[[]models.Confession](2*time.Minute, 5*time.Minute),
+		voicesCache:  cache.New[[]models.Voice](5*time.Minute, 10*time.Minute),
+		cacheMeter:   &cache.Meter{},
+		metrics:      NewAuthMetrics(),
+		routes:       &routeRecorder{},
 	}
 }
 
@@ -157,6 +167,7 @@ func (h *Handler) usersDB() *sql.DB { return h.db }
 
 // BuildEngine wires the session engine after handler construction.
 func (h *Handler) BuildEngine() {
+	h.cacheStats = h.cacheStatsSnapshot
 	h.engn = engine.New(h.cont, h.audio, h.users)
 }
 
