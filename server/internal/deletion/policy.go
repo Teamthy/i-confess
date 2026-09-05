@@ -106,6 +106,26 @@ var Policies = []TablePolicy{
 	{Table: "audio_playback_sessions", Action: Erase},
 	{Table: "audio_downloads", Action: Erase},
 
+	// ---- Idempotency and templates. The listener's own working data.
+	{Table: "session_progress", Action: Erase},
+	{Table: "idempotency_keys", Action: Erase},
+	{Table: "user_templates", Action: Erase},
+
+	// ---- Moderation. The *records* outlive the account because safety and
+	// accountability reviews depend on them, but the identity of the person
+	// who filed a report or took a moderation action is personal data and is
+	// severed. Both columns are already nullable and declared
+	// ON DELETE SET NULL, so this states in policy what the schema enforces.
+	{Table: "reports", Action: Anonymise, Column: "reporter_id",
+		Reason: "the report itself is a safety record about third-party content and " +
+			"must survive; the reporter's identity is not required to act on it"},
+	{Table: "moderation_cases", Action: Anonymise, Column: "actor",
+		Reason: "moderation decisions must remain reviewable for accountability; " +
+			"the individual moderator's identity is not part of that record"},
+	{Table: "content_moderation_history", Action: Anonymise, Column: "actor",
+		Reason: "audit trail of content status changes, retained for editorial " +
+			"accountability with the acting individual detached"},
+
 	// ---- Telemetry. Detached rather than deleted: the rows are needed for
 	// aggregate service-quality reporting and carry no identity once the user
 	// reference is cleared.

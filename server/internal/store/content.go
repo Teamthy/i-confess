@@ -199,7 +199,10 @@ func (s *ContentStore) ConfessionsByCategory(ctx context.Context, categoryID str
 	if publishedOnly {
 		q += ` AND status = 'published'`
 	}
-	q += ` ORDER BY created_at`
+	// Tie-break on id: created_at can collide when several confessions are
+	// written in the same instant, and an unordered tie would make session
+	// generation non-reproducible.
+	q += ` ORDER BY created_at, id`
 	rows, err := s.db.QueryContext(ctx, q, categoryID)
 	if err != nil {
 		return nil, err

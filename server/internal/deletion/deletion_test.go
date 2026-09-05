@@ -110,7 +110,12 @@ func TestEveryUserTableHasAPolicy(t *testing.T) {
 	}
 
 	// Parse the schema for tables referencing users(id).
-	tableRe := regexp.MustCompile(`CREATE TABLE IF NOT EXISTS ([a-z_]+)`)
+	// Both CREATE TABLE and ALTER TABLE introduce a table context. Tracking
+	// only CREATE TABLE misattributes a REFERENCES users(id) inside an ALTER
+	// to the previous CREATE, which once flagged feature_flags — a table with
+	// no user column at all. A policy for it would have made erasure run
+	// `DELETE FROM feature_flags WHERE user_id = ?` and broken deletion.
+	tableRe := regexp.MustCompile(`(?:CREATE TABLE IF NOT EXISTS|ALTER TABLE)\s+([a-z_]+)`)
 	var current string
 	var missing []string
 	for _, line := range strings.Split(db.SchemaSQL, "\n") {

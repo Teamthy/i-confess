@@ -619,11 +619,31 @@ CREATE TABLE IF NOT EXISTS sessions (
     type             TEXT NOT NULL DEFAULT 'standard',   -- quick | standard | deep | custom | personal
     duration_seconds INTEGER NOT NULL,
     voice_id         TEXT,
-    status           TEXT NOT NULL DEFAULT 'created',    -- created | playing | completed | abandoned
+    status           TEXT NOT NULL DEFAULT 'READY'
+        -- Canonical session lifecycle; owned by internal/sessions. Legacy rows
+        -- may still hold created|playing|completed|abandoned and are folded
+        -- onto these states on read, but nothing new writes them.
+        CHECK (status IN ('DRAFT','READY','SCHEDULED','STARTING','ACTIVE','PAUSED',
+                          'INTERRUPTED','COMPLETED','CANCELLED','EXPIRED','FAILED')),
     created_at       TEXT NOT NULL,
     started_at       TEXT,
     completed_at     TEXT
 );
+
+-- Where a listener got to in a session, so an interrupted session can resume
+-- (§36). One row per session: the latest position wins, and the timestamp is
+-- what makes multi-device conflict resolution deterministic rather than
+-- whichever request happened to arrive last.
+CREATE TABLE IF NOT EXISTS session_progress (
+    session_id      TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+    user_id         TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    queue_item_id   TEXT REFERENCES session_items(id) ON DELETE SET NULL,
+    position_ms     INTEGER NOT NULL DEFAULT 0,
+    completed_items INTEGER NOT NULL DEFAULT 0,
+    device_id       TEXT,
+    last_updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_session_progress_user ON session_progress(user_id);
 
 CREATE TABLE IF NOT EXISTS session_items (
     id               TEXT PRIMARY KEY,
@@ -909,3 +929,212 @@ ALTER TABLE audit_logs ADD COLUMN detail TEXT;
 ALTER TABLE audit_logs ADD COLUMN result TEXT;
 CREATE INDEX IF NOT EXISTS idx_audit_entity ON audit_logs(entity, entity_id);
 CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs(created_at);
+
+-- ==================== PHASE-1 FOUNDATION HARDENING (2026-09-05) ====================
+-- Categories enrichment (§7) — cover image, color/theme, metadata, active/order
+ALTER TABLE categories ADD COLUMN cover_image TEXT;
+ALTER TABLE categories ADD COLUMN color TEXT;
+ALTER TABLE categories ADD COLUMN theme TEXT; -- JSON stored as TEXT in SQLite
+ALTER TABLE categories ADD COLUMN metadata TEXT; -- JSON
+ALTER TABLE categories ADD COLUMN active INTEGER NOT NULL DEFAULT 1;
+-- active mirrors status='published' but allows soft hide without archive; backfill
+UPDATE categories SET active = CASE WHEN status='published' THEN 1 ELSE 1 END WHERE active IS NULL;
+CREATE INDEX IF NOT EXISTS idx_categories_order ON categories(sort_order, name) WHERE active=1;
+CREATE INDEX IF NOT EXISTS idx_categories_active ON categories(active) WHERE active=1;
+
+-- Confessions spec §8 — slug, body, thematic fields, visibility, author, premium/featured
+ALTER TABLE confessions ADD COLUMN slug TEXT;
+ALTER TABLE confessions ADD COLUMN body TEXT;
+ALTER TABLE confessions ADD COLUMN short_description TEXT;
+ALTER TABLE confessions ADD COLUMN theme TEXT;
+ALTER TABLE confessions ADD COLUMN difficulty INTEGER DEFAULT 1;
+ALTER TABLE confessions ADD COLUMN duration INTEGER;
+ALTER TABLE confessions ADD COLUMN visibility TEXT NOT NULL DEFAULT 'private';
+ALTER TABLE confessions ADD COLUMN author_type TEXT;
+ALTER TABLE confessions ADD COLUMN author_id TEXT;
+ALTER TABLE confessions ADD COLUMN review_status TEXT NOT NULL DEFAULT 'draft';
+ALTER TABLE confessions ADD COLUMN premium INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE confessions ADD COLUMN featured INTEGER NOT NULL DEFAULT 0;
+-- backfill slug for existing rows (temporary)
+UPDATE confessions SET slug = 'c-' || substr(id, 1, 8) WHERE slug IS NULL;
+CREATE INDEX IF NOT EXISTS idx_confessions_slug ON confessions(slug) WHERE slug IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_confessions_review ON confessions(review_status);
+CREATE INDEX IF NOT EXISTS idx_confessions_featured ON confessions(featured) WHERE featured=1;
+CREATE INDEX IF NOT EXISTS idx_confessions_visibility ON confessions(visibility);
+
+-- M2M for multi-category + voice assignment (spec §8)
+CREATE TABLE IF NOT EXISTS confession_categories (
+    confession_id TEXT NOT NULL REFERENCES confessions(id) ON DELETE CASCADE,
+    category_id   TEXT NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+    weight        INTEGER NOT NULL DEFAULT 100,
+    sort_order    INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (confession_id, category_id)
+);
+CREATE INDEX IF NOT EXISTS idx_confession_categories_cat ON confession_categories(category_id);
+CREATE TABLE IF NOT EXISTS confession_voices (
+    confession_id TEXT NOT NULL REFERENCES confessions(id) ON DELETE CASCADE,
+    voice_id      TEXT NOT NULL REFERENCES voices(id) ON DELETE RESTRICT,
+    is_default    INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (confession_id, voice_id)
+);
+-- backfill M2M from legacy single category_id
+INSERT OR IGNORE INTO confession_categories (confession_id, category_id)
+SELECT id, category_id FROM confessions WHERE category_id IS NOT NULL;
+
+-- Voices display fields (§12)
+ALTER TABLE voices ADD COLUMN display_name TEXT;
+ALTER TABLE voices ADD COLUMN avatar TEXT;
+ALTER TABLE voices ADD COLUMN voice_reference TEXT;
+UPDATE voices SET display_name = COALESCE(display_name, name) WHERE display_name IS NULL;
+
+-- Sessions 11-state + snapshot fields (§13-§15)
+-- Duration strategy that produced the queue (see internal/engine). Persisted
+-- so a created session stays reproducible.
+ALTER TABLE sessions ADD COLUMN strategy TEXT NOT NULL DEFAULT 'BALANCED';
+ALTER TABLE sessions ADD COLUMN title TEXT;
+ALTER TABLE sessions ADD COLUMN description TEXT;
+ALTER TABLE sessions ADD COLUMN target_duration INTEGER;
+ALTER TABLE sessions ADD COLUMN actual_duration INTEGER;
+ALTER TABLE sessions ADD COLUMN queue_id TEXT;
+ALTER TABLE sessions ADD COLUMN current_item_id TEXT REFERENCES session_items(id) ON DELETE SET NULL;
+ALTER TABLE sessions ADD COLUMN current_item_index INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE sessions ADD COLUMN paused_at TEXT;
+ALTER TABLE sessions ADD COLUMN version INTEGER NOT NULL DEFAULT 1;
+UPDATE sessions SET target_duration = COALESCE(target_duration, duration_seconds) WHERE target_duration IS NULL;
+-- normalize legacy status values to spec upper-case
+UPDATE sessions SET status = CASE status WHEN 'created' THEN 'READY' WHEN 'playing' THEN 'ACTIVE' WHEN 'completed' THEN 'COMPLETED' WHEN 'abandoned' THEN 'CANCELLED' ELSE UPPER(status) END WHERE status IN ('created','playing','completed','abandoned','queued');
+CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions(status);
+CREATE INDEX IF NOT EXISTS idx_sessions_target ON sessions(target_duration);
+
+-- Session items enrichment (§19)
+ALTER TABLE session_items ADD COLUMN category_id TEXT REFERENCES categories(id) ON DELETE SET NULL;
+ALTER TABLE session_items ADD COLUMN planned_duration INTEGER;
+UPDATE session_items SET planned_duration = COALESCE(planned_duration, duration_seconds) WHERE planned_duration IS NULL;
+
+-- Idempotency + outbox + feature flags (§47-§48, §111)
+CREATE TABLE IF NOT EXISTS idempotency_keys (
+    key TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    method TEXT NOT NULL,
+    path TEXT NOT NULL,
+    response_status INTEGER,
+    response_body TEXT,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_idempotency_user ON idempotency_keys(user_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_idempotency_expires ON idempotency_keys(expires_at);
+
+CREATE TABLE IF NOT EXISTS outbox_events (
+    id TEXT PRIMARY KEY,
+    aggregate_type TEXT NOT NULL,
+    aggregate_id TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    published_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_outbox_unpublished ON outbox_events(published_at) WHERE published_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_outbox_aggregate ON outbox_events(aggregate_type, aggregate_id);
+
+CREATE TABLE IF NOT EXISTS feature_flags (
+    key TEXT PRIMARY KEY,
+    enabled INTEGER NOT NULL DEFAULT 0,
+    rollout_percent INTEGER NOT NULL DEFAULT 0,
+    platforms TEXT NOT NULL DEFAULT '',
+    min_version TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+INSERT OR IGNORE INTO feature_flags (key, enabled, rollout_percent, platforms, created_at, updated_at) VALUES
+ ('new_player', 0, 0, '', datetime('now'), datetime('now')),
+ ('ai_session_builder', 0, 0, '', datetime('now'), datetime('now')),
+ ('community', 0, 0, '', datetime('now'), datetime('now')),
+ ('offline_downloads', 1, 100, '', datetime('now'), datetime('now')),
+ ('new_home', 0, 0, '', datetime('now'), datetime('now')),
+ ('premium_voices', 1, 100, '', datetime('now'), datetime('now'));
+
+-- ==================== PHASE-2 CONTENT & AUDIO GOVERNANCE (2026-09-05) ====================
+-- §7–§12, §74–§75, §96–§97 — moderation queue, QA gate, version polish
+
+-- user_confessions lifecycle expansion (§10)
+ALTER TABLE user_confessions ADD COLUMN visibility TEXT NOT NULL DEFAULT 'private';
+ALTER TABLE user_confessions ADD COLUMN status TEXT NOT NULL DEFAULT 'draft';
+ALTER TABLE user_confessions ADD COLUMN review_notes TEXT;
+ALTER TABLE user_confessions ADD COLUMN reviewed_by TEXT REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE user_confessions ADD COLUMN reviewed_at TEXT;
+ALTER TABLE user_confessions ADD COLUMN rejection_reason TEXT;
+ALTER TABLE user_confessions ADD COLUMN slug TEXT;
+ALTER TABLE user_confessions ADD COLUMN version INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE user_confessions ADD COLUMN published_at TEXT;
+CREATE INDEX IF NOT EXISTS idx_user_conf_status ON user_confessions(status);
+CREATE INDEX IF NOT EXISTS idx_user_conf_visibility ON user_confessions(visibility);
+
+-- moderation_cases + reports (§10)
+CREATE TABLE IF NOT EXISTS moderation_cases (
+    id TEXT PRIMARY KEY,
+    entity_type TEXT NOT NULL,
+    entity_id TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'open',
+    reason TEXT,
+    actor TEXT REFERENCES users(id) ON DELETE SET NULL,
+    before TEXT,
+    after TEXT,
+    detail TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_mod_entity ON moderation_cases(entity_type, entity_id);
+CREATE TABLE IF NOT EXISTS reports (
+    id TEXT PRIMARY KEY,
+    reporter_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    entity_type TEXT NOT NULL,
+    entity_id TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    detail TEXT,
+    status TEXT NOT NULL DEFAULT 'open',
+    created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS content_moderation_history (
+    id TEXT PRIMARY KEY,
+    confession_id TEXT NOT NULL REFERENCES confessions(id) ON DELETE CASCADE,
+    from_status TEXT NOT NULL,
+    to_status TEXT NOT NULL,
+    actor TEXT REFERENCES users(id) ON DELETE SET NULL,
+    reason TEXT,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_cmh_conf ON content_moderation_history(confession_id, created_at);
+
+-- Confessions QA support (§75)
+ALTER TABLE confessions ADD COLUMN qa_passed_at TEXT;
+ALTER TABLE confessions ADD COLUMN qa_report TEXT;
+CREATE INDEX IF NOT EXISTS idx_cmh_report ON confessions(qa_passed_at) WHERE qa_passed_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_mod_status ON moderation_cases(status);
+CREATE INDEX IF NOT EXISTS idx_reports_entity ON reports(entity_type, entity_id);
+
+-- voice_rights expiry sweep support
+CREATE INDEX IF NOT EXISTS idx_vr_status_expiry ON voice_rights(status, expiry_date) WHERE status IN ('pending','active');
+
+
+-- ==================== PHASE-5 TEMPLATES (custom sessions) ====================
+CREATE TABLE IF NOT EXISTS user_templates (
+    id            TEXT PRIMARY KEY,
+    user_id       TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name          TEXT NOT NULL,
+    description   TEXT,
+    category_ids  TEXT NOT NULL,
+    weights       TEXT,
+    voice_id      TEXT,
+    voice_rules   TEXT,
+    ordering      TEXT,
+    is_public     INTEGER NOT NULL DEFAULT 0,
+    share_token   TEXT UNIQUE,
+    created_at    TEXT NOT NULL,
+    updated_at    TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_templates_user ON user_templates(user_id);
+CREATE INDEX IF NOT EXISTS idx_templates_share ON user_templates(share_token) WHERE share_token IS NOT NULL;
+
+-- 39 categories are backend-controlled; see scripts/seed.sh and migrations 0002-0006.
+-- No hard-coded taxonomy in mobile.

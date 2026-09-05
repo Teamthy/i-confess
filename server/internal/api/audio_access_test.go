@@ -154,6 +154,12 @@ func (f *audioFixture) registerWithID(t *testing.T, email string) (string, strin
 
 type sessionResp struct {
 	ID                   string `json:"id"`
+	Status               string `json:"status"`
+	Strategy             string `json:"strategy"`
+	TargetDuration       int    `json:"target_duration"`
+	ActualDuration       int    `json:"actual_duration"`
+	StartedAt            string `json:"started_at"`
+	CompletedAt          string `json:"completed_at"`
 	VoiceID              string `json:"voice_id"`
 	VoiceDowngraded      bool   `json:"voice_downgraded"`
 	VoiceDowngradeReason string `json:"voice_downgrade_reason"`

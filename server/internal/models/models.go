@@ -146,7 +146,25 @@ type Session struct {
 	UserID          string `json:"user_id"`
 	Type            string `json:"type"`
 	DurationSeconds int    `json:"duration_seconds"`
-	VoiceID         string `json:"voice_id,omitempty"`
+	// TargetDuration is the length the listener asked for. ActualDuration is
+	// what the built queue really runs to. They differ whenever complete
+	// confessions could not land exactly on the request, which is the normal
+	// case — audio is never truncated to close the gap. Surfacing both lets
+	// the player say "30 min requested · 29:40 played" instead of letting the
+	// progress bar quietly disagree with the label.
+	TargetDuration int `json:"target_duration"`
+	ActualDuration int `json:"actual_duration"`
+	// Strategy records how the target was reconciled with the available
+	// content. Persisting it is what makes a session reproducible: rebuilding
+	// the same request later must yield the same queue, so the rule that
+	// produced it has to travel with it.
+	Strategy string `json:"strategy,omitempty"`
+	// Title and Description let the listener name a session they built, so a
+	// long-form routine reads as "Morning Healing" in history rather than as
+	// an anonymous 60-minute block.
+	Title       string `json:"title,omitempty"`
+	Description string `json:"description,omitempty"`
+	VoiceID     string `json:"voice_id,omitempty"`
 	// VoiceDowngraded reports that the requested voice was unavailable on the
 	// listener's plan and a permitted voice was substituted. Surfacing this
 	// keeps a gated experience from looking like a broken one.
@@ -157,6 +175,20 @@ type Session struct {
 	StartedAt            string        `json:"started_at,omitempty"`
 	CompletedAt          string        `json:"completed_at,omitempty"`
 	Items                []SessionItem `json:"items,omitempty"`
+}
+
+// SessionProgress is where a listener stopped, used to resume an interrupted
+// session (§36). PositionMS is milliseconds because clients track audio
+// position at that resolution and rounding to seconds makes the resume point
+// audibly wrong.
+type SessionProgress struct {
+	SessionID      string `json:"session_id"`
+	UserID         string `json:"user_id,omitempty"`
+	QueueItemID    string `json:"queue_item_id,omitempty"`
+	PositionMS     int64  `json:"position_ms"`
+	CompletedItems int    `json:"completed_items"`
+	DeviceID       string `json:"device_id,omitempty"`
+	LastUpdatedAt  string `json:"last_updated_at"`
 }
 
 type SessionItem struct {

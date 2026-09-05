@@ -8,6 +8,7 @@ import (
 	"sort"
 
 	"github.com/Teamthy/i-confess/internal/models"
+	"github.com/Teamthy/i-confess/internal/sessions"
 	"github.com/Teamthy/i-confess/internal/store"
 )
 
@@ -33,19 +34,39 @@ type Request struct {
 	CategoryIDs     []string
 	DurationSeconds int
 	VoiceID         string
+	// Strategy controls how the requested duration is reconciled with the
+	// complete confessions available. Empty means DefaultStrategy.
+	Strategy Strategy
+	// CategoryWeights biases how often each category appears in the queue,
+	// keyed by category id. A category omitted from a non-empty map is not
+	// selected; see weightedOrder.
+	CategoryWeights map[string]float64
+	// FavoriteIDs are confessions the listener has favourited. They are
+	// selected ahead of other content in the same category.
+	FavoriteIDs map[string]bool
+	// RecentIDs are confessions the listener has lately played. They are held
+	// back so the same words are not repeated day after day.
+	RecentIDs map[string]bool
 }
 
 // Build assembles an ordered, deterministic session.
 //
-// MVP rules:
+// Rules:
 //  1. Only published confessions with a ready audio asset for the chosen voice are used.
 //  2. Categories are cycled round-robin so each requested category is represented evenly.
-//  3. The shortest variant that still fits the remaining budget is preferred (packing).
+//  3. Within a confession the longest variant that still fits the remaining budget wins.
 //  4. If a premium voice is requested by a free user, it falls back to an available free voice.
+//  5. The duration strategy decides where the queue is cut. Audio is never
+//     truncated to hit a target, so the built length usually differs slightly
+//     from the requested one; both are recorded on the returned session.
+//
+// Build is deterministic: the same request against the same content yields the
+// same queue, so a session stays reproducible after it has been created.
 func (e *Engine) Build(ctx context.Context, req Request) (*models.Session, error) {
 	if req.DurationSeconds <= 0 {
 		req.DurationSeconds = 1800
 	}
+	req.Strategy = NormalizeStrategy(string(req.Strategy))
 
 	voice, downgraded, err := e.resolveVoice(ctx, req)
 	if err != nil {
@@ -79,18 +100,33 @@ func (e *Engine) Build(ctx context.Context, req Request) (*models.Session, error
 	if len(byCat) == 0 {
 		return nil, ErrNoContent
 	}
+	applyPreferences(byCat, req.FavoriteIDs, req.RecentIDs)
 
-	items, total := e.pack(ctx, req, voice.ID, byCat)
+	items, actual, err := e.pack(ctx, req, voice.ID, byCat)
+	if err != nil {
+		// "Nothing fits" and "content too thin to cover the request" both mean
+		// the caller cannot get a session for these inputs. ErrNoExactFit is
+		// left distinct: it says the content exists but cannot land precisely
+		// on the requested length, which the API should report differently
+		// from having nothing to offer.
+		if errors.Is(err, ErrNoFit) || errors.Is(err, ErrUnreachable) {
+			return nil, ErrNoContent
+		}
+		return nil, err
+	}
 	if len(items) == 0 {
 		return nil, ErrNoContent
 	}
 
 	sess := &models.Session{
 		UserID:          req.UserID,
-		Type:            classifyType(total),
-		DurationSeconds: total,
+		Type:            classifyType(actual),
+		DurationSeconds: actual,
+		TargetDuration:  req.DurationSeconds,
+		ActualDuration:  actual,
+		Strategy:        string(req.Strategy),
 		VoiceID:         voice.ID,
-		Status:          "created",
+		Status:          string(sessions.Ready),
 		Items:           items,
 	}
 	if downgraded {
@@ -136,11 +172,25 @@ func (e *Engine) resolveVoice(ctx context.Context, req Request) (v *models.Voice
 	return nil, false, ErrNoVoice
 }
 
-// pack greedily fills the budget by cycling categories round-robin and, within
-// each category, cycling its confessions. Confessions repeat as needed to reach
-// the requested duration (matching PRD Â§19), and the longest variant that still
-// fits the remaining budget is preferred so sessions fill efficiently.
-func (e *Engine) pack(ctx context.Context, req Request, voiceID string, byCat map[string][]*models.Confession) ([]models.SessionItem, int) {
+// pack fills the requested duration from category-balanced content and then
+// lets the duration strategy decide where to cut.
+//
+// It runs in two passes, and the split is deliberate. The first walks the
+// categories round-robin, taking the longest variant that still fits what
+// remains of the budget, and stops when nothing fits — that is the deepest
+// under-fill the content allows. The second generates exactly one further item
+// at its natural length, the only candidate that can overshoot. Plan then
+// chooses a prefix of that sequence according to the strategy.
+//
+// Keeping the walk and the arithmetic apart is what stops the length rule from
+// undoing content selection: Plan only ever decides how many leading items to
+// keep, so round-robin ordering and category diversity survive whatever
+// duration strategy the caller chose.
+//
+// Confessions repeat as needed to reach the requested duration, and audio is
+// never truncated — the built length is allowed to differ slightly from the
+// requested one instead.
+func (e *Engine) pack(ctx context.Context, req Request, voiceID string, byCat map[string][]*models.Confession) ([]models.SessionItem, int, error) {
 	type variantOption struct {
 		variant models.ConfessionVariant
 		asset   models.AudioAsset
@@ -150,9 +200,21 @@ func (e *Engine) pack(ctx context.Context, req Request, voiceID string, byCat ma
 		variants []variantOption // sorted descending by duration
 	}
 
+	// The walk order is the requested category order, expanded by weight.
+	// Never range byCat: Go map iteration is randomised, and that would make
+	// the queue — and therefore the session — differ between two identical
+	// requests. Reproducibility is a hard requirement, since a created
+	// session must stay stable as content changes.
+	order := weightedOrder(req.CategoryIDs, req.CategoryWeights)
+
 	catOptions := map[string][]*confessionOption{}
-	var catOrder []string
-	for catID, confs := range byCat {
+	built := map[string]bool{}
+	for _, catID := range order {
+		confs := byCat[catID]
+		if len(confs) == 0 || built[catID] {
+			continue
+		}
+		built[catID] = true
 		for _, c := range confs {
 			assets, _ := e.audio.AssetsFor(ctx, c.ID, voiceID)
 			if len(assets) == 0 {
@@ -172,66 +234,111 @@ func (e *Engine) pack(ctx context.Context, req Request, voiceID string, byCat ma
 			}
 			catOptions[catID] = append(catOptions[catID], &confessionOption{conf: c, variants: opts})
 		}
+	}
+
+	// Keep the weighted expansion, minus categories that produced no playable
+	// options, so a dominant category still gets its repeated slots.
+	var catOrder []string
+	for _, catID := range order {
 		if len(catOptions[catID]) > 0 {
 			catOrder = append(catOrder, catID)
 		}
 	}
 	if len(catOrder) == 0 {
-		return nil, 0
+		return nil, 0, ErrNoFit
 	}
 
+	// emit produces the next item for a category, advancing its cursor.
+	// A positive budget restricts the choice to variants that fit; a
+	// non-positive budget takes the natural (longest) variant, which is how
+	// the single overshoot candidate is produced.
 	cursors := map[string]int{}
-	remaining := req.DurationSeconds
-	var items []models.SessionItem
-	idx := 0
+	emit := func(catID string, budget int) (models.SessionItem, bool) {
+		opts := catOptions[catID]
+		if len(opts) == 0 {
+			return models.SessionItem{}, false
+		}
+		opt := opts[cursors[catID]%len(opts)]
+		cursors[catID]++
+		chosen := -1
+		for i, vo := range opt.variants {
+			if budget <= 0 || vo.variant.DurationSeconds <= budget {
+				chosen = i
+				break
+			}
+		}
+		if chosen < 0 {
+			return models.SessionItem{}, false
+		}
+		vo := opt.variants[chosen]
+		return models.SessionItem{
+			ConfessionID:    opt.conf.ID,
+			VariantID:       vo.variant.ID,
+			VoiceID:         voiceID,
+			AudioAssetID:    vo.asset.ID,
+			DurationSeconds: vo.variant.DurationSeconds,
+			Status:          "queued",
+			Title:           opt.conf.Title,
+			Category:        catID,
+			AudioURL:        vo.asset.URL,
+			Text:            opt.conf.MediumText,
+		}, true
+	}
 
+	// Pass one: the deepest under-fill.
+	var items []models.SessionItem
+	remaining := req.DurationSeconds
 	for remaining > 0 {
 		progressed := false
 		for _, catID := range catOrder {
-			opts := catOptions[catID]
-			if len(opts) == 0 {
-				continue
+			it, ok := emit(catID, remaining)
+			if !ok {
+				continue // nothing in this confession fits what is left
 			}
-			opt := opts[cursors[catID]%len(opts)]
-			// Longest variant that fits the remaining budget.
-			chosen := -1
-			for i, vo := range opt.variants {
-				if vo.variant.DurationSeconds <= remaining {
-					chosen = i
-					break
-				}
-			}
-			cursors[catID]++
-			if chosen < 0 {
-				continue // nothing in this confession fits the remaining time
-			}
-			vo := opt.variants[chosen]
-			remaining -= vo.variant.DurationSeconds
-			items = append(items, models.SessionItem{
-				ConfessionID:    opt.conf.ID,
-				VariantID:       vo.variant.ID,
-				VoiceID:         voiceID,
-				AudioAssetID:    vo.asset.ID,
-				Position:        idx,
-				DurationSeconds: vo.variant.DurationSeconds,
-				Status:          "queued",
-				Title:           opt.conf.Title,
-				Category:        catID,
-				AudioURL:        vo.asset.URL,
-				Text:            opt.conf.MediumText,
-			})
-			idx++
+			it.Position = len(items)
+			items = append(items, it)
+			remaining -= it.DurationSeconds
 			progressed = true
 			if remaining <= 0 {
 				break
 			}
 		}
 		if !progressed {
-			break // no variant fits the remaining budget
+			break
 		}
 	}
-	total := req.DurationSeconds - remaining
-	return items, total
+
+	// Pass two: one overshoot candidate, so OVER, CLOSEST and BALANCED have
+	// something to weigh against the under-fill.
+	for _, catID := range catOrder {
+		if it, ok := emit(catID, 0); ok {
+			it.Position = len(items)
+			items = append(items, it)
+			break
+		}
+	}
+	if len(items) == 0 {
+		return nil, 0, ErrNoFit
+	}
+
+	candidates := make([]int, len(items))
+	for i := range items {
+		candidates[i] = items[i].DurationSeconds
+	}
+	n, err := Plan(req.DurationSeconds, candidates, req.Strategy)
+	if err != nil {
+		return nil, 0, err
+	}
+	items = items[:n]
+
+	// Positions must stay contiguous after the cut; a gap would leave the
+	// player skipping a slot in the queue.
+	total := 0
+	for i := range items {
+		items[i].Position = i
+		total += items[i].DurationSeconds
+	}
+	return items, total, nil
 }
 
 func matchAsset(assets []models.AudioAsset, variantID string) (models.AudioAsset, bool) {
