@@ -105,7 +105,7 @@ func template(t *testing.T) string {
 			templateErr = err
 			return
 		}
-		if err := db.InitSchema(conn, db.SchemaPostgresSQL); err != nil {
+		if err := db.Migrate(conn); err != nil {
 			templateErr = fmt.Errorf("load schema into template: %w", err)
 			return
 		}

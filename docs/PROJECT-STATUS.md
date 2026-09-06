@@ -1,6 +1,6 @@
 # Project Status
 
-**Last verified:** 2026-09-06, at PHASE 06.
+**Last verified:** 2026-09-06, at PHASE 07.
 
 This file supersedes `MASTER-PROMPT-COMPLETION.md`,
 `CONTENT-DOMAIN-COMPLETION.md`, `AUDIO-PLATFORM-STATUS.md`, `SESSION-NOTES.md`
@@ -38,7 +38,7 @@ it.** Every claim below was produced by running something.
 | **Trial lifecycle** | The six states in §36 do not exist. |
 | **UGC `PUBLIC` visibility** | Not represented; the public moderation pipeline has nothing to publish to. |
 | **6 handlers** | Still return 501: recommendations, subscription, entitlements, confession QA, moderation queue, user confession review. |
-| **Database constraints** | 22 `status` columns, 5 CHECK constraints. |
+| **Soft delete / versioning** | Present on 2 of 64 tables each. Section 25 asks for both generally. |
 | **Cache** | Per-process only; no cross-instance invalidation. |
 | **Design system** | 120 tokens, contrast-verified, but not yet consumed by any real surface. |
 | **Navigation** | 37 screens specified and validated; none are built. Mobile has 2 real screens and 3 placeholders. |
@@ -53,10 +53,14 @@ PHASE 03 Technology Decisions — **PASS**
 PHASE 04 Repository Bootstrap — **PASS**
 PHASE 05 Design System — **PASS**
 PHASE 06 UX / Information Architecture — **PASS**
-PHASE 07 Database Foundation — not started
+PHASE 07 Database Foundation — **PASS**
+PHASE 08 Go Backend — not started
 
 Open gaps carried forward: G-2, G-3, G-4, G-5, G-6, G-7, G-9, G-10, G-12, G-13,
-G-14, G-15, G-16, G-17, G-18, G-19, G-20.
+G-14, G-15, G-16, G-17, G-18, G-19, G-20, G-21, G-22, G-23, G-24.
+
+Closed: **G-1** (queues are snapshots), **G-2** (23/23 status columns constrained),
+**G-8** (route parity), **G-11** (clients/dart is not a Flutter app).
 Each is described in the phase document that raised it.
 
 ## Reproducing any of this
