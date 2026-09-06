@@ -13,8 +13,20 @@ import (
 	_ "github.com/lib/pq"
 )
 
-//go:embed schema.postgres.sql
+// SchemaPostgresSQL is the full schema as one string: every migration,
+// concatenated in order. It exists for the callers that parse the schema rather
+// than query it - coverage tests that extract CREATE TABLE statements, and the
+// deletion test that walks every table. They read the same bytes the database
+// was built from, so they cannot pass against a schema that no longer exists.
 var SchemaPostgresSQL string
+
+func init() {
+	s, err := SchemaSQL()
+	if err != nil {
+		panic("db: cannot assemble schema from migrations: " + err.Error())
+	}
+	SchemaPostgresSQL = s
+}
 
 // InitSchema executes a schema script statement by statement.
 //
@@ -27,7 +39,7 @@ var SchemaPostgresSQL string
 // sufficient for the committed schema, which contains no semicolons inside
 // string literals and no dollar-quoted function bodies. If either is ever
 // added, this needs a real SQL scanner — see the note in schema.postgres.sql.
-func InitSchema(conn *sql.DB, schema string) error {
+func InitSchema(conn schemaExecutor, schema string) error {
 	var lines []string
 	for _, line := range strings.Split(schema, "\n") {
 		if strings.HasPrefix(strings.TrimSpace(line), "--") {
@@ -82,7 +94,7 @@ func Open(dsn string) (*DB, error) {
 		return nil, fmt.Errorf("ping db: %w", err)
 	}
 
-	if err := InitSchema(conn, SchemaPostgresSQL); err != nil {
+	if err := Migrate(conn); err != nil {
 		_ = conn.Close()
 		return nil, err
 	}
