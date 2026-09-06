@@ -81,6 +81,7 @@ jobs:
         run: |
           python3 design/generate.py --check
           python3 design/test_design.py
+          python3 design/test_ia.py
 
       - name: Lint
         uses: golangci/golangci-lint-action@v8

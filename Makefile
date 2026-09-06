@@ -17,7 +17,7 @@ SERVER  := server
 LINT    := golangci-lint
 
 .PHONY: help build test race vet lint lint-fix fmt fmt-check tidy verify clean \
-	design design-check design-contrast
+	design design-check design-contrast routes
 
 PY ?= python3
 DESIGN := design
@@ -59,12 +59,17 @@ tidy: ## Tidy go.mod and go.sum
 design: ## Regenerate Dart/CSS/TS from design/tokens.json
 	$(PY) $(DESIGN)/generate.py
 
-design-check: ## Fail if generated design code is stale or section 12 is violated
+design-check: ## Fail if generated design code is stale, section 12 or the IA is violated
 	$(PY) $(DESIGN)/generate.py --check
 	$(PY) $(DESIGN)/test_design.py
+	$(PY) $(DESIGN)/test_ia.py
 
 design-contrast: ## Report WCAG contrast for every text pairing
 	$(PY) $(DESIGN)/check_contrast.py
+
+routes: ## Re-export the live route table to design/routes.json
+	cd $(SERVER) && EXPORT_ROUTES=1 EXPORT_ROUTES_PATH=$(CURDIR)/$(DESIGN)/routes.json \
+	  $(GO) test ./internal/api/ -run TestExportRouteTable -count=1
 
 verify: fmt-check design-check build vet lint test ## Run everything CI runs
 	@echo "verify: all checks passed"
