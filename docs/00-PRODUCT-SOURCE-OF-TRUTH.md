@@ -1,6 +1,6 @@
 # PHASE 00 — Product Source of Truth
 
-**Status:** PASS WITH CONDITIONS
+**Status:** PASS
 **Date:** 2026-09-06
 **Branch base:** `main` @ `cbdee9d`
 
@@ -99,12 +99,12 @@ after loading `schema.postgres.sql` into a scratch database.
 
 | Metric | Value |
 |---|---|
-| Tables | 61 |
-| Foreign keys | 73 |
+| Tables | 64 |
+| Foreign keys | 76 |
 | Unique constraints | 80 |
 | Primary keys | 123 (composite keys exist) |
 | Indexes | 164 |
-| **Application CHECK constraints** | **1** |
+| **Application CHECK constraints** | **5** (was 1; +4 added by this phase) |
 | Enum / domain types | 0 |
 | Triggers | 0 |
 
@@ -117,7 +117,7 @@ after loading `schema.postgres.sql` into a scratch database.
 | Handler methods | 173 |
 | Handlers still returning 501 | 6 |
 | Test files | 43 |
-| Test packages passing | 20 / 20 (this phase added the first test in `internal/seed`) |
+| Test packages passing | 21 / 21 (this phase added the first tests in `internal/seed` and `internal/community`) |
 | CI on `main` | **green** (first time in repo history) |
 
 ### Content
@@ -195,27 +195,85 @@ names; the descriptions differ. This needs a product decision (see §5).
 `user confession review` that return `notImplemented`. These map to directive
 §34 (personalization), §35 (subscriptions) and §22 (moderation).
 
-## 5. OPEN DECISIONS — FOUNDER INPUT REQUIRED
+## 5. DECISIONS — RESOLVED BY THE PRODUCT OWNER
 
-These cannot be resolved by engineering judgement and block a clean PASS.
+**D1 — `Deliverance` is not a 40th category.** The canonical list stands at 39
+as written in the directive. `Freedom` carries the deliverance description. No
+code change was needed; the tests already asserted 39.
 
-**D1 — Is `Deliverance` a 40th category?**
-The directive lists exactly 39 and does not include `Deliverance`. An earlier
-decision in this project chose `Deliverance` as a 39th category, but that was
-against a 38-category baseline. Taking the directive's list as written gives 39
-without it. `Freedom` already carries the description "Confessions for
-deliverance and release," which may make a separate category redundant.
+**D2 — `Strength` and `Thanksgiving` are renamed** to `Emotional Strength` and
+`Gratitude`, matching the canonical list. This needs a migration for any
+environment already seeded, and it means the seed no longer installs categories
+that are not in the canonical set.
 
-**D2 — What happens to `Strength` and `Thanksgiving`?**
-Three options: rename them to the canonical names (requires migrating existing
-rows and any user favourites pointing at them), keep them as additional
-categories (→ 41), or keep them as aliases that resolve to the canonical
-category.
+**D3 — all 39 must exist at launch.** This makes PHASE 11 (Content Engine)
+substantially larger than a 14-category seed: 25 categories need confessions
+before launch, and the marketing site's "39 areas of life" section can make its
+claim honestly.
 
-**D3 — Does the 39 apply at launch or is it a target?**
-Content exists for 14. Shipping an explore screen with 25 empty categories is
-worse than shipping 14 well-filled ones. This affects PHASE 11 and the
-marketing site's "39 areas of life" section.
+**Process — every phase is gated.** Each phase stops and reports with a
+PASS / PASS WITH CONDITIONS / FAIL decision before the next begins.
+
+---
+
+## 6. F5 — THREE TABLES WERE MISSING FROM THE SCHEMA THAT ACTUALLY RUNS
+
+Found while checking whether `server/migrations/postgres/` was live. It is not:
+**nothing in the application applies that directory.** The server runs the
+embedded `schema.postgres.sql` and nothing else. So the three tables defined
+only there never existed on a fresh deployment.
+
+| Table | Queried by |
+|---|---|
+| `subscription_plans` | `internal/store/plans.go` |
+| `community_posts` | `internal/community/store.go` |
+| `community_reactions` | `internal/community/store.go` |
+
+Those migrations were also **SQLite DDL in a directory named `postgres/`** —
+`INSERT OR IGNORE`, `datetime('now')`, `TEXT` timestamps. And
+`community/store.go` issued `INSERT OR IGNORE`, which PostgreSQL rejects
+outright.
+
+It survived the PostgreSQL migration because `internal/community` and
+`internal/billing` have **no tests**. The suite was 20/20 green and none of it
+touched this code. A green suite over untested packages proves nothing about
+them.
+
+### Fixed
+
+- All three tables ported into `schema.postgres.sql` with PostgreSQL DDL,
+  including CHECK constraints on `interval`, `visibility`, `status` and
+  `reaction` (+4 application CHECK constraints, the first added since the
+  schema was written).
+- `INSERT OR IGNORE` replaced with `ON CONFLICT (post_id, user_id, reaction) DO
+  NOTHING`, matching the table's unique key.
+- `internal/community` gained four integration tests against PostgreSQL:
+  moderation gating, private-post exclusion, reaction idempotency, and the
+  reaction CHECK constraint.
+
+### Two guards so this cannot recur
+
+`TestEveryTableReferencedInGoExistsInTheSchema` parses every Go file with
+`go/parser`, extracts string literals passed to `Query`/`Exec`/`Prepare`, and
+asserts each referenced table exists in the schema. Anchoring on the call site
+matters: scanning every literal also matches route descriptions like
+`"Update profile"`, which a table-name regex reads as an UPDATE against a table
+called `profile`. Verified to bite — removing the three tables fails it with
+their names and file locations.
+
+Adding those tables then broke `TestEveryUserTableHasAPolicy`, which is the
+deletion framework doing its job: `community_posts` and `community_reactions`
+reference `users(id)` and had no erasure policy. Adding the policies exposed a
+**second, pre-existing bug**: `applyPolicy` scopes any non-`user_id` column
+through a parent table with `WHERE col IN (SELECT id FROM parent WHERE user_id
+= ?)`, which asks `community_posts` for a `user_id` column it does not have.
+`parentTableFor` now reports `users` as the parent and `applyPolicy` deletes
+directly in that case.
+
+`TestEveryPolicyGeneratesRunnableSQL` executes every policy through the real
+`applyPolicy` inside a rolled-back transaction. An earlier draft rebuilt the
+DELETE by hand and reported false failures for `Anonymise` policies, which
+never issue a DELETE — testing a copy of the logic tests the copy.
 
 ---
 
@@ -273,9 +331,9 @@ is limited to a compromised build.
 | Non-goals stated | Done |
 | Canonical 39 categories in code, tested | Done |
 | Current state measured from evidence | Done |
-| Tests pass | 5/5, and 20/20 packages overall |
+| Tests pass | 10/10 new tests, and 21/21 packages overall |
 | `gofmt` / `go vet` clean | Verified |
-| Open decisions identified | 3 raised, **0 resolved** |
+| Open decisions identified and resolved | 3 raised, **3 resolved by the product owner** |
 
 ---
 
@@ -286,12 +344,12 @@ is limited to a compromised build.
 3. **Architecture decisions:** the canonical list lives in Go as seed-of-record data, *not* as a second source of truth beside the `categories` table. The table remains the runtime source; this is the reference for detecting drift.
 4. **Database/API changes:** none.
 5. **UI/UX changes:** mojibake repaired in 7 files, including user-facing seed descriptions and the admin console's nav icons.
-6. **Tests added:** 5.
+6. **Tests added:** 10 (5 category, 4 community, 1 policy-SQL guard) plus 1 schema-coverage guard in `internal/db`.
 7. **Tests executed:** `go test ./internal/seed/ -run 'Canonical|CategorySlugs|SeededCategories' -count=1 -v` → 5/5 PASS. Then the full suite: `go test ./... -count=1` → 20/20 packages, 0 failures, against PostgreSQL 17. `gofmt -l .` empty, `go vet ./...` clean, `go build ./...` clean.
 8. **Security considerations:** no new surface; see review above.
 9. **Performance considerations:** the canonical list is a package-level slice read at seed time. Negligible.
-10. **Known issues:** F1 (1 CHECK constraint), F3 (seed/product disagreement), F4 (6 × 501).
-11. **Remaining work:** resolve D1–D3.
-12. **Phase score:** 8/10. Docked because three product decisions remain open and the phase cannot close cleanly without them.
-13. **Decision:** **PASS WITH CONDITIONS** — conditions are D1, D2, D3.
-14. **Recommended next phase:** **PHASE 01 — Domain Model**, which needs D1–D3 answered first because the domain model has to name the category aggregate and its invariants.
+10. **Known issues:** F1 (only 5 application CHECK constraints for 22 status columns), F3 (2 seed categories still need the D2 rename), F4 (6 × 501 handlers), and `server/migrations/postgres/` is a dead directory the app never applies — it should be deleted or made authoritative, which is a separate decision.
+11. **Remaining work:** apply the D2 rename with a migration; delete or adopt `server/migrations/postgres/`.
+12. **Phase score:** 9/10. Docked one point because D3 makes PHASE 11 materially larger and that work is not yet scoped.
+13. **Decision:** **PASS**.
+14. **Recommended next phase:** **PHASE 01 — Domain Model.** D1–D3 are settled, so the category aggregate and its invariants can now be named without guessing.

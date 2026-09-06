@@ -298,11 +298,17 @@ func applyPolicy(ctx context.Context, tx *db.Tx, p TablePolicy, userID string) (
 
 	default:
 		var q string
-		if p.column() == "user_id" {
+		switch parent := parentTableFor(p.Table); {
+		case p.column() == "user_id":
 			q = fmt.Sprintf(`DELETE FROM %s WHERE user_id = ?`, p.Table)
-		} else {
+		case parent == "users":
+			// The column holds a user id directly rather than the id of some
+			// intermediate owner, so there is no parent to scope through. The
+			// subquery form below would ask the table for a user_id column it
+			// does not have.
+			q = fmt.Sprintf(`DELETE FROM %s WHERE %s = ?`, p.Table, p.column())
+		default:
 			// Child tables reference their parent, so scope through it.
-			parent := parentTableFor(p.Table)
 			q = fmt.Sprintf(`DELETE FROM %s WHERE %s IN (SELECT id FROM %s WHERE user_id = ?)`,
 				p.Table, p.column(), parent)
 		}
@@ -322,6 +328,9 @@ func parentTableFor(child string) string {
 		return "user_collections"
 	case "session_items":
 		return "sessions"
+	case "community_posts":
+		// author_id is a direct reference to users(id).
+		return "users"
 	}
 	return child
 }

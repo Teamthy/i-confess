@@ -1235,3 +1235,56 @@ ALTER TABLE reports ADD CONSTRAINT reports_reporter_id_fkey FOREIGN KEY (reporte
 ALTER TABLE content_moderation_history ADD CONSTRAINT content_moderation_history_confession_id_fkey FOREIGN KEY (confession_id) REFERENCES confessions(id) ON DELETE CASCADE;
 ALTER TABLE content_moderation_history ADD CONSTRAINT content_moderation_history_actor_fkey FOREIGN KEY (actor) REFERENCES users(id) ON DELETE SET NULL;
 ALTER TABLE user_templates ADD CONSTRAINT user_templates_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
+
+-- ---------------------------------------------------------------------------
+-- Subscription plans and community
+--
+-- These three tables previously existed only under server/migrations/postgres/,
+-- a directory that nothing in the application applies: the server runs this
+-- embedded schema and nothing else. They were also written in SQLite DDL
+-- (INSERT OR IGNORE, datetime('now')) and would have failed here regardless.
+-- Ported to PostgreSQL so a fresh deployment actually receives them.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS subscription_plans (
+    id          TEXT PRIMARY KEY,              -- monthly | annual | promo
+    name        TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    interval    TEXT NOT NULL,                 -- month | year | week | lifetime
+    trial_days  INTEGER NOT NULL DEFAULT 7,
+    prices      TEXT NOT NULL,                 -- JSON keyed by currency code
+    features    TEXT NOT NULL DEFAULT '[]',    -- JSON array
+    active      INTEGER NOT NULL DEFAULT 1,
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL,
+    CONSTRAINT subscription_plans_interval_check CHECK (interval IN ('month','year','week','lifetime'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_subscription_plans_active ON subscription_plans(active) WHERE active=1;
+
+CREATE TABLE IF NOT EXISTS community_posts (
+    id         TEXT PRIMARY KEY,
+    author_id  TEXT NOT NULL,
+    body       TEXT NOT NULL,
+    visibility TEXT NOT NULL DEFAULT 'private',
+    status     TEXT NOT NULL DEFAULT 'submitted',
+    created_at TEXT NOT NULL,
+    CONSTRAINT community_posts_visibility_check CHECK (visibility IN ('private','shared')),
+    CONSTRAINT community_posts_status_check CHECK (status IN ('draft','submitted','under_review','approved','rejected','published','archived'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_community_feed ON community_posts(visibility, status, created_at) WHERE visibility='shared';
+
+CREATE TABLE IF NOT EXISTS community_reactions (
+    id         TEXT PRIMARY KEY,
+    post_id    TEXT NOT NULL,
+    user_id    TEXT NOT NULL,
+    reaction   TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE (post_id, user_id, reaction),
+    CONSTRAINT community_reactions_reaction_check CHECK (reaction IN ('amen','heart','pray'))
+);
+
+ALTER TABLE community_posts ADD CONSTRAINT community_posts_author_id_fkey FOREIGN KEY (author_id) REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE community_reactions ADD CONSTRAINT community_reactions_post_id_fkey FOREIGN KEY (post_id) REFERENCES community_posts(id) ON DELETE CASCADE;
+ALTER TABLE community_reactions ADD CONSTRAINT community_reactions_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
