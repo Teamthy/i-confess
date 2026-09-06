@@ -16,6 +16,11 @@ import (
 //go:embed schema.sql
 var SchemaSQL string
 
+// SchemaPostgresSQL is the canonical production schema (PHASE 07).
+//
+//go:embed schema.postgres.sql
+var SchemaPostgresSQL string
+
 func InitSchema(conn *sql.DB, schema string) error {
 	var lines []string
 	for _, line := range strings.Split(schema, "\n") {

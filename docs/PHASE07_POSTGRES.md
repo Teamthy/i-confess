@@ -1,7 +1,7 @@
 # PHASE 07 — Database Foundation: PostgreSQL
 
-**Status: IN PROGRESS.** Step 1 (canonical schema) is complete and verified.
-Steps 2–5 are not started. This document is the design record the phase gate
+**Status: IN PROGRESS.** Steps 1–2 are complete and verified. Steps 3–5 are
+not started. This document is the design record the phase gate
 requires, not a completion claim.
 
 Decision on record: one dialect everywhere, **including tests**. SQLite is being
@@ -93,11 +93,40 @@ constraints.
 
 ## 5. Remaining steps
 
-**Step 2 — placeholder rebind.** 663 `?` → `$N`. Approach: wrap `*sql.DB` in a
-type whose `QueryContext`/`ExecContext`/`QueryRowContext` rebind, and switch
-store fields to it. A single choke point beats editing 663 call sites, and the
-scanner must skip string literals so a `?` inside a quoted value is never
-renumbered.
+**Step 2 — placeholder rebind (DONE, verified).** `internal/db/rebind.go` and
+`internal/db/conn.go`.
+
+`Rebind` rewrites `?` → `$N`. The scanner is aware of single-quoted literals
+(including `''` escapes), double-quoted identifiers, line and block comments,
+and dollar-quoted blocks. That is not fastidiousness: a `?` in a comment is
+ignored by the server, but counting it shifts every later parameter by one, so
+arguments bind to the wrong columns. That surfaces as corrupted data rather
+than a syntax error.
+
+`db.DB` and `db.Tx` wrap `*sql.DB`/`*sql.Tx` and rebind on every SQL-carrying
+method. The method names and signatures match `database/sql` exactly, so
+switching a store's field type changes **no call site** — verified by
+inspection: all 14 stores use the uniform `struct{ db *sql.DB }` plus
+`func NewXStore(db *sql.DB)` shape.
+
+The store fields themselves are not switched yet; that is step 3, because the
+switch is meaningless until SQLite is gone and the tests run on PostgreSQL.
+
+Verified two ways. Unit tests cover the transformation, including the
+counter-shift property (`TestRebindDoesNotShiftNumbering`). Integration tests
+in `conn_test.go` run against a real PostgreSQL 17 with a throwaway database
+per test, and prove what a string test cannot:
+
+```
+TestPostgresSchemaLoads         61 tables, 73 FKs, seed rows
+TestRebindRoundTrip             ? parameters write and read back correctly
+TestRebindWithLiteralQuestionMark  literal '?' survives a real round trip
+TestRebindInTransaction         Tx wrapper rebinds too
+TestForeignKeyIsEnforced        orphan insert rejected by the ALTER constraints
+```
+
+These skip when `TEST_DATABASE_URL` is unset rather than passing, so a green
+suite never silently means PostgreSQL was never exercised.
 
 **Step 3 — remove SQLite.** Drop `modernc.org/sqlite`, delete `db.Open`'s
 file/WAL/`busy_timeout` path and `SetMaxOpenConns(1)`. PostgreSQL wants a real
