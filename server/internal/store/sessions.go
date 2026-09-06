@@ -95,14 +95,14 @@ func (s *SessionStore) Create(ctx context.Context, sess *models.Session) error {
 
 func (s *SessionStore) ByID(ctx context.Context, id string) (*models.Session, error) {
 	var sess models.Session
-	var voiceID, startedAt, completedAt sql.NullString
+	var voiceID, startedAt, completedAt, deletedAt sql.NullString
 	err := s.db.QueryRowContext(ctx,
 		`SELECT id,user_id,type,duration_seconds,COALESCE(strategy,''),COALESCE(target_duration,0),COALESCE(actual_duration,0),
-		        COALESCE(title,''),COALESCE(description,''),voice_id,status,created_at,started_at,completed_at
-		 FROM sessions WHERE id = ?`, id).
+		        COALESCE(title,''),COALESCE(description,''),voice_id,status,created_at,started_at,completed_at,deleted_at
+		 FROM sessions WHERE id = ? AND (deleted_at IS NULL OR deleted_at = '')`, id).
 		Scan(&sess.ID, &sess.UserID, &sess.Type, &sess.DurationSeconds, &sess.Strategy,
 			&sess.TargetDuration, &sess.ActualDuration, &sess.Title, &sess.Description,
-			&voiceID, &sess.Status, &sess.CreatedAt, &startedAt, &completedAt)
+			&voiceID, &sess.Status, &sess.CreatedAt, &startedAt, &completedAt, &deletedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -117,6 +117,9 @@ func (s *SessionStore) ByID(ctx context.Context, id string) (*models.Session, er
 	}
 	if completedAt.Valid {
 		sess.CompletedAt = completedAt.String
+	}
+	if deletedAt.Valid {
+		sess.DeletedAt = deletedAt.String
 	}
 	items, err := s.Items(ctx, id)
 	if err != nil {
@@ -191,7 +194,9 @@ func (s *SessionStore) ListByUser(ctx context.Context, userID string, limit int)
 		`SELECT id,user_id,type,duration_seconds,COALESCE(strategy,''),COALESCE(target_duration,0),COALESCE(actual_duration,0),
 		        COALESCE(title,''),COALESCE(description,''),COALESCE(voice_id,''),status,created_at,
 		        COALESCE(started_at,''),COALESCE(completed_at,'')
-		 FROM sessions WHERE user_id = ? ORDER BY created_at DESC LIMIT ?`, userID, limit)
+		 FROM sessions
+		 WHERE user_id = ? AND (deleted_at IS NULL OR deleted_at = '')
+		 ORDER BY created_at DESC LIMIT ?`, userID, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -376,4 +381,74 @@ func (s *SessionStore) contentSnapshots(ctx context.Context, tx *db.Tx, items []
 		out[it.ConfessionID] = snap
 	}
 	return out, nil
+}
+
+// SoftDelete removes a session from the listener's history without destroying
+// the record of what they listened to. Streaks and completion metrics are
+// derived from these rows, so a deletion a listener can perform must not edit
+// the numbers.
+//
+// It reports false when the session was already gone, so the caller can answer
+// 404 rather than confirming a deletion that did not happen.
+func (s *SessionStore) SoftDelete(ctx context.Context, id, at string) (bool, error) {
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE sessions SET deleted_at = ?
+		 WHERE id = ? AND (deleted_at IS NULL OR deleted_at = '')`, at, id)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
+// ListByUserPage returns one page of a listener's history.
+//
+// This is keyset pagination on (created_at, id) rather than OFFSET. An offset
+// scan gets slower the deeper the listener pages, and a session created while
+// they were reading shifts every later row, so page 2 can repeat a session
+// already seen on page 1. The id tiebreaker is what makes the order total:
+// created_at carries second precision and ties constantly.
+//
+// An empty cursorCreatedAt returns the first page.
+func (s *SessionStore) ListByUserPage(ctx context.Context, userID string, limit int,
+	cursorCreatedAt, cursorID string) ([]models.Session, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+	q := `SELECT id,user_id,type,duration_seconds,COALESCE(strategy,''),COALESCE(target_duration,0),COALESCE(actual_duration,0),
+	        COALESCE(title,''),COALESCE(description,''),COALESCE(voice_id,''),status,created_at,
+	        COALESCE(started_at,''),COALESCE(completed_at,'')
+	     FROM sessions
+	     WHERE user_id = ? AND (deleted_at IS NULL OR deleted_at = '')`
+	args := []any{userID}
+	if cursorCreatedAt != "" {
+		// Strictly older than the cursor, with id breaking ties in the same
+		// second. Both halves matter: comparing on created_at alone would skip
+		// or repeat every session created in the cursor's second.
+		q += ` AND (created_at < ? OR (created_at = ? AND id < ?))`
+		args = append(args, cursorCreatedAt, cursorCreatedAt, cursorID)
+	}
+	q += ` ORDER BY created_at DESC, id DESC LIMIT ?`
+	args = append(args, limit)
+
+	rows, err := s.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []models.Session
+	for rows.Next() {
+		var sess models.Session
+		if err := rows.Scan(&sess.ID, &sess.UserID, &sess.Type, &sess.DurationSeconds, &sess.Strategy,
+			&sess.TargetDuration, &sess.ActualDuration, &sess.Title, &sess.Description,
+			&sess.VoiceID, &sess.Status, &sess.CreatedAt, &sess.StartedAt, &sess.CompletedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, sess)
+	}
+	return out, rows.Err()
 }

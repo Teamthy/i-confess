@@ -210,13 +210,17 @@ type Session struct {
 	// VoiceDowngraded reports that the requested voice was unavailable on the
 	// listener's plan and a permitted voice was substituted. Surfacing this
 	// keeps a gated experience from looking like a broken one.
-	VoiceDowngraded      bool          `json:"voice_downgraded,omitempty"`
-	VoiceDowngradeReason string        `json:"voice_downgrade_reason,omitempty"`
-	Status               string        `json:"status"`
-	CreatedAt            string        `json:"created_at"`
-	StartedAt            string        `json:"started_at,omitempty"`
-	CompletedAt          string        `json:"completed_at,omitempty"`
-	Items                []SessionItem `json:"items,omitempty"`
+	VoiceDowngraded      bool   `json:"voice_downgraded,omitempty"`
+	VoiceDowngradeReason string `json:"voice_downgrade_reason,omitempty"`
+	Status               string `json:"status"`
+	CreatedAt            string `json:"created_at"`
+	StartedAt            string `json:"started_at,omitempty"`
+	CompletedAt          string `json:"completed_at,omitempty"`
+	// DeletedAt marks a session the listener removed from their history. The
+	// row stays: it is the record of what was listened to, and streaks and
+	// completion metrics are derived from it.
+	DeletedAt string        `json:"deleted_at,omitempty"`
+	Items     []SessionItem `json:"items,omitempty"`
 }
 
 // SessionProgress is where a listener stopped, used to resume an interrupted

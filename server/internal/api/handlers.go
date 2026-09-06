@@ -1177,15 +1177,6 @@ func (h *Handler) updateSessionStatus(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, map[string]string{"status": string(to)})
 }
 
-func (h *Handler) listMySessions(w http.ResponseWriter, r *http.Request) {
-	sess, err := h.sess.ListByUser(r.Context(), h.userID(r), 50)
-	if err != nil {
-		httpx.WriteError(w, http.StatusInternalServerError, "failed to load sessions")
-		return
-	}
-	httpx.WriteJSON(w, http.StatusOK, sess)
-}
-
 // validSessionStatus reports whether s names a session state the API accepts,
 // including the legacy spellings still sent by older clients.
 func validSessionStatus(s string) bool {
