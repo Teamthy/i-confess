@@ -114,43 +114,6 @@ func TestCategorySlugsInCanonicalOrder(t *testing.T) {
 	}
 }
 
-// TestSeededCategoriesAgainstCanonical reports how far the runtime seed is from
-// the agreed list. It is a report, not a gate: bringing the seed up to 39 and
-// writing the confessions behind them is content-engine work, not a product
-// decision. Failing the build here would only hide the gap behind a red suite.
-func TestSeededCategoriesAgainstCanonical(t *testing.T) {
-	seeded := map[string]bool{}
-	for _, c := range seededCategoryNames() {
-		seeded[c] = true
-	}
-
-	canonical := map[string]bool{}
-	for _, c := range CanonicalCategories {
-		canonical[c.Name] = true
-	}
-
-	var missing []string
-	for _, c := range CanonicalCategories {
-		if !seeded[c.Name] {
-			missing = append(missing, c.Name)
-		}
-	}
-	var extra []string
-	for _, c := range seededCategoryNames() {
-		if !canonical[c] {
-			extra = append(extra, c)
-		}
-	}
-
-	t.Logf("seed coverage: %d of %d canonical categories are seeded", len(seeded)-len(extra), CanonicalCategoryCount)
-	if len(missing) > 0 {
-		t.Logf("not yet seeded (%d): %s", len(missing), strings.Join(missing, ", "))
-	}
-	if len(extra) > 0 {
-		t.Logf("seeded but not canonical (%d): %s - these need renaming or a product decision", len(extra), strings.Join(extra, ", "))
-	}
-}
-
 func kebab(s string) string {
 	var b strings.Builder
 	prevDash := false

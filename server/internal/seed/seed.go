@@ -38,8 +38,8 @@ func Seed(db *db.DB, signer storage.ObjectStorage) error {
 
 	// ---- Collections ----
 	for _, c := range []models.Collection{
-		{Name: "The 28", Slug: "the-28", Status: "published", SortOrder: 1, Description: "Launch collection — 28 core categories."},
-		{Name: "The 38", Slug: "the-38", Status: "published", SortOrder: 2, Description: "Principal expanded content architecture — 38 categories."},
+		{Name: "Launch", Slug: "launch", Status: "published", SortOrder: 1, Description: "Launch collection — the categories seeded at first run."},
+		{Name: "Expanded", Slug: "expanded", Status: "published", SortOrder: 2, Description: "Principal expanded content architecture."},
 	} {
 		if err := content.CreateCollection(bg, &c); err != nil {
 			return err
@@ -47,9 +47,15 @@ func Seed(db *db.DB, signer storage.ObjectStorage) error {
 	}
 
 	// ---- Categories ----
-	// The list lives at package scope (seededCategorySeeds) so tests can
-	// compare what the runtime seed installs against CanonicalCategories.
-	categorySeeds := seededCategorySeeds
+	// Every canonical category is seeded, not a subset. The product decision
+	// (D3) is that all 39 exist at launch, so an explore screen never shows a
+	// category the backend does not know about. Deriving from
+	// CanonicalCategories means the seed cannot drift from it: there is no
+	// second list to keep in sync.
+	categorySeeds := make([]struct{ name, slug, desc, icon string }, len(CanonicalCategories))
+	for i, c := range CanonicalCategories {
+		categorySeeds[i] = struct{ name, slug, desc, icon string }{c.Name, c.Slug, c.Description, c.Icon}
+	}
 
 	var categoryIDs []string
 	for i, cs := range categorySeeds {
@@ -63,7 +69,7 @@ func Seed(db *db.DB, signer storage.ObjectStorage) error {
 		categoryIDs = append(categoryIDs, c.ID)
 	}
 
-	// Attach all categories to both collections (28 → subset of 38 for demo).
+	// Attach every category to both collections.
 	cols, _ := content.ListCollections(bg, true)
 	for _, col := range cols {
 		for i, cid := range categoryIDs {
@@ -179,7 +185,7 @@ func Seed(db *db.DB, signer storage.ObjectStorage) error {
 			scriptures: []models.ScriptureRef{
 				{Book: "Psalm", Chapter: 91, Verse: "1-2", Translation: "KJV", IsDirectQuote: true},
 			}},
-		{category: "Strength", title: "Renewed Strength", intensity: 3,
+		{category: "Emotional Strength", title: "Renewed Strength", intensity: 3,
 			short:  "My strength is renewed.",
 			medium: "I am strong in the Lord and in the power of His might. I can do all things through Christ who strengthens me.",
 			long:   "I am strong in the Lord and in the power of His might. I can do all things through Christ who strengthens me. Those who wait on the Lord renew their strength; I mount up with wings as eagles, I run and do not grow weary, I walk and do not faint.",
@@ -210,7 +216,7 @@ func Seed(db *db.DB, signer storage.ObjectStorage) error {
 				{Book: "1 John", Chapter: 3, Verse: "1", Translation: "KJV", IsDirectQuote: false},
 				{Book: "Psalm", Chapter: 139, Verse: "14", Translation: "KJV", IsDirectQuote: true},
 			}},
-		{category: "Thanksgiving", title: "A Grateful Heart", intensity: 1,
+		{category: "Gratitude", title: "A Grateful Heart", intensity: 1,
 			short:  "I enter His gates with thanksgiving.",
 			medium: "I enter His gates with thanksgiving and His courts with praise. My heart is full of gratitude.",
 			long:   "I enter His gates with thanksgiving and His courts with praise. I am grateful for the goodness of God in my life. In everything I give thanks, for this is the will of God in Christ Jesus concerning me. My heart overflows with gratitude, and I bless the Lord at all times.",
@@ -289,46 +295,4 @@ func Seed(db *db.DB, signer storage.ObjectStorage) error {
 // EnsureMediaDir creates the media directory if needed (used by tests/tools).
 func EnsureMediaDir() error {
 	return os.MkdirAll(mediaDir, 0o755)
-}
-
-// seededCategorySeeds is the set of categories a fresh deployment is
-// currently seeded with. It is a *subset* of CanonicalCategories: the
-// canonical list is the agreed product decision, this is what content
-// actually exists for today. TestSeededCategoriesAgainstCanonical reports
-// the gap so it is visible rather than assumed.
-//
-// Two entries here are not in the canonical list and need a product
-// decision (see docs/00-PRODUCT-SOURCE-OF-TRUTH.md):
-//
-//	"Strength"     - canonical list has "Emotional Strength"
-//	"Thanksgiving" - canonical list has "Gratitude"
-var seededCategorySeeds = []struct {
-	name, slug, desc, icon string
-}{
-	{"Healing", "healing", "Confessions for physical and emotional wholeness.", "healing"},
-	{"Faith", "faith", "Declarations that strengthen your faith.", "faith"},
-	{"Finance", "finance", "Biblical wisdom for provision and stewardship.", "finance"},
-	{"Family", "family", "Declarations over your household.", "family"},
-	{"Marriage", "marriage", "Confessions for a strong, God-centred marriage.", "marriage"},
-	{"Purpose", "purpose", "Declarations of calling and destiny.", "purpose"},
-	{"Breakthrough", "breakthrough", "Confessions for breaking through barriers.", "breakthrough"},
-	{"Peace", "peace", "Declarations of calm and rest.", "peace"},
-	{"Protection", "protection", "Confessions of safety and covering.", "protection"},
-	{"Wisdom", "wisdom", "Declarations for wisdom and clarity.", "wisdom"},
-	{"Favor", "favor", "Confessions of grace and favour.", "favor"},
-	{"Strength", "strength", "Declarations of endurance and power.", "strength"},
-	{"Business", "business", "Confessions for work and enterprise.", "business"},
-	{"Joy", "joy", "Declarations of joy and gladness.", "joy"},
-	{"Identity", "identity", "Confessions of who you are in Christ.", "identity"},
-	{"Thanksgiving", "thanksgiving", "Declarations of gratitude.", "thanksgiving"},
-}
-
-// seededCategoryNames returns just the names, for comparison against the
-// canonical list.
-func seededCategoryNames() []string {
-	out := make([]string, len(seededCategorySeeds))
-	for i, c := range seededCategorySeeds {
-		out[i] = c.name
-	}
-	return out
 }
