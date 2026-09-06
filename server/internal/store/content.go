@@ -4,10 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/Teamthy/i-confess/internal/db"
 
+	"github.com/Teamthy/i-confess/internal/content"
 	"github.com/Teamthy/i-confess/internal/models"
 )
 
@@ -259,6 +261,12 @@ func (s *ContentStore) ListConfessions(ctx context.Context, publishedOnly bool) 
 }
 
 func (s *ContentStore) UpdateConfessionStatus(ctx context.Context, id, status string) error {
+	// Defence in depth. The handler validates too, but this is the function
+	// that touches the column, and a caller added later should not be able to
+	// reach the CHECK constraint and surface it as a 500.
+	if !content.Valid(status) {
+		return fmt.Errorf("confession status %q is not in the editorial lifecycle", status)
+	}
 	ts := now()
 	publishedAt := nullIfEmpty("")
 	if status == "published" {
