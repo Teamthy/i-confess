@@ -1,6 +1,6 @@
 # Project Status
 
-**Last verified:** 2026-09-06, at PHASE 13 (Audio Infrastructure built; production was running on local disk and duration was never measured).
+**Last verified:** 2026-09-06, at PHASE 14 (Voice Platform; voice-rights grants were being silently discarded and generated audio could never leave QA).
 
 This file supersedes `MASTER-PROMPT-COMPLETION.md`,
 `CONTENT-DOMAIN-COMPLETION.md`, `AUDIO-PLATFORM-STATUS.md`, `SESSION-NOTES.md`
@@ -58,6 +58,7 @@ PHASE 08 Go Backend — **PASS**
 PHASE 09 Auth — **PASS WITH CONDITIONS**
 PHASE 10 Users & Account Surface — **PASS WITH CONDITIONS**
 PHASE 11 Content Engine — **PASS WITH CONDITIONS**
+PHASE 14 Voice Platform — **PASS WITH CONDITIONS**
 PHASE 13 Audio Infrastructure — **PASS WITH CONDITIONS**
 PHASE 15 Session Engine — **PASS WITH CONDITIONS** (built early, mislabeled PHASE 13 until the directive's own numbering was supplied; doc renamed)
 PHASE 12 Content Governance — **PASS WITH CONDITIONS**

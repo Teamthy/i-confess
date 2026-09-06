@@ -121,7 +121,7 @@ func (s *SessionStore) Items(ctx context.Context, sessionID string) ([]models.Se
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT si.id, si.confession_id, COALESCE(si.variant_id,''), COALESCE(si.voice_id,''), COALESCE(si.audio_asset_id,''), si.position, si.duration_seconds, si.status,
 		        COALESCE(si.title, c.title), COALESCE(si.category_name, cat.name), COALESCE(a.cdn_path, a.storage_key, ''),
-		        COALESCE(si.text, c.medium_text, c.short_text, '')
+		        COALESCE(si.text, c.medium_text, c.short_text, ''), COALESCE(a.status, '')
 		 FROM session_items si
 		 JOIN confessions c ON c.id = si.confession_id
 		 JOIN categories cat ON cat.id = c.category_id
@@ -134,7 +134,7 @@ func (s *SessionStore) Items(ctx context.Context, sessionID string) ([]models.Se
 	var out []models.SessionItem
 	for rows.Next() {
 		var it models.SessionItem
-		if err := rows.Scan(&it.ID, &it.ConfessionID, &it.VariantID, &it.VoiceID, &it.AudioAssetID, &it.Position, &it.DurationSeconds, &it.Status, &it.Title, &it.Category, &it.AudioURL, &it.Text); err != nil {
+		if err := rows.Scan(&it.ID, &it.ConfessionID, &it.VariantID, &it.VoiceID, &it.AudioAssetID, &it.Position, &it.DurationSeconds, &it.Status, &it.Title, &it.Category, &it.AudioURL, &it.Text, &it.AssetStatus); err != nil {
 			return nil, err
 		}
 		it.SessionID = sessionID

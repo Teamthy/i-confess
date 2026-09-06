@@ -3,6 +3,8 @@ package entitlements
 import (
 	"fmt"
 	"time"
+
+	"github.com/Teamthy/i-confess/internal/audio"
 )
 
 // Audio access rules (§26, §27, §55).
@@ -76,7 +78,13 @@ type AudioRequest struct {
 func (e Entitlements) CanPlayAudio(req AudioRequest) AudioDecision {
 	// Unpublished audio is refused for everyone, including premium listeners
 	// and admins. QA state is not an entitlement question.
-	if req.AssetStatus != "" && req.AssetStatus != "ready" {
+	//
+	// The servable set comes from internal/audio, the same authority the
+	// selection query reads. This used to be a comparison against the single
+	// literal "ready", while the database CHECK also permitted "published" - so
+	// an asset the schema was happy to store could never be played, and nothing
+	// compared the two lists to notice.
+	if !audio.IsServed(req.AssetStatus) {
 		return AudioDecision{
 			Reason: AudioAssetNotReady,
 			Detail: fmt.Sprintf("audio status is %q, expected \"ready\"", req.AssetStatus),

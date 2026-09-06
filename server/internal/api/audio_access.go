@@ -92,10 +92,17 @@ func (h *Handler) signSessionAudio(ctx context.Context, sess *models.Session, en
 
 		decision := ent.CanPlayAudio(entitlements.AudioRequest{
 			VoicePremium: isVoicePremium(item.VoiceID),
-			// Asset status defaults to ready here: the session engine only
-			// selects published assets. The check still runs so that a future
-			// engine change cannot silently start serving QA audio.
-			AssetStatus: "ready",
+			// The asset's real status, read on this request.
+			//
+			// This used to be the literal "ready", with a comment arguing that
+			// the engine only selects ready assets so the check was harmless.
+			// That reasoning was backwards on both counts. The engine does
+			// filter at selection, but a session queue is a snapshot: an asset
+			// pulled afterwards stays referenced here forever, and asserting a
+			// constant means the gate cannot fail however the catalogue
+			// changes. Verified before fixing: archiving every asset left 2 of
+			// 2 items serving signed audio.
+			AssetStatus: item.AssetStatus,
 		})
 		if !decision.Allowed {
 			item.AudioURL = ""

@@ -2,11 +2,16 @@ package api
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/Teamthy/i-confess/internal/audio"
 	"github.com/Teamthy/i-confess/internal/auth"
 	"github.com/Teamthy/i-confess/internal/httpx"
 	"github.com/Teamthy/i-confess/internal/models"
@@ -289,7 +294,73 @@ func (h *Handler) adminGenerateAudio(w http.ResponseWriter, r *http.Request) {
 		actor = c.Sub
 	}
 
-	res, err := h.pipeline.Generate(r.Context(), lic, voice.GenerateRequest{
+	// Snapshot the exact text before synthesizing. This is what makes the QA
+	// review meaningful: a reviewer approves the render against the words that
+	// were spoken, not against whatever the confession says by the time they
+	// look. It is also what audio_generation_jobs.content_version_id requires.
+	version, err := h.cont.EnsureVersion(r.Context(), conf.ID, conf.Title,
+		conf.ShortText, conf.MediumText, conf.LongText, conf.Language, actor)
+	if err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, "could not snapshot the confession text")
+		return
+	}
+
+	// Record the request before doing the work. Until now a generation left no
+	// trace beyond an audit line, so there was no status to poll and nothing to
+	// retry, and a double-submitted form billed the provider twice.
+	job, created, err := h.audio.CreateJob(r.Context(), &models.AudioJob{
+		ConfessionID: req.ConfessionID, VariantID: req.VariantID, VoiceID: req.VoiceID,
+		ContentVersionID: version.ID, RequestedBy: actor,
+		Provider:       providerName(h.pipeline),
+		Format:         "m4a",
+		IdempotencyKey: generationKey(req.ConfessionID, req.VariantID, req.VoiceID, req.Language, version.ID, req.Force),
+	})
+	if err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, "could not record the generation request")
+		return
+	}
+	if !created {
+		// This exact render was already requested.
+		switch audio.JobStatus(job.Status) {
+		case audio.JobSucceeded, audio.JobProcessing, audio.JobQueued:
+			httpx.WriteJSON(w, http.StatusOK, map[string]any{
+				"job":    job,
+				"reused": true,
+				"note":   "this render was already requested; see the job for its status",
+			})
+			return
+		case audio.JobFailed:
+			if job.AttemptCount >= job.MaxAttempts {
+				httpx.WriteError(w, http.StatusConflict, fmt.Sprintf(
+					"this render already failed %d of %d attempts; pass force to start a new job",
+					job.AttemptCount, job.MaxAttempts))
+				return
+			}
+			// The lifecycle does not permit failed -> processing directly, so a
+			// retry is requeued first. That keeps the attempt visible in the
+			// job's history instead of happening silently inside the runner.
+			if job, err = h.audio.RequeueJob(r.Context(), job.ID); err != nil {
+				httpx.WriteError(w, http.StatusInternalServerError, "could not requeue the generation job")
+				return
+			}
+		}
+	}
+
+	// Detach from the request context, but keep its values.
+	//
+	// Generation calls a paid external provider and then writes to object
+	// storage. Bound to r.Context(), a client disconnect - a closed laptop, a
+	// proxy timeout on a long render - cancelled both, so the provider was
+	// billed and the audio was thrown away with no record of either. The job
+	// record makes the loss visible; this stops it happening.
+	genCtx := context.WithoutCancel(r.Context())
+
+	if _, err := h.audio.StartJob(genCtx, job.ID); err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, "could not start the generation job")
+		return
+	}
+
+	res, err := h.pipeline.Generate(genCtx, lic, voice.GenerateRequest{
 		ConfessionID: req.ConfessionID, VariantID: req.VariantID, VoiceID: req.VoiceID,
 		Language: req.Language, Text: text, Use: rights.UseSynthesis,
 		Territory: req.Territory, RequestedBy: actor, Force: req.Force,
@@ -299,17 +370,27 @@ func (h *Handler) adminGenerateAudio(w http.ResponseWriter, r *http.Request) {
 	if errors.As(err, &denied) {
 		// 451 is the honest status: the request is well-formed and the content
 		// exists, but it may not be produced for legal reasons.
+		code := string(denied.Decision.Reason)
+		if _, ferr := h.audio.FailJob(genCtx, job.ID, code, denied.Decision.Detail); ferr != nil {
+			log.Printf("audio: could not record rights refusal on job %s: %v", job.ID, ferr)
+		}
 		httpx.WriteJSON(w, http.StatusUnavailableForLegalReasons, map[string]any{
 			"error":  "voice rights do not permit this generation",
-			"reason": string(denied.Decision.Reason),
+			"reason": code,
 			"detail": denied.Decision.Detail,
+			"job_id": job.ID,
 		})
 		return
 	}
 	if err != nil {
+		code := "provider_error"
 		status := http.StatusBadGateway
 		if !voice.IsRetryable(err) {
+			code = "provider_rejected"
 			status = http.StatusUnprocessableEntity
+		}
+		if _, ferr := h.audio.FailJob(genCtx, job.ID, code, err.Error()); ferr != nil {
+			log.Printf("audio: could not record failure on job %s: %v", job.ID, ferr)
 		}
 		httpx.WriteError(w, status, "audio generation failed: "+err.Error())
 		return
@@ -318,20 +399,56 @@ func (h *Handler) adminGenerateAudio(w http.ResponseWriter, r *http.Request) {
 	asset := &models.AudioAsset{
 		ConfessionID: req.ConfessionID, VariantID: req.VariantID, VoiceID: req.VoiceID,
 		URL: res.Key, SizeBytes: res.SizeBytes, DurationSeconds: res.DurationSeconds,
+		// The exact text this render speaks, so a later edit cannot silently
+		// change what an approved asset means.
+		ContentVersionID: version.ID,
 		// New audio enters QA rather than going straight to listeners (§31).
-		Status: "processing",
+		Status: string(audio.StatusProcessing),
 	}
-	if err := h.audio.UpsertAsset(r.Context(), asset); err != nil {
+	if err := h.audio.UpsertAsset(genCtx, asset); err != nil {
+		// The render exists and was paid for. Losing the reason would make this
+		// undiagnosable: the operator sees a 500 and the audio team has a
+		// provider invoice for audio the catalogue does not know about.
+		log.Printf("audio: job %s rendered %s but the asset could not be recorded: %v", job.ID, res.Key, err)
+		if _, ferr := h.audio.FailJob(genCtx, job.ID, "asset_record_failed", err.Error()); ferr != nil {
+			log.Printf("audio: could not record the asset failure on job %s: %v", job.ID, ferr)
+		}
 		httpx.WriteError(w, http.StatusInternalServerError, "audio was generated but could not be recorded")
 		return
 	}
+	job, err = h.audio.CompleteJob(genCtx, job.ID, asset.ID)
+	if err != nil {
+		log.Printf("audio: job %s produced an asset but could not be completed: %v", job.ID, err)
+	}
 
 	httpx.WriteJSON(w, http.StatusCreated, map[string]any{
-		"asset":    asset,
-		"reused":   res.Reused,
-		"checksum": res.Checksum,
-		"note":     "Asset is in QA. Publish it to make it available to listeners.",
+		"job":             job,
+		"asset":           asset,
+		"reused":          res.Reused,
+		"checksum":        res.Checksum,
+		"content_version": version.VersionNumber,
+		"note":            "Asset is in QA. Approve it to make it available to listeners.",
 	})
+}
+
+// generationKey identifies one render request so a retry cannot bill the
+// provider twice. Force produces a distinct key on purpose: it is an explicit
+// request to render again.
+func generationKey(confessionID, variantID, voiceID, language, versionID string, force bool) string {
+	material := strings.Join([]string{confessionID, variantID, voiceID, language, versionID}, "\x00")
+	if force {
+		material += "\x00force\x00" + time.Now().UTC().Format(time.RFC3339Nano)
+	}
+	sum := sha256.Sum256([]byte(material))
+	return hex.EncodeToString(sum[:])
+}
+
+// providerName reports which adapter will do the work, for the job record.
+func providerName(p *voice.Pipeline) string {
+	if p == nil || p.Provider == nil {
+		return ""
+	}
+	return p.Provider.Name()
 }
 
 // textForVariant picks the script matching a variant's length.
