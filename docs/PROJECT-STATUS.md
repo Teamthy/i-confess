@@ -1,6 +1,6 @@
 # Project Status
 
-**Last verified:** 2026-09-06, at PHASE 16 (Queue / Worker; the job queue existed in shape and was hollow — nothing enqueued to it, the durable `jobs` table had zero callers, and all four handlers were stubs that logged and returned success for work they never did).
+**Last verified:** 2026-09-06, at PHASE 17 (Session APIs; eleven of twelve operations were routed but `DELETE /sessions/{id}` did not exist at all, history was capped at a hardcoded 50 with no way past it, and the dedicated start/pause/resume routes had zero tests).
 
 This file supersedes `MASTER-PROMPT-COMPLETION.md`,
 `CONTENT-DOMAIN-COMPLETION.md`, `AUDIO-PLATFORM-STATUS.md`, `SESSION-NOTES.md`
@@ -66,6 +66,9 @@ PHASE 15 Session Engine — **PASS WITH CONDITIONS** (groundwork shipped early a
     PHASE 14's C-1 and appends the earlier work as an appendix)
 PHASE 16 Queue / Worker — **PASS WITH CONDITIONS** (durable PostgreSQL queue, worker pool, shared
     exponential backoff, idempotency, dead letters; closes PHASE 14 C-3 and C-4)
+PHASE 17 Session APIs — **PASS WITH CONDITIONS** (delete added as a soft delete that cancels a live
+    session first, keyset pagination on history, the full twelve-operation surface asserted against
+    the live route table)
 
 Open gaps carried forward: G-2, G-3, G-4, G-5, G-6, G-7, G-9, G-10, G-12, G-13,
 G-14, G-15, G-16, G-17, G-18, G-19, G-20, G-21, G-22, G-23, G-24, G-25, G-26, G-27, G-28,

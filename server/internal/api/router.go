@@ -149,6 +149,7 @@ func (h *Handler) Routes() http.Handler {
 	h.route(mux, "POST /sessions", "user", "sessions", "Compose a session; audio URLs are signed", authed, h.createSession)
 	h.route(mux, "GET /sessions/{id}", "user", "sessions", "Read a session with freshly signed audio", authed, h.getSession)
 	h.route(mux, "PATCH /sessions/{id}", "user", "sessions", "Update session status", authed, h.updateSessionStatus)
+	h.route(mux, "DELETE /sessions/{id}", "user", "sessions", "Remove a session from history", authed, h.deleteSession)
 	idempotent := h.idempotencyMiddleware
 
 	h.route(mux, "GET /sessions", "user", "sessions", "List sessions", authed, h.listMySessions)
@@ -360,6 +361,7 @@ func (h *Handler) Routes() http.Handler {
 	h.route(mux, "POST /v1/sessions/preview", "user", "sessions", "Preview a session (dry-run, no persistence)", authed, h.previewSession)
 	h.route(mux, "GET /v1/sessions/{id}", "user", "sessions", "Read a session with freshly signed audio", authed, h.getSession)
 	h.route(mux, "PATCH /v1/sessions/{id}", "user", "sessions", "Update session status", authed, h.updateSessionStatus)
+	h.route(mux, "DELETE /v1/sessions/{id}", "user", "sessions", "Remove a session from history", authed, h.deleteSession)
 	h.route(mux, "GET /v1/sessions", "user", "sessions", "List sessions", authed, h.listMySessions)
 	// New §15 statuses: start/pause/resume/complete with state machine enforcement
 	h.route(mux, "POST /v1/sessions/{id}/start", "user", "sessions", "Start a session (DRAFT→ACTIVE)", authed, func(w http.ResponseWriter, r *http.Request) {
