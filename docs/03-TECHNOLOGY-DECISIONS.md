@@ -1,6 +1,6 @@
 # PHASE 03 — Technology Decisions
 
-**Status:** PASS WITH CONDITIONS
+**Status:** PASS
 **Date:** 2026-09-06
 **Branch base:** `main` @ `cbdee9d`
 **Depends on:** PHASE 00–02
@@ -151,17 +151,40 @@ disabled to satisfy a constraint that does not exist in production.
 The code comment is fixed. The docs are historical records and are left as they
 are, but the mobile pubspec should be corrected when PHASE 24 restores audio.
 
-## 4. DECISIONS STILL OPEN
+## 4. DECISIONS — RESOLVED BY THE PRODUCT OWNER
 
-**D-4 — Which client is canonical?**
-`apps/mobile` (749 lines, no audio) or a fresh build on top of `clients/dart`
-(2,723 lines, typed, no UI). This determines PHASE 18's starting point and
-should be settled before it.
+**D-4 — Build a fresh Flutter app on top of `clients/dart`.**
+The 749-line `apps/mobile` shell is not the starting point. A new Flutter
+application will be built that consumes `iconfess_api` as its transport layer
+from the first commit.
 
-**D-5 — Do `apps/web` and `apps/admin` get extended or replaced?**
-434 and 168 lines is close to nothing. Extending is probably still cheaper than
-restarting, but the decision should be made deliberately in PHASE 38/40 rather
-than by default.
+This is the larger of the two options and it is the right call given what the
+inspection found. The existing shell cannot play audio (G-12) and is smaller
+than the API client it would depend on. Extending it would mean auditing 749
+lines of unknown provenance to save a scaffolding step, while the typed client —
+the part that is actually valuable and actually large — is reusable either way.
+
+Consequences PHASE 18 must honour:
+- `clients/dart` (`iconfess_api`) is a dependency, not a directory to merge.
+  It has its own pubspec, its own tests, and no Flutter imports. That separation
+  is what makes it testable without a device, and it should be preserved.
+- Audio playback (`just_audio`, `audio_service`) is enabled from the first
+  commit. G-12 exists because a sandbox constraint disabled it; a fresh app has
+  no such excuse.
+- The 749-line shell is retired, not extended. Anything worth keeping from it
+  should be lifted deliberately, file by file, with a reason.
+
+**D-5 — Replace `apps/web` and `apps/admin`.**
+Both are deleted and rebuilt in PHASE 38 and PHASE 40 against the design system
+produced in PHASE 05. At 434 and 168 lines there is less to lose than to inherit,
+and building the marketing site and the admin console against a design system
+that does not yet exist is how the two end up visually unrelated — which §16 and
+§41 both warn against.
+
+This creates a sequencing constraint: **PHASE 05 (Design System) must complete
+before PHASE 38 and PHASE 40 begin.** Neither can be started early to parallelise.
+
+---
 
 ## TESTING
 
@@ -212,7 +235,7 @@ metric, so §43's "cache hit rate" cannot be reported. Assigned to PHASE 44.
 | Each decision has a reason and a rejected alternative | T-1 … T-6 |
 | Choices with false stated reasons found and corrected | 3 (G-10, G-11, G-12) |
 | Tooling-driven reasoning identified | G-13, 4 locations |
-| Open decisions recorded | D-4, D-5 |
+| Open decisions raised and resolved | 2 raised, **2 resolved** |
 | Tests still pass | 22/22 |
 
 ---
@@ -229,7 +252,7 @@ metric, so §43's "cache hit rate" cannot be reported. Assigned to PHASE 44.
 8. **Security considerations:** small dependency surface; recorded that caching entitlements would break invariant I-6.
 9. **Performance considerations:** SWR cache is correct at one instance; hit rate is not observable.
 10. **Known issues:** G-10 (per-process cache, no invalidation), G-11 (`clients/dart` is an API client, not the app), G-12 (mobile cannot play audio), G-13 (tooling reasoning in 4 files).
-11. **Remaining work:** D-4 must be settled before PHASE 18.
+11. **Remaining work:** G-10 (per-process cache) and G-13 (the mobile pubspec, fixed when PHASE 24 restores audio). D-5 imposes a sequencing constraint: PHASE 05 before PHASE 38/40.
 12. **Phase score:** 8/10. The stack choices are sound and unusually lean. Docked because three of them were documented with reasons that were not true, and because G-12 means the product's core capability is absent from its own client.
-13. **Decision:** **PASS WITH CONDITIONS** — condition is D-4.
-14. **Recommended next phase:** **PHASE 04 — Repository Bootstrap**, but D-4 should be answered first because it decides whether `apps/mobile` is the client.
+13. **Decision:** **PASS**.
+14. **Recommended next phase:** **PHASE 04 — Repository Bootstrap**, which now has real work: retiring `apps/mobile`, and marking `apps/web` and `apps/admin` for replacement rather than extension.
