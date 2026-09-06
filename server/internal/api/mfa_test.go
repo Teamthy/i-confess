@@ -87,7 +87,7 @@ func TestLoginRequiresSecondFactorOnceEnrolled(t *testing.T) {
 	secret, _ := enrolMFA(t, a, token)
 
 	code, out := a.do("POST", "/auth/login", "", map[string]string{
-		"email": "mfa3@test.com", "password": "password123",
+		"email": "mfa3@test.com", "password": "test-passphrase-2026",
 	})
 	if code != http.StatusOK {
 		t.Fatalf("login: %d", code)
@@ -103,7 +103,7 @@ func TestLoginRequiresSecondFactorOnceEnrolled(t *testing.T) {
 	// code is single-use by design, which is what the replay guard enforces.
 	totp, _ := mfa.Code(secret, time.Now().Add(mfa.Period))
 	code, out = a.do("POST", "/auth/login", "", map[string]string{
-		"email": "mfa3@test.com", "password": "password123", "code": totp,
+		"email": "mfa3@test.com", "password": "test-passphrase-2026", "code": totp,
 	})
 	if code != http.StatusOK {
 		t.Fatalf("login with code: %d %v", code, out)
@@ -123,7 +123,7 @@ func TestLoginRejectsWrongSecondFactor(t *testing.T) {
 	enrolMFA(t, a, token)
 
 	code, out := a.do("POST", "/auth/login", "", map[string]string{
-		"email": "mfa4@test.com", "password": "password123", "code": "123456",
+		"email": "mfa4@test.com", "password": "test-passphrase-2026", "code": "123456",
 	})
 	if code != http.StatusUnauthorized {
 		t.Fatalf("wrong code accepted: %d", code)
@@ -144,7 +144,7 @@ func TestRecoveryCodeSignsInOnce(t *testing.T) {
 	}
 
 	code, out := a.do("POST", "/auth/login", "", map[string]string{
-		"email": "mfa5@test.com", "password": "password123", "code": recovery[0],
+		"email": "mfa5@test.com", "password": "test-passphrase-2026", "code": recovery[0],
 	})
 	if code != http.StatusOK {
 		t.Fatalf("recovery code rejected: %d %v", code, out)
@@ -155,7 +155,7 @@ func TestRecoveryCodeSignsInOnce(t *testing.T) {
 
 	// The same code must not work twice.
 	code, _ = a.do("POST", "/auth/login", "", map[string]string{
-		"email": "mfa5@test.com", "password": "password123", "code": recovery[0],
+		"email": "mfa5@test.com", "password": "test-passphrase-2026", "code": recovery[0],
 	})
 	if code == http.StatusOK {
 		t.Fatal("a recovery code was accepted twice")
@@ -163,7 +163,7 @@ func TestRecoveryCodeSignsInOnce(t *testing.T) {
 
 	// A different one still works.
 	code, _ = a.do("POST", "/auth/login", "", map[string]string{
-		"email": "mfa5@test.com", "password": "password123", "code": recovery[1],
+		"email": "mfa5@test.com", "password": "test-passphrase-2026", "code": recovery[1],
 	})
 	if code != http.StatusOK {
 		t.Fatalf("second recovery code rejected: %d", code)
@@ -202,7 +202,7 @@ func TestDisableRequiresPasswordAndCode(t *testing.T) {
 		t.Fatalf("wrong password accepted: %d", code)
 	}
 	if code, _ := a.do("POST", "/auth/mfa/disable", token, map[string]string{
-		"password": "password123", "code": "000000",
+		"password": "test-passphrase-2026", "code": "000000",
 	}); code != http.StatusUnauthorized {
 		t.Fatalf("wrong code accepted: %d", code)
 	}
@@ -218,7 +218,7 @@ func TestDisableRequiresPasswordAndCode(t *testing.T) {
 	// code further ahead than that is correctly outside the accepted range.
 	totp, _ := mfa.Code(secret, time.Now().Add(mfa.Period))
 	code, out := a.do("POST", "/auth/mfa/disable", token, map[string]string{
-		"password": "password123", "code": totp,
+		"password": "test-passphrase-2026", "code": totp,
 	})
 	if code != http.StatusOK {
 		t.Fatalf("disable with valid credentials: %d %v", code, out)
@@ -230,7 +230,7 @@ func TestDisableRequiresPasswordAndCode(t *testing.T) {
 
 	// And login no longer asks for a factor.
 	_, loginOut := a.do("POST", "/auth/login", "", map[string]string{
-		"email": "mfa7@test.com", "password": "password123",
+		"email": "mfa7@test.com", "password": "test-passphrase-2026",
 	})
 	if _, ok := loginOut["token"]; !ok {
 		t.Fatal("login still requires a second factor after disabling")
@@ -262,7 +262,7 @@ func TestSecondFactorGuessesAreThrottled(t *testing.T) {
 	throttled := false
 	for i := 0; i < 30; i++ {
 		code, _ := a.do("POST", "/auth/login", "", map[string]string{
-			"email": "mfa9@test.com", "password": "password123", "code": "000000",
+			"email": "mfa9@test.com", "password": "test-passphrase-2026", "code": "000000",
 		})
 		if code == http.StatusTooManyRequests {
 			throttled = true

@@ -85,7 +85,7 @@ func TestRegistrationSendsWorkingVerificationLink(t *testing.T) {
 	a, sender := newMailHarness(t)
 
 	if code, _ := a.do("POST", "/auth/register", "", map[string]string{
-		"email": "verify@example.com", "password": "password123",
+		"email": "verify@example.com", "password": "test-passphrase-2026",
 		"display_name": "Grace", "timezone": "Africa/Lagos",
 	}); code != http.StatusOK {
 		t.Fatalf("register: %d", code)
@@ -192,7 +192,7 @@ func TestPasswordChangeSendsSecurityAlert(t *testing.T) {
 	sender.Reset()
 
 	if code, _ := a.do("POST", "/auth/change-password", token, map[string]string{
-		"current_password": "password123", "new_password": "something-else-entirely",
+		"current_password": "test-passphrase-2026", "new_password": "something-else-entirely",
 	}); code != http.StatusOK {
 		t.Fatalf("change password: %d", code)
 	}
@@ -215,7 +215,7 @@ func TestRegistrationDoesNotBlockOnSlowProvider(t *testing.T) {
 
 	start := time.Now()
 	if code, _ := a.do("POST", "/auth/register", "", map[string]string{
-		"email": "slow@example.com", "password": "password123",
+		"email": "slow@example.com", "password": "test-passphrase-2026",
 	}); code != http.StatusOK {
 		t.Fatalf("register: %d", code)
 	}
@@ -239,7 +239,7 @@ func TestRegistrationSucceedsWhenMailProviderIsDown(t *testing.T) {
 	a.h.SetMailer(q, email.Config{AppName: "i-confess", BaseURL: "https://iconfess.app"})
 
 	code, out := a.do("POST", "/auth/register", "", map[string]string{
-		"email": "outage@example.com", "password": "password123",
+		"email": "outage@example.com", "password": "test-passphrase-2026",
 	})
 	if code != http.StatusOK {
 		t.Fatalf("registration failed during a mail outage: %d", code)

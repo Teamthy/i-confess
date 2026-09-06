@@ -27,7 +27,7 @@ func TestContentWorkflow(t *testing.T) {
 	// 1. Register a user
 	registerBody := map[string]string{
 		"email":        "user@test.com",
-		"password":     "password123",
+		"password":     "test-passphrase-2026",
 		"display_name": "Test User",
 		"timezone":     "UTC",
 	}

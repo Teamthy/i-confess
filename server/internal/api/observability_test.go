@@ -64,7 +64,7 @@ func TestLoginMetricsAreRecorded(t *testing.T) {
 	before := a.h.metrics.Snapshot()
 
 	a.do("POST", "/auth/login", "", map[string]string{
-		"email": "metrics@test.com", "password": "password123",
+		"email": "metrics@test.com", "password": "test-passphrase-2026",
 	})
 	a.do("POST", "/auth/login", "", map[string]string{
 		"email": "metrics@test.com", "password": "wrong",

@@ -1,6 +1,6 @@
 # Project Status
 
-**Last verified:** 2026-09-06, at PHASE 09.
+**Last verified:** 2026-09-06, at PHASE 10.
 
 This file supersedes `MASTER-PROMPT-COMPLETION.md`,
 `CONTENT-DOMAIN-COMPLETION.md`, `AUDIO-PLATFORM-STATUS.md`, `SESSION-NOTES.md`
@@ -56,13 +56,19 @@ PHASE 06 UX / Information Architecture — **PASS**
 PHASE 07 Database Foundation — **PASS**
 PHASE 08 Go Backend — **PASS**
 PHASE 09 Auth — **PASS WITH CONDITIONS**
-PHASE 10 Users — not started
+PHASE 10 Users & Account Surface — **PASS WITH CONDITIONS**
 
 Open gaps carried forward: G-2, G-3, G-4, G-5, G-6, G-7, G-9, G-10, G-12, G-13,
-G-14, G-15, G-16, G-17, G-18, G-19, G-20, G-21, G-22, G-23, G-24, G-25, G-26, G-27, G-28, G-29, G-30, G-31, G-32.
+G-14, G-15, G-16, G-17, G-18, G-19, G-20, G-21, G-22, G-23, G-24, G-25, G-26, G-27, G-28,
+G-29, G-33.
 
 Closed: **G-1** (queues are snapshots), **G-2** (23/23 status columns constrained),
-**G-8** (route parity), **G-11** (clients/dart is not a Flutter app).
+**G-8** (route parity), **G-11** (clients/dart is not a Flutter app),
+**G-30** (one password policy replaces three inline `len < 8` checks),
+**G-31** (session rotation already links successors; the three dead
+plaintext-token functions were removed),
+**G-32** (all 44 admin routes asserted to reject a non-admin).
+**G-33** is new: the 24-entry blocklist is a floor, not a breach corpus.
 Each is described in the phase document that raised it.
 
 ## Reproducing any of this
