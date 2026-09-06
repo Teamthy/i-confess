@@ -37,3 +37,7 @@ FIX_*.ps1
 *.orig
 *.rej
 .md
+
+# Python bytecode — generated, never source
+__pycache__/
+*.pyc

@@ -7,10 +7,37 @@ import "time"
 // DRAFT → SUBMITTED → UNDER_REVIEW → APPROVED|REJECTED → PUBLISHED|ARCHIVED.
 // Admin queue is in server/internal/api/moderation (already exists).
 
+// The three visibility levels from directive sections 22 and 70.
+//
+// VisibilityPublic closes gap G-4. It was missing entirely, which meant the
+// public moderation pipeline in section 22 had nothing to publish to: a post
+// an administrator approved could only ever reach the author's own circle,
+// because "shared" was the widest value the column could hold.
 const (
+	// VisibilityPrivate is visible to the author only.
 	VisibilityPrivate = "private"
-	VisibilityShared  = "shared"
+
+	// VisibilityShared is visible to the author's circle.
+	VisibilityShared = "shared"
+
+	// VisibilityPublic is visible to everyone, and is the destination of the
+	// moderation pipeline. Reaching it requires an admin approval.
+	VisibilityPublic = "public"
 )
+
+// visibilities is the authority behind IsValidVisibility. The CHECK constraint
+// in migrations/0003 carries the same three values.
+var visibilities = []string{VisibilityPrivate, VisibilityShared, VisibilityPublic}
+
+// IsValidVisibility reports whether s is one of the three levels.
+func IsValidVisibility(s string) bool {
+	for _, v := range visibilities {
+		if v == s {
+			return true
+		}
+	}
+	return false
+}
 
 const (
 	StatusDraft       = "draft"
@@ -42,11 +69,25 @@ const (
 // CanPublish returns true only for admin-approved posts.
 func CanPublish(status string) bool { return status == StatusApproved || status == StatusPublished }
 
-// Feed is ordered by recency, approved only.
+// FilterFeed returns approved posts the community feed may show: shared and
+// public. Private posts are excluded regardless of status.
 func FilterFeed(posts []Post) []Post {
 	var out []Post
 	for _, p := range posts {
-		if CanPublish(p.Status) && p.Visibility == VisibilityShared {
+		if CanPublish(p.Status) && (p.Visibility == VisibilityShared || p.Visibility == VisibilityPublic) {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// FilterPublic returns only posts the moderation pipeline has published to
+// everyone. This is the feed section 22 describes, and before VisibilityPublic
+// existed it could not have returned anything.
+func FilterPublic(posts []Post) []Post {
+	var out []Post
+	for _, p := range posts {
+		if CanPublish(p.Status) && p.Visibility == VisibilityPublic {
 			out = append(out, p)
 		}
 	}

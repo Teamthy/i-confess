@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/Teamthy/i-confess/internal/content"
 	"github.com/Teamthy/i-confess/internal/httpx"
 	"github.com/Teamthy/i-confess/internal/models"
 )
@@ -29,7 +30,11 @@ func (h *Handler) adminCreateCategory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.Status == "" {
-		req.Status = "draft"
+		req.Status = string(content.StatusDraft)
+	}
+	if !content.Valid(req.Status) {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid status")
+		return
 	}
 	c := &models.Category{
 		Name: req.Name, Slug: req.Slug, Description: req.Description, Icon: req.Icon,
@@ -86,7 +91,11 @@ func (h *Handler) adminCreateConfession(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if req.Status == "" {
-		req.Status = "draft"
+		req.Status = string(content.StatusDraft)
+	}
+	if !content.Valid(req.Status) {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid status")
+		return
 	}
 	if req.Language == "" {
 		req.Language = "en"
@@ -129,7 +138,7 @@ func (h *Handler) adminUpdateConfessionStatus(w http.ResponseWriter, r *http.Req
 	var req struct {
 		Status string `json:"status"`
 	}
-	if err := httpx.DecodeJSON(r, &req); err != nil || !validConfessionStatus(req.Status) {
+	if err := httpx.DecodeJSON(r, &req); err != nil || !content.Valid(req.Status) {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid status")
 		return
 	}
@@ -140,13 +149,10 @@ func (h *Handler) adminUpdateConfessionStatus(w http.ResponseWriter, r *http.Req
 	httpx.WriteJSON(w, http.StatusOK, map[string]string{"status": req.Status})
 }
 
-func validConfessionStatus(s string) bool {
-	switch s {
-	case "draft", "content_review", "theological_review", "audio_production", "audio_qa", "approved", "published", "archived":
-		return true
-	}
-	return false
-}
+// validConfessionStatus lived here and was the source of the G-5 divergence:
+// it accepted the eight documented states while the database constraint
+// allowed five, so five of them failed at write time as a 500. The lifecycle
+// in internal/content is now the single authority.
 
 // ---------- Admin: voices ----------
 

@@ -1,6 +1,6 @@
 # Project Status
 
-**Last verified:** 2026-09-06, at PHASE 11.
+**Last verified:** 2026-09-06, at PHASE 12.
 
 This file supersedes `MASTER-PROMPT-COMPLETION.md`,
 `CONTENT-DOMAIN-COMPLETION.md`, `AUDIO-PLATFORM-STATUS.md`, `SESSION-NOTES.md`
@@ -58,10 +58,11 @@ PHASE 08 Go Backend — **PASS**
 PHASE 09 Auth — **PASS WITH CONDITIONS**
 PHASE 10 Users & Account Surface — **PASS WITH CONDITIONS**
 PHASE 11 Content Engine — **PASS WITH CONDITIONS**
+PHASE 12 Content Governance — **PASS WITH CONDITIONS**
 
 Open gaps carried forward: G-2, G-3, G-4, G-5, G-6, G-7, G-9, G-10, G-12, G-13,
 G-14, G-15, G-16, G-17, G-18, G-19, G-20, G-21, G-22, G-23, G-24, G-25, G-26, G-27, G-28,
-G-29, G-33, G-34, G-35, G-36.
+G-29, G-33, G-34, G-35, G-36, G-37, G-38, G-39.
 
 Closed: **G-1** (queues are snapshots), **G-2** (23/23 status columns constrained),
 **G-8** (route parity), **G-11** (clients/dart is not a Flutter app),
@@ -76,6 +77,17 @@ New in PHASE 11: **G-34** (no audio exists for any of the 78 confessions),
 its provenance), **G-36** (an `EnsureContent` failure boots silently).
 PHASE 11 also fixed a launch blocker that had no gap number: production came
 up with an empty catalogue because content was classed as dev-only seed data.
+
+Closed in PHASE 12: **G-4** (`public` visibility added end to end), **G-5** (one
+editorial lifecycle, enforced in both the database and the code, parity-tested
+against the live constraint), **G-6** (`deprecated` added, distinct from
+`archived` because §9 forbids mutating an existing session's queue). G-5 turned
+out to be three vocabularies, not two: five of the eight documented governance
+states could not be persisted at all and returned a 500.
+
+New in PHASE 12: **G-37** (no enforced transition graph, only a vocabulary),
+**G-38** (`deprecated` is defined but nothing reads it), **G-39** (the other 20
+constrained `status` columns were not audited).
 Each is described in the phase document that raised it.
 
 ## Reproducing any of this
