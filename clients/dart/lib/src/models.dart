@@ -323,6 +323,63 @@ final class Category {
       );
 }
 
+/// A published collection — the "featured" rail on Explore.
+final class Collection {
+  const Collection({
+    required this.id,
+    this.name = '',
+    this.description = '',
+    this.premium = false,
+  });
+
+  final String id;
+  final String name;
+  final String description;
+  final bool premium;
+
+  factory Collection.fromJson(Map<String, dynamic> json) => Collection(
+        id: _str(json, 'id'),
+        name: _str(json, 'name'),
+        description: _str(json, 'description'),
+        premium: _bool(json, 'premium'),
+      );
+}
+
+/// A confession as the catalogue publishes it.
+///
+/// Text comes in three lengths; the browse surfaces use [shortText] and fall
+/// back to [description], never the full text — pulling a whole confession into
+/// a list row would both overcrowd it and spend bandwidth on words nobody sees.
+final class Confession {
+  const Confession({
+    required this.id,
+    this.categoryId = '',
+    this.title = '',
+    this.shortText = '',
+    this.description = '',
+    this.intensity = 0,
+  });
+
+  final String id;
+  final String categoryId;
+  final String title;
+  final String shortText;
+  final String description;
+  final int intensity;
+
+  /// The line a card leads with when there is no title.
+  String get lead => shortText.isNotEmpty ? shortText : description;
+
+  factory Confession.fromJson(Map<String, dynamic> json) => Confession(
+        id: _str(json, 'id'),
+        categoryId: _str(json, 'category_id'),
+        title: _str(json, 'title'),
+        shortText: _str(json, 'short_text'),
+        description: _str(json, 'description'),
+        intensity: _int(json, 'intensity'),
+      );
+}
+
 final class Voice {
   const Voice({
     required this.id,

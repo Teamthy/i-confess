@@ -175,21 +175,20 @@ GoRouter createRouter(
             GoRoute(
               path: AppRoutes.explore,
               name: AppRouteNames.explore,
-              builder: (context, state) =>
-                  const PlaceholderScreen(title: 'Explore', body: 'PHASE 21'),
+              builder: (context, state) => const ExploreScreen(),
               routes: [
                 GoRoute(
+                  // Search lives on the explore screen; the route exists so a
+                  // deep link or future voice action can land on the field.
                   path: 'search',
                   name: AppRouteNames.search,
-                  builder: (context, state) =>
-                      const PlaceholderScreen(title: 'Search', body: 'PHASE 21'),
+                  builder: (context, state) => const ExploreScreen(),
                 ),
                 GoRoute(
                   path: 'category/:id',
                   name: AppRouteNames.categoryDetail,
-                  builder: (context, state) => PlaceholderScreen(
-                    title: 'Category',
-                    body: state.pathParameters['id'] ?? '',
+                  builder: (context, state) => CategoryDetailScreen(
+                    categoryId: state.pathParameters['id'] ?? '',
                   ),
                 ),
               ],

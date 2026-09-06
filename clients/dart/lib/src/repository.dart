@@ -374,6 +374,29 @@ final class ProfileRepository extends Repository {
 final class ContentRepository extends Repository {
   ContentRepository(super.api, super.cache);
 
+  /// Published collections — the Explore "featured" rail.
+  ///
+  /// Distinct cache key from [LibraryRepository.collections] (the listener's own
+  /// collections): same word, different data, and a shared key would hand one
+  /// surface the other's payload.
+  Future<Loadable<List<Collection>>> collections() => cachedRead(
+        key: 'published_collections',
+        ttl: CacheTtl.categories,
+        fetch: () async => {'data': (await api.getCollections())['data'] ?? []},
+        decode: (json) => parseList(json['data'], Collection.fromJson),
+      );
+
+  /// Confessions in one category. The server returns a bare array, which the
+  /// client wraps as `{'data': …}`.
+  Future<Loadable<List<Confession>>> categoryConfessions(String id) =>
+      cachedRead(
+        key: 'catconf:$id',
+        ttl: CacheTtl.categories,
+        fetch: () async =>
+            {'data': (await api.getCategoriesByIdConfessions(id))['data'] ?? []},
+        decode: (json) => parseList(json['data'], Confession.fromJson),
+      );
+
   Future<Loadable<List<Category>>> categories() => cachedRead(
         key: CacheKeys.categories,
         ttl: CacheTtl.categories,
