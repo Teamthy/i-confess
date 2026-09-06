@@ -1,6 +1,6 @@
 # PHASE 02 — System Architecture
 
-**Status:** PASS WITH CONDITIONS
+**Status:** PASS
 **Date:** 2026-09-06
 **Branch base:** `main` @ `cbdee9d`
 **Depends on:** PHASE 00 (PASS), PHASE 01 (PASS)
@@ -149,28 +149,34 @@ asks for exactly this: "For every dependency ask: what happens if this
 disappears for 30 seconds?" That belongs in PHASE 48, but the architecture
 should say now that it is unproven.
 
-**G-8 — The API is versioned by duplication, and it has already drifted.**
-240 route registrations: 131 under `/v1/`, 109 without. **Every unprefixed
-route has an exact `/v1/` twin**, so 109 registrations are pure duplication.
-Worse, 22 routes exist *only* under `/v1/` — including the entire playback
-surface:
+**G-8 — The API was versioned by duplication, and it had drifted. CLOSED.**
+240 route registrations: 131 under `/v1/`, 109 without. Every unprefixed route
+had an exact `/v1/` twin, so 109 registrations were pure duplication — and 22
+routes existed *only* under `/v1/`, including the entire playback surface:
+`start`, `pause`, `resume`, `complete`, `queue`, `progress`, `skip`.
 
-```
-POST /v1/sessions/{id}/start
-POST /v1/sessions/{id}/pause
-POST /v1/sessions/{id}/resume
-POST /v1/sessions/{id}/complete
-GET  /v1/sessions/{id}/queue
-```
+The router's own comment states the contract — "Every API route is also served
+under `/v1/*` for versioned clients" — so the unprefixed path is primary and
+`/v1/` is the compatibility alias. The 22 orphans violated the code's own stated
+intent.
 
-A client calling `POST /sessions/{id}/start` gets a 404. Nothing detects this,
-because each path is registered independently and a missing twin is not an
-error.
+The shipped Flutter client calls unprefixed paths exclusively: 69 of them, zero
+under `/v1/`. So a client written against the documented convention would have
+received a 404 the moment it tried to play a session. It had not surfaced only
+because playback controls are not yet built in the client — a trap set for
+PHASE 24, not a bug in production today.
 
-The fix is to declare each route once and mount the set at both prefixes, or to
-commit to `/v1/` alone and redirect the legacy paths. Either way a test should
-assert the two sets agree, so drift becomes a build failure rather than a 404
-in production.
+Fixed by registering the 22 at both prefixes, and by
+`TestRouteParityBetweenPrefixes`, which reads the **live route table** rather
+than the source file, so it checks what the mux actually serves. A source scan
+would pass on a route registered under a typo'd pattern. Table is now 262
+registrations, 131 distinct endpoints, exact parity. A duplicate registration
+is covered separately, since `ServeMux` panics on one at boot.
+
+The duplication itself is a deliberate compatibility measure and stays. Deleting
+the unprefixed surface is a client migration, recorded here so it is a decision
+rather than a surprise: when `clients/dart` moves to `/v1/`, the alias block
+goes and the parity test inverts into a deprecation check.
 
 **G-9 — The health check is correct but untested.**
 An earlier draft of this document said the health check could not distinguish
@@ -258,7 +264,7 @@ switch and should be refreshed in PHASE 60.
 8. **Security considerations:** slowloris defence present; audio bypasses the API; no secrets in logs. One new risk recorded — duplicated routes can diverge in their security policy.
 9. **Performance considerations:** scheduler and HTTP share one connection pool; unmeasured.
 10. **Known issues:** G-7 (runtime failure untested), G-8 (route duplication, 22 `/v1`-only routes), G-9 (health check semantics).
-11. **Remaining work:** G-8 is small and should be closed before any new endpoint is added, because every new endpoint currently has to be registered twice.
+11. **Remaining work:** G-7 (runtime dependency failure, PHASE 48) and G-9 (health check has no test).
 12. **Phase score:** 8/10. The architecture itself is sound and its degradation story is unusually good. Docked for G-8, which is a live correctness problem rather than a documentation gap.
-13. **Decision:** **PASS WITH CONDITIONS** — condition is G-8.
-14. **Recommended next phase:** **PHASE 03 — Technology Decisions**, with G-8 closed first since new endpoints will keep making it worse.
+13. **Decision:** **PASS** — G-8 closed.
+14. **Recommended next phase:** **PHASE 03 — Technology Decisions**.

@@ -12,11 +12,25 @@ type Item[V any] struct {
 	StaleUntil time.Time // serve stale while revalidating
 }
 
-// Cache is a tiny in-memory TTL+SWR cache for hot read paths.
-// Phase 7 §7.1 — Redis cache on ListCategories/CategoryConfessions/ListVoices
-// (stale-while-revalidate). This in-memory implementation satisfies the
-// contract and is swapped for Redis via the Store interface in production.
-// It keeps workspace budget to ~3M source (no persisted node_modules/Redis client).
+// Cache is a tiny in-memory TTL+SWR cache for hot read paths:
+// ListCategories, CategoryConfessions and ListVoices.
+//
+// It is per-process. There is no Redis-backed implementation and no Store
+// interface to swap one in, despite an earlier revision of this comment
+// claiming otherwise — the only Redis in the system is the rate limiter in
+// internal/ratelimit. That matters once more than one API instance runs: each
+// holds its own copy, so an admin edit to a category is invisible to the other
+// instances until their TTL expires, for up to ttl+swr (15 minutes on the
+// category cache today).
+//
+// At one instance that is correct and cheap, which is why it is still the right
+// choice now. It stops being correct at two, and the fix is either a shared
+// cache or explicit invalidation on write. Tracked as G-10 in
+// docs/03-TECHNOLOGY-DECISIONS.md.
+//
+// The earlier comment also justified this implementation by "workspace budget",
+// which is a constraint of the tooling that generated the file, not a property
+// of the product. Infrastructure choices need product reasons.
 type Cache[V any] struct {
 	mu   sync.RWMutex
 	data map[string]Item[V]
