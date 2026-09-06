@@ -1384,7 +1384,7 @@ func (h *Handler) createUserConfession(w http.ResponseWriter, r *http.Request) {
 		Title:      req.Title,
 		Text:       req.Text,
 		CategoryID: req.CategoryID,
-		IsPrivate:  true, // private by default (PRD Â§22)
+		IsPrivate:  true, // private by default (PRD §22)
 	}
 	if err := h.eng.CreateUserConfession(r.Context(), uc); err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to create confession")

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>i-confess Â· Admin Console</title>
+<title>i-confess · Admin Console</title>
 <style>
   :root {
     --bg: #0f1220;
@@ -157,7 +157,7 @@ function badge(status) {
   const cls = status === 'published' ? 'b-published' : status === 'draft' ? 'b-draft' : 'b-other';
   return `<span class="badge ${cls}">${esc(status)}</span>`;
 }
-function fmtDate(s) { return s ? new Date(s).toLocaleString() : 'â€”'; }
+function fmtDate(s) { return s ? new Date(s).toLocaleString() : '—'; }
 
 // ---------- router ----------
 const views = ['dashboard','categories','confessions','voices','audio','users'];
@@ -174,7 +174,7 @@ function shell(inner) {
   <div class="shell">
     <div class="sidebar">
       <div class="brand">i-<span>confess</span></div>
-      ${[['dashboard','â–¦','Dashboard'],['categories','â–¤','Categories'],['confessions','â‰¡','Confessions'],['voices','â—‰','Voices'],['audio','â™ª','Audio'],['users','â›','Users']].map(([v,i,l]) =>
+      ${[['dashboard','▦','Dashboard'],['categories','▤','Categories'],['confessions','≡','Confessions'],['voices','◉','Voices'],['audio','♪','Audio'],['users','⛁','Users']].map(([v,i,l]) =>
         `<button class="nav-btn ${current===v?'active':''}" onclick="nav(this,'${v}')"><span class="ico">${i}</span>${l}</button>`).join('')}
       <div class="spacer"></div>
       <div class="who"><b>${esc(state.user?.email || '')}</b>${esc(state.user?.display_name || '')}</div>
@@ -190,11 +190,11 @@ function loginScreen() {
   <div class="login-wrap">
     <div class="login-card">
       <h1 class="brand">i-<span>confess</span></h1>
-      <p class="login-sub">Admin Console Â· sign in</p>
+      <p class="login-sub">Admin Console · sign in</p>
       <label>Email</label>
       <input id="lg-email" type="email" placeholder="admin@iconfess.dev">
       <label>Password</label>
-      <input id="lg-pass" type="password" placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢">
+      <input id="lg-pass" type="password" placeholder="••••••••">
       <div class="mt"><button class="btn" style="width:100%;justify-content:center" onclick="doLogin()">Sign in</button></div>
       <p class="hint" id="lg-err" style="color:var(--err)"></p>
     </div>
@@ -301,7 +301,7 @@ async function viewVoices() {
       </div>
       <div class="row">
         <div><label>Provider</label><input id="v-provider" placeholder="e.g. i-confess"></div>
-        <div><label>Gender</label><select id="v-gender"><option value="">â€”</option><option value="female">female</option><option value="male">male</option><option value="neutral">neutral</option></select></div>
+        <div><label>Gender</label><select id="v-gender"><option value="">—</option><option value="female">female</option><option value="male">male</option><option value="neutral">neutral</option></select></div>
       </div>
       <div class="row3">
         <div><label>Language</label><input id="v-lang" value="en"></div>
@@ -346,15 +346,15 @@ async function viewConfessions() {
       </div>
       <div class="row3">
         <div><label>Status</label><select id="f-status"><option value="draft">draft</option><option value="published" selected>published</option><option value="content_review">content_review</option><option value="theological_review">theological_review</option></select></div>
-        <div><label>Intensity (1â€“5)</label><input id="f-intensity" type="number" min="1" max="5" value="1"></div>
+        <div><label>Intensity (1–5)</label><input id="f-intensity" type="number" min="1" max="5" value="1"></div>
         <div><label>Author</label><input id="f-author" placeholder="content team"></div>
       </div>
       <label>Short text</label><textarea id="f-short" placeholder="One-line declaration"></textarea>
       <label>Medium text (used in session player)</label><textarea id="f-medium"></textarea>
       <label>Long text</label><textarea id="f-long"></textarea>
-      <label>Scriptures <span class="muted">â€” one per line: book|chapter|verse|translation|quote(0/1)</span></label>
+      <label>Scriptures <span class="muted">— one per line: book|chapter|verse|translation|quote(0/1)</span></label>
       <textarea id="f-scriptures" placeholder="Isaiah|53|5|KJV|1&#10;James|1|5|KJV|1"></textarea>
-      <label>Variants <span class="muted">â€” one per line: label|seconds</span></label>
+      <label>Variants <span class="muted">— one per line: label|seconds</span></label>
       <textarea id="f-variants" placeholder="30s|30&#10;1m|60&#10;3m|180&#10;5m|300"></textarea>
       <div class="mt"><button class="btn" onclick="createConfession()">Create confession</button></div>
     </div>
@@ -404,7 +404,7 @@ async function createConfession() {
 }
 
 async function setStatus(id, status) {
-  try { await api('/admin/confessions/' + id, { method: 'PATCH', body: JSON.stringify({ status }) }); toast('Status â†’ ' + status); render(); }
+  try { await api('/admin/confessions/' + id, { method: 'PATCH', body: JSON.stringify({ status }) }); toast('Status → ' + status); render(); }
   catch (e) { toast(e.message, false); }
 }
 
@@ -416,7 +416,7 @@ async function viewAudio() {
     <div class="panel"><h3>Attach audio asset</h3>
       <div class="row">
         <div><label>Confession *</label><select id="a-conf">${confs.map(c => `<option value="${c.id}">${esc(c.title)}</option>`).join('')}</select></div>
-        <div><label>Voice *</label><select id="a-voice">${voices.map(v => `<option value="${v.id}">${esc(v.name)}${v.premium ? ' â˜…' : ''}</option>`).join('')}</select></div>
+        <div><label>Voice *</label><select id="a-voice">${voices.map(v => `<option value="${v.id}">${esc(v.name)}${v.premium ? ' ★' : ''}</option>`).join('')}</select></div>
       </div>
       <div class="row">
         <div><label>Variant label</label><input id="a-variant" placeholder="e.g. 1m, 5m (optional)"></div>
@@ -424,7 +424,7 @@ async function viewAudio() {
       </div>
       <label>Audio URL *</label><input id="a-url" placeholder="https://cdn.example.com/audio/healing-1m.mp3">
       <div class="mt"><button class="btn" onclick="attachAudio()">Attach audio</button></div>
-      <p class="hint">In production, audio is generated asynchronously (queued â†’ processing â†’ ready) and stored on a CDN. Here you attach a ready URL directly.</p>
+      <p class="hint">In production, audio is generated asynchronously (queued → processing → ready) and stored on a CDN. Here you attach a ready URL directly.</p>
     </div>`;
 }
 
@@ -468,7 +468,7 @@ async function viewUsers() {
         <div class="mt"><button class="btn" onclick="setSubscription()">Set plan</button></div>
       </div>
     </div>
-    <p class="hint">User IDs are visible via <code>GET /me</code> for the signed-in user, or from your database. The admin console intentionally avoids browsing private user content (per PRD Â§39).</p>`;
+    <p class="hint">User IDs are visible via <code>GET /me</code> for the signed-in user, or from your database. The admin console intentionally avoids browsing private user content (per PRD §39).</p>`;
 }
 
 async function setRole() {
@@ -488,7 +488,7 @@ async function setSubscription() {
 async function render() {
   if (!state.token) { loginScreen(); return; }
   // show shell immediately with a loading placeholder
-  document.getElementById('app').innerHTML = shell('<div class="muted">Loadingâ€¦</div>');
+  document.getElementById('app').innerHTML = shell('<div class="muted">Loading…</div>');
   try {
     let inner = '';
     if (current === 'dashboard') inner = await viewDashboard();

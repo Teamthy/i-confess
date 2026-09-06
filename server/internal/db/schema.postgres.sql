@@ -20,7 +20,7 @@
 -- accepts them, and converting 44 of them to BOOLEAN would change what every
 -- Go scan expects. That is tracked as a follow-up, not folded in here.
 
--- i-confess â€” SQLite (dev/local) schema
+-- i-confess — SQLite (dev/local) schema
 -- Canonical production schema is PostgreSQL (migrations/postgres/0001_schema.sql)
 -- The two are kept structurally equivalent (TEXT ids = UUID, RFC3339 TEXT = TIMESTAMPTZ)
 
