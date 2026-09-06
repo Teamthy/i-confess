@@ -10,8 +10,6 @@ import '../../features/auth/sign_in_screen.dart';
 import '../../features/auth/sign_up_screen.dart';
 import '../../features/auth/verification_screen.dart';
 import '../../features/auth/welcome_screen.dart';
-import '../../features/explore/category_detail_screen.dart';
-import '../../features/explore/explore_screen.dart';
 import '../../features/home/home_screen.dart';
 import '../../features/onboarding/onboarding_screen.dart';
 import '../../features/shell/app_shell.dart';

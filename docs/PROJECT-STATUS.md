@@ -1,6 +1,6 @@
 # Project Status
 
-**Last verified:** 2026-09-06, at PHASE 21 (Mobile Explore; live client-side search over the fetched catalogue, featured collections rail, category grid and per-category confession lists with a scroll-driven card-emphasis motion — 119 app tests, 43 client tests, 28 Go packages, `make verify` clean).
+**Last verified:** 2026-09-06, at PHASE 20 (Mobile Home; a signed-in dashboard with greeting, primary action, continue-listening, category carousel and recent activity fed by the real read-only API — 116 app tests, 43 client tests, 28 Go packages, `make verify` clean).
 
 This file supersedes `MASTER-PROMPT-COMPLETION.md`,
 `CONTENT-DOMAIN-COMPLETION.md`, `AUDIO-PLATFORM-STATUS.md`, `SESSION-NOTES.md`
@@ -81,12 +81,6 @@ PHASE 20 Mobile Home — **PASS WITH CONDITIONS** (signed-in dashboard: greeting
     daily-session CTA into the builder, continue-listening and recent activity
     split by the server's session states, category carousel; rails degrade
     independently and never cache session lists)
-
-PHASE 21 Mobile Explore — **PASS WITH CONDITIONS** (live search over the fetched
-    catalogue, featured collections rail, category grid, category-detail
-    confession lists, scroll-driven card emphasis that settles under
-    pumpAndSettle; full-text search and popular/recommended deferred as
-    conditions)
 
 Open gaps carried forward: G-2, G-3, G-4, G-5, G-6, G-7, G-9, G-10, G-12, G-13,
 G-14, G-15, G-16, G-17, G-18, G-19, G-20, G-21, G-22, G-23, G-24, G-25, G-26, G-27, G-28,
