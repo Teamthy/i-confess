@@ -229,6 +229,42 @@ func (h *Handler) Routes() http.Handler {
 	h.route(mux, "POST /admin/audio/generate", "audio_producer,voice_manager", "admin-audio", "Generate audio; refused 451 when voice rights disallow it", audioMgr, h.adminGenerateAudio)
 
 	// ─────────────────────────────────────────────────────────────────
+	// Routes that existed only under /v1/. The comment below promises every
+	// API route is served under both prefixes; these had drifted, so a client
+	// using the documented unprefixed paths got a 404 on the entire playback
+	// surface. TestRouteParityBetweenPrefixes keeps the two sets aligned.
+	h.route(mux, "POST /sessions/{id}/start", "user", "sessions", "Start a session (DRAFT→ACTIVE)", authed, func(w http.ResponseWriter, r *http.Request) {
+		idempotent(http.HandlerFunc(h.startSession)).ServeHTTP(w, r)
+	})
+	h.route(mux, "POST /sessions/{id}/pause", "user", "sessions", "Pause a session", authed, h.pauseSession)
+	h.route(mux, "POST /sessions/{id}/resume", "user", "sessions", "Resume a paused session", authed, h.resumeSession)
+	h.route(mux, "POST /sessions/{id}/complete", "user", "sessions", "Complete a session", authed, func(w http.ResponseWriter, r *http.Request) {
+		idempotent(http.HandlerFunc(h.completeSession)).ServeHTTP(w, r)
+	})
+	h.route(mux, "GET /sessions/{id}/queue", "user", "sessions", "Queue for a session", authed, h.getSessionQueue)
+	h.route(mux, "POST /sessions/{id}/progress", "user", "sessions", "Sync playback progress", authed, func(w http.ResponseWriter, r *http.Request) {
+		idempotent(http.HandlerFunc(h.syncProgress)).ServeHTTP(w, r)
+	})
+	h.route(mux, "POST /sessions/{id}/skip", "user", "sessions", "Skip queue item", authed, h.skipSessionItem)
+	h.route(mux, "PATCH /templates/{id}", "user", "templates", "Update a template", authed, h.updateTemplate)
+	h.route(mux, "DELETE /templates/{id}", "user", "templates", "Delete a template", authed, h.deleteTemplate)
+	h.route(mux, "POST /templates/{id}/start", "user", "templates", "Start a template — builds a session", authed, func(w http.ResponseWriter, r *http.Request) {
+		idempotent(http.HandlerFunc(h.startTemplate)).ServeHTTP(w, r)
+	})
+	h.route(mux, "GET /subscription", "user", "subscription", "Current plan and entitlements", authed, h.getSubscription)
+	h.route(mux, "GET /entitlements", "user", "subscription", "Entitlement flags", authed, h.getEntitlements)
+	h.route(mux, "GET /subscriptions/trial", "user", "subscription", "Trial journey (Day1..Day7)", authed, h.getTrial)
+	h.route(mux, "POST /subscriptions/verify", "user", "subscription", "Verify store receipt (server-side, billing.Verifier)", authed, func(w http.ResponseWriter, r *http.Request) {
+		idempotent(http.HandlerFunc(h.verifySubscriptionV2)).ServeHTTP(w, r)
+	})
+	h.route(mux, "POST /community/posts", "user", "community", "Create community post (moderated, never auto-publish)", nil, h.createCommunityPost)
+	h.route(mux, "GET /community/feed", "public", "community", "Approved community feed", nil, h.feedCommunity)
+	h.route(mux, "POST /community/posts/{id}/react", "user", "community", "React amen/heart/pray", nil, h.reactCommunity)
+	h.route(mux, "POST /ai/parse", "user", "ai", "AI NLU → categories/duration (never invents theology)", nil, h.aiParse)
+	h.route(mux, "POST /analytics/batch", "user", "analytics", "Batch analytics events (no PII)", nil, h.analyticsBatch)
+	h.route(mux, "GET /search", "public", "content", "Search confessions, categories, voices, Scripture", nil, h.searchAll)
+	h.route(mux, "GET /admin/plans", "admin", "admin-content", "List pricing plans (admin-editable)", admin, h.adminListPlans)
+	h.route(mux, "PUT /admin/plans", "admin", "admin-content", "Create or update a pricing plan", admin, h.adminUpsertPlan)
 	// Versioned aliases — §46, §110-§112.
 	// Every API route is also served under /v1/* for versioned clients.
 	// Legacy without prefix is kept for backward compat until minVersion forces upgrade.
