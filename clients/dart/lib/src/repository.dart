@@ -414,6 +414,20 @@ final class ContentRepository extends Repository {
       return Loadable.failed(e);
     }
   }
+
+  /// The listener's sessions, newest first, for continue-listening and history.
+  ///
+  /// Not cached, like [createSession]: a session's status changes as it is
+  /// played, and a cached list would show "continue" for something already
+  /// finished. The read is cheap; staleness is not.
+  Future<Loadable<List<ListeningSession>>> mySessions() async {
+    try {
+      final json = await api.getSessions();
+      return Loadable.loaded(parseList(json['sessions'], ListeningSession.fromJson));
+    } on ApiException catch (e) {
+      return Loadable.failed(e);
+    }
+  }
 }
 
 /// Collections, downloads and schedules.

@@ -48,13 +48,21 @@ from the product directive, not from inference:
 04 Repository bootstrap         17 Session APIs
 05 Design system                18 Mobile foundation
 06 UX / information architecture 19 Mobile authentication & onboarding
-07 Database foundation          20+ mobile content, player, library, admin…
-08 Go backend
-09 Auth
-10 Users / profiles
-11 Content engine
-12 Content governance
+07 Database foundation          20 Mobile home
+08 Go backend                   21 Mobile explore
+09 Auth                         22 Confession experience
+10 Users / profiles             23 Session builder
+11 Content engine               24 Audio player
+12 Content governance           25+ library, admin…
+18 Mobile foundation
+19 Mobile authentication
 ```
+
+Statuses live in `docs/PROJECT-STATUS.md`; the map above is only the ordering.
+Phases 20–24 are the mobile content block. 20–21 ship against the read-only
+catalogue and session APIs that already exist; 22–24 add playback and are the
+first phases that need real audio, so they are deliberately sequenced after the
+browsing surfaces have something to browse.
 
 Each phase produces a document in `docs/` carrying its number, and every phase
 document has the same eight sections:
@@ -238,6 +246,17 @@ assumption about what needs looking after:
 `make mobile-check` prints `SKIPPED` loudly when Flutter is absent rather than
 passing silently. A check that quietly does nothing is worse than no check.
 
+A known-good restore order, for the record (verify versions against the release
+APIs first — pins rot): Go from `go.dev/dl` into `.cache/go` with
+`GOPATH=.cache/gopath`; golangci-lint into `.cache/gopath/bin`; the Flutter
+stable tarball from `storage.googleapis.com/flutter_infra_release` into
+`.cache/flutter` with `PUB_CACHE=.cache/pub-cache`; PostgreSQL by
+`apt-get download postgresql-17 …` + `dpkg-deb -x` into `.cache/pgroot`, then
+`initdb`/`pg_ctl` on `127.0.0.1:5432` with a trust user; pwsh from the
+PowerShell release assets (`linux-x64`, not `linux-amd64`). Every one of these
+has 404'd or 403'd in a remembered form at least once; the GitHub/Go release
+JSON endpoints are the reliable way to find a live asset.
+
 ---
 
 ## 9. Failure modes worth remembering
@@ -289,3 +308,59 @@ A phase is done when:
 6. Its commit is on a branch, its script parses, and the maintainer can apply it.
 
 Not one of those is "the build is green".
+
+
+---
+
+## 11. Starting from zero (a fresh session reads this)
+
+A new session — this sandbox, a CI runner, or a laptop — should be able to pick
+up the work by reading, in order: this document, `docs/PROJECT-STATUS.md`, then
+the numbered phase documents. Nothing else is required to understand *what* to
+build. *Where* the work stands is answered by git, not by memory:
+
+1. **Clone and find the truth.** `git log --oneline origin/main` is the merged
+   history. The GitHub API (`/repos/Teamthy/i-confess/commits?sha=main`) is the
+   authority when the clone's remote refs are stale, because a sandbox cannot
+   `git fetch` without credentials.
+2. **Pick up at the first phase whose document has no PASS verdict**, or at the
+   phase `PROJECT-STATUS.md` names as in progress. Do not start a later phase
+   while an earlier one is FAIL.
+3. **Restore a toolchain before claiming anything.** See §8 and the recipe in
+   §12. `make verify` is the definition of "the project builds"; if it cannot
+   run, name exactly which step could not run and why.
+4. **Audit before generating** (§3). The phase documents record what each audit
+   found; a fresh session repeats the audit rather than trusting the record.
+
+The workspace layout is fixed and small: top level is only `apps/ clients/
+contracts/ design/ docs/ server/ tools/` plus the `Makefile`. `apps/mobile` is
+the Flutter app, `clients/dart` is the pure-Dart API client it consumes,
+`server/` the Go monolith, `contracts/openapi.json` the API contract, and
+`design/` the token pipeline. Anything else at the top level is litter.
+
+---
+
+## 12. The maintainer's machine (local, not sandbox)
+
+The maintainer works on a normal machine with push rights; the sandbox does not.
+The two meet only through the apply scripts (§7). A few facts about the local
+side, because they have caused confusion:
+
+- **Branches:** merged work lands on `main`. `mvp-phase` is an old integration
+  branch; a local clone sitting on it and "behind origin" is simply stale —
+  `git checkout main && git pull` (or fast-forward) is the fix. Feature work is
+  always on `feat/phaseNN-<name>`.
+- **The pipeline document lives at `docs/ENGINEERING-PIPELINE.md`.** A copy at
+  the repository *root* is a stray produced by an earlier session and should be
+  deleted; git shows it as untracked `ENGINEERING-PIPELINE.md`. The tracked,
+  canonical file is the one in `docs/`.
+- **Applying a script:** from the repository root run
+  `powershell -NoProfile -ExecutionPolicy Bypass -File .\APPLY_PHASEnn_*.ps1`.
+  It creates the feature branch, applies the bundle, and (with `-UpdatePR`)
+  fast-forwards `main` and pushes. Uncommitted local edits (issue templates and
+  the like) are untouched by the script but will show in `git status`; commit or
+  stash them before switching branches.
+- **Helper env files** (`goenv.sh`, `flutterenv.sh`, `tools/mkapply.py`):
+  `mkapply.py` is in the repository and travels with it. The two `*env.sh` files
+  are sandbox conveniences that set `PATH`/`GOPATH`/`PUB_CACHE`; on a normal
+  machine a standard Go/Flutter install makes them unnecessary.
