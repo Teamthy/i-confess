@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
@@ -98,6 +99,21 @@ func (h *Handler) triggerSchedule(w http.ResponseWriter, r *http.Request) {
 		duration = 10 * 60
 	}
 
+	// Entitlement is evaluated here, when the session is actually built, and
+	// not only when the schedule was created. A schedule is a saved intention
+	// that fires later: the plan in force at 6am is the plan that applies at
+	// 6am. Checking at creation alone would let a user subscribe, save a
+	// three-hour schedule, downgrade, and keep receiving three-hour sessions.
+	//
+	// This was the PHASE 13 finding. The ad-hoc path returned 402 for a
+	// duration over the plan limit and this path built the session anyway,
+	// because the check lived in one handler rather than in the engine.
+	ent := h.entitlementsFor(r.Context(), userID)
+	if max := ent.MaxSessionSeconds(); duration > max {
+		writePlanLimit(w, ent)
+		return
+	}
+
 	// Same builder, same inputs as an ad-hoc session: a schedule is a saved
 	// set of choices, not a separate code path that can drift.
 	sess, err := h.engn.Build(r.Context(), engine.Request{
@@ -106,7 +122,13 @@ func (h *Handler) triggerSchedule(w http.ResponseWriter, r *http.Request) {
 		VoiceID:         sched.VoiceID,
 		DurationSeconds: duration,
 		Strategy:        engine.NormalizeStrategy(""),
+
+		MaxDurationSeconds: ent.MaxSessionSeconds(),
 	})
+	if errors.Is(err, engine.ErrDurationExceedsPlan) {
+		writePlanLimit(w, ent)
+		return
+	}
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to build session")
 		return

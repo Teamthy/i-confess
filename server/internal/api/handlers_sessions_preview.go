@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/Teamthy/i-confess/internal/engine"
@@ -55,11 +56,7 @@ func (h *Handler) previewSession(w http.ResponseWriter, r *http.Request) {
 
 	ent := h.entitlementsFor(r.Context(), h.userID(r))
 	if max := ent.MaxSessionSeconds(); req.DurationSeconds > max {
-		httpx.WriteJSON(w, http.StatusPaymentRequired, map[string]any{
-			"error":       "duration exceeds plan limit",
-			"reason":      "session_duration_exceeds_plan_limit",
-			"max_seconds": max,
-		})
+		writePlanLimit(w, ent)
 		return
 	}
 
@@ -88,7 +85,13 @@ func (h *Handler) previewSession(w http.ResponseWriter, r *http.Request) {
 		VoiceID:         req.VoiceID,
 		FavoriteIDs:     favMap,
 		RecentIDs:       recentMap,
+
+		MaxDurationSeconds: ent.MaxSessionSeconds(),
 	})
+	if errors.Is(err, engine.ErrDurationExceedsPlan) {
+		writePlanLimit(w, ent)
+		return
+	}
 	if err != nil {
 		httpx.WriteError(w, http.StatusUnprocessableEntity, "no content for the selected categories and voice")
 		return

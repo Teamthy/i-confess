@@ -118,3 +118,16 @@ func Valid(s string) bool {
 func IsServedToNewSessions(s string) bool {
 	return s == string(StatusPublished)
 }
+
+// ServedStatuses returns every status IsServedToNewSessions admits. The store
+// builds its WHERE clause from this rather than hardcoding 'published', so the
+// query and the rule cannot disagree.
+func ServedStatuses() []string {
+	var out []string
+	for _, st := range lifecycle {
+		if IsServedToNewSessions(string(st)) {
+			out = append(out, string(st))
+		}
+	}
+	return out
+}

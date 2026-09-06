@@ -1,6 +1,6 @@
 # Project Status
 
-**Last verified:** 2026-09-06, at PHASE 12.
+**Last verified:** 2026-09-06, at PHASE 13 (Session Engine hardened; G-38 closed).
 
 This file supersedes `MASTER-PROMPT-COMPLETION.md`,
 `CONTENT-DOMAIN-COMPLETION.md`, `AUDIO-PLATFORM-STATUS.md`, `SESSION-NOTES.md`
@@ -58,6 +58,7 @@ PHASE 08 Go Backend — **PASS**
 PHASE 09 Auth — **PASS WITH CONDITIONS**
 PHASE 10 Users & Account Surface — **PASS WITH CONDITIONS**
 PHASE 11 Content Engine — **PASS WITH CONDITIONS**
+PHASE 13 Session Engine — **PASS WITH CONDITIONS**
 PHASE 12 Content Governance — **PASS WITH CONDITIONS**
 
 Open gaps carried forward: G-2, G-3, G-4, G-5, G-6, G-7, G-9, G-10, G-12, G-13,

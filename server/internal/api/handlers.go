@@ -1012,12 +1012,7 @@ func (h *Handler) createSession(w http.ResponseWriter, r *http.Request) {
 	// the client is never the authority on what it may request.
 	ent := h.entitlementsFor(r.Context(), h.userID(r))
 	if max := ent.MaxSessionSeconds(); req.DurationSeconds > max {
-		httpx.WriteJSON(w, http.StatusPaymentRequired, map[string]any{
-			"error":       "session length exceeds your plan limit",
-			"reason":      "session_duration_exceeds_plan_limit",
-			"max_seconds": max,
-			"plan":        ent.Plan,
-		})
+		writePlanLimit(w, ent)
 		return
 	}
 
@@ -1047,6 +1042,11 @@ func (h *Handler) createSession(w http.ResponseWriter, r *http.Request) {
 		VoiceID:         req.VoiceID,
 		FavoriteIDs:     favMap,
 		RecentIDs:       recentMap,
+
+		// Re-stated for the engine even though this handler already returned
+		// 402 above. The handler check gives the better error message; this
+		// one is the guarantee that survives a future edit to the handler.
+		MaxDurationSeconds: ent.MaxSessionSeconds(),
 	})
 	if errors.Is(err, engine.ErrNoContent) {
 		httpx.WriteError(w, http.StatusUnprocessableEntity, "no content available for the selected categories and voice")
@@ -1219,6 +1219,18 @@ func (h *Handler) createSchedule(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.DurationSeconds == 0 {
 		req.DurationSeconds = 1800
+	}
+	// Checked at save time so the user hears "your plan allows 15 minutes"
+	// now rather than discovering it when the schedule silently fails to fire.
+	// The authoritative check is still the one in the build path, because the
+	// plan can change between saving and firing.
+	if req.DurationSeconds < engine.MinSessionSeconds || req.DurationSeconds > engine.MaxSessionSeconds {
+		httpx.WriteError(w, http.StatusBadRequest, "duration must be between 1 minute and 3 hours")
+		return
+	}
+	if ent := h.entitlementsFor(r.Context(), h.userID(r)); req.DurationSeconds > ent.MaxSessionSeconds() {
+		writePlanLimit(w, ent)
+		return
 	}
 	if req.Timezone == "" {
 		req.Timezone = "UTC"

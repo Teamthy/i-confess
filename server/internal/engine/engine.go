@@ -47,6 +47,51 @@ type Request struct {
 	// RecentIDs are confessions the listener has lately played. They are held
 	// back so the same words are not repeated day after day.
 	RecentIDs map[string]bool
+
+	// MaxDurationSeconds is the ceiling the caller's plan allows. Zero means
+	// "no plan ceiling", in which case only the product bounds below apply.
+	//
+	// It lives here rather than only in the HTTP handlers because the handlers
+	// are not the only callers. A schedule fired by the scheduler, or any
+	// caller added later, has to hit the same limit; a control that lives at
+	// one transport is a control four entry points can forget. PHASE 13 found
+	// exactly that: the ad-hoc path returned 402, and the schedule path built
+	// a free user a three-hour session.
+	MaxDurationSeconds int
+}
+
+// Product bounds on a session length. The client offers presets of 10 to 180
+// minutes plus a custom length; these are the rails behind them.
+const (
+	MinSessionSeconds = 60
+	MaxSessionSeconds = 3 * 3600
+)
+
+var (
+	// ErrDurationTooShort and ErrDurationTooLong reject lengths outside the
+	// product bounds.
+	ErrDurationTooShort = errors.New("duration is below the minimum session length")
+	ErrDurationTooLong  = errors.New("duration is above the maximum session length")
+
+	// ErrDurationExceedsPlan is returned when the requested length is inside
+	// the product bounds but above what the caller's plan allows. Handlers map
+	// it to 402.
+	ErrDurationExceedsPlan = errors.New("duration exceeds the caller's plan limit")
+)
+
+// validateDuration is the single place session length is checked. Every Build
+// goes through it, whatever the entry point.
+func validateDuration(req Request) error {
+	if req.DurationSeconds < MinSessionSeconds {
+		return ErrDurationTooShort
+	}
+	if req.DurationSeconds > MaxSessionSeconds {
+		return ErrDurationTooLong
+	}
+	if req.MaxDurationSeconds > 0 && req.DurationSeconds > req.MaxDurationSeconds {
+		return ErrDurationExceedsPlan
+	}
+	return nil
 }
 
 // Build assembles an ordered, deterministic session.
@@ -65,6 +110,9 @@ type Request struct {
 func (e *Engine) Build(ctx context.Context, req Request) (*models.Session, error) {
 	if req.DurationSeconds <= 0 {
 		req.DurationSeconds = 1800
+	}
+	if err := validateDuration(req); err != nil {
+		return nil, err
 	}
 	req.Strategy = NormalizeStrategy(string(req.Strategy))
 
