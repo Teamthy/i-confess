@@ -1,6 +1,6 @@
 # Project Status
 
-**Last verified:** 2026-09-06, at PHASE 10.
+**Last verified:** 2026-09-06, at PHASE 11.
 
 This file supersedes `MASTER-PROMPT-COMPLETION.md`,
 `CONTENT-DOMAIN-COMPLETION.md`, `AUDIO-PLATFORM-STATUS.md`, `SESSION-NOTES.md`
@@ -57,10 +57,11 @@ PHASE 07 Database Foundation — **PASS**
 PHASE 08 Go Backend — **PASS**
 PHASE 09 Auth — **PASS WITH CONDITIONS**
 PHASE 10 Users & Account Surface — **PASS WITH CONDITIONS**
+PHASE 11 Content Engine — **PASS WITH CONDITIONS**
 
 Open gaps carried forward: G-2, G-3, G-4, G-5, G-6, G-7, G-9, G-10, G-12, G-13,
 G-14, G-15, G-16, G-17, G-18, G-19, G-20, G-21, G-22, G-23, G-24, G-25, G-26, G-27, G-28,
-G-29, G-33.
+G-29, G-33, G-34, G-35, G-36.
 
 Closed: **G-1** (queues are snapshots), **G-2** (23/23 status columns constrained),
 **G-8** (route parity), **G-11** (clients/dart is not a Flutter app),
@@ -69,6 +70,12 @@ Closed: **G-1** (queues are snapshots), **G-2** (23/23 status columns constraine
 plaintext-token functions were removed),
 **G-32** (all 44 admin routes asserted to reject a non-admin).
 **G-33** is new: the 24-entry blocklist is a floor, not a breach corpus.
+
+New in PHASE 11: **G-34** (no audio exists for any of the 78 confessions),
+**G-35** (canonical content has had no theological review; `Author` overstates
+its provenance), **G-36** (an `EnsureContent` failure boots silently).
+PHASE 11 also fixed a launch blocker that had no gap number: production came
+up with an empty catalogue because content was classed as dev-only seed data.
 Each is described in the phase document that raised it.
 
 ## Reproducing any of this
