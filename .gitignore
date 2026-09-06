@@ -25,6 +25,12 @@ server/bin/
 build/
 *.iml
 
+# A library's lockfile pins its dev dependencies only and would fight every
+# consuming app's resolution, so it is not committed. The app's lockfile
+# (apps/mobile/pubspec.lock) IS committed: an application is a deployment
+# artefact and must build the same tree twice.
+clients/dart/pubspec.lock
+
 # One-shot apply scripts contain embedded copies of the source tree; keeping
 # them in the repo means every clone carries a stale duplicate.
 APPLY_*.ps1

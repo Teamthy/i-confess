@@ -18,13 +18,19 @@ lib/
       persistence/persistence.dart        KV store + keystore adapter
       widgets/    screen.dart, states.dart
     features/
-      auth/       auth_controller.dart
+      auth/       auth_controller.dart, validators.dart
+                  welcome / sign_in / sign_up / forgot_password /
+                  verification / reset_password / completion
+                  widgets/    auth_form.dart, auth_form_state.dart
+      onboarding/ onboarding_screen.dart, onboarding_controller.dart
+      splash/     splash_screen.dart
       shell/      app_shell.dart, placeholder_screen.dart
 ```
 
-Feature screens beyond the shell are placeholders that name the phase which
-builds them. That is deliberate: a placeholder that looks finished is how a repo
-ends up with screens nobody remembers are empty.
+The auth and onboarding flow is real. Everything past it — Home, Explore, the
+session builder, the player, Activity, Me — is still a placeholder that names the
+phase which builds it. That is deliberate: a placeholder that looks finished is
+how a repo ends up with screens nobody remembers are empty.
 
 ## Conventions
 
@@ -39,6 +45,18 @@ ends up with screens nobody remembers are empty.
   handled by `SecureTokenStore` from `iconfess_api`.
 - **Analytics events come from `AnalyticsEvents`.** An unknown name is refused
   rather than sent, because a typo fragments a metric across two names.
+- **Validation mirrors the server, and says so.** `features/auth/validators.dart`
+  copies the rules from `server/internal/auth/password_policy.go`; a test reads
+  that file and fails if the two diverge. Sign-in deliberately does not apply the
+  policy, because an account that predates it may hold a password the server
+  accepts.
+- **Error copy depends on which endpoint answered.** `ErrorMapper.describeAuth`
+  takes an `AuthSurface`, because a 401 from `/auth/login` is a wrong password
+  and a 401 from `/auth/reset-password` is a dead token.
+- **The router is built once.** `createRouter` reads the auth provider inside the
+  redirect rather than watching it, and session changes reach go_router through a
+  `refreshListenable`. Watching it rebuilt the router on every transition and
+  discarded the navigation stack.
 
 ## Commands
 

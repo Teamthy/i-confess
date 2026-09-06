@@ -84,6 +84,22 @@ final class ApiError extends ApiException {
 abstract final class ErrorCodes {
   // Authentication
   static const invalidCredentials = 'AUTH_INVALID_CREDENTIALS';
+
+  /// An account that cannot sign in, for a reason the API will not state.
+  ///
+  /// Deliberately distinct from [accountSuspended]. The login handler refuses a
+  /// restricted account with "this account is not available" because moderation
+  /// state is not the caller's business (S80); a code that named the reason
+  /// would disclose exactly what the message withholds.
+  static const accountUnavailable = 'AUTH_ACCOUNT_UNAVAILABLE';
+
+  /// The auth service itself is unavailable — for example, sign-in cannot read
+  /// the second-factor enrolment and refuses rather than skipping it.
+  static const authUnavailable = 'AUTH_UNAVAILABLE';
+
+  /// The request body or a field in it was rejected. The human message carries
+  /// the specific rule, which is the actionable part.
+  static const validationFailed = 'AUTH_VALIDATION_FAILED';
   static const sessionExpired = 'AUTH_SESSION_EXPIRED';
   static const sessionRevoked = 'AUTH_SESSION_REVOKED';
   static const tokenInvalid = 'AUTH_TOKEN_INVALID';

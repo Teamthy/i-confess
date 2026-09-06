@@ -1,9 +1,19 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../features/auth/auth_controller.dart';
+import '../../features/auth/completion_screen.dart';
+import '../../features/auth/forgot_password_screen.dart';
+import '../../features/auth/reset_password_screen.dart';
+import '../../features/auth/sign_in_screen.dart';
+import '../../features/auth/sign_up_screen.dart';
+import '../../features/auth/verification_screen.dart';
+import '../../features/auth/welcome_screen.dart';
+import '../../features/onboarding/onboarding_screen.dart';
 import '../../features/shell/app_shell.dart';
 import '../../features/shell/placeholder_screen.dart';
+import '../../features/splash/splash_screen.dart';
 import 'routes.dart';
 
 /// The app's router.
@@ -11,27 +21,57 @@ import 'routes.dart';
 /// One router, one redirect rule. Access is decided here rather than in each
 /// screen, so a screen cannot be reached by a deep link that its own guard would
 /// have refused.
-GoRouter createRouter(Ref ref) {
-  final auth = ref.watch(authControllerProvider);
-
+/// Builds the router.
+///
+/// [refreshListenable] is notified when the session changes, which is what makes
+/// go_router re-run [redirect] for the location the listener is already on. The
+/// alternative — watching the auth provider from the router's own provider — was
+/// what PHASE 18 shipped, and it was worse than it looked: every auth transition
+/// rebuilt the whole `GoRouter`, threw the navigation stack away and started
+/// again at `/splash`. Sign-in survived that by luck, because the redirect sends
+/// a signed-in listener to `/home` anyway; registration did not, because it was
+/// on its way to the confirmation screen and got redirected to Home instead.
+GoRouter createRouter(
+  Ref ref, {
+  Listenable? refreshListenable,
+  String? initialLocation,
+}) {
   return GoRouter(
-    initialLocation: AppRoutes.splash,
+    // Defaults to the splash, which hands off. A platform link handler passes
+    // the location it was given instead, so `/verify-email?token=…` opens on the
+    // screen that can use the token rather than on the brand screen.
+    initialLocation: initialLocation ?? AppRoutes.splash,
     debugLogDiagnostics: false,
+    refreshListenable: refreshListenable,
     redirect: (context, state) {
       final loc = state.matchedLocation;
+      // Read, not watch. The router outlives any one auth state; watching here
+      // would rebuild it, and a rebuilt router forgets where the listener was.
+      final auth = ref.read(authControllerProvider);
 
       // While the keystore is being read, stay where we are. Routing to sign-in
       // during this window would flash it at every signed-in listener on every
       // cold start, which reads as being logged out.
       if (!auth.isResolved) return null;
 
+      // Screens that only make sense for someone without a session.
+      //
+      // Verification and Completion are deliberately absent. Registration issues
+      // a session before the address is confirmed, so a listener who has just
+      // created an account is signed in *and* on their way to the confirmation
+      // screen; putting it in this list would bounce them to Home mid-flow. Both
+      // are harmless to reach at any time — neither grants anything — and
+      // neither can be mistaken for a way in.
       final isAuthFlow = loc == AppRoutes.welcome ||
           loc == AppRoutes.signIn ||
           loc == AppRoutes.signUp ||
           loc == AppRoutes.forgotPassword ||
           loc == AppRoutes.resetPassword ||
-          loc == AppRoutes.verification ||
           loc == AppRoutes.onboarding;
+
+      // `verifyEmail` is absent for the same reason `verification` is: it is
+      // where a signed-in listener goes to finish confirming an address they
+      // registered with moments ago.
 
       if (!auth.isSignedIn) {
         // Browsing is allowed before an account exists; the flow is not.
@@ -54,53 +94,67 @@ GoRouter createRouter(Ref ref) {
       GoRoute(
         path: AppRoutes.splash,
         name: AppRouteNames.splash,
-        builder: (context, state) => const PlaceholderScreen(
-          title: 'I CONFESS',
-          body: 'Speak. Believe.',
-          immersive: true,
-        ),
+        builder: (context, state) => const SplashScreen(),
       ),
       GoRoute(
         path: AppRoutes.welcome,
         name: AppRouteNames.welcome,
-        builder: (context, state) =>
-            const PlaceholderScreen(title: 'Welcome', body: 'PHASE 19'),
+        builder: (context, state) => const WelcomeScreen(),
       ),
       GoRoute(
         path: AppRoutes.onboarding,
         name: AppRouteNames.onboarding,
-        builder: (context, state) =>
-            const PlaceholderScreen(title: 'Onboarding', body: 'PHASE 19'),
+        builder: (context, state) => const OnboardingScreen(),
       ),
       GoRoute(
         path: AppRoutes.signIn,
         name: AppRouteNames.signIn,
-        builder: (context, state) =>
-            const PlaceholderScreen(title: 'Sign in', body: 'PHASE 19'),
+        builder: (context, state) => const SignInScreen(),
       ),
       GoRoute(
         path: AppRoutes.signUp,
         name: AppRouteNames.signUp,
-        builder: (context, state) =>
-            const PlaceholderScreen(title: 'Create account', body: 'PHASE 19'),
+        builder: (context, state) => const SignUpScreen(),
       ),
       GoRoute(
         path: AppRoutes.forgotPassword,
         name: AppRouteNames.forgotPassword,
-        builder: (context, state) =>
-            const PlaceholderScreen(title: 'Forgot password', body: 'PHASE 19'),
+        // The address is carried over from sign-in so it does not have to be
+        // retyped. Read from the query string rather than passed in memory: a
+        // deep link to this screen is a real path once email links open the app.
+        builder: (context, state) => ForgotPasswordScreen(
+          initialEmail: state.uri.queryParameters['email'] ?? '',
+        ),
       ),
       GoRoute(
         path: AppRoutes.resetPassword,
         name: AppRouteNames.resetPassword,
-        builder: (context, state) =>
-            const PlaceholderScreen(title: 'Reset password', body: 'PHASE 19'),
+        builder: (context, state) => ResetPasswordScreen(
+          token: state.uri.queryParameters['token'] ?? '',
+        ),
       ),
       GoRoute(
         path: AppRoutes.verification,
         name: AppRouteNames.verification,
-        builder: (context, state) =>
-            const PlaceholderScreen(title: 'Verify your email', body: 'PHASE 19'),
+        builder: (context, state) => VerificationScreen(
+          email: state.uri.queryParameters['email'] ?? '',
+        ),
+      ),
+      GoRoute(
+        // The path the email links to. A second route to the same screen, not a
+        // rename: the in-app flow arrives with an address and no token.
+        path: AppRoutes.verifyEmail,
+        name: AppRouteNames.verifyEmail,
+        builder: (context, state) => VerificationScreen(
+          initialToken: state.uri.queryParameters['token'] ?? '',
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.completion,
+        name: AppRouteNames.completion,
+        builder: (context, state) => CompletionScreen(
+          reason: CompletionReason.parse(state.uri.queryParameters['reason']),
+        ),
       ),
 
       // The five destinations. An indexed stack keeps each branch's own
@@ -233,4 +287,18 @@ GoRouter createRouter(Ref ref) {
 }
 
 /// The router as a provider, so tests can override it and screens can watch it.
-final routerProvider = Provider<GoRouter>(createRouter);
+///
+/// Built once. The notifier exists only to tell go_router that the session
+/// changed; it carries no state of its own.
+final routerProvider = Provider<GoRouter>((ref) {
+  final refresh = ValueNotifier<int>(0);
+  final subscription = ref.listen<AuthState>(
+    authControllerProvider,
+    (_, _) => refresh.value++,
+  );
+  ref.onDispose(() {
+    subscription.close();
+    refresh.dispose();
+  });
+  return createRouter(ref, refreshListenable: refresh);
+});

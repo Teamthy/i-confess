@@ -15,6 +15,18 @@ abstract final class AppRoutes {
   static const resetPassword = '/reset-password';
   static const verification = '/verification';
 
+  /// The path the verification email links to.
+  ///
+  /// Served alongside [verification] rather than instead of it. `internal/email`
+  /// builds `https://…/verify-email?token=…`, so this is the path that has to
+  /// resolve for a deep link to land on the right screen; the in-app flow uses
+  /// [verification] because it carries the address rather than a token.
+  static const verifyEmail = '/verify-email';
+
+  /// Where a flow ends: a changed password, a confirmed address. Its own route
+  /// so that pressing back cannot resubmit the token that produced it.
+  static const completion = '/completion';
+
   // Primary destinations
   static const home = '/home';
   static const explore = '/explore';
@@ -67,6 +79,8 @@ abstract final class AppRouteNames {
   static const forgotPassword = 'forgotPassword';
   static const resetPassword = 'resetPassword';
   static const verification = 'verification';
+  static const verifyEmail = 'verifyEmail';
+  static const completion = 'completion';
   static const home = 'home';
   static const explore = 'explore';
   static const confess = 'confess';

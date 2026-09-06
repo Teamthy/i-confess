@@ -14,10 +14,12 @@ void main() {
   late ApiClient client;
   late InMemoryCache raw;
   late JsonCache cache;
+  late InMemoryTokenStore tokens;
 
   setUp(() async {
     api = await _Api.start();
-    client = ApiClient(baseUrl: api.baseUrl, tokens: InMemoryTokenStore());
+    tokens = InMemoryTokenStore();
+    client = ApiClient(baseUrl: api.baseUrl, tokens: tokens);
     raw = InMemoryCache();
     cache = JsonCache(raw);
   });
@@ -157,17 +159,112 @@ void main() {
       expect((outcome as SignInFailed).isRateLimited, isTrue);
     });
 
+    test('a successful sign-in persists the session', () async {
+      // The regression this pins: sign-in used to hand the token to the caller
+      // and nothing wrote it down, so the app was "signed in" for the life of
+      // the process and signed out on the next launch - with every request in
+      // between sent with no Authorization header at all.
+      api.respond('/auth/login', 200, {
+        'token': 'session-token',
+        'user': {'id': 'u-1', 'email': 'a@b.com'},
+      });
+
+      final outcome = await authRepo().signIn(email: 'a@b.com', password: 'pw');
+
+      expect(outcome, isA<SignedIn>());
+      expect((outcome as SignedIn).userId, 'u-1');
+      expect(await tokens.read(), 'session-token',
+          reason: 'a token nobody stored cannot be sent on the next request');
+      expect(await client.hasSession(), isTrue);
+    });
+
+    test('an MFA challenge stores no session', () async {
+      api.respond('/auth/login', 200, {'mfa_required': true});
+
+      await authRepo().signIn(email: 'a@b.com', password: 'pw');
+
+      // A half-finished sign-in must not leave a token behind: the second
+      // factor is exactly the thing that gates the session (S41).
+      expect(await tokens.hasSession(), isFalse);
+    });
+
+    test('a new account is signed in and its session persisted', () async {
+      api.respond('/auth/register', 200, {
+        'token': 'new-session',
+        'user': {'id': 'u-9'},
+      });
+
+      final outcome =
+          await authRepo().register(email: 'new@b.com', password: 'pw');
+
+      expect(outcome, isA<AccountCreated>());
+      expect((outcome as AccountCreated).userId, 'u-9');
+      expect(await tokens.read(), 'new-session');
+    });
+
     test('a duplicate registration is not treated as an error', () async {
       // The server answers 200 with no token so the endpoint cannot be used to
       // discover who has an account.
-      api.respond('/auth/register', 200,
-          {'message': 'Check your email to continue.', 'pending': true});
+      api.respond('/auth/register', 200, {
+        'message': 'Check your email to continue setting up your account.',
+        'pending': true,
+      });
 
-      final result = await authRepo().register(email: 'taken@b.com', password: 'pw');
+      final outcome =
+          await authRepo().register(email: 'taken@b.com', password: 'pw');
 
-      expect(result.succeeded, isTrue);
-      expect((result as WriteSuccess<String>).value, isEmpty,
+      expect(outcome, isA<CheckYourEmail>(),
           reason: 'no token means "check your email", not a failure');
+      expect((outcome as CheckYourEmail).message, contains('Check your email'));
+      expect(await tokens.hasSession(), isFalse,
+          reason: 'no session was issued, so none may be invented');
+    });
+
+    test('registration sends only fields the server accepts', () async {
+      api.respond('/auth/register', 200, {'token': 't', 'user': {'id': 'u'}});
+
+      await authRepo().register(email: 'x@y.z', password: 'pw');
+
+      // The server decodes with DisallowUnknownFields, so an extra key is a 400
+      // rather than something it quietly ignores.
+      final sent = jsonDecode(api.lastBody!) as Map<String, dynamic>;
+      expect(sent.keys.toSet(), {'email', 'password'});
+    });
+
+    test('a rejected registration leaves no session behind', () async {
+      api.respond('/auth/register', 400, {'error': 'password must be at least 8 characters'});
+
+      final outcome =
+          await authRepo().register(email: 'x@y.z', password: 'short');
+
+      expect(outcome, isA<RegisterFailed>());
+      expect(await tokens.hasSession(), isFalse);
+    });
+
+    test('verification, resend and reset send the fields the server reads',
+        () async {
+      api.respond('/auth/verify-email', 200, {'message': 'email verified'});
+      await authRepo().verifyEmail('tok-1');
+      expect(jsonDecode(api.lastBody!), {'token': 'tok-1'});
+
+      api.respond('/auth/resend-verification', 200, {'message': 'sent'});
+      await authRepo().resendVerification('a@b.com');
+      expect(jsonDecode(api.lastBody!), {'email': 'a@b.com'});
+
+      api.respond('/auth/reset-password', 200, {'message': 'password reset'});
+      final result = await authRepo().resetPassword(token: 'tok-2', password: 'new-password');
+      expect(jsonDecode(api.lastBody!), {'token': 'tok-2', 'password': 'new-password'});
+      expect(result.succeeded, isTrue);
+    });
+
+    test('an expired reset token is reported, not swallowed', () async {
+      api.respond('/auth/reset-password', 401,
+          {'error': 'invalid or expired reset token'});
+
+      final result = await authRepo().resetPassword(token: 'old', password: 'new-password');
+
+      final failure = result as WriteFailure<void>;
+      expect((failure.error as ApiError).status, 401);
     });
 
     test('sign-out clears local state even when the call fails', () async {
@@ -180,6 +277,8 @@ void main() {
 
       // A user who taps sign-out must end up signed out.
       expect(await raw.read(CacheKeys.profile), isNull);
+      expect(await tokens.hasSession(), isFalse,
+          reason: 'a failed revoke must not leave the token on the device');
     });
   });
 

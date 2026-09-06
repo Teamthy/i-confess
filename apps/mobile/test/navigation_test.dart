@@ -93,7 +93,10 @@ void main() {
       // The splash hands off to welcome, which is where sign-in and browsing
       // are both offered. Landing on the splash and staying there would be a
       // dead end with no way forward.
-      expect(find.text('Welcome'), findsWidgets);
+      expect(find.text('Create your account'), findsWidgets);
+      expect(find.text('Just look around for now'), findsWidgets,
+          reason: 'browsing without an account is a supported path, so it has '
+              'to be reachable from the first screen');
     });
 
     testWidgets('a signed-in listener is sent past the auth flow', (tester) async {
