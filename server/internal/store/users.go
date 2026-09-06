@@ -103,6 +103,25 @@ func (s *UserStore) Subscription(ctx context.Context, userID string) (string, er
 	return plan, err
 }
 
+// SubscriptionState returns the user's active plan and its status.
+//
+// Subscription deliberately returns only the plan, which is enough for an
+// entitlement check but not for a client that has to say whether the plan is
+// live. Showing "Premium" over an expired row is worse than showing nothing,
+// because the user then reports the app as broken rather than lapsed.
+func (s *UserStore) SubscriptionState(ctx context.Context, userID string) (plan, status string, err error) {
+	err = s.db.QueryRowContext(ctx,
+		`SELECT plan, status FROM subscriptions WHERE user_id = ? ORDER BY created_at DESC LIMIT 1`,
+		userID).Scan(&plan, &status)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "free", "none", nil
+	}
+	if err != nil {
+		return "", "", err
+	}
+	return plan, status, nil
+}
+
 func (s *UserStore) SetSubscription(ctx context.Context, userID, plan, status string) error {
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE subscriptions SET plan = ?, status = ? WHERE user_id = ?`, plan, status, userID)

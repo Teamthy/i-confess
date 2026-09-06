@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Teamthy/i-confess/internal/engine"
+	"github.com/Teamthy/i-confess/internal/entitlements"
 	"github.com/Teamthy/i-confess/internal/httpx"
 	"github.com/Teamthy/i-confess/internal/models"
 	"github.com/Teamthy/i-confess/internal/search"
@@ -153,6 +154,11 @@ func (h *Handler) searchAll(w http.ResponseWriter, r *http.Request) {
 // integrating against this API learns the truth immediately instead of
 // discovering it in production.
 //
+// Two of the original six - subscription and entitlements - were removed in
+// PHASE 08. Their packages existed and were already used elsewhere in this
+// package; the comment describing them as having "no constructors" was simply
+// wrong, and a 501 behind a false explanation outlived the reason for it.
+//
 // Tracked in docs/AUDIT-2026-09-05.md.
 
 func notImplemented(what string) http.HandlerFunc {
@@ -168,12 +174,52 @@ func (h *Handler) recommendations(w http.ResponseWriter, r *http.Request) {
 	notImplemented("recommendations")(w, r)
 }
 
+// getSubscription reports the caller's own plan and its status.
+//
+// This answered 501 with a comment claiming the subscription package had "no
+// constructors". It did: UserStore.Subscription and entitlements.FromPlan were
+// both already in use elsewhere in this package. The 501 was not a missing
+// dependency, it was an unwritten function.
 func (h *Handler) getSubscription(w http.ResponseWriter, r *http.Request) {
-	notImplemented("subscription")(w, r)
+	userID := h.userID(r)
+	if userID == "" {
+		httpx.WriteError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+	plan, status, err := h.users.SubscriptionState(r.Context(), userID)
+	if err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, "could not load subscription")
+		return
+	}
+	ent := entitlements.FromPlan(plan)
+	// "active" means a live paid subscription, not merely that the row's status
+	// column reads active. A free user has a subscription row too, and a client
+	// that shows "Premium" because a boolean said true is worse than one that
+	// shows nothing. The test that caught this had a free user with an active
+	// row and expected active to be false.
+	active := status == "active" && ent.Plan == entitlements.PlanPremium
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{
+		"plan":                plan,
+		"status":              status,
+		"active":              active,
+		"max_session_seconds": ent.MaxSessionSeconds(),
+	})
 }
 
+// getEntitlements reports what the caller may do, as decided by the server.
+//
+// Section 35: the client never asserts its own plan. It reads this and obeys
+// it, and the API re-checks on every privileged action regardless.
 func (h *Handler) getEntitlements(w http.ResponseWriter, r *http.Request) {
-	notImplemented("entitlements")(w, r)
+	userID := h.userID(r)
+	if userID == "" {
+		httpx.WriteError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+	ent := h.entitlementsFor(r.Context(), userID)
+	view := entitlementView(ent)
+	view["playback_ttl_seconds"] = int(ent.PlaybackTTL().Seconds())
+	httpx.WriteJSON(w, http.StatusOK, view)
 }
 
 func (h *Handler) adminQAConfession(w http.ResponseWriter, r *http.Request) {

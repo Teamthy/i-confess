@@ -156,7 +156,7 @@ func TestErasedAccountCannotAuthenticate(t *testing.T) {
 	})
 
 	// Erase directly, as the sweeper would once the grace period elapsed.
-	svc := deletion.NewService(a.h.usersDB())
+	svc := deletion.NewService(a.h.db)
 	if _, err := svc.Erase(context.Background(), userID); err != nil {
 		t.Fatal(err)
 	}
@@ -189,7 +189,7 @@ func TestReRegisteringAfterErasureStartsFresh(t *testing.T) {
 		"password": "password123", "confirm": "DELETE",
 	})
 
-	svc := deletion.NewService(a.h.usersDB())
+	svc := deletion.NewService(a.h.db)
 	if _, err := svc.Erase(context.Background(), userID); err != nil {
 		t.Fatal(err)
 	}

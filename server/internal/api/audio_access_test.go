@@ -247,7 +247,7 @@ func TestEntitlementBlocksPremiumItemAtSigningTime(t *testing.T) {
 		t.Fatalf("expected premium-voice items, got %q", sess.Items[0].VoiceID)
 	}
 
-	users := store.NewUserStore(f.h.usersDB())
+	users := store.NewUserStore(f.h.db)
 	if err := users.SetSubscription(context.Background(), f.premUser, "free", "active"); err != nil {
 		t.Fatal(err)
 	}
@@ -321,7 +321,7 @@ func TestDowngradeRevokesAudioOnReread(t *testing.T) {
 	}
 
 	// Subscription lapses.
-	users := store.NewUserStore(f.h.usersDB())
+	users := store.NewUserStore(f.h.db)
 	if err := users.SetSubscription(context.Background(), f.premUser, "free", "active"); err != nil {
 		t.Fatal(err)
 	}
