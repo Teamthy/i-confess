@@ -47,3 +47,4 @@ FIX_*.ps1
 # Python bytecode — generated, never source
 __pycache__/
 *.pyc
+apps/mobile/test/failures/

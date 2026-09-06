@@ -10,6 +10,9 @@ import '../../features/auth/sign_in_screen.dart';
 import '../../features/auth/sign_up_screen.dart';
 import '../../features/auth/verification_screen.dart';
 import '../../features/auth/welcome_screen.dart';
+import '../../features/explore/category_detail_screen.dart';
+import '../../features/explore/explore_screen.dart';
+import '../../features/home/home_screen.dart';
 import '../../features/onboarding/onboarding_screen.dart';
 import '../../features/shell/app_shell.dart';
 import '../../features/shell/placeholder_screen.dart';
@@ -167,29 +170,27 @@ GoRouter createRouter(
             GoRoute(
               path: AppRoutes.home,
               name: AppRouteNames.home,
-              builder: (context, state) =>
-                  const PlaceholderScreen(title: 'Home', body: 'PHASE 20'),
+              builder: (context, state) => const HomeScreen(),
             ),
           ]),
           StatefulShellBranch(routes: [
             GoRoute(
               path: AppRoutes.explore,
               name: AppRouteNames.explore,
-              builder: (context, state) =>
-                  const PlaceholderScreen(title: 'Explore', body: 'PHASE 21'),
+              builder: (context, state) => const ExploreScreen(),
               routes: [
                 GoRoute(
+                  // Search lives on the explore screen; the route exists so a
+                  // deep link or future voice action can land on the field.
                   path: 'search',
                   name: AppRouteNames.search,
-                  builder: (context, state) =>
-                      const PlaceholderScreen(title: 'Search', body: 'PHASE 21'),
+                  builder: (context, state) => const ExploreScreen(),
                 ),
                 GoRoute(
                   path: 'category/:id',
                   name: AppRouteNames.categoryDetail,
-                  builder: (context, state) => PlaceholderScreen(
-                    title: 'Category',
-                    body: state.pathParameters['id'] ?? '',
+                  builder: (context, state) => CategoryDetailScreen(
+                    categoryId: state.pathParameters['id'] ?? '',
                   ),
                 ),
               ],

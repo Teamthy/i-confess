@@ -322,6 +322,29 @@ void main() {
     });
   });
 
+  test("mySessions lists the listener's sessions without caching them", () async {
+    api.respond('/sessions', 200, {
+      'sessions': [
+        {'id': 'a', 'status': 'PAUSED', 'duration_seconds': 900},
+        {'id': 'b', 'status': 'COMPLETED', 'duration_seconds': 600},
+      ],
+    });
+
+    final repo = ContentRepository(client, cache);
+    final loadable = await repo.mySessions();
+
+    final sessions = loadable.valueOrNull!;
+    expect(sessions, hasLength(2));
+    expect(sessions.map((s) => s.status), ['PAUSED', 'COMPLETED']);
+
+    // A second read must hit the server again: a cached list would show
+    // "continue" for a session that has since finished.
+    await repo.mySessions();
+    await repo.mySessions();
+    expect(api.callCount('/sessions'), 3,
+        reason: 'session lists are never served from the client cache');
+  });
+
   group('downloads', () {
     test('reports licences expiring soon so they can be renewed', () async {
       final soon = DateTime.now().add(const Duration(hours: 12));
@@ -441,7 +464,10 @@ class _Api {
 
   final HttpServer _server;
   final Map<String, _Reply> _replies = {};
+  final Map<String, int> _counts = {};
   String? lastBody;
+
+  int callCount(String path) => _counts[path] ?? 0;
 
   String get baseUrl => 'http://127.0.0.1:${_server.port}';
 
@@ -458,6 +484,7 @@ class _Api {
   void _listen() {
     _server.listen((request) async {
       lastBody = await utf8.decoder.bind(request).join();
+      _counts[request.uri.path] = (_counts[request.uri.path] ?? 0) + 1;
       final reply = _replies[request.uri.path] ?? _Reply(404, {'error': 'not found'});
 
       request.response.statusCode = reply.status;

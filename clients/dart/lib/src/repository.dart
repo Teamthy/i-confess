@@ -374,6 +374,29 @@ final class ProfileRepository extends Repository {
 final class ContentRepository extends Repository {
   ContentRepository(super.api, super.cache);
 
+  /// Published collections — the Explore "featured" rail.
+  ///
+  /// Distinct cache key from [LibraryRepository.collections] (the listener's own
+  /// collections): same word, different data, and a shared key would hand one
+  /// surface the other's payload.
+  Future<Loadable<List<Collection>>> collections() => cachedRead(
+        key: 'published_collections',
+        ttl: CacheTtl.categories,
+        fetch: () async => {'data': (await api.getCollections())['data'] ?? []},
+        decode: (json) => parseList(json['data'], Collection.fromJson),
+      );
+
+  /// Confessions in one category. The server returns a bare array, which the
+  /// client wraps as `{'data': …}`.
+  Future<Loadable<List<Confession>>> categoryConfessions(String id) =>
+      cachedRead(
+        key: 'catconf:$id',
+        ttl: CacheTtl.categories,
+        fetch: () async =>
+            {'data': (await api.getCategoriesByIdConfessions(id))['data'] ?? []},
+        decode: (json) => parseList(json['data'], Confession.fromJson),
+      );
+
   Future<Loadable<List<Category>>> categories() => cachedRead(
         key: CacheKeys.categories,
         ttl: CacheTtl.categories,
@@ -410,6 +433,20 @@ final class ContentRepository extends Repository {
   Future<Loadable<ListeningSession>> session(String id) async {
     try {
       return Loadable.loaded(ListeningSession.fromJson(await api.getSessionsById(id)));
+    } on ApiException catch (e) {
+      return Loadable.failed(e);
+    }
+  }
+
+  /// The listener's sessions, newest first, for continue-listening and history.
+  ///
+  /// Not cached, like [createSession]: a session's status changes as it is
+  /// played, and a cached list would show "continue" for something already
+  /// finished. The read is cheap; staleness is not.
+  Future<Loadable<List<ListeningSession>>> mySessions() async {
+    try {
+      final json = await api.getSessions();
+      return Loadable.loaded(parseList(json['sessions'], ListeningSession.fromJson));
     } on ApiException catch (e) {
       return Loadable.failed(e);
     }
