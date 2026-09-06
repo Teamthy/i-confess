@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"github.com/Teamthy/i-confess/internal/db"
 
 	"github.com/Teamthy/i-confess/internal/models"
@@ -50,6 +51,16 @@ func (s *SessionStore) Create(ctx context.Context, sess *models.Session) error {
 	if err != nil {
 		return err
 	}
+	// Resolve the content snapshot once per distinct confession rather than
+	// once per item. The engine already sets Title and Text on the item, but the
+	// category it sets is an id where the queue returns a name, and a caller is
+	// free to leave the fields empty. Resolving here makes the snapshot correct
+	// regardless of who built the queue.
+	snapshots, err := s.contentSnapshots(ctx, tx, sess.Items)
+	if err != nil {
+		return err
+	}
+
 	for i := range sess.Items {
 		it := &sess.Items[i]
 		if it.ID == "" {
@@ -59,10 +70,12 @@ func (s *SessionStore) Create(ctx context.Context, sess *models.Session) error {
 		if it.Status == "" {
 			it.Status = "queued"
 		}
+		snap := snapshots[it.ConfessionID]
 		_, err = tx.ExecContext(ctx,
-			`INSERT INTO session_items (id,session_id,confession_id,variant_id,voice_id,audio_asset_id,position,duration_seconds,status)
-			 VALUES (?,?,?,?,?,?,?,?,?)`,
-			it.ID, it.SessionID, it.ConfessionID, nullIfEmpty(it.VariantID), nullIfEmpty(it.VoiceID), nullIfEmpty(it.AudioAssetID), it.Position, it.DurationSeconds, it.Status)
+			`INSERT INTO session_items (id,session_id,confession_id,variant_id,voice_id,audio_asset_id,position,duration_seconds,status,title,category_name,text)
+			 VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+			it.ID, it.SessionID, it.ConfessionID, nullIfEmpty(it.VariantID), nullIfEmpty(it.VoiceID), nullIfEmpty(it.AudioAssetID), it.Position, it.DurationSeconds, it.Status,
+			nullIfEmpty(snap.title), nullIfEmpty(snap.categoryName), nullIfEmpty(snap.text))
 		if err != nil {
 			return err
 		}
@@ -106,7 +119,8 @@ func (s *SessionStore) ByID(ctx context.Context, id string) (*models.Session, er
 func (s *SessionStore) Items(ctx context.Context, sessionID string) ([]models.SessionItem, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT si.id, si.confession_id, COALESCE(si.variant_id,''), COALESCE(si.voice_id,''), COALESCE(si.audio_asset_id,''), si.position, si.duration_seconds, si.status,
-		        c.title, cat.name, COALESCE(a.cdn_path, a.storage_key, ''), COALESCE(c.medium_text, c.short_text, '')
+		        COALESCE(si.title, c.title), COALESCE(si.category_name, cat.name), COALESCE(a.cdn_path, a.storage_key, ''),
+		        COALESCE(si.text, c.medium_text, c.short_text, '')
 		 FROM session_items si
 		 JOIN confessions c ON c.id = si.confession_id
 		 JOIN categories cat ON cat.id = c.category_id
@@ -307,4 +321,42 @@ func (s *SessionStore) Progress(ctx context.Context, sessionID string) (*models.
 		p.DeviceID = deviceID.String
 	}
 	return &p, nil
+}
+
+// contentSnapshot is the frozen view of a confession taken when a session is
+// built.
+type contentSnapshot struct {
+	title        string
+	categoryName string
+	text         string
+}
+
+// contentSnapshots reads title, category name and body text for the distinct
+// confessions in a queue.
+//
+// It runs inside the caller's transaction so the snapshot and the queue are
+// written atomically: a session can never be persisted with items whose
+// snapshot was taken against a different state of the content.
+func (s *SessionStore) contentSnapshots(ctx context.Context, tx *db.Tx, items []models.SessionItem) (map[string]contentSnapshot, error) {
+	out := make(map[string]contentSnapshot, len(items))
+	for _, it := range items {
+		if _, seen := out[it.ConfessionID]; seen {
+			continue
+		}
+		var snap contentSnapshot
+		err := tx.QueryRowContext(ctx,
+			`SELECT c.title, k.name, COALESCE(c.medium_text, c.short_text, '')
+			   FROM confessions c
+			   JOIN categories k ON k.id = c.category_id
+			  WHERE c.id = ?`, it.ConfessionID).
+			Scan(&snap.title, &snap.categoryName, &snap.text)
+		if err != nil {
+			// A queue referencing a confession that does not exist is a caller
+			// bug. Failing here is better than snapshotting an empty title that
+			// renders as a blank card at playback time.
+			return nil, fmt.Errorf("snapshot content %s: %w", it.ConfessionID, err)
+		}
+		out[it.ConfessionID] = snap
+	}
+	return out, nil
 }

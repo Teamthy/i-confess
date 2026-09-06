@@ -667,6 +667,23 @@ CREATE TABLE IF NOT EXISTS session_progress (
 );
 CREATE INDEX IF NOT EXISTS idx_session_progress_user ON session_progress(user_id);
 
+-- session_items is a SNAPSHOT, not a view onto live content.
+--
+-- Section 9 of the directive: "Once a session is created, its queue should
+-- become deterministic. Do not let later content changes unexpectedly mutate an
+-- already-created session."
+--
+-- duration_seconds and audio_asset_id were already snapshotted, but title,
+-- category and text were read live through a JOIN to confessions. That meant
+-- editing a confession silently rewrote the queue of every session already
+-- built from it - a user who scheduled a 30-minute healing session on Monday
+-- would hear different words on Tuesday if an editor fixed a typo on Monday
+-- night. Repetition is the product's whole premise, so the words a user
+-- committed to have to be the words they get.
+--
+-- These columns are nullable and backfilled below: existing rows take their
+-- snapshot from the content as it stands now, which is the best available
+-- reconstruction and cannot be recovered any better later.
 CREATE TABLE IF NOT EXISTS session_items (
     id               TEXT PRIMARY KEY,
     session_id       TEXT NOT NULL,
@@ -676,7 +693,10 @@ CREATE TABLE IF NOT EXISTS session_items (
     audio_asset_id   TEXT,
     position         INTEGER NOT NULL,
     duration_seconds INTEGER NOT NULL,
-    status           TEXT NOT NULL DEFAULT 'queued'      -- queued | played | skipped
+    status           TEXT NOT NULL DEFAULT 'queued',     -- queued | played | skipped
+    title            TEXT,
+    category_name    TEXT,
+    text             TEXT
 );
 
 -- ============================= ENGAGEMENT =============================
@@ -1288,3 +1308,14 @@ CREATE TABLE IF NOT EXISTS community_reactions (
 ALTER TABLE community_posts ADD CONSTRAINT community_posts_author_id_fkey FOREIGN KEY (author_id) REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE community_reactions ADD CONSTRAINT community_reactions_post_id_fkey FOREIGN KEY (post_id) REFERENCES community_posts(id) ON DELETE CASCADE;
 ALTER TABLE community_reactions ADD CONSTRAINT community_reactions_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
+
+-- Backfill the session_items snapshot for rows written before the columns
+-- existed. Content as it stands now is the only reconstruction available.
+UPDATE session_items si
+   SET title         = c.title,
+       category_name = k.name,
+       text          = COALESCE(c.medium_text, c.short_text, '')
+  FROM confessions c
+  JOIN categories k ON k.id = c.category_id
+ WHERE si.confession_id = c.id
+   AND si.title IS NULL;
