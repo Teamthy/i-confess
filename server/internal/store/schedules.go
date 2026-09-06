@@ -3,9 +3,10 @@ package store
 import (
 	"context"
 	"database/sql"
-	"github.com/Teamthy/i-confess/internal/db"
 	"strconv"
 	"strings"
+
+	"github.com/Teamthy/i-confess/internal/db"
 
 	"github.com/Teamthy/i-confess/internal/models"
 )

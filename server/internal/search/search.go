@@ -2,8 +2,9 @@ package search
 
 import (
 	"context"
-	"github.com/Teamthy/i-confess/internal/db"
 	"strings"
+
+	"github.com/Teamthy/i-confess/internal/db"
 )
 
 // SearchStore provides full-text and keyword search across content.

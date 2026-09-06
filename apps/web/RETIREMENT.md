@@ -1,0 +1,20 @@
+# RETIRED — do not extend
+
+**Status:** marked for replacement, not yet deleted.
+**Decision:** recorded in `docs/03-TECHNOLOGY-DECISIONS.md`.
+**Replaced by:** PHASE 38.
+**Size at retirement:** 434 lines.
+
+## Why
+
+D-5: rebuilt against the PHASE 05 design system. Building a marketing site before a design system exists is how it ends up visually unrelated to the product.
+
+## Why it is still here
+
+The replacement is sequenced to PHASE 38. Deleting this directory now would leave the
+repository without the surface it provides for every phase in between, and would
+destroy the only working reference for how a client talks to the API.
+
+Nothing here should be extended. If a piece is worth keeping, lift it
+deliberately into the replacement, file by file, with a reason recorded in the
+pull request.

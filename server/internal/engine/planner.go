@@ -132,7 +132,7 @@ func Plan(target int, candidates []int, s Strategy) (n int, err error) {
 		sums[i+1] = sums[i] + d
 	}
 
-	switch strat := NormalizeStrategy(string(s)); strat {
+	switch start := NormalizeStrategy(string(s)); start {
 	case StrategyUnder:
 		// Longest prefix that still fits.
 		best := 0
@@ -180,7 +180,7 @@ func Plan(target int, candidates []int, s Strategy) (n int, err error) {
 		return closest(sums, target, target+tolerance), nil
 
 	default:
-		return 0, errors.New("unknown duration strategy: " + string(strat))
+		return 0, errors.New("unknown duration strategy: " + string(start))
 	}
 }
 

@@ -323,7 +323,7 @@ func TestStrategiesAreTheFiveFromTheSpec(t *testing.T) {
 // constants are assigned both to plain string fields and to Strategy-typed
 // variables across the codebase. Typing them would break one of the two.
 func TestStrategyConstantsAreUntyped(t *testing.T) {
-	var asString string = StrategyBalanced
+	var asString = StrategyBalanced
 	var asStrategy Strategy = StrategyBalanced
 	if asString != "BALANCED" || asStrategy != "BALANCED" {
 		t.Errorf("constants did not satisfy both string and Strategy: %q / %q", asString, asStrategy)

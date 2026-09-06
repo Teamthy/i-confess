@@ -5,9 +5,10 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
-	"github.com/Teamthy/i-confess/internal/db"
 	"strings"
 	"time"
+
+	"github.com/Teamthy/i-confess/internal/db"
 )
 
 // Template is a saved custom session configuration.

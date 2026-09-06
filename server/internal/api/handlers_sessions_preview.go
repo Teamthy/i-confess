@@ -48,9 +48,9 @@ func (h *Handler) previewSession(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid strategy")
 		return
 	}
-	strat := engine.Strategy(req.Strategy)
-	if strat == "" {
-		strat = engine.StrategyBalanced
+	start := engine.Strategy(req.Strategy)
+	if start == "" {
+		start = engine.StrategyBalanced
 	}
 
 	ent := h.entitlementsFor(r.Context(), h.userID(r))
@@ -84,7 +84,7 @@ func (h *Handler) previewSession(w http.ResponseWriter, r *http.Request) {
 		CategoryIDs:     req.CategoryIDs,
 		CategoryWeights: req.CategoryWeights,
 		DurationSeconds: req.DurationSeconds,
-		Strategy:        strat,
+		Strategy:        start,
 		VoiceID:         req.VoiceID,
 		FavoriteIDs:     favMap,
 		RecentIDs:       recentMap,
@@ -111,7 +111,7 @@ func (h *Handler) previewSession(w http.ResponseWriter, r *http.Request) {
 		"items_preview":    previewItems,
 		"voice_downgraded": sess.VoiceDowngraded,
 		"voice_id":         sess.VoiceID,
-		"strategy":         string(strat),
+		"strategy":         string(start),
 		"display":          previewDisplay(req.DurationSeconds, totalItems, sess.VoiceID, sess.VoiceDowngraded),
 	})
 }

@@ -3,8 +3,9 @@ package store
 import (
 	"context"
 	"encoding/json"
-	"github.com/Teamthy/i-confess/internal/db"
 	"time"
+
+	"github.com/Teamthy/i-confess/internal/db"
 
 	"github.com/Teamthy/i-confess/internal/billing"
 )

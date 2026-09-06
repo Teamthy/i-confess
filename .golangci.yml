@@ -1,0 +1,84 @@
+version: "2"
+
+# Lint configuration for I CONFESS.
+#
+# Two rules shaped this file.
+#
+# First, a linter that reports 64 pre-existing issues on every run gets ignored,
+# and an ignored linter is worse than none because it creates the impression of
+# a gate that does not exist. So CI runs with `new-from-merge-base`: code you
+# touch must be clean, and the existing debt is tracked in
+# docs/PROJECT-STATUS.md rather than hidden.
+#
+# Second, every enabled linter has to have caught something real or be cheap
+# enough to be worth running blind. errcheck is enabled despite producing most
+# of the current findings, because an unchecked error on a database write is how
+# a half-applied transaction ships.
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  default: none
+  enable:
+    # Correctness. These four are the defaults golangci-lint ships with, and all
+    # four have found real defects in this repository.
+    - errcheck      # unchecked errors; currently the largest share of the debt
+    - govet         # suspicious constructs; overlaps `go vet` in CI
+    - ineffassign   # assignments that are never read
+    - staticcheck   # the broad correctness suite
+    - unused        # unreachable code; found three dead HTTP handlers
+
+    # Cheap and high-signal for a codebase this size.
+    - misspell      # comments and user-facing strings
+    - unconvert     # redundant type conversions
+    - nakedret      # naked returns in long functions are unreadable
+    - prealloc      # slice preallocation on hot paths
+    - revive        # style and a few correctness rules, replacing golint
+
+  settings:
+    errcheck:
+      # Deliberately not excluding fmt.Fprintf to an http.ResponseWriter. The
+      # idiomatic Go position is that a failed write to a response is
+      # unrecoverable and not worth handling, but this codebase wraps writes in
+      # internal/httpx, so a bare Fprintf is usually a mistake rather than a
+      # choice.
+      check-type-assertions: true
+      check-blank: false
+    revive:
+      rules:
+        - name: exported
+          disabled: true   # the codebase documents intent, not signatures
+        - name: package-comments
+          disabled: true
+
+  exclusions:
+    generated: lax
+    rules:
+      # Generated code and the embedded schema are not hand-maintained.
+      - path: _test\.go
+        linters: [errcheck]
+      - path: internal/db/schema
+        linters: [all]
+      # `defer rows.Close()` and `defer tx.Rollback()` are idiomatic and their
+      # errors are genuinely unrecoverable: the statement has already run and
+      # the only caller left is the deferred function itself. Checking them
+      # means either discarding the result explicitly at every call site or
+      # leaking an error into a return value nothing reads. Both are worse than
+      # the exclusion. Any *other* unchecked error still fails the build.
+      - linters: [errcheck]
+        source: 'defer\s+\w+\.(Close|Rollback)\('
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  # Fail only on issues introduced by the branch under review. Removing this
+  # turns CI red on 64 findings that predate the gate, which is how lint gates
+  # get commented out.
+  new-from-merge-base: main
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
