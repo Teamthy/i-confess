@@ -1,0 +1,1836 @@
+[
+  {
+    "method": "POST",
+    "path": "/admin/audio",
+    "auth": "admin",
+    "summary": "Attach an audio asset to a confession",
+    "tag": "admin-audio"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/audio/generate",
+    "auth": "audio_producer,voice_manager",
+    "summary": "Generate audio; refused 451 when voice rights disallow it",
+    "tag": "admin-audio"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/audit",
+    "auth": "admin",
+    "summary": "Recent privileged actions",
+    "tag": "admin-ops"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/categories",
+    "auth": "admin",
+    "summary": "List all categories including drafts",
+    "tag": "admin-content"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/categories",
+    "auth": "admin",
+    "summary": "Create a category",
+    "tag": "admin-content"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/confessions",
+    "auth": "admin",
+    "summary": "List all confessions including drafts",
+    "tag": "admin-content"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/confessions",
+    "auth": "admin",
+    "summary": "Create a confession",
+    "tag": "admin-content"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/confessions/{id}",
+    "auth": "admin",
+    "summary": "Read a confession with variants",
+    "tag": "admin-content"
+  },
+  {
+    "method": "PATCH",
+    "path": "/admin/confessions/{id}",
+    "auth": "admin",
+    "summary": "Update or publish a confession",
+    "tag": "admin-content"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/confessions/{id}/qa",
+    "auth": "admin",
+    "summary": "Run Audio QA checklist (§75) before APPROVED",
+    "tag": "admin-content"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/metrics",
+    "auth": "admin",
+    "summary": "Security event counters",
+    "tag": "admin-ops"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/moderation/queue",
+    "auth": "admin",
+    "summary": "Moderation queue (UGC + editorial pending)",
+    "tag": "admin-content"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/moderation/user-confessions/{id}/review",
+    "auth": "admin",
+    "summary": "Review a user confession (approved|rejected)",
+    "tag": "admin-content"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/plans",
+    "auth": "admin",
+    "summary": "List pricing plans (admin-editable)",
+    "tag": "admin-content"
+  },
+  {
+    "method": "PUT",
+    "path": "/admin/plans",
+    "auth": "admin",
+    "summary": "Create or update a pricing plan",
+    "tag": "admin-content"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/stats",
+    "auth": "admin",
+    "summary": "Platform totals",
+    "tag": "admin-ops"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/users/admins",
+    "auth": "admin",
+    "summary": "List admin accounts",
+    "tag": "admin-users"
+  },
+  {
+    "method": "DELETE",
+    "path": "/admin/users/role",
+    "auth": "admin",
+    "summary": "Revoke an admin role",
+    "tag": "admin-users"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/users/role",
+    "auth": "admin",
+    "summary": "Grant an admin role",
+    "tag": "admin-users"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/users/status",
+    "auth": "admin",
+    "summary": "Suspend or restore an account",
+    "tag": "admin-users"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/users/subscription",
+    "auth": "admin",
+    "summary": "Set a subscription plan",
+    "tag": "admin-users"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/voices",
+    "auth": "admin",
+    "summary": "List voices",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/voices",
+    "auth": "admin",
+    "summary": "Create a voice",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/voices/{id}/rights",
+    "auth": "voice_manager",
+    "summary": "Rights record with a live evaluation",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "PUT",
+    "path": "/admin/voices/{id}/rights",
+    "auth": "voice_manager",
+    "summary": "Set rights; AI grants require an attestation",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/voices/{id}/rights/revoke",
+    "auth": "voice_manager",
+    "summary": "Revoke every use of a voice",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "POST",
+    "path": "/ai/parse",
+    "auth": "user",
+    "summary": "AI NLU → categories/duration (never invents theology)",
+    "tag": "ai"
+  },
+  {
+    "method": "POST",
+    "path": "/analytics/batch",
+    "auth": "user",
+    "summary": "Batch analytics events (no PII)",
+    "tag": "analytics"
+  },
+  {
+    "method": "POST",
+    "path": "/auth/change-password",
+    "auth": "user",
+    "summary": "Change password and revoke other sessions",
+    "tag": "auth"
+  },
+  {
+    "method": "POST",
+    "path": "/auth/consent",
+    "auth": "user",
+    "summary": "Record a consent decision",
+    "tag": "auth"
+  },
+  {
+    "method": "GET",
+    "path": "/auth/identities",
+    "auth": "user",
+    "summary": "List linked sign-in providers",
+    "tag": "auth"
+  },
+  {
+    "method": "DELETE",
+    "path": "/auth/identities/{provider}",
+    "auth": "user",
+    "summary": "Unlink a provider",
+    "tag": "auth"
+  },
+  {
+    "method": "POST",
+    "path": "/auth/identities/{provider}",
+    "auth": "user",
+    "summary": "Link a provider to this account",
+    "tag": "auth"
+  },
+  {
+    "method": "POST",
+    "path": "/auth/login",
+    "auth": "public",
+    "summary": "Sign in; returns mfa_required when a second factor is enrolled",
+    "tag": "auth"
+  },
+  {
+    "method": "POST",
+    "path": "/auth/logout",
+    "auth": "user",
+    "summary": "End this session",
+    "tag": "auth"
+  },
+  {
+    "method": "POST",
+    "path": "/auth/logout-all",
+    "auth": "user",
+    "summary": "End every session for this account",
+    "tag": "auth"
+  },
+  {
+    "method": "GET",
+    "path": "/auth/mfa",
+    "auth": "user",
+    "summary": "Two-factor status",
+    "tag": "mfa"
+  },
+  {
+    "method": "POST",
+    "path": "/auth/mfa/begin",
+    "auth": "user",
+    "summary": "Start enrolment; returns a server-generated secret",
+    "tag": "mfa"
+  },
+  {
+    "method": "POST",
+    "path": "/auth/mfa/confirm",
+    "auth": "user",
+    "summary": "Confirm enrolment and receive recovery codes",
+    "tag": "mfa"
+  },
+  {
+    "method": "POST",
+    "path": "/auth/mfa/disable",
+    "auth": "user",
+    "summary": "Disable two-factor authentication",
+    "tag": "mfa"
+  },
+  {
+    "method": "POST",
+    "path": "/auth/refresh",
+    "auth": "user",
+    "summary": "Rotate the session and issue a new access token",
+    "tag": "auth"
+  },
+  {
+    "method": "POST",
+    "path": "/auth/register",
+    "auth": "public",
+    "summary": "Create an account and send a verification email",
+    "tag": "auth"
+  },
+  {
+    "method": "POST",
+    "path": "/auth/request-password-reset",
+    "auth": "public",
+    "summary": "Request a password reset link",
+    "tag": "auth"
+  },
+  {
+    "method": "POST",
+    "path": "/auth/resend-verification",
+    "auth": "public",
+    "summary": "Resend the verification email",
+    "tag": "auth"
+  },
+  {
+    "method": "POST",
+    "path": "/auth/reset-password",
+    "auth": "public",
+    "summary": "Set a new password using a reset token",
+    "tag": "auth"
+  },
+  {
+    "method": "POST",
+    "path": "/auth/security-events",
+    "auth": "user",
+    "summary": "Record a client-side security event",
+    "tag": "auth"
+  },
+  {
+    "method": "GET",
+    "path": "/auth/sessions",
+    "auth": "user",
+    "summary": "List live sign-ins",
+    "tag": "auth"
+  },
+  {
+    "method": "DELETE",
+    "path": "/auth/sessions/{id}",
+    "auth": "user",
+    "summary": "Sign out one device",
+    "tag": "auth"
+  },
+  {
+    "method": "POST",
+    "path": "/auth/social/{provider}",
+    "auth": "public",
+    "summary": "Exchange a provider identity token for a session",
+    "tag": "auth"
+  },
+  {
+    "method": "POST",
+    "path": "/auth/verify-email",
+    "auth": "public",
+    "summary": "Verify an email address with a one-time token",
+    "tag": "auth"
+  },
+  {
+    "method": "GET",
+    "path": "/categories",
+    "auth": "public",
+    "summary": "Published categories (cached SWR 5m)",
+    "tag": "content"
+  },
+  {
+    "method": "GET",
+    "path": "/categories/{id}/confessions",
+    "auth": "public",
+    "summary": "Confessions in a category (cached SWR 2m)",
+    "tag": "content"
+  },
+  {
+    "method": "GET",
+    "path": "/collections",
+    "auth": "public",
+    "summary": "Published collections",
+    "tag": "content"
+  },
+  {
+    "method": "GET",
+    "path": "/community/feed",
+    "auth": "public",
+    "summary": "Approved community feed",
+    "tag": "community"
+  },
+  {
+    "method": "POST",
+    "path": "/community/posts",
+    "auth": "user",
+    "summary": "Create community post (moderated, never auto-publish)",
+    "tag": "community"
+  },
+  {
+    "method": "POST",
+    "path": "/community/posts/{id}/react",
+    "auth": "user",
+    "summary": "React amen/heart/pray",
+    "tag": "community"
+  },
+  {
+    "method": "GET",
+    "path": "/confessions/{id}",
+    "auth": "public",
+    "summary": "One confession",
+    "tag": "content"
+  },
+  {
+    "method": "GET",
+    "path": "/entitlements",
+    "auth": "user",
+    "summary": "Entitlement flags",
+    "tag": "subscription"
+  },
+  {
+    "method": "GET",
+    "path": "/health/live",
+    "auth": "public",
+    "summary": "Liveness",
+    "tag": "ops"
+  },
+  {
+    "method": "GET",
+    "path": "/health/ready",
+    "auth": "public",
+    "summary": "Readiness with subsystem detail",
+    "tag": "ops"
+  },
+  {
+    "method": "GET",
+    "path": "/healthz",
+    "auth": "public",
+    "summary": "Liveness",
+    "tag": "ops"
+  },
+  {
+    "method": "GET",
+    "path": "/home",
+    "auth": "user",
+    "summary": "Home sections",
+    "tag": "home"
+  },
+  {
+    "method": "GET",
+    "path": "/me",
+    "auth": "user",
+    "summary": "Account summary",
+    "tag": "profile"
+  },
+  {
+    "method": "DELETE",
+    "path": "/me/avatar",
+    "auth": "user",
+    "summary": "Remove the avatar",
+    "tag": "profile"
+  },
+  {
+    "method": "POST",
+    "path": "/me/avatar",
+    "auth": "user",
+    "summary": "Upload an avatar; EXIF is stripped",
+    "tag": "profile"
+  },
+  {
+    "method": "GET",
+    "path": "/me/bootstrap",
+    "auth": "user",
+    "summary": "Everything needed to start the app",
+    "tag": "profile"
+  },
+  {
+    "method": "GET",
+    "path": "/me/collections",
+    "auth": "user",
+    "summary": "List collections",
+    "tag": "library"
+  },
+  {
+    "method": "POST",
+    "path": "/me/collections",
+    "auth": "user",
+    "summary": "Create a collection (private by default)",
+    "tag": "library"
+  },
+  {
+    "method": "DELETE",
+    "path": "/me/collections/{id}",
+    "auth": "user",
+    "summary": "Delete a collection",
+    "tag": "library"
+  },
+  {
+    "method": "GET",
+    "path": "/me/collections/{id}",
+    "auth": "user",
+    "summary": "Read a collection",
+    "tag": "library"
+  },
+  {
+    "method": "PATCH",
+    "path": "/me/collections/{id}",
+    "auth": "user",
+    "summary": "Update a collection",
+    "tag": "library"
+  },
+  {
+    "method": "POST",
+    "path": "/me/collections/{id}/items",
+    "auth": "user",
+    "summary": "Add a confession to a collection",
+    "tag": "library"
+  },
+  {
+    "method": "DELETE",
+    "path": "/me/collections/{id}/items/{confessionId}",
+    "auth": "user",
+    "summary": "Remove an item",
+    "tag": "library"
+  },
+  {
+    "method": "PATCH",
+    "path": "/me/collections/{id}/reorder",
+    "auth": "user",
+    "summary": "Reorder items",
+    "tag": "library"
+  },
+  {
+    "method": "GET",
+    "path": "/me/confessions",
+    "auth": "user",
+    "summary": "List personal confessions",
+    "tag": "library"
+  },
+  {
+    "method": "POST",
+    "path": "/me/confessions",
+    "auth": "user",
+    "summary": "Create a personal confession",
+    "tag": "library"
+  },
+  {
+    "method": "DELETE",
+    "path": "/me/deletion",
+    "auth": "user",
+    "summary": "Cancel a scheduled deletion",
+    "tag": "account"
+  },
+  {
+    "method": "GET",
+    "path": "/me/deletion",
+    "auth": "user",
+    "summary": "Preview what deletion removes and retains",
+    "tag": "account"
+  },
+  {
+    "method": "POST",
+    "path": "/me/deletion",
+    "auth": "user",
+    "summary": "Schedule account deletion",
+    "tag": "account"
+  },
+  {
+    "method": "GET",
+    "path": "/me/devices",
+    "auth": "user",
+    "summary": "List devices",
+    "tag": "devices"
+  },
+  {
+    "method": "POST",
+    "path": "/me/devices",
+    "auth": "user",
+    "summary": "Register a device and its push token",
+    "tag": "devices"
+  },
+  {
+    "method": "DELETE",
+    "path": "/me/devices/{id}",
+    "auth": "user",
+    "summary": "Remove a device",
+    "tag": "devices"
+  },
+  {
+    "method": "GET",
+    "path": "/me/downloads",
+    "auth": "user",
+    "summary": "List offline licences",
+    "tag": "downloads"
+  },
+  {
+    "method": "POST",
+    "path": "/me/downloads",
+    "auth": "user",
+    "summary": "Take a confession offline (premium)",
+    "tag": "downloads"
+  },
+  {
+    "method": "DELETE",
+    "path": "/me/downloads/{id}",
+    "auth": "user",
+    "summary": "Release an offline licence",
+    "tag": "downloads"
+  },
+  {
+    "method": "POST",
+    "path": "/me/downloads/{id}/refresh",
+    "auth": "user",
+    "summary": "Renew an offline licence",
+    "tag": "downloads"
+  },
+  {
+    "method": "GET",
+    "path": "/me/export",
+    "auth": "user",
+    "summary": "Download all personal data",
+    "tag": "account"
+  },
+  {
+    "method": "DELETE",
+    "path": "/me/favorites",
+    "auth": "user",
+    "summary": "Remove a favourite",
+    "tag": "library"
+  },
+  {
+    "method": "GET",
+    "path": "/me/favorites",
+    "auth": "user",
+    "summary": "List favourites",
+    "tag": "library"
+  },
+  {
+    "method": "POST",
+    "path": "/me/favorites",
+    "auth": "user",
+    "summary": "Add a favourite",
+    "tag": "library"
+  },
+  {
+    "method": "GET",
+    "path": "/me/history",
+    "auth": "user",
+    "summary": "Listening history",
+    "tag": "library"
+  },
+  {
+    "method": "POST",
+    "path": "/me/history",
+    "auth": "user",
+    "summary": "Record playback",
+    "tag": "library"
+  },
+  {
+    "method": "GET",
+    "path": "/me/interests",
+    "auth": "user",
+    "summary": "Interests, split into explicit and inferred",
+    "tag": "profile"
+  },
+  {
+    "method": "PUT",
+    "path": "/me/interests",
+    "auth": "user",
+    "summary": "Replace explicitly chosen interests",
+    "tag": "profile"
+  },
+  {
+    "method": "GET",
+    "path": "/me/notifications",
+    "auth": "user",
+    "summary": "Notification preferences",
+    "tag": "devices"
+  },
+  {
+    "method": "PATCH",
+    "path": "/me/notifications",
+    "auth": "user",
+    "summary": "Update notification preferences",
+    "tag": "devices"
+  },
+  {
+    "method": "GET",
+    "path": "/me/preferences",
+    "auth": "user",
+    "summary": "Read preferences",
+    "tag": "profile"
+  },
+  {
+    "method": "PATCH",
+    "path": "/me/preferences",
+    "auth": "user",
+    "summary": "Update preferences",
+    "tag": "profile"
+  },
+  {
+    "method": "GET",
+    "path": "/me/profile",
+    "auth": "user",
+    "summary": "Read profile",
+    "tag": "profile"
+  },
+  {
+    "method": "PATCH",
+    "path": "/me/profile",
+    "auth": "user",
+    "summary": "Update profile",
+    "tag": "profile"
+  },
+  {
+    "method": "GET",
+    "path": "/recommendations",
+    "auth": "user",
+    "summary": "Personalized recommendations",
+    "tag": "home"
+  },
+  {
+    "method": "GET",
+    "path": "/schedules",
+    "auth": "user",
+    "summary": "List schedules",
+    "tag": "schedules"
+  },
+  {
+    "method": "POST",
+    "path": "/schedules",
+    "auth": "user",
+    "summary": "Create a schedule",
+    "tag": "schedules"
+  },
+  {
+    "method": "DELETE",
+    "path": "/schedules/{id}",
+    "auth": "user",
+    "summary": "Delete a schedule",
+    "tag": "schedules"
+  },
+  {
+    "method": "PATCH",
+    "path": "/schedules/{id}",
+    "auth": "user",
+    "summary": "Update a schedule",
+    "tag": "schedules"
+  },
+  {
+    "method": "POST",
+    "path": "/schedules/{id}/start",
+    "auth": "user",
+    "summary": "Trigger a schedule — builds a session",
+    "tag": "schedules"
+  },
+  {
+    "method": "GET",
+    "path": "/search",
+    "auth": "public",
+    "summary": "Search confessions, categories, voices, Scripture",
+    "tag": "content"
+  },
+  {
+    "method": "GET",
+    "path": "/sessions",
+    "auth": "user",
+    "summary": "List sessions",
+    "tag": "sessions"
+  },
+  {
+    "method": "POST",
+    "path": "/sessions",
+    "auth": "user",
+    "summary": "Compose a session; audio URLs are signed",
+    "tag": "sessions"
+  },
+  {
+    "method": "POST",
+    "path": "/sessions/preview",
+    "auth": "user",
+    "summary": "Preview a session (dry-run)",
+    "tag": "sessions"
+  },
+  {
+    "method": "GET",
+    "path": "/sessions/{id}",
+    "auth": "user",
+    "summary": "Read a session with freshly signed audio",
+    "tag": "sessions"
+  },
+  {
+    "method": "PATCH",
+    "path": "/sessions/{id}",
+    "auth": "user",
+    "summary": "Update session status",
+    "tag": "sessions"
+  },
+  {
+    "method": "POST",
+    "path": "/sessions/{id}/complete",
+    "auth": "user",
+    "summary": "Complete a session",
+    "tag": "sessions"
+  },
+  {
+    "method": "POST",
+    "path": "/sessions/{id}/pause",
+    "auth": "user",
+    "summary": "Pause a session",
+    "tag": "sessions"
+  },
+  {
+    "method": "POST",
+    "path": "/sessions/{id}/progress",
+    "auth": "user",
+    "summary": "Sync playback progress",
+    "tag": "sessions"
+  },
+  {
+    "method": "GET",
+    "path": "/sessions/{id}/queue",
+    "auth": "user",
+    "summary": "Queue for a session",
+    "tag": "sessions"
+  },
+  {
+    "method": "POST",
+    "path": "/sessions/{id}/resume",
+    "auth": "user",
+    "summary": "Resume a paused session",
+    "tag": "sessions"
+  },
+  {
+    "method": "POST",
+    "path": "/sessions/{id}/skip",
+    "auth": "user",
+    "summary": "Skip queue item",
+    "tag": "sessions"
+  },
+  {
+    "method": "POST",
+    "path": "/sessions/{id}/start",
+    "auth": "user",
+    "summary": "Start a session (DRAFT→ACTIVE)",
+    "tag": "sessions"
+  },
+  {
+    "method": "GET",
+    "path": "/subscription",
+    "auth": "user",
+    "summary": "Current plan and entitlements",
+    "tag": "subscription"
+  },
+  {
+    "method": "GET",
+    "path": "/subscriptions/plans",
+    "auth": "public",
+    "summary": "List plans",
+    "tag": "subscription"
+  },
+  {
+    "method": "GET",
+    "path": "/subscriptions/trial",
+    "auth": "user",
+    "summary": "Trial journey (Day1..Day7)",
+    "tag": "subscription"
+  },
+  {
+    "method": "POST",
+    "path": "/subscriptions/verify",
+    "auth": "user",
+    "summary": "Verify store receipt (server-side, billing.Verifier)",
+    "tag": "subscription"
+  },
+  {
+    "method": "GET",
+    "path": "/t/{token}",
+    "auth": "public",
+    "summary": "Resolve shareable template",
+    "tag": "templates"
+  },
+  {
+    "method": "GET",
+    "path": "/templates",
+    "auth": "user",
+    "summary": "List templates",
+    "tag": "templates"
+  },
+  {
+    "method": "POST",
+    "path": "/templates",
+    "auth": "user",
+    "summary": "Create a template",
+    "tag": "templates"
+  },
+  {
+    "method": "DELETE",
+    "path": "/templates/{id}",
+    "auth": "user",
+    "summary": "Delete a template",
+    "tag": "templates"
+  },
+  {
+    "method": "GET",
+    "path": "/templates/{id}",
+    "auth": "user",
+    "summary": "Read a template",
+    "tag": "templates"
+  },
+  {
+    "method": "PATCH",
+    "path": "/templates/{id}",
+    "auth": "user",
+    "summary": "Update a template",
+    "tag": "templates"
+  },
+  {
+    "method": "POST",
+    "path": "/templates/{id}/start",
+    "auth": "user",
+    "summary": "Start a template — builds a session",
+    "tag": "templates"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/admin/audio",
+    "auth": "admin",
+    "summary": "Attach an audio asset to a confession",
+    "tag": "admin-audio"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/admin/audio/generate",
+    "auth": "audio_producer,voice_manager",
+    "summary": "Generate audio; refused 451 when voice rights disallow it",
+    "tag": "admin-audio"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/admin/audit",
+    "auth": "admin",
+    "summary": "Recent privileged actions",
+    "tag": "admin-ops"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/admin/categories",
+    "auth": "admin",
+    "summary": "List all categories including drafts",
+    "tag": "admin-content"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/admin/categories",
+    "auth": "admin",
+    "summary": "Create a category",
+    "tag": "admin-content"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/admin/confessions",
+    "auth": "admin",
+    "summary": "List all confessions including drafts",
+    "tag": "admin-content"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/admin/confessions",
+    "auth": "admin",
+    "summary": "Create a confession",
+    "tag": "admin-content"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/admin/confessions/{id}",
+    "auth": "admin",
+    "summary": "Read a confession with variants",
+    "tag": "admin-content"
+  },
+  {
+    "method": "PATCH",
+    "path": "/v1/admin/confessions/{id}",
+    "auth": "admin",
+    "summary": "Update or publish a confession",
+    "tag": "admin-content"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/admin/confessions/{id}/qa",
+    "auth": "admin",
+    "summary": "Run Audio QA checklist (§75) before APPROVED",
+    "tag": "admin-content"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/admin/metrics",
+    "auth": "admin",
+    "summary": "Security event counters",
+    "tag": "admin-ops"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/admin/moderation/queue",
+    "auth": "admin",
+    "summary": "Moderation queue (UGC + editorial pending)",
+    "tag": "admin-content"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/admin/moderation/user-confessions/{id}/review",
+    "auth": "admin",
+    "summary": "Review a user confession (approved|rejected)",
+    "tag": "admin-content"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/admin/plans",
+    "auth": "admin",
+    "summary": "List pricing plans (admin-editable)",
+    "tag": "admin-content"
+  },
+  {
+    "method": "PUT",
+    "path": "/v1/admin/plans",
+    "auth": "admin",
+    "summary": "Create or update a pricing plan",
+    "tag": "admin-content"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/admin/stats",
+    "auth": "admin",
+    "summary": "Platform totals",
+    "tag": "admin-ops"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/admin/users/admins",
+    "auth": "admin",
+    "summary": "List admin accounts",
+    "tag": "admin-users"
+  },
+  {
+    "method": "DELETE",
+    "path": "/v1/admin/users/role",
+    "auth": "admin",
+    "summary": "Revoke an admin role",
+    "tag": "admin-users"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/admin/users/role",
+    "auth": "admin",
+    "summary": "Grant an admin role",
+    "tag": "admin-users"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/admin/users/status",
+    "auth": "admin",
+    "summary": "Suspend or restore an account",
+    "tag": "admin-users"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/admin/users/subscription",
+    "auth": "admin",
+    "summary": "Set a subscription plan",
+    "tag": "admin-users"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/admin/voices",
+    "auth": "admin",
+    "summary": "List voices",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/admin/voices",
+    "auth": "admin",
+    "summary": "Create a voice",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/admin/voices/{id}/rights",
+    "auth": "voice_manager",
+    "summary": "Rights record with a live evaluation",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "PUT",
+    "path": "/v1/admin/voices/{id}/rights",
+    "auth": "voice_manager",
+    "summary": "Set rights; AI grants require an attestation",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/admin/voices/{id}/rights/revoke",
+    "auth": "voice_manager",
+    "summary": "Revoke every use of a voice",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/ai/parse",
+    "auth": "user",
+    "summary": "AI NLU → categories/duration (never invents theology)",
+    "tag": "ai"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/analytics/batch",
+    "auth": "user",
+    "summary": "Batch analytics events (no PII)",
+    "tag": "analytics"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/auth/change-password",
+    "auth": "user",
+    "summary": "Change password and revoke other sessions",
+    "tag": "auth"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/auth/consent",
+    "auth": "user",
+    "summary": "Record a consent decision",
+    "tag": "auth"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/auth/identities",
+    "auth": "user",
+    "summary": "List linked sign-in providers",
+    "tag": "auth"
+  },
+  {
+    "method": "DELETE",
+    "path": "/v1/auth/identities/{provider}",
+    "auth": "user",
+    "summary": "Unlink a provider",
+    "tag": "auth"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/auth/identities/{provider}",
+    "auth": "user",
+    "summary": "Link a provider to this account",
+    "tag": "auth"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/auth/login",
+    "auth": "public",
+    "summary": "Sign in; returns mfa_required when a second factor is enrolled",
+    "tag": "auth"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/auth/logout",
+    "auth": "user",
+    "summary": "End this session",
+    "tag": "auth"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/auth/logout-all",
+    "auth": "user",
+    "summary": "End every session for this account",
+    "tag": "auth"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/auth/mfa",
+    "auth": "user",
+    "summary": "Two-factor status",
+    "tag": "mfa"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/auth/mfa/begin",
+    "auth": "user",
+    "summary": "Start enrolment; returns a server-generated secret",
+    "tag": "mfa"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/auth/mfa/confirm",
+    "auth": "user",
+    "summary": "Confirm enrolment and receive recovery codes",
+    "tag": "mfa"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/auth/mfa/disable",
+    "auth": "user",
+    "summary": "Disable two-factor authentication",
+    "tag": "mfa"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/auth/refresh",
+    "auth": "user",
+    "summary": "Rotate the session and issue a new access token",
+    "tag": "auth"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/auth/register",
+    "auth": "public",
+    "summary": "Create an account and send a verification email",
+    "tag": "auth"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/auth/request-password-reset",
+    "auth": "public",
+    "summary": "Request a password reset link",
+    "tag": "auth"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/auth/resend-verification",
+    "auth": "public",
+    "summary": "Resend the verification email",
+    "tag": "auth"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/auth/reset-password",
+    "auth": "public",
+    "summary": "Set a new password using a reset token",
+    "tag": "auth"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/auth/security-events",
+    "auth": "user",
+    "summary": "Record a client-side security event",
+    "tag": "auth"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/auth/sessions",
+    "auth": "user",
+    "summary": "List live sign-ins",
+    "tag": "auth"
+  },
+  {
+    "method": "DELETE",
+    "path": "/v1/auth/sessions/{id}",
+    "auth": "user",
+    "summary": "Sign out one device",
+    "tag": "auth"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/auth/social/{provider}",
+    "auth": "public",
+    "summary": "Exchange a provider identity token for a session",
+    "tag": "auth"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/auth/verify-email",
+    "auth": "public",
+    "summary": "Verify an email address with a one-time token",
+    "tag": "auth"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/categories",
+    "auth": "public",
+    "summary": "Published categories (cached SWR 5m)",
+    "tag": "content"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/categories/{id}/confessions",
+    "auth": "public",
+    "summary": "Confessions in a category (cached SWR 2m)",
+    "tag": "content"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/collections",
+    "auth": "public",
+    "summary": "Published collections",
+    "tag": "content"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/community/feed",
+    "auth": "public",
+    "summary": "Approved community feed",
+    "tag": "community"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/community/posts",
+    "auth": "user",
+    "summary": "Create community post (moderated, never auto-publish)",
+    "tag": "community"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/community/posts/{id}/react",
+    "auth": "user",
+    "summary": "React amen/heart/pray",
+    "tag": "community"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/confessions/{id}",
+    "auth": "public",
+    "summary": "One confession",
+    "tag": "content"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/entitlements",
+    "auth": "user",
+    "summary": "Entitlement flags",
+    "tag": "subscription"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/health/live",
+    "auth": "public",
+    "summary": "Liveness",
+    "tag": "ops"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/health/ready",
+    "auth": "public",
+    "summary": "Readiness with subsystem detail",
+    "tag": "ops"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/healthz",
+    "auth": "public",
+    "summary": "Liveness",
+    "tag": "ops"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/home",
+    "auth": "user",
+    "summary": "Home sections (feature-flagged)",
+    "tag": "home"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/me",
+    "auth": "user",
+    "summary": "Account summary",
+    "tag": "profile"
+  },
+  {
+    "method": "DELETE",
+    "path": "/v1/me/avatar",
+    "auth": "user",
+    "summary": "Remove the avatar",
+    "tag": "profile"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/me/avatar",
+    "auth": "user",
+    "summary": "Upload an avatar; EXIF is stripped",
+    "tag": "profile"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/me/bootstrap",
+    "auth": "user",
+    "summary": "Everything needed to start the app",
+    "tag": "profile"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/me/collections",
+    "auth": "user",
+    "summary": "List collections",
+    "tag": "library"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/me/collections",
+    "auth": "user",
+    "summary": "Create a collection (private by default)",
+    "tag": "library"
+  },
+  {
+    "method": "DELETE",
+    "path": "/v1/me/collections/{id}",
+    "auth": "user",
+    "summary": "Delete a collection",
+    "tag": "library"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/me/collections/{id}",
+    "auth": "user",
+    "summary": "Read a collection",
+    "tag": "library"
+  },
+  {
+    "method": "PATCH",
+    "path": "/v1/me/collections/{id}",
+    "auth": "user",
+    "summary": "Update a collection",
+    "tag": "library"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/me/collections/{id}/items",
+    "auth": "user",
+    "summary": "Add a confession to a collection",
+    "tag": "library"
+  },
+  {
+    "method": "DELETE",
+    "path": "/v1/me/collections/{id}/items/{confessionId}",
+    "auth": "user",
+    "summary": "Remove an item",
+    "tag": "library"
+  },
+  {
+    "method": "PATCH",
+    "path": "/v1/me/collections/{id}/reorder",
+    "auth": "user",
+    "summary": "Reorder items",
+    "tag": "library"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/me/confessions",
+    "auth": "user",
+    "summary": "List personal confessions",
+    "tag": "library"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/me/confessions",
+    "auth": "user",
+    "summary": "Create a personal confession",
+    "tag": "library"
+  },
+  {
+    "method": "DELETE",
+    "path": "/v1/me/deletion",
+    "auth": "user",
+    "summary": "Cancel a scheduled deletion",
+    "tag": "account"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/me/deletion",
+    "auth": "user",
+    "summary": "Preview what deletion removes and retains",
+    "tag": "account"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/me/deletion",
+    "auth": "user",
+    "summary": "Schedule account deletion",
+    "tag": "account"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/me/devices",
+    "auth": "user",
+    "summary": "List devices",
+    "tag": "devices"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/me/devices",
+    "auth": "user",
+    "summary": "Register a device and its push token",
+    "tag": "devices"
+  },
+  {
+    "method": "DELETE",
+    "path": "/v1/me/devices/{id}",
+    "auth": "user",
+    "summary": "Remove a device",
+    "tag": "devices"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/me/downloads",
+    "auth": "user",
+    "summary": "List offline licences",
+    "tag": "downloads"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/me/downloads",
+    "auth": "user",
+    "summary": "Take a confession offline (premium)",
+    "tag": "downloads"
+  },
+  {
+    "method": "DELETE",
+    "path": "/v1/me/downloads/{id}",
+    "auth": "user",
+    "summary": "Release an offline licence",
+    "tag": "downloads"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/me/downloads/{id}/refresh",
+    "auth": "user",
+    "summary": "Renew an offline licence",
+    "tag": "downloads"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/me/export",
+    "auth": "user",
+    "summary": "Download all personal data",
+    "tag": "account"
+  },
+  {
+    "method": "DELETE",
+    "path": "/v1/me/favorites",
+    "auth": "user",
+    "summary": "Remove a favourite",
+    "tag": "library"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/me/favorites",
+    "auth": "user",
+    "summary": "List favourites",
+    "tag": "library"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/me/favorites",
+    "auth": "user",
+    "summary": "Add a favourite",
+    "tag": "library"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/me/history",
+    "auth": "user",
+    "summary": "Listening history",
+    "tag": "library"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/me/history",
+    "auth": "user",
+    "summary": "Record playback",
+    "tag": "library"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/me/interests",
+    "auth": "user",
+    "summary": "Interests, split into explicit and inferred",
+    "tag": "profile"
+  },
+  {
+    "method": "PUT",
+    "path": "/v1/me/interests",
+    "auth": "user",
+    "summary": "Replace explicitly chosen interests",
+    "tag": "profile"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/me/notifications",
+    "auth": "user",
+    "summary": "Notification preferences",
+    "tag": "devices"
+  },
+  {
+    "method": "PATCH",
+    "path": "/v1/me/notifications",
+    "auth": "user",
+    "summary": "Update notification preferences",
+    "tag": "devices"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/me/preferences",
+    "auth": "user",
+    "summary": "Read preferences",
+    "tag": "profile"
+  },
+  {
+    "method": "PATCH",
+    "path": "/v1/me/preferences",
+    "auth": "user",
+    "summary": "Update preferences",
+    "tag": "profile"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/me/profile",
+    "auth": "user",
+    "summary": "Read profile",
+    "tag": "profile"
+  },
+  {
+    "method": "PATCH",
+    "path": "/v1/me/profile",
+    "auth": "user",
+    "summary": "Update profile",
+    "tag": "profile"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/recommendations",
+    "auth": "user",
+    "summary": "Personalized recommendations (deterministic v1)",
+    "tag": "home"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/schedules",
+    "auth": "user",
+    "summary": "List schedules",
+    "tag": "schedules"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/schedules",
+    "auth": "user",
+    "summary": "Create a schedule",
+    "tag": "schedules"
+  },
+  {
+    "method": "DELETE",
+    "path": "/v1/schedules/{id}",
+    "auth": "user",
+    "summary": "Delete a schedule",
+    "tag": "schedules"
+  },
+  {
+    "method": "PATCH",
+    "path": "/v1/schedules/{id}",
+    "auth": "user",
+    "summary": "Update a schedule",
+    "tag": "schedules"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/schedules/{id}/start",
+    "auth": "user",
+    "summary": "Trigger a schedule — builds a session (deep link target)",
+    "tag": "schedules"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/search",
+    "auth": "public",
+    "summary": "Search confessions, categories, voices, Scripture",
+    "tag": "content"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/sessions",
+    "auth": "user",
+    "summary": "List sessions",
+    "tag": "sessions"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/sessions",
+    "auth": "user",
+    "summary": "Compose a session; audio URLs are signed",
+    "tag": "sessions"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/sessions/preview",
+    "auth": "user",
+    "summary": "Preview a session (dry-run, no persistence)",
+    "tag": "sessions"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/sessions/{id}",
+    "auth": "user",
+    "summary": "Read a session with freshly signed audio",
+    "tag": "sessions"
+  },
+  {
+    "method": "PATCH",
+    "path": "/v1/sessions/{id}",
+    "auth": "user",
+    "summary": "Update session status",
+    "tag": "sessions"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/sessions/{id}/complete",
+    "auth": "user",
+    "summary": "Complete a session",
+    "tag": "sessions"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/sessions/{id}/pause",
+    "auth": "user",
+    "summary": "Pause a session",
+    "tag": "sessions"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/sessions/{id}/progress",
+    "auth": "user",
+    "summary": "Sync playback progress",
+    "tag": "sessions"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/sessions/{id}/queue",
+    "auth": "user",
+    "summary": "Queue for a session",
+    "tag": "sessions"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/sessions/{id}/resume",
+    "auth": "user",
+    "summary": "Resume a paused session",
+    "tag": "sessions"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/sessions/{id}/skip",
+    "auth": "user",
+    "summary": "Skip queue item",
+    "tag": "sessions"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/sessions/{id}/start",
+    "auth": "user",
+    "summary": "Start a session (DRAFT→ACTIVE)",
+    "tag": "sessions"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/subscription",
+    "auth": "user",
+    "summary": "Current plan and entitlements",
+    "tag": "subscription"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/subscriptions/plans",
+    "auth": "public",
+    "summary": "List plans with regional pricing (NGN/USD/GBP/EUR/PHP)",
+    "tag": "subscription"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/subscriptions/trial",
+    "auth": "user",
+    "summary": "Trial journey (Day1..Day7)",
+    "tag": "subscription"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/subscriptions/verify",
+    "auth": "user",
+    "summary": "Verify store receipt (server-side, billing.Verifier)",
+    "tag": "subscription"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/t/{token}",
+    "auth": "public",
+    "summary": "Resolve a shareable template",
+    "tag": "templates"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/templates",
+    "auth": "user",
+    "summary": "List templates",
+    "tag": "templates"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/templates",
+    "auth": "user",
+    "summary": "Create a template",
+    "tag": "templates"
+  },
+  {
+    "method": "DELETE",
+    "path": "/v1/templates/{id}",
+    "auth": "user",
+    "summary": "Delete a template",
+    "tag": "templates"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/templates/{id}",
+    "auth": "user",
+    "summary": "Read a template",
+    "tag": "templates"
+  },
+  {
+    "method": "PATCH",
+    "path": "/v1/templates/{id}",
+    "auth": "user",
+    "summary": "Update a template",
+    "tag": "templates"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/templates/{id}/start",
+    "auth": "user",
+    "summary": "Start a template — builds a session",
+    "tag": "templates"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/voices",
+    "auth": "public",
+    "summary": "Available voices (cached SWR 5m)",
+    "tag": "content"
+  },
+  {
+    "method": "GET",
+    "path": "/voices",
+    "auth": "public",
+    "summary": "Available voices (cached SWR 5m)",
+    "tag": "content"
+  }
+]

@@ -1,6 +1,6 @@
 # Project Status
 
-**Last verified:** 2026-09-06, at PHASE 05.
+**Last verified:** 2026-09-06, at PHASE 06.
 
 This file supersedes `MASTER-PROMPT-COMPLETION.md`,
 `CONTENT-DOMAIN-COMPLETION.md`, `AUDIO-PLATFORM-STATUS.md`, `SESSION-NOTES.md`
@@ -41,6 +41,7 @@ it.** Every claim below was produced by running something.
 | **Database constraints** | 22 `status` columns, 5 CHECK constraints. |
 | **Cache** | Per-process only; no cross-instance invalidation. |
 | **Design system** | 120 tokens, contrast-verified, but not yet consumed by any real surface. |
+| **Navigation** | 37 screens specified and validated; none are built. Mobile has 2 real screens and 3 placeholders. |
 | **Observability** | No cache hit-rate metric; runtime dependency failure untested. |
 
 ## Phase progress
@@ -51,10 +52,11 @@ PHASE 02 System Architecture — **PASS**
 PHASE 03 Technology Decisions — **PASS**
 PHASE 04 Repository Bootstrap — **PASS**
 PHASE 05 Design System — **PASS**
-PHASE 06 UX / Information Architecture — not started
+PHASE 06 UX / Information Architecture — **PASS**
+PHASE 07 Database Foundation — not started
 
 Open gaps carried forward: G-2, G-3, G-4, G-5, G-6, G-7, G-9, G-10, G-12, G-13,
-G-14, G-15, G-16.
+G-14, G-15, G-16, G-17, G-18, G-19, G-20.
 Each is described in the phase document that raised it.
 
 ## Reproducing any of this
