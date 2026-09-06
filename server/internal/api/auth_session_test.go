@@ -126,7 +126,7 @@ func TestSuspensionRevokesLiveSessions(t *testing.T) {
 		t.Fatalf("token should work while active: %d", code)
 	}
 
-	users := store.NewUserStore(a.h.usersDB())
+	users := store.NewUserStore(a.h.db)
 	if err := users.SetStatus(context.Background(), userID, "suspended"); err != nil {
 		t.Fatal(err)
 	}

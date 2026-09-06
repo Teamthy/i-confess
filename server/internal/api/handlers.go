@@ -164,7 +164,6 @@ func (h *Handler) auditRights(r *http.Request, voiceID string, aiGranted bool, a
 
 // usersDB exposes the underlying database handle for tests that need to
 // manipulate subscription state directly.
-func (h *Handler) usersDB() *db.DB { return h.db }
 
 // BuildEngine wires the session engine after handler construction.
 func (h *Handler) BuildEngine() {

@@ -119,7 +119,7 @@ func TestDowngradeBlocksRenewal(t *testing.T) {
 	dl, _ := out["download"].(map[string]any)
 	id, _ := dl["id"].(string)
 
-	users := store.NewUserStore(f.h.usersDB())
+	users := store.NewUserStore(f.h.db)
 	if err := users.SetSubscription(context.Background(), f.premUser, "free", "active"); err != nil {
 		t.Fatal(err)
 	}
