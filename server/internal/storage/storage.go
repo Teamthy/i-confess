@@ -2,7 +2,9 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -73,20 +75,69 @@ type StorageConfig struct {
 	CacheTTL    time.Duration // Default cache TTL for CDN
 }
 
+// AvailableProviders are the providers that are actually implemented. GCS and
+// Azure are named in the schema and in StorageConfig but have no
+// implementation; listing them here would be a promise this package cannot
+// keep.
+var AvailableProviders = []string{"s3", "local"}
+
 // New creates a storage provider based on configuration.
 func New(cfg *StorageConfig) (ObjectStorage, error) {
-	switch cfg.Provider {
+	switch strings.ToLower(strings.TrimSpace(cfg.Provider)) {
 	case "s3":
 		return NewS3Storage(cfg)
-	case "gcs":
-		return NewGCSStorage(cfg)
-	case "azure":
-		return NewAzureStorage(cfg)
 	case "local":
 		return NewLocalStorage(cfg)
+	case "gcs", "azure":
+		return nil, fmt.Errorf("%w: %q — available: %s",
+			ErrProviderUnavailable, cfg.Provider, strings.Join(AvailableProviders, ", "))
 	default:
-		return nil, fmt.Errorf("unsupported storage provider: %s", cfg.Provider)
+		return nil, fmt.Errorf("unsupported storage provider: %q — available: %s",
+			cfg.Provider, strings.Join(AvailableProviders, ", "))
 	}
+}
+
+// ValidateProvider rejects a storage configuration at boot rather than at the
+// first upload.
+//
+// The failure this prevents is specific and silent: local storage writes to the
+// process filesystem, so it boots healthy, accepts uploads, and serves audio
+// from local disk indefinitely. Nothing in that path complains. But the bytes
+// are lost on a container restart and are invisible to every other replica, so
+// audio generated on one instance is unreachable from the next — the exact
+// thing §6 forbids by requiring object storage plus a CDN.
+func ValidateProvider(cfg *StorageConfig, isProduction bool) error {
+	provider := strings.ToLower(strings.TrimSpace(cfg.Provider))
+
+	switch provider {
+	case "s3":
+		if cfg.S3Bucket == "" {
+			return errors.New("STORAGE_PROVIDER=s3 requires S3_BUCKET")
+		}
+		if cfg.S3Region == "" {
+			return errors.New("STORAGE_PROVIDER=s3 requires S3_REGION")
+		}
+	case "local":
+		if isProduction {
+			return errors.New("STORAGE_PROVIDER=local is not permitted in production: " +
+				"audio must live in object storage and be served by a CDN (§6). " +
+				"Local storage does not survive a restart and is not shared between replicas")
+		}
+		if cfg.LocalRootPath == "" {
+			return errors.New("STORAGE_PROVIDER=local requires LOCAL_ROOT_PATH")
+		}
+	case "", "gcs", "azure":
+		name := provider
+		if name == "" {
+			name = "(unset)"
+		}
+		return fmt.Errorf("%w: %q — available: %s",
+			ErrProviderUnavailable, name, strings.Join(AvailableProviders, ", "))
+	default:
+		return fmt.Errorf("unknown storage provider %q — available: %s",
+			provider, strings.Join(AvailableProviders, ", "))
+	}
+	return nil
 }
 
 // UploadOptions provides additional context for uploads (used by implementations as needed).
