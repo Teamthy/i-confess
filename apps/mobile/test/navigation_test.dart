@@ -146,8 +146,12 @@ void main() {
     testWidgets('every tab is at least a 44pt touch target', (tester) async {
       await pumpApp(tester, const AuthState.signedIn(userId: 'u1'));
 
-      // The five tab targets are the only InkWells on a placeholder screen.
-      final targets = find.byType(InkWell);
+      // The five tab targets are the only InkWells in the bar. Home contributes
+      // its own InkWells to the body, so the search is scoped to the bar by key.
+      final targets = find.descendant(
+        of: find.byKey(const ValueKey('app-shell-bar')),
+        matching: find.byType(InkWell),
+      );
       expect(targets, findsNWidgets(5));
 
       for (var i = 0; i < 5; i++) {

@@ -23,6 +23,9 @@ class AppShell extends StatelessWidget {
     return Scaffold(
       body: navigationShell,
       bottomNavigationBar: DecoratedBox(
+        // Keyed so tests can scope "the tab targets" to the bar now that real
+        // screens (home) contribute their own InkWells to the tree.
+        key: const ValueKey('app-shell-bar'),
         decoration: BoxDecoration(
           color: surfaces.surfaceRaised,
           border: Border(top: BorderSide(color: surfaces.border)),

@@ -10,6 +10,7 @@ import '../../features/auth/sign_in_screen.dart';
 import '../../features/auth/sign_up_screen.dart';
 import '../../features/auth/verification_screen.dart';
 import '../../features/auth/welcome_screen.dart';
+import '../../features/home/home_screen.dart';
 import '../../features/onboarding/onboarding_screen.dart';
 import '../../features/shell/app_shell.dart';
 import '../../features/shell/placeholder_screen.dart';
@@ -167,8 +168,7 @@ GoRouter createRouter(
             GoRoute(
               path: AppRoutes.home,
               name: AppRouteNames.home,
-              builder: (context, state) =>
-                  const PlaceholderScreen(title: 'Home', body: 'PHASE 20'),
+              builder: (context, state) => const HomeScreen(),
             ),
           ]),
           StatefulShellBranch(routes: [
