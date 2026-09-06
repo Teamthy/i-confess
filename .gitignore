@@ -29,3 +29,10 @@ build/
 # them in the repo means every clone carries a stale duplicate.
 APPLY_*.ps1
 FIX_*.ps1
+
+# Patch dumps and editor residue must never be committed. A 15,885-line
+# patch file and a 0-byte `client/me` (residue of a mis-typed curl -o) both
+# reached the repository root before this rule existed.
+*.patch
+*.orig
+*.rej
