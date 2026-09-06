@@ -82,6 +82,12 @@ final class AuthRepository extends Repository {
 
   /// Signs in. A `mfaRequired` result is a successful credential check that
   /// needs a second factor — not a failure, and the UI must not word it as one.
+  ///
+  /// A successful sign-in persists the token before returning. Until PHASE 19
+  /// this method handed the token to the caller and nothing ever wrote it down,
+  /// so a listener who signed in was "signed in" for the lifetime of the process
+  /// and signed out on the next launch, with every request in between sent
+  /// without an Authorization header.
   Future<SignInOutcome> signIn({
     required String email,
     required String password,
@@ -103,29 +109,78 @@ final class AuthRepository extends Repository {
           ApiError(status: 500, code: '', message: 'No session was issued.'),
         );
       }
-      return SignInOutcome.signedIn(token);
+      await api.attachSession(token);
+      return SignInOutcome.signedIn(token, userId: _userIdOf(json));
     } on ApiException catch (e) {
       return SignInOutcome.failed(e);
     }
   }
 
-  Future<WriteResult<String>> register({
+  /// Creates an account.
+  ///
+  /// Three outcomes, not two. The server refuses to confirm whether an address
+  /// is already registered (S65): it answers a duplicate exactly as it answers a
+  /// fresh signup, minus the session. So "no token" is a success path with its
+  /// own screen, not an error, and the UI must not word it as a rejection.
+  Future<RegisterOutcome> register({
     required String email,
     required String password,
     String? displayName,
     String? timezone,
+  }) async {
+    try {
+      final json = await api.postAuthRegister({
+        'email': email,
+        'password': password,
+        if (displayName != null && displayName.isNotEmpty)
+          'display_name': displayName,
+        if (timezone != null && timezone.isNotEmpty) 'timezone': timezone,
+      });
+
+      final token = json['token'] as String? ?? '';
+      if (token.isEmpty) {
+        return RegisterOutcome.checkYourEmail(
+          json['message'] as String? ?? 'Check your email to continue.',
+        );
+      }
+      await api.attachSession(token);
+      return RegisterOutcome.created(token, userId: _userIdOf(json));
+    } on ApiException catch (e) {
+      return RegisterOutcome.failed(e);
+    }
+  }
+
+  /// Confirms an email address with the token from the link that was sent.
+  ///
+  /// Exposed on the client because the link opens in a browser, and a listener
+  /// who cannot open it — or who arrives through the app — still needs a way in.
+  /// An invalid or expired token is a 401 from the server, which the UI should
+  /// answer with "resend", not with a generic failure.
+  Future<WriteResult<void>> verifyEmail(String token) =>
+      write(() => api.postAuthVerifyEmail({'token': token}), (_) {});
+
+  /// Asks for the confirmation email to be sent again.
+  ///
+  /// The server answers identically whether or not the address is known, and
+  /// the UI must keep that: showing "resent!" for one address and nothing for
+  /// another turns the button into a membership lookup.
+  Future<WriteResult<void>> resendVerification(String email) => write(
+        () => api.postAuthResendVerification({'email': email}),
+        (_) {},
+      );
+
+  /// Sets a new password with a reset token.
+  ///
+  /// The server ends every session belonging to the account when this succeeds,
+  /// because whoever held the old password might have been an attacker (S34).
+  /// The caller should therefore not expect to be signed in afterwards.
+  Future<WriteResult<void>> resetPassword({
+    required String token,
+    required String password,
   }) =>
       write(
-        () => api.postAuthRegister({
-          'email': email,
-          'password': password,
-          if (displayName != null) 'display_name': displayName,
-          if (timezone != null) 'timezone': timezone,
-        }),
-        // A duplicate address returns a neutral 200 with no token, so the
-        // endpoint cannot be used to discover who has an account. An empty
-        // token here means "check your email", not an error.
-        (json) => json['token'] as String? ?? '',
+        () => api.postAuthResetPassword({'token': token, 'password': password}),
+        (_) {},
       );
 
   /// Ends this session. Clears local state even if the call fails: a user who
@@ -138,6 +193,7 @@ final class AuthRepository extends Repository {
       // Deliberately swallowed.
     }
     await cache.clear();
+    await api.clearSession();
   }
 
   Future<WriteResult<void>> signOutEverywhere() =>
@@ -161,18 +217,75 @@ final class AuthRepository extends Repository {
       );
 }
 
+/// Reads the account id out of a response that carries the user object.
+///
+/// Sign-in and registration both return `{token, user}`, and the id is what
+/// lets analytics attribute events to a person. Absent rather than invented
+/// when the server omits it: a wrong id is worse than no id.
+String? _userIdOf(Map<String, dynamic> json) {
+  final user = json['user'];
+  if (user is Map<String, dynamic>) {
+    final id = user['id'];
+    if (id is String && id.isNotEmpty) return id;
+  }
+  final flat = json['user_id'];
+  return flat is String && flat.isNotEmpty ? flat : null;
+}
+
 /// The outcome of a sign-in attempt.
 sealed class SignInOutcome {
   const SignInOutcome();
 
-  const factory SignInOutcome.signedIn(String token) = SignedIn;
+  const factory SignInOutcome.signedIn(String token, {String? userId}) =
+      SignedIn;
   const factory SignInOutcome.mfaRequired() = MfaRequired;
   const factory SignInOutcome.failed(ApiException error) = SignInFailed;
 }
 
 final class SignedIn extends SignInOutcome {
-  const SignedIn(this.token);
+  const SignedIn(this.token, {this.userId});
   final String token;
+
+  /// The account id, when the response carried the user object. Null is not an
+  /// error: it means attribution is unavailable, and a wrong id would be worse.
+  final String? userId;
+}
+
+/// The outcome of a registration attempt.
+///
+/// A sealed type rather than a `WriteResult<String>`, because the interesting
+/// case is neither success nor failure: an address that already exists returns
+/// a 200 with no session, and the UI owes that listener a "check your email"
+/// screen rather than an error. Encoding that as an empty string left every
+/// caller to know the convention.
+sealed class RegisterOutcome {
+  const RegisterOutcome();
+
+  const factory RegisterOutcome.created(String token, {String? userId}) =
+      AccountCreated;
+  const factory RegisterOutcome.checkYourEmail(String message) = CheckYourEmail;
+  const factory RegisterOutcome.failed(ApiException error) = RegisterFailed;
+}
+
+final class AccountCreated extends RegisterOutcome {
+  const AccountCreated(this.token, {this.userId});
+  final String token;
+  final String? userId;
+}
+
+final class CheckYourEmail extends RegisterOutcome {
+  const CheckYourEmail(this.message);
+
+  /// The server's own wording. Neutral by construction: it must not differ
+  /// between an address that exists and one that does not (S65).
+  final String message;
+}
+
+final class RegisterFailed extends RegisterOutcome {
+  const RegisterFailed(this.error);
+  final ApiException error;
+
+  bool get isOffline => error is NetworkException;
 }
 
 final class MfaRequired extends SignInOutcome {

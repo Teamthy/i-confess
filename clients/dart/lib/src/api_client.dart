@@ -116,6 +116,29 @@ class ApiClient {
     return false;
   }
 
+  /// Stores a session token issued by the server.
+  ///
+  /// The transport owns the [TokenStore] — it is what attaches the header and
+  /// what refreshes — so it is also what persists. A repository that kept its
+  /// own copy would be a second source of truth, and a new sign-in path that
+  /// forgot the write would look like it worked until the next cold start.
+  ///
+  /// Explicit rather than inferred from the response body: several endpoints
+  /// return a field called a token that is *not* a session token (the MFA
+  /// enrolment secret, a one-time verification token), and auto-persisting
+  /// anything under that key would overwrite a working session with a value
+  /// that cannot authenticate.
+  Future<void> attachSession(String token) => _tokens.save(token);
+
+  /// Discards the stored session without contacting the server.
+  ///
+  /// Used when a failure means the token is worthless. Ending the session
+  /// remotely is a separate, deliberate call.
+  Future<void> clearSession() => _tokens.clear();
+
+  /// Whether a session token is currently stored.
+  Future<bool> hasSession() => _tokens.hasSession();
+
   Future<_RawResponse> _raw(
     String method,
     String path, {

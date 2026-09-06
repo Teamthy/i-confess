@@ -213,19 +213,19 @@ func (h *Handler) register(w http.ResponseWriter, r *http.Request) {
 		Timezone string `json:"timezone"`
 	}
 	if err := httpx.DecodeJSON(r, &req); err != nil {
-		httpx.WriteError(w, http.StatusBadRequest, "invalid request body")
+		writeCode(w, http.StatusBadRequest, "AUTH_VALIDATION_FAILED", "invalid request body")
 		return
 	}
 	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
 	if req.Email == "" {
-		httpx.WriteError(w, http.StatusBadRequest, "email is required")
+		writeCode(w, http.StatusBadRequest, "AUTH_VALIDATION_FAILED", "email is required")
 		return
 	}
 	// One policy, applied at every point a password is set. It used to be an
 	// inline length check duplicated per handler, which meant a new entry point
 	// could be added without it and nothing would notice.
 	if err := auth.ValidatePassword(req.Password); err != nil {
-		httpx.WriteError(w, http.StatusBadRequest, err.Error())
+		writeCode(w, http.StatusBadRequest, "AUTH_VALIDATION_FAILED", err.Error())
 		return
 	}
 	// An existing address must not be confirmed to the caller (S65). Instead of
@@ -280,7 +280,7 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 		Code string `json:"code"`
 	}
 	if err := httpx.DecodeJSON(r, &req); err != nil {
-		httpx.WriteError(w, http.StatusBadRequest, "invalid request body")
+		writeCode(w, http.StatusBadRequest, "AUTH_VALIDATION_FAILED", "invalid request body")
 		return
 	}
 	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
@@ -300,7 +300,7 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 		h.metrics.Inc(MetricLoginFailure)
 		// One generic message for both "no such account" and "wrong password",
 		// so the endpoint cannot be used to discover who has an account (S19).
-		httpx.WriteError(w, http.StatusUnauthorized, "invalid credentials")
+		writeCode(w, http.StatusUnauthorized, "AUTH_INVALID_CREDENTIALS", "invalid credentials")
 		return
 	}
 	// pending_deletion must still be able to sign in, otherwise the grace
@@ -308,7 +308,7 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 	// deletion could never get back in to cancel it.
 	if u.Status != "active" && u.Status != "pending_deletion" {
 		// Deliberately vague: moderation state is not the caller's business (S80).
-		httpx.WriteError(w, http.StatusForbidden, "this account is not available")
+		writeCode(w, http.StatusForbidden, "AUTH_ACCOUNT_UNAVAILABLE", "this account is not available")
 		return
 	}
 
@@ -336,7 +336,7 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 	enrolment, mErr := h.users.MFAEnrolmentFor(r.Context(), u.ID)
 	if mErr != nil && !errors.Is(mErr, store.ErrNotFound) {
 		log.Printf("auth: cannot read MFA enrolment for %s, refusing sign-in: %v", u.ID, mErr)
-		httpx.WriteError(w, http.StatusServiceUnavailable, "sign-in is temporarily unavailable, try again")
+		writeCode(w, http.StatusServiceUnavailable, "AUTH_UNAVAILABLE", "sign-in is temporarily unavailable, try again")
 		return
 	}
 	if mErr == nil && enrolment.Enabled {
@@ -547,18 +547,18 @@ func (h *Handler) verifyEmail(w http.ResponseWriter, r *http.Request) {
 		Token string `json:"token"`
 	}
 	if err := httpx.DecodeJSON(r, &req); err != nil || req.Token == "" {
-		httpx.WriteError(w, http.StatusBadRequest, "invalid verification token")
+		writeCode(w, http.StatusBadRequest, "AUTH_TOKEN_INVALID", "invalid verification token")
 		return
 	}
 	// Look up by hash: only hashes are stored.
 	hashed := auth.HashToken(req.Token)
 	userID, err := h.users.UserIDByVerificationToken(r.Context(), hashed)
 	if err != nil || userID == "" {
-		httpx.WriteError(w, http.StatusUnauthorized, "invalid or expired verification token")
+		writeCode(w, http.StatusUnauthorized, "AUTH_TOKEN_INVALID", "invalid or expired verification token")
 		return
 	}
 	if ok, err := h.users.VerifyEmailToken(r.Context(), userID, hashed); err != nil || !ok {
-		httpx.WriteError(w, http.StatusBadRequest, "verification failed")
+		writeCode(w, http.StatusBadRequest, "AUTH_TOKEN_INVALID", "verification failed")
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, map[string]string{"message": "email verified"})
@@ -569,7 +569,7 @@ func (h *Handler) resendVerification(w http.ResponseWriter, r *http.Request) {
 		Email string `json:"email"`
 	}
 	if err := httpx.DecodeJSON(r, &req); err != nil || req.Email == "" {
-		httpx.WriteError(w, http.StatusBadRequest, "email is required")
+		writeCode(w, http.StatusBadRequest, "AUTH_VALIDATION_FAILED", "email is required")
 		return
 	}
 
@@ -607,7 +607,7 @@ func (h *Handler) requestPasswordReset(w http.ResponseWriter, r *http.Request) {
 		Email string `json:"email"`
 	}
 	if err := httpx.DecodeJSON(r, &req); err != nil || req.Email == "" {
-		httpx.WriteError(w, http.StatusBadRequest, "email is required")
+		writeCode(w, http.StatusBadRequest, "AUTH_VALIDATION_FAILED", "email is required")
 		return
 	}
 
@@ -692,18 +692,18 @@ func (h *Handler) resetPassword(w http.ResponseWriter, r *http.Request) {
 		Password string `json:"password"`
 	}
 	if err := httpx.DecodeJSON(r, &req); err != nil || req.Token == "" {
-		httpx.WriteError(w, http.StatusBadRequest, "token is required")
+		writeCode(w, http.StatusBadRequest, "AUTH_TOKEN_INVALID", "token is required")
 		return
 	}
 	if err := auth.ValidatePassword(req.Password); err != nil {
-		httpx.WriteError(w, http.StatusBadRequest, err.Error())
+		writeCode(w, http.StatusBadRequest, "AUTH_VALIDATION_FAILED", err.Error())
 		return
 	}
 	// Only hashes are stored, so hash the presented token before lookup.
 	hashed := auth.HashToken(req.Token)
 	userID, err := h.users.UserIDByPasswordResetToken(r.Context(), hashed)
 	if err != nil || userID == "" {
-		httpx.WriteError(w, http.StatusUnauthorized, "invalid or expired reset token")
+		writeCode(w, http.StatusUnauthorized, "AUTH_TOKEN_INVALID", "invalid or expired reset token")
 		return
 	}
 	newHash, err := auth.HashPassword(req.Password)
@@ -714,7 +714,7 @@ func (h *Handler) resetPassword(w http.ResponseWriter, r *http.Request) {
 	if err := h.users.ResetPassword(r.Context(), userID, hashed, newHash); err != nil {
 		// Do not surface the store error: it can distinguish "already used"
 		// from "expired", which leaks token state.
-		httpx.WriteError(w, http.StatusBadRequest, "invalid or expired reset token")
+		writeCode(w, http.StatusBadRequest, "AUTH_TOKEN_INVALID", "invalid or expired reset token")
 		return
 	}
 
