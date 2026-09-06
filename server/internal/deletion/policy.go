@@ -143,6 +143,14 @@ var Policies = []TablePolicy{
 	{Table: "consent_records", Action: Retain,
 		Reason: "proof that consent was obtained and later withdrawn; erasing it " +
 			"would destroy the evidence that the deletion itself was lawful"},
+
+	// ---- Community (§70). Reactions before posts: a reaction references the
+	// post, so the dependent rows must go first. Both are the person's own
+	// contributions rather than a record of a transaction, so neither is
+	// retained. Posts cascade their reactions in the schema, but the policy is
+	// stated explicitly so the erasure does not depend on that alone.
+	{Table: "community_reactions", Action: Erase},
+	{Table: "community_posts", Action: Erase, Column: "author_id"},
 }
 
 // Validate checks the policy table is internally coherent.

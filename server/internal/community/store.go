@@ -45,7 +45,7 @@ func (s *Store) Feed(ctx context.Context, limit int) ([]Post, error) {
 }
 
 func (s *Store) React(ctx context.Context, postID, userID string, r Reaction) error {
-	_, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO community_reactions (id, post_id, user_id, reaction, created_at) VALUES (?,?,?,?,?)`,
+	_, err := s.db.ExecContext(ctx, `INSERT INTO community_reactions (id, post_id, user_id, reaction, created_at) VALUES (?,?,?,?,?) ON CONFLICT (post_id, user_id, reaction) DO NOTHING`,
 		uuid.NewString(), postID, userID, string(r), time.Now().UTC().Format(time.RFC3339))
 	return err
 }

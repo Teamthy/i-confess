@@ -17,17 +17,17 @@ should follow so the repo stays clean and reviewable.
 
 ```text
 main (protected)
-   â”‚
-   â”œâ”€â”€ create feature branch
-   â”‚       â”‚
-   â”‚       â”œâ”€â”€ commit small, well-scoped changes
-   â”‚       â”‚
-   â”‚       â”œâ”€â”€ push branch
-   â”‚       â”‚
-   â”‚       â”œâ”€â”€ open Pull Request â†’ review â†’ merge
-   â”‚       â”‚
-   â”‚       â””â”€â”€ delete branch
-   â””â”€â”€ repeat
+   │
+   ├── create feature branch
+   │       │
+   │       ├── commit small, well-scoped changes
+   │       │
+   │       ├── push branch
+   │       │
+   │       ├── open Pull Request → review → merge
+   │       │
+   │       └── delete branch
+   └── repeat
 ```
 
 **Never commit directly to `main`.** All changes land via a feature branch and a
@@ -88,7 +88,7 @@ test(engine): cover duration-fill and no-content paths
 
 Rules:
 
-- First line â‰¤ 72 characters, imperative mood ("add", not "added").
+- First line ≤ 72 characters, imperative mood ("add", not "added").
 - One logical change per commit; don't bundle unrelated edits.
 - Reference issues in the footer when applicable: `Closes #12`.
 
@@ -97,7 +97,7 @@ Rules:
 1. Open a PR from your feature branch into `main`.
 2. Fill the PR template (title, summary, test plan).
 3. Request at least one review; address feedback.
-4. Keep PRs small and focused â€” easier to review, fewer conflicts.
+4. Keep PRs small and focused — easier to review, fewer conflicts.
 5. CI must pass (build + vet + tests) before merge.
 6. Squash-merge when the branch contains WIP commits.
 
@@ -127,7 +127,7 @@ go test ./...
   `api/`, `auth/`, `config/`, `db/`, `engine/`, `httpx/`, `models/`,
   `store/`, `media/`, `adminui/`, `seed/`.
 - New handlers go in `internal/api/`; data access in `internal/store/`.
-- Keep the SQLite (dev) and PostgreSQL (prod) schemas in sync â€” both live in
+- Keep the SQLite (dev) and PostgreSQL (prod) schemas in sync — both live in
   `internal/db/schema.sql` and `migrations/postgres/` respectively.
 - Write a test for any new non-trivial logic (see `internal/engine/engine_test.go`).
 
