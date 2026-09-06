@@ -41,7 +41,11 @@ type Handler struct {
 	search    *search.SearchStore
 	templates *store.TemplateStore
 	plans     *store.PlanStore
-	queue     *jobs.MemoryQueue
+	// queue holds background work. It is the interface rather than the
+	// in-memory type so the server can run the durable PostgreSQL queue.
+	queue jobs.Queue
+	// queueDurable reports which implementation is in use, for the admin view.
+	queueDurable bool
 	// signer mints short-lived audio URLs. Audio bytes never pass through this
 	// API (PRD S11); the client is handed a signed CDN link instead.
 	signer storage.ObjectStorage
@@ -172,8 +176,18 @@ func (h *Handler) BuildEngine() {
 }
 
 // GetQueue returns the job queue for external wiring (e.g., workers).
-func (h *Handler) GetQueue() *jobs.MemoryQueue {
+func (h *Handler) GetQueue() jobs.Queue {
 	return h.queue
+}
+
+// SetQueue replaces the in-process queue with a durable one.
+//
+// The default is jobs.MemoryQueue, which is right for tests and wrong for a
+// server: everything still queued when the process stops is gone, and a stop is
+// a deploy rather than an accident. The server calls this at startup.
+func (h *Handler) SetQueue(q jobs.Queue) {
+	h.queue = q
+	h.queueDurable = true
 }
 
 func (h *Handler) userID(r *http.Request) string {

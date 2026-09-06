@@ -4,49 +4,57 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/Teamthy/i-confess/internal/backoff"
 )
 
-const (
-	StatusQueued     = "queued"
-	StatusRunning    = "running"
-	StatusCompleted  = "completed"
-	StatusFailed     = "failed"
-	StatusDeadLetter = "dead_letter"
-)
-
-type Handler func(ctx context.Context, payload map[string]any) error
-
-type Job struct {
-	ID             string         `json:"id"`
-	Type           string         `json:"type"`
-	Payload        map[string]any `json:"payload,omitempty"`
-	Status         string         `json:"status"`
-	Attempts       int            `json:"attempts"`
-	MaxAttempts    int            `json:"max_attempts"`
-	RetryDelay     time.Duration  `json:"retry_delay,omitempty"`
-	IdempotencyKey string         `json:"idempotency_key,omitempty"`
-	CreatedAt      time.Time      `json:"created_at"`
-	UpdatedAt      time.Time      `json:"updated_at"`
-	LastError      string         `json:"last_error,omitempty"`
-}
-
+// MemoryQueue is an in-process Queue.
+//
+// It exists for tests and for tooling that wants a queue without a database.
+// It is NOT what the server runs: nothing in it survives a restart, so every
+// job still queued when the process stops is gone. That is acceptable for a
+// test and unacceptable for work a user is waiting on, which is why
+// store.JobQueue exists.
 type MemoryQueue struct {
 	mu       sync.Mutex
-	jobs     []Job
+	order    []string
+	jobs     map[string]*Job
 	handlers map[string]Handler
-	seen     map[string]struct{}
+	byKey    map[string]string // idempotency key -> job id
+	policy   backoff.Policy
+	now      func() time.Time
 }
 
+// NewMemoryQueue returns a queue using the default retry policy.
 func NewMemoryQueue() *MemoryQueue {
 	return &MemoryQueue{
-		jobs:     make([]Job, 0),
-		handlers: make(map[string]Handler),
-		seen:     make(map[string]struct{}),
+		jobs:     map[string]*Job{},
+		handlers: map[string]Handler{},
+		byKey:    map[string]string{},
+		policy:   backoff.New(2*time.Second, 5*time.Minute),
+		now:      func() time.Time { return time.Now().UTC() },
 	}
+}
+
+// WithPolicy replaces the retry schedule, which is what lets a test run
+// retries without waiting.
+func (q *MemoryQueue) WithPolicy(p backoff.Policy) *MemoryQueue {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.policy = p
+	return q
+}
+
+// WithClock replaces the time source, so a test can advance past a backoff
+// delay instead of sleeping through it.
+func (q *MemoryQueue) WithClock(now func() time.Time) *MemoryQueue {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.now = now
+	return q
 }
 
 func (q *MemoryQueue) Register(name string, fn Handler) {
@@ -55,112 +63,214 @@ func (q *MemoryQueue) Register(name string, fn Handler) {
 	q.handlers[name] = fn
 }
 
-func (q *MemoryQueue) Enqueue(job Job) (string, error) {
+func (q *MemoryQueue) HandlerFor(name string) (Handler, bool) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	h, ok := q.handlers[name]
+	return h, ok
+}
+
+func (q *MemoryQueue) Enqueue(_ context.Context, job Job) (string, error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
 	if job.Type == "" {
-		return "", errors.New("job type is required")
+		return "", fmt.Errorf("job type is required")
 	}
-	if job.MaxAttempts == 0 {
-		job.MaxAttempts = 3
-	}
-	if job.RetryDelay == 0 {
-		job.RetryDelay = 2 * time.Second
-	}
-	if job.Status == "" {
-		job.Status = StatusQueued
-	}
-	if job.CreatedAt.IsZero() {
-		job.CreatedAt = time.Now().UTC()
-	}
-	job.UpdatedAt = job.CreatedAt
-	if job.ID == "" {
-		job.ID = randomID()
-	}
-	if job.Payload == nil {
-		job.Payload = map[string]any{}
-	}
+	now := q.now()
+	job.Prepare(now)
+	job.UpdatedAt = now
+
 	if job.IdempotencyKey != "" {
-		if _, exists := q.seen[job.IdempotencyKey]; exists {
-			return "", fmt.Errorf("idempotency key already exists: %s", job.IdempotencyKey)
+		if existing, ok := q.byKey[job.IdempotencyKey]; ok {
+			// Returning the id alongside the error is deliberate: a caller that
+			// retried its own request gets the job it already has, rather than
+			// only a refusal it has to interpret.
+			return existing, fmt.Errorf("%w: %s", ErrDuplicateJob, job.IdempotencyKey)
 		}
-		q.seen[job.IdempotencyKey] = struct{}{}
+		q.byKey[job.IdempotencyKey] = job.ID
 	}
-	q.jobs = append(q.jobs, job)
+	q.jobs[job.ID] = &job
+	q.order = append(q.order, job.ID)
 	return job.ID, nil
 }
 
-func (q *MemoryQueue) ProcessNext(ctx context.Context) error {
+func (q *MemoryQueue) Claim(_ context.Context, workerID string) (*Job, error) {
 	q.mu.Lock()
-	if len(q.jobs) == 0 {
-		q.mu.Unlock()
-		return nil
-	}
-	idx := -1
-	for i, job := range q.jobs {
-		if job.Status == StatusQueued || job.Status == StatusFailed {
-			idx = i
-			break
+	defer q.mu.Unlock()
+
+	now := q.now()
+	for _, id := range q.order {
+		j := q.jobs[id]
+		if j == nil || j.Status != StatusQueued {
+			continue
 		}
-	}
-	if idx == -1 {
-		q.mu.Unlock()
-		return nil
-	}
-	job := q.jobs[idx]
-	q.mu.Unlock()
-
-	handler, ok := q.handlers[job.Type]
-	if !ok {
-		q.mu.Lock()
-		job.Status = StatusDeadLetter
-		job.LastError = fmt.Sprintf("no handler registered for job type %q", job.Type)
-		job.UpdatedAt = time.Now().UTC()
-		q.jobs[idx] = job
-		q.mu.Unlock()
-		return errors.New(job.LastError)
-	}
-
-	job.Status = StatusRunning
-	job.Attempts++
-	job.UpdatedAt = time.Now().UTC()
-	q.mu.Lock()
-	q.jobs[idx] = job
-	q.mu.Unlock()
-
-	if err := handler(ctx, job.Payload); err != nil {
-		q.mu.Lock()
-		job.LastError = err.Error()
-		job.UpdatedAt = time.Now().UTC()
-		if job.Attempts >= job.MaxAttempts {
-			job.Status = StatusDeadLetter
-		} else {
-			job.Status = StatusQueued
-			if job.RetryDelay > 0 {
-				job.UpdatedAt = time.Now().UTC().Add(job.RetryDelay)
-			}
+		if !j.AvailableAt.IsZero() && j.AvailableAt.After(now) {
+			continue
 		}
-		q.jobs[idx] = job
-		q.mu.Unlock()
-		return err
+		j.Status = StatusRunning
+		j.Attempts++
+		j.WorkerID = workerID
+		j.UpdatedAt = now
+		out := *j
+		return &out, nil
 	}
+	return nil, ErrEmptyQueue
+}
 
+func (q *MemoryQueue) Complete(_ context.Context, id string) error {
 	q.mu.Lock()
-	job.Status = StatusCompleted
-	job.LastError = ""
-	job.UpdatedAt = time.Now().UTC()
-	q.jobs[idx] = job
-	q.mu.Unlock()
+	defer q.mu.Unlock()
+	j := q.jobs[id]
+	if j == nil {
+		return ErrJobNotFound
+	}
+	j.Status = StatusCompleted
+	j.LastError = ""
+	j.UpdatedAt = q.now()
 	return nil
 }
 
+func (q *MemoryQueue) Fail(_ context.Context, id string, cause error) error {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	j := q.jobs[id]
+	if j == nil {
+		return ErrJobNotFound
+	}
+	now := q.now()
+	j.LastError = errString(cause)
+	j.UpdatedAt = now
+
+	if IsPermanent(cause) {
+		j.Status = StatusDeadLetter
+		j.DeadLetterReason = "permanent: " + j.LastError
+		return nil
+	}
+	if j.Attempts >= j.MaxAttempts {
+		j.Status = StatusDeadLetter
+		j.DeadLetterReason = fmt.Sprintf("exhausted %d attempt(s): %s", j.Attempts, j.LastError)
+		return nil
+	}
+	j.Status = StatusQueued
+	j.AvailableAt = now.Add(q.delayFor(j))
+	j.WorkerID = ""
+	return nil
+}
+
+func (q *MemoryQueue) FailPermanent(_ context.Context, id, reason string) error {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	j := q.jobs[id]
+	if j == nil {
+		return ErrJobNotFound
+	}
+	j.Status = StatusDeadLetter
+	j.DeadLetterReason = reason
+	j.UpdatedAt = q.now()
+	return nil
+}
+
+func (q *MemoryQueue) RequeueDead(_ context.Context, limit int) (int, error) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	n := 0
+	for _, id := range q.order {
+		if limit > 0 && n >= limit {
+			break
+		}
+		j := q.jobs[id]
+		if j == nil || j.Status != StatusDeadLetter {
+			continue
+		}
+		j.Status = StatusQueued
+		j.Attempts = 0
+		j.AvailableAt = time.Time{}
+		j.DeadLetterReason = ""
+		j.UpdatedAt = q.now()
+		n++
+	}
+	return n, nil
+}
+
+func (q *MemoryQueue) Stats(_ context.Context) (Stats, error) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	var s Stats
+	for _, j := range q.jobs {
+		s.Total++
+		switch j.Status {
+		case StatusQueued:
+			s.Queued++
+		case StatusRunning:
+			s.Running++
+		case StatusCompleted:
+			s.Completed++
+		case StatusFailed:
+			s.Failed++
+		case StatusDeadLetter:
+			s.DeadLetter++
+		}
+	}
+	return s, nil
+}
+
+// List returns a copy of every job, in enqueue order.
 func (q *MemoryQueue) List() []Job {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	out := make([]Job, len(q.jobs))
-	copy(out, q.jobs)
+	out := make([]Job, 0, len(q.order))
+	for _, id := range q.order {
+		if j := q.jobs[id]; j != nil {
+			out = append(out, *j)
+		}
+	}
 	return out
+}
+
+// ProcessNext claims one due job and runs it to completion or failure.
+//
+// The worker no longer uses this - it claims, runs and reports so that a
+// long-running handler does not block the loop - but it is the simplest way to
+// drive a queue from a test.
+func (q *MemoryQueue) ProcessNext(ctx context.Context) error {
+	job, err := q.Claim(ctx, "process-next")
+	if err != nil {
+		if err == ErrEmptyQueue {
+			return nil
+		}
+		return err
+	}
+	h, ok := q.HandlerFor(job.Type)
+	if !ok {
+		reason := fmt.Sprintf("no handler registered for job type %q", job.Type)
+		_ = q.FailPermanent(ctx, job.ID, reason)
+		return fmt.Errorf("%s", reason)
+	}
+	if err := h(ctx, job.Payload); err != nil {
+		if ferr := q.Fail(ctx, job.ID, err); ferr != nil {
+			return ferr
+		}
+		return err
+	}
+	return q.Complete(ctx, job.ID)
+}
+
+// delayFor returns how long a job waits before its next attempt. An explicit
+// RetryDelay on the job wins; otherwise the queue's policy decides, growing with
+// the attempt count rather than retrying at a fixed interval forever.
+func (q *MemoryQueue) delayFor(j *Job) time.Duration {
+	if j.RetryDelay > 0 {
+		return j.RetryDelay
+	}
+	return q.policy.Next(j.Attempts)
+}
+
+func errString(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
 }
 
 func randomID() string {

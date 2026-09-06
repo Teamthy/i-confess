@@ -153,8 +153,10 @@ The check covers both the item status update and the stored resume point. An
   to-state, and it returns the canonical spelling so clients converge.
 - **Every playback handler goes through `ownSession`** — no IDOR at the session
   level.
-- **The 11-state machine** with terminal `CANCELLED`, and snapshots that survive
-  content deletion (`confession_id` is `TEXT` with no FK).
+- **The 11-state machine** with terminal `CANCELLED`. `CANCELLED` is reachable
+  from eight states (`DRAFT`, `READY`, `SCHEDULED`, `STARTING`, `ACTIVE`,
+  `PAUSED`, `INTERRUPTED`, `FAILED`) and has no outgoing edges; `INTERRUPTED`
+  resumes to `ACTIVE`, so an involuntary stop is not a dead end.
 - **All five planning strategies** with `BALANCED` default, and the plan ceiling
   enforced inside `Engine.Build` for all four callers.
 
@@ -221,7 +223,7 @@ closed items.
 | Content selection picks the current version and the right variant | PASS — findings 1, 2 fixed |
 | Duration planning: all strategies, plan ceiling | PASS — verified, unchanged |
 | Voice selection and downgrade | PASS — verified, unchanged |
-| Snapshots survive content change and deletion | PASS — verified, unchanged |
+| Snapshots survive content change | PASS — verified. Deletion is unreachable, not safe (C-5) |
 | Completion persists what was heard | PASS — finding 3 fixed |
 | Cancellation and interruption reachable | PASS — 11 states, resume from PAUSED and INTERRUPTED |
 | PHASE 14 C-1 closed | PASS |
@@ -244,6 +246,14 @@ Conditions carried forward:
   audio — G-12), so the multi-device timestamp resolution is tested only at the
   API boundary.
 - **C-4** ElevenLabs remains the only voice provider (carried from PHASE 14).
+- **C-5** `session_items.confession_id` is `NOT NULL` with `ON DELETE CASCADE`.
+  Insert-time integrity is right; cascade-on-delete would destroy snapshots.
+  Latent today (no hard-delete path). Revisit with `ON DELETE SET NULL` and a
+  nullable column if a confession deletion path is ever added.
+
+**Also corrected:** the exit-criteria row claiming snapshots survive content
+*deletion* — see the correction above. They survive content **change**;
+deletion is unreachable rather than safe.
 
 ---
 ---
@@ -357,10 +367,24 @@ re-validate transitions (documented in its own comment): its only two callers �
 first and answer **409 `INVALID_TRANSITION`** with the engine's `Reason`.
 
 **Snapshots are intact.** `session_items` denormalises `title`,
-`category_name` and `text`, and `confession_id` is `TEXT` with **no foreign
-key** — so a confession can be deleted or archived and an existing session's
-queue survives unchanged. `snapshot_test.go` already covers mutation, staleness
-and integrity.
+`category_name` and `text`, so an existing session's queue reads the text it was
+built from regardless of later edits to the confession. `snapshot_test.go` covers
+mutation, staleness and integrity.
+
+> **Correction (PHASE 15 audit).** The claim above originally said
+> `confession_id` has **no foreign key**. That is wrong: `session_items` carries
+> three foreign keys, including
+> `confession_id REFERENCES confessions(id) ON DELETE CASCADE`. The FK is
+> deliberate and load-bearing — `TestSessionCreationFailsOnUnknownConfession`
+> depends on it to reject a session built over a confession that does not exist.
+> Archiving or editing a confession leaves the queue untouched, which is the
+> behaviour section 9 asks for. A *hard* delete would not: `ON DELETE CASCADE`
+> would silently destroy every session item referencing that confession. No
+> hard-delete path exists — there is no `DELETE FROM confessions` and no
+> `DELETE /admin/confessions` route — so this is latent rather than live, and it
+> is recorded as condition C-5 rather than changed speculatively: making the
+> column nullable to take `SET NULL` would ripple through `CreateSession` and
+> every reader for a path no code currently reaches.
 
 **All five strategies exist** with `BALANCED` as default, and the eight presets
 plus `custom` are validated at the boundary.

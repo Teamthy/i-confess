@@ -231,6 +231,8 @@ func (h *Handler) Routes() http.Handler {
 	// Generation requests and their outcomes. These are what make a generation
 	// observable: until now a render was a synchronous call with no record, so
 	// there was nothing to poll and nothing to retry.
+	h.route(mux, "GET /admin/queue", "admin", "admin-queue", "Background queue: counts by status and the job types this server runs", admin, h.adminQueueStats)
+	h.route(mux, "POST /admin/queue/requeue", "admin", "admin-queue", "Release dead-lettered jobs back into the queue", admin, h.adminQueueRequeue)
 	h.route(mux, "GET /admin/audio/jobs", "audio_producer,voice_manager", "admin-audio", "List generation requests, newest first", audioMgr, h.adminListAudioJobs)
 	h.route(mux, "GET /admin/audio/jobs/{id}", "audio_producer,voice_manager", "admin-audio", "One generation request with its outcome", audioMgr, h.adminGetAudioJob)
 
@@ -441,6 +443,8 @@ func (h *Handler) Routes() http.Handler {
 	h.route(mux, "PUT /v1/admin/voices/{id}/rights", "voice_manager", "admin-voice", "Set rights; AI grants require an attestation", voiceMgr, h.adminUpsertVoiceRights)
 	h.route(mux, "POST /v1/admin/voices/{id}/rights/revoke", "voice_manager", "admin-voice", "Revoke every use of a voice", voiceMgr, h.adminRevokeVoiceRights)
 	h.route(mux, "POST /v1/admin/audio/generate", "audio_producer,voice_manager", "admin-audio", "Generate audio; refused 451 when voice rights disallow it", audioMgr, h.adminGenerateAudio)
+	h.route(mux, "GET /v1/admin/queue", "admin", "admin-queue", "Background queue: counts by status and the job types this server runs", admin, h.adminQueueStats)
+	h.route(mux, "POST /v1/admin/queue/requeue", "admin", "admin-queue", "Release dead-lettered jobs back into the queue", admin, h.adminQueueRequeue)
 	h.route(mux, "GET /v1/admin/audio/jobs", "audio_producer,voice_manager", "admin-audio", "List generation requests, newest first", audioMgr, h.adminListAudioJobs)
 	h.route(mux, "GET /v1/admin/audio/jobs/{id}", "audio_producer,voice_manager", "admin-audio", "One generation request with its outcome", audioMgr, h.adminGetAudioJob)
 	h.route(mux, "POST /v1/admin/audio/{id}/qa/approve", "audio_producer,voice_manager", "admin-audio", "Approve a render for listeners", audioMgr, h.adminApproveAudio)

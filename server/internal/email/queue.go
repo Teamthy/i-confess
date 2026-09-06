@@ -5,6 +5,8 @@ import (
 	"log"
 	"sync"
 	"time"
+
+	"github.com/Teamthy/i-confess/internal/backoff"
 )
 
 // Queue delivers mail asynchronously with bounded retries (§57, §58).
@@ -64,18 +66,11 @@ func NewQueue(sender Sender, buffer int) *Queue {
 }
 
 // defaultBackoff grows quickly then caps: a provider outage should be retried
-// patiently rather than hammered.
-func defaultBackoff(attempt int) time.Duration {
-	if attempt < 1 {
-		attempt = 1
-	}
-	d := time.Duration(1<<uint(attempt-1)) * 5 * time.Second
-	const max = 5 * time.Minute
-	if d > max || d <= 0 {
-		return max
-	}
-	return d
-}
+// patiently rather than hammered. The schedule lives in internal/backoff so the
+// mailer, the job queue and the voice pipeline cannot drift apart.
+var mailBackoff = backoff.New(5*time.Second, 5*time.Minute)
+
+func defaultBackoff(attempt int) time.Duration { return mailBackoff.Next(attempt) }
 
 // Start launches n delivery workers.
 func (q *Queue) Start(ctx context.Context, n int) {

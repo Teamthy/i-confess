@@ -1,6 +1,6 @@
 # Project Status
 
-**Last verified:** 2026-09-06, at PHASE 15 (Session Engine; the engine was serving the oldest render of a confession, variant matching was dead code, and `session_items.status` was constrained to a vocabulary the playback lifecycle no longer writes — so no item status ever persisted).
+**Last verified:** 2026-09-06, at PHASE 16 (Queue / Worker; the job queue existed in shape and was hollow — nothing enqueued to it, the durable `jobs` table had zero callers, and all four handlers were stubs that logged and returned success for work they never did).
 
 This file supersedes `MASTER-PROMPT-COMPLETION.md`,
 `CONTENT-DOMAIN-COMPLETION.md`, `AUDIO-PLATFORM-STATUS.md`, `SESSION-NOTES.md`
@@ -64,6 +64,8 @@ PHASE 14 Voice Platform — **PASS WITH CONDITIONS**
 PHASE 15 Session Engine — **PASS WITH CONDITIONS** (groundwork shipped early as PR #22 while the
     numbering was wrong, filed then as "PHASE 13 — SESSION ENGINE"; the audit in `docs/15` closes
     PHASE 14's C-1 and appends the earlier work as an appendix)
+PHASE 16 Queue / Worker — **PASS WITH CONDITIONS** (durable PostgreSQL queue, worker pool, shared
+    exponential backoff, idempotency, dead letters; closes PHASE 14 C-3 and C-4)
 
 Open gaps carried forward: G-2, G-3, G-4, G-5, G-6, G-7, G-9, G-10, G-12, G-13,
 G-14, G-15, G-16, G-17, G-18, G-19, G-20, G-21, G-22, G-23, G-24, G-25, G-26, G-27, G-28,
