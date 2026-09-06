@@ -98,13 +98,13 @@ func (s *AudioStore) UpsertAsset(ctx context.Context, a *models.AudioAsset) erro
 	// asset. Regenerating audio was therefore impossible.
 	err := s.db.QueryRowContext(ctx,
 		`INSERT INTO audio_assets (
-			id, content_id, content_version_id, voice_id,
+			id, content_id, content_version_id, voice_id, variant_id,
 			asset_type, quality_tier, storage_provider, storage_key, cdn_path,
 			format, codec, container,
 			duration_seconds, file_size_bytes, status,
 			created_at, updated_at
-		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-		ON CONFLICT(content_id, content_version_id, voice_id, asset_type, quality_tier) DO UPDATE SET
+		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		ON CONFLICT(content_id, content_version_id, voice_id, variant_id, asset_type, quality_tier) DO UPDATE SET
 			content_id = excluded.content_id,
 			voice_id = excluded.voice_id,
 			asset_type = excluded.asset_type,
@@ -128,6 +128,9 @@ func (s *AudioStore) UpsertAsset(ctx context.Context, a *models.AudioAsset) erro
 		a.ConfessionID,
 		nullIfEmpty(a.ContentVersionID),
 		a.VoiceID,
+		// Never NULL: Postgres treats NULLs as distinct in a unique index, so a
+		// null variant would let the same render be inserted twice.
+		a.VariantID,
 		"stream",
 		"standard",
 		"local",
@@ -148,9 +151,7 @@ func (s *AudioStore) UpsertAsset(ctx context.Context, a *models.AudioAsset) erro
 	return err
 }
 
-// audio_assets has no variant_id column; the position is filled with a literal
-// so models.AudioAsset keeps the shape callers expect.
-const assetColumns = `id, content_id, '', voice_id,
+const assetColumns = `id, content_id, COALESCE(variant_id,''), voice_id,
 	COALESCE(cdn_path, storage_key), COALESCE(duration_seconds,0), COALESCE(file_size_bytes,0),
 	status, COALESCE(content_version_id,''), COALESCE(qa_reviewed_by,''), COALESCE(qa_reviewed_at,''),
 	COALESCE(qa_note,''), created_at, updated_at`
@@ -179,20 +180,32 @@ func (s *AudioStore) AssetsFor(ctx context.Context, confessionID, voiceID string
 	// entitlement gate reads. This was a literal status = 'ready', so the query
 	// and the schema's own CHECK vocabulary could drift apart unnoticed.
 	served := audio.ServedStatuses()
-	q := `SELECT id, content_id, '', voice_id, COALESCE(cdn_path, storage_key), COALESCE(duration_seconds,0), COALESCE(file_size_bytes,0), status, created_at, updated_at
-	      FROM audio_assets WHERE content_id = ? AND status IN (` + placeholders(len(served)) + `)`
+	q := `SELECT a.id, a.content_id, COALESCE(a.variant_id,''), a.voice_id, COALESCE(a.cdn_path, a.storage_key),
+	             COALESCE(a.duration_seconds,0), COALESCE(a.file_size_bytes,0), a.status, a.created_at, a.updated_at
+	      FROM audio_assets a
+	      LEFT JOIN content_versions cv ON cv.id = a.content_version_id
+	      WHERE a.content_id = ? AND a.status IN (` + placeholders(len(served)) + `)`
 	args := []any{confessionID}
 	for _, st := range served {
 		args = append(args, string(st))
 	}
 	if voiceID != "" {
-		q += ` AND voice_id = ?`
+		q += ` AND a.voice_id = ?`
 		args = append(args, voiceID)
 	}
-	// Ordered so that matchAsset's "first asset for this confession" fallback
-	// is stable. Without it the chosen audio could differ between calls.
+	// Newest content version first, then newest render, then id for stability.
+	//
+	// This was ORDER BY created_at, id - ascending - so matchAsset's "first
+	// asset for this confession" fallback picked the OLDEST render. Once
+	// versioning exists that means editing a confession and re-voicing it
+	// leaves every new session playing audio rendered from the superseded text,
+	// with no way to correct it short of deleting the old asset. Verified
+	// before fixing: adding a v2 render left the engine selecting v1.
+	//
+	// Assets with no content version are legacy and sort last rather than
+	// first, so a versioned render always wins over an unattributed one.
 	// This must come last: the voice filter above appends to the WHERE clause.
-	q += ` ORDER BY created_at, id`
+	q += ` ORDER BY cv.version_number DESC NULLS LAST, a.created_at DESC, a.id`
 	rows, err := s.db.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err

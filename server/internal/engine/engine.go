@@ -325,10 +325,13 @@ func (e *Engine) pack(ctx context.Context, req Request, voiceID string, byCat ma
 			VoiceID:         voiceID,
 			AudioAssetID:    vo.asset.ID,
 			DurationSeconds: vo.variant.DurationSeconds,
-			Status:          "queued",
-			Title:           opt.conf.Title,
-			Category:        catID,
-			AudioURL:        vo.asset.URL,
+			// Canonical spelling. The column's CHECK constraint is the item
+			// vocabulary in internal/sessions; the old lowercase literal was
+			// rejected by it the moment that vocabulary moved on.
+			Status:   string(sessions.ItemQueued),
+			Title:    opt.conf.Title,
+			Category: catID,
+			AudioURL: vo.asset.URL,
 			// Carried from the asset the engine just selected, so the access
 			// check sees the real status on every path that builds a session -
 			// create, preview and template alike. Those three sign in-memory

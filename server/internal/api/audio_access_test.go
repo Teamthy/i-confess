@@ -166,6 +166,7 @@ type sessionResp struct {
 	VoiceDowngraded      bool   `json:"voice_downgraded"`
 	VoiceDowngradeReason string `json:"voice_downgrade_reason"`
 	Items                []struct {
+		ConfessionID string `json:"confession_id"`
 		AudioAssetID string `json:"audio_asset_id"`
 		AudioURL     string `json:"audio_url"`
 		VoiceID      string `json:"voice_id"`

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"sort"
@@ -35,6 +36,22 @@ func (h *Handler) ownSession(w http.ResponseWriter, r *http.Request) (*models.Se
 		return nil, false
 	}
 	return sess, true
+}
+
+// itemInSession reports whether an item belongs to a session. Every item write
+// is keyed on the item alone, so a handler accepting an item id from a client
+// has to establish this itself before writing anything.
+func (h *Handler) itemInSession(ctx context.Context, sessionID, itemID string) bool {
+	items, err := h.sess.Items(ctx, sessionID)
+	if err != nil {
+		return false
+	}
+	for i := range items {
+		if items[i].ID == itemID {
+			return true
+		}
+	}
+	return false
 }
 
 // sessionState resolves a persisted status to a canonical state. A value that
@@ -233,12 +250,25 @@ func (h *Handler) syncProgress(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The item id is client-supplied and every item write below is keyed on the
+	// item alone, so the session boundary has to be established here. Without
+	// it any queue item in the system could be rewritten - or claimed as this
+	// user's resume point - through a session its owner never authorised.
+	if req.QueueItemID != "" && !h.itemInSession(r.Context(), sess.ID, req.QueueItemID) {
+		httpx.WriteError(w, http.StatusNotFound, "item is not in this session")
+		return
+	}
+
 	// An item status change rides along with the progress push so a client
 	// does not need a second round trip per track.
-	if req.ItemStatus != "" && req.QueueItemID != "" {
+	if req.ItemStatus != "" {
 		canonical := sessions.NormalizeItemStatus(req.ItemStatus)
 		if canonical == "" {
 			httpx.WriteError(w, http.StatusBadRequest, "unknown item_status")
+			return
+		}
+		if req.QueueItemID == "" {
+			httpx.WriteError(w, http.StatusBadRequest, "queue_item_id is required with item_status")
 			return
 		}
 		if err := h.sess.UpdateItemStatus(r.Context(), req.QueueItemID, canonical); err != nil {
