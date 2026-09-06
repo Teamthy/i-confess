@@ -227,10 +227,7 @@ func (h *Handler) startTemplate(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) createSessionFromTemplate(w http.ResponseWriter, r *http.Request, t *store.Template, weights map[string]float64, strategy string, duration int) {
 	ent := h.entitlementsFor(r.Context(), h.userID(r))
 	if max := ent.MaxSessionSeconds(); duration > max {
-		httpx.WriteJSON(w, http.StatusPaymentRequired, map[string]any{
-			"error":       "duration exceeds plan limit",
-			"max_seconds": max,
-		})
+		writePlanLimit(w, ent)
 		return
 	}
 	favs, _ := h.eng.ListFavorites(r.Context(), h.userID(r), "confession")
@@ -257,7 +254,13 @@ func (h *Handler) createSessionFromTemplate(w http.ResponseWriter, r *http.Reque
 		VoiceID:         t.VoiceID,
 		FavoriteIDs:     favMap,
 		RecentIDs:       recentMap,
+
+		MaxDurationSeconds: ent.MaxSessionSeconds(),
 	})
+	if errors.Is(err, engine.ErrDurationExceedsPlan) {
+		writePlanLimit(w, ent)
+		return
+	}
 	if err != nil {
 		httpx.WriteError(w, http.StatusUnprocessableEntity, "no content for this template")
 		return

@@ -200,14 +200,25 @@ func (s *ContentStore) ConfessionByID(ctx context.Context, id string) (*models.C
 func (s *ContentStore) ConfessionsByCategory(ctx context.Context, categoryID string, publishedOnly bool) ([]models.Confession, error) {
 	q := `SELECT id,category_id,title,COALESCE(short_text,''),COALESCE(medium_text,''),COALESCE(long_text,''),COALESCE(description,''),COALESCE(tags,''),intensity,language,status,COALESCE(author,''),version,published_at,created_at,updated_at
 	      FROM confessions WHERE category_id = ?`
+	args := []any{categoryID}
 	if publishedOnly {
-		q += ` AND status = 'published'`
+		// Derived from the lifecycle authority rather than a literal. The
+		// behaviour is the same today, because IsServedToNewSessions admits
+		// exactly one status - but the string 'published' was hardcoded here
+		// while the authority lived in internal/content, so adding a state
+		// that should be served (or renaming one) would silently not reach
+		// session building. Gap G-38.
+		served := content.ServedStatuses()
+		q += " AND status IN (" + placeholders(len(served)) + ")"
+		for _, st := range served {
+			args = append(args, st)
+		}
 	}
 	// Tie-break on id: created_at can collide when several confessions are
 	// written in the same instant, and an unordered tie would make session
 	// generation non-reproducible.
 	q += ` ORDER BY created_at, id`
-	rows, err := s.db.QueryContext(ctx, q, categoryID)
+	rows, err := s.db.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -329,4 +340,16 @@ func nullIfEmpty(s string) any {
 		return nil
 	}
 	return s
+}
+
+// placeholders renders n '?' markers for an IN list.
+func placeholders(n int) string {
+	if n <= 0 {
+		return "NULL"
+	}
+	out := "?"
+	for i := 1; i < n; i++ {
+		out += ",?"
+	}
+	return out
 }
