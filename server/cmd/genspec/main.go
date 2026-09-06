@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -12,10 +13,16 @@ import (
 // Emits the OpenAPI document from the live route table so the checked-in spec
 // can never disagree with the server.
 func main() {
-	conn, err := db.Open(":memory:")
+	// Generating the spec walks the route table; it never issues a query.
+	// sql.Open validates the driver and DSN but does not dial, so this works
+	// without a reachable PostgreSQL - which matters, because requiring a live
+	// database just to emit a document would make the spec unregenerable in a
+	// bare CI checkout.
+	raw, err := sql.Open("postgres", os.Getenv("DATABASE_URL"))
 	if err != nil {
 		panic(err)
 	}
+	conn := db.NewDB(raw)
 	defer conn.Close()
 
 	h := api.NewHandler(api.Config{JWTSecret: "spec", TokenTTL: "1h"}, conn)

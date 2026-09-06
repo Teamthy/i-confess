@@ -5,8 +5,8 @@ package seed
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
+	"github.com/Teamthy/i-confess/internal/db"
 	"log"
 	"os"
 
@@ -22,7 +22,7 @@ const mediaDir = "data/media"
 // Seed runs idempotently: if the database already has categories, it returns early.
 // Seed populates a fresh database. The signer receives placeholder audio so the
 // dev environment exercises the same keyed, signed delivery path as production.
-func Seed(db *sql.DB, signer storage.ObjectStorage) error {
+func Seed(db *db.DB, signer storage.ObjectStorage) error {
 	bg := context.Background()
 	content := store.NewContentStore(db)
 	cats, err := content.ListCategories(bg, true)

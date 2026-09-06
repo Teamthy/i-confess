@@ -16,15 +16,47 @@ jobs:
     strategy:
       matrix:
         go-version: ["1.25.x"]
+
+    # The Go module lives in server/, not at the repository root. Every run step
+    # therefore has to execute there; without this, `go mod verify` fails in
+    # seconds with "go.mod file not found" and CI reports a failure that says
+    # nothing about the code. setup-go also needs to be told where go.sum is,
+    # otherwise dependency caching silently does nothing.
+    defaults:
+      run:
+        working-directory: server
+
+    # The suite runs against PostgreSQL, not a stand-in. Tests call dbtest.New,
+    # which fails rather than skips when TEST_DATABASE_URL is unset, so a green
+    # run always means a real database was exercised.
+    env:
+      TEST_DATABASE_URL: host=127.0.0.1 port=5432 user=iconfess password=iconfess dbname=postgres sslmode=disable
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: iconfess
+          POSTGRES_PASSWORD: iconfess
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version: ${{ matrix.go-version }}
           cache: true
+          cache-dependency-path: server/go.sum
 
       - name: Verify dependencies
         run: go mod verify
@@ -35,6 +67,9 @@ jobs:
       - name: Vet
         run: go vet ./...
 
+      # -race is deliberate: the session engine and the idempotency middleware
+      # are concurrent by nature, and a data race there corrupts playback state
+      # in ways no unit test will reproduce on demand.
       - name: Test
         run: go test -race ./...
 

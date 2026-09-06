@@ -3,30 +3,21 @@ package api
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	_ "modernc.org/sqlite"
-
 	"github.com/Teamthy/i-confess/internal/auth"
 	"github.com/Teamthy/i-confess/internal/db"
+	"github.com/Teamthy/i-confess/internal/db/dbtest"
 )
 
-func setupTestDB(t *testing.T) *sql.DB {
-	dbConn, err := sql.Open("sqlite", ":memory:")
-	if err != nil {
-		t.Fatalf("failed to open test database: %v", err)
-	}
-
-	// Create schema
-	if err := db.InitSchema(dbConn, db.SchemaSQL); err != nil {
-		t.Fatalf("failed to initialize schema: %v", err)
-	}
-
-	return dbConn
+// setupTestDB returns a fresh PostgreSQL database with the canonical schema
+// loaded, dropped when the test ends. See internal/db/dbtest for why the suite
+// runs against PostgreSQL rather than a lighter stand-in.
+func setupTestDB(t *testing.T) *db.DB {
+	return dbtest.New(t)
 }
 
 func TestRegister(t *testing.T) {

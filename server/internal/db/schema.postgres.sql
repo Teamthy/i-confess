@@ -1,8 +1,30 @@
+-- i-confess — canonical PostgreSQL schema.
+--
+-- Generated from the SQLite development schema and then made the source of
+-- truth: the project runs one dialect everywhere, including tests. Three
+-- classes of change were required, and each is a real incompatibility rather
+-- than a stylistic preference:
+--
+--   1. PRAGMA foreign_keys = ON is SQLite-only. PostgreSQL enforces foreign
+--      keys always, so the statement is not needed and does not parse.
+--   2. Foreign keys are declared with ALTER TABLE at the end rather than
+--      inline. The SQLite schema references users(id) from line 298 while
+--      creating users at line 427; SQLite does not resolve forward references
+--      at CREATE time, PostgreSQL rejects them outright. Eight such forward
+--      references exist.
+--   3. INSERT OR IGNORE is SQLite-only; the equivalent is ON CONFLICT DO
+--      NOTHING, appended to the two statements that used it.
+--
+-- datetime('now') became now(). Columns declared INTEGER NOT NULL DEFAULT 0
+-- that carry boolean meaning are left as INTEGER deliberately: PostgreSQL
+-- accepts them, and converting 44 of them to BOOLEAN would change what every
+-- Go scan expects. That is tracked as a follow-up, not folded in here.
+
 -- i-confess â€” SQLite (dev/local) schema
 -- Canonical production schema is PostgreSQL (migrations/postgres/0001_schema.sql)
 -- The two are kept structurally equivalent (TEXT ids = UUID, RFC3339 TEXT = TIMESTAMPTZ)
 
-PRAGMA foreign_keys = ON;
+
 
 -- ============================= CONTENT =============================
 CREATE TABLE IF NOT EXISTS collections (
@@ -32,15 +54,15 @@ CREATE TABLE IF NOT EXISTS categories (
 
 -- A category may belong to many collections (e.g. the "28" and "38" share categories).
 CREATE TABLE IF NOT EXISTS collection_categories (
-    collection_id TEXT NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
-    category_id   TEXT NOT NULL REFERENCES categories(id)  ON DELETE CASCADE,
+    collection_id TEXT NOT NULL,
+    category_id   TEXT NOT NULL,
     sort_order    INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (collection_id, category_id)
 );
 
 CREATE TABLE IF NOT EXISTS confessions (
     id          TEXT PRIMARY KEY,
-    category_id TEXT NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+    category_id TEXT NOT NULL,
     title       TEXT NOT NULL,
     short_text  TEXT,
     medium_text TEXT,
@@ -60,7 +82,7 @@ CREATE TABLE IF NOT EXISTS confessions (
 
 CREATE TABLE IF NOT EXISTS confession_variants (
     id               TEXT PRIMARY KEY,
-    confession_id    TEXT NOT NULL REFERENCES confessions(id) ON DELETE CASCADE,
+    confession_id    TEXT NOT NULL,
     label            TEXT NOT NULL,                      -- '30s' | '1m' | '3m' | '5m' | '10m'
     duration_seconds INTEGER NOT NULL,
     sort_order       INTEGER NOT NULL DEFAULT 0
@@ -68,7 +90,7 @@ CREATE TABLE IF NOT EXISTS confession_variants (
 
 CREATE TABLE IF NOT EXISTS scripture_references (
     id              TEXT PRIMARY KEY,
-    confession_id   TEXT NOT NULL REFERENCES confessions(id) ON DELETE CASCADE,
+    confession_id   TEXT NOT NULL,
     book            TEXT NOT NULL,
     chapter         INTEGER,
     verse           TEXT,                                -- e.g. '5' or '3-6'
@@ -96,7 +118,7 @@ CREATE TABLE IF NOT EXISTS voices (
 
 CREATE TABLE IF NOT EXISTS voice_licenses (
     id                  TEXT PRIMARY KEY,
-    voice_id            TEXT NOT NULL UNIQUE REFERENCES voices(id) ON DELETE CASCADE,
+    voice_id            TEXT NOT NULL UNIQUE,
     owner               TEXT,
     owner_name          TEXT,
     provider            TEXT,
@@ -120,7 +142,7 @@ CREATE TABLE IF NOT EXISTS voice_licenses (
 -- Content versions for proper audio/content separation
 CREATE TABLE IF NOT EXISTS content_versions (
     id              TEXT PRIMARY KEY,
-    confession_id   TEXT NOT NULL REFERENCES confessions(id) ON DELETE CASCADE,
+    confession_id   TEXT NOT NULL,
     version_number  INTEGER NOT NULL,
     title           TEXT NOT NULL,
     short_text      TEXT,
@@ -139,9 +161,9 @@ CREATE TABLE IF NOT EXISTS content_versions (
 -- Enhanced audio assets with complete metadata
 CREATE TABLE IF NOT EXISTS audio_assets (
     id                      TEXT PRIMARY KEY,
-    content_id              TEXT NOT NULL REFERENCES confessions(id) ON DELETE CASCADE,
-    content_version_id      TEXT REFERENCES content_versions(id) ON DELETE SET NULL,
-    voice_id                TEXT NOT NULL REFERENCES voices(id) ON DELETE RESTRICT,
+    content_id              TEXT NOT NULL,
+    content_version_id      TEXT,
+    voice_id                TEXT NOT NULL,
     
     -- Asset classification
     asset_type              TEXT NOT NULL DEFAULT 'stream',     -- source | master | stream | preview | download
@@ -185,8 +207,8 @@ CREATE TABLE IF NOT EXISTS audio_assets (
 -- Audio generation jobs for TTS/recording
 CREATE TABLE IF NOT EXISTS audio_generation_jobs (
     id                  TEXT PRIMARY KEY,
-    content_version_id  TEXT NOT NULL REFERENCES content_versions(id) ON DELETE CASCADE,
-    voice_id            TEXT NOT NULL REFERENCES voices(id) ON DELETE RESTRICT,
+    content_version_id  TEXT NOT NULL,
+    voice_id            TEXT NOT NULL,
     
     -- Provider & configuration
     provider            TEXT NOT NULL,                       -- google-tts | azure-tts | openai | human-recording | aws-polly
@@ -220,7 +242,7 @@ CREATE TABLE IF NOT EXISTS audio_generation_jobs (
 -- Audio quality variants (standard, high, lossless)
 CREATE TABLE IF NOT EXISTS audio_variants (
     id              TEXT PRIMARY KEY,
-    audio_asset_id  TEXT NOT NULL REFERENCES audio_assets(id) ON DELETE CASCADE,
+    audio_asset_id  TEXT NOT NULL,
     
     quality_tier    TEXT NOT NULL,                        -- standard | high | lossless
     bitrate         INTEGER,
@@ -242,7 +264,7 @@ CREATE TABLE IF NOT EXISTS audio_variants (
 -- Audio processing pipeline logs
 CREATE TABLE IF NOT EXISTS audio_processing_logs (
     id              TEXT PRIMARY KEY,
-    audio_asset_id  TEXT NOT NULL REFERENCES audio_assets(id) ON DELETE CASCADE,
+    audio_asset_id  TEXT NOT NULL,
     
     step            TEXT NOT NULL,                        -- validation | normalization | transcoding | publishing
     status          TEXT NOT NULL,                        -- started | completed | failed
@@ -258,7 +280,7 @@ CREATE TABLE IF NOT EXISTS audio_processing_logs (
 -- Audio checksums for integrity verification
 CREATE TABLE IF NOT EXISTS audio_checksums (
     id              TEXT PRIMARY KEY,
-    audio_asset_id  TEXT NOT NULL UNIQUE REFERENCES audio_assets(id) ON DELETE CASCADE,
+    audio_asset_id  TEXT NOT NULL UNIQUE,
     
     sha256          TEXT NOT NULL UNIQUE,
     md5             TEXT,
@@ -271,7 +293,7 @@ CREATE TABLE IF NOT EXISTS audio_checksums (
 -- Voice rights/authorization metadata
 CREATE TABLE IF NOT EXISTS voice_rights (
     id                      TEXT PRIMARY KEY,
-    voice_id                TEXT NOT NULL REFERENCES voices(id) ON DELETE CASCADE,
+    voice_id                TEXT NOT NULL,
     
     rights_holder           TEXT NOT NULL,
     authorization_reference TEXT,
@@ -294,8 +316,8 @@ CREATE TABLE IF NOT EXISTS voice_rights (
 -- Signed URL tracking & caching
 CREATE TABLE IF NOT EXISTS signed_urls (
     id              TEXT PRIMARY KEY,
-    audio_asset_id  TEXT NOT NULL REFERENCES audio_assets(id) ON DELETE CASCADE,
-    user_id         TEXT REFERENCES users(id) ON DELETE SET NULL,
+    audio_asset_id  TEXT NOT NULL,
+    user_id         TEXT,
     
     signed_url      TEXT NOT NULL UNIQUE,
     
@@ -309,10 +331,10 @@ CREATE TABLE IF NOT EXISTS signed_urls (
 -- Detailed playback session tracking
 CREATE TABLE IF NOT EXISTS audio_playback_sessions (
     id              TEXT PRIMARY KEY,
-    user_id         TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id         TEXT NOT NULL,
     
-    audio_asset_id  TEXT NOT NULL REFERENCES audio_assets(id) ON DELETE CASCADE,
-    session_id      TEXT REFERENCES sessions(id) ON DELETE SET NULL,
+    audio_asset_id  TEXT NOT NULL,
+    session_id      TEXT,
     
     started_at      TEXT NOT NULL,
     paused_at       TEXT,
@@ -334,8 +356,8 @@ CREATE TABLE IF NOT EXISTS audio_playback_sessions (
 -- Audio download management
 CREATE TABLE IF NOT EXISTS audio_downloads (
     id              TEXT PRIMARY KEY,
-    user_id         TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    audio_asset_id  TEXT NOT NULL REFERENCES audio_assets(id) ON DELETE CASCADE,
+    user_id         TEXT NOT NULL,
+    audio_asset_id  TEXT NOT NULL,
     
     status          TEXT NOT NULL DEFAULT 'queued',      -- queued | downloading | downloaded | failed | removed
     
@@ -358,8 +380,8 @@ CREATE TABLE IF NOT EXISTS audio_downloads (
 -- Detailed playback progress tracking
 CREATE TABLE IF NOT EXISTS playback_progress (
     id              TEXT PRIMARY KEY,
-    user_id         TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    audio_asset_id  TEXT NOT NULL REFERENCES audio_assets(id) ON DELETE CASCADE,
+    user_id         TEXT NOT NULL,
+    audio_asset_id  TEXT NOT NULL,
     
     position_seconds INTEGER NOT NULL,
     duration_seconds INTEGER NOT NULL,
@@ -379,8 +401,8 @@ CREATE TABLE IF NOT EXISTS playback_progress (
 -- Playback analytics events
 CREATE TABLE IF NOT EXISTS audio_events (
     id              TEXT PRIMARY KEY,
-    user_id         TEXT REFERENCES users(id) ON DELETE SET NULL,
-    audio_asset_id  TEXT REFERENCES audio_assets(id) ON DELETE SET NULL,
+    user_id         TEXT,
+    audio_asset_id  TEXT,
     
     event_type      TEXT NOT NULL,                      -- play_request | play_started | play_paused | play_resumed | play_seeked | play_completed | play_failed | download_started | download_completed | download_failed
     
@@ -405,8 +427,8 @@ CREATE TABLE IF NOT EXISTS audio_events (
 -- QoE (Quality of Experience) metrics
 CREATE TABLE IF NOT EXISTS audio_qoe_metrics (
     id              TEXT PRIMARY KEY,
-    user_id         TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    audio_asset_id  TEXT NOT NULL REFERENCES audio_assets(id) ON DELETE CASCADE,
+    user_id         TEXT NOT NULL,
+    audio_asset_id  TEXT NOT NULL,
     
     startup_latency_ms  INTEGER,
     buffer_duration_ms  INTEGER,
@@ -440,7 +462,7 @@ CREATE TABLE IF NOT EXISTS users (
 
 CREATE TABLE IF NOT EXISTS user_profiles (
     id            TEXT PRIMARY KEY,
-    user_id       TEXT NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+    user_id       TEXT NOT NULL UNIQUE,
     display_name  TEXT,
     username      TEXT,
     bio           TEXT,
@@ -456,7 +478,7 @@ CREATE TABLE IF NOT EXISTS user_profiles (
 
 CREATE TABLE IF NOT EXISTS user_preferences (
     id                       TEXT PRIMARY KEY,
-    user_id                  TEXT NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+    user_id                  TEXT NOT NULL UNIQUE,
     default_duration         INTEGER NOT NULL DEFAULT 1800,
     default_voice_id         TEXT,
     autoplay                 INTEGER NOT NULL DEFAULT 1,
@@ -472,7 +494,7 @@ CREATE TABLE IF NOT EXISTS user_preferences (
 
 CREATE TABLE IF NOT EXISTS user_interests (
     id          TEXT PRIMARY KEY,
-    user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id     TEXT NOT NULL,
     category_id TEXT NOT NULL,
     weight      REAL NOT NULL DEFAULT 0,
     source      TEXT NOT NULL DEFAULT 'EXPLICIT_SELECTION',
@@ -483,7 +505,7 @@ CREATE TABLE IF NOT EXISTS user_interests (
 
 CREATE TABLE IF NOT EXISTS user_voice_preferences (
     id          TEXT PRIMARY KEY,
-    user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id     TEXT NOT NULL,
     voice_id    TEXT NOT NULL,
     is_default  INTEGER NOT NULL DEFAULT 0,
     created_at  TEXT NOT NULL,
@@ -492,7 +514,7 @@ CREATE TABLE IF NOT EXISTS user_voice_preferences (
 
 CREATE TABLE IF NOT EXISTS user_identities (
     id            TEXT PRIMARY KEY,
-    user_id       TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id       TEXT NOT NULL,
     provider      TEXT NOT NULL,
     subject       TEXT NOT NULL,
     email         TEXT,
@@ -504,7 +526,7 @@ CREATE TABLE IF NOT EXISTS user_identities (
 
 CREATE TABLE IF NOT EXISTS email_verification_tokens (
     id          TEXT PRIMARY KEY,
-    user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id     TEXT NOT NULL,
     purpose     TEXT NOT NULL DEFAULT 'email_verification',
     token       TEXT NOT NULL,
     expires_at  TEXT NOT NULL,
@@ -515,7 +537,7 @@ CREATE TABLE IF NOT EXISTS email_verification_tokens (
 
 CREATE TABLE IF NOT EXISTS password_reset_tokens (
     id          TEXT PRIMARY KEY,
-    user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id     TEXT NOT NULL,
     token       TEXT NOT NULL,
     expires_at  TEXT NOT NULL,
     used_at     TEXT,
@@ -525,7 +547,7 @@ CREATE TABLE IF NOT EXISTS password_reset_tokens (
 
 CREATE TABLE IF NOT EXISTS refresh_tokens (
     id            TEXT PRIMARY KEY,
-    user_id       TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id       TEXT NOT NULL,
     token_hash    TEXT NOT NULL UNIQUE,
     device_id     TEXT,
     device_name   TEXT,
@@ -541,7 +563,7 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
 
 CREATE TABLE IF NOT EXISTS user_devices (
     id          TEXT PRIMARY KEY,
-    user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id     TEXT NOT NULL,
     device_id   TEXT NOT NULL,
     platform    TEXT,
     user_agent  TEXT,
@@ -564,7 +586,7 @@ CREATE TABLE IF NOT EXISTS security_events (
 
 CREATE TABLE IF NOT EXISTS consent_records (
     id          TEXT PRIMARY KEY,
-    user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id     TEXT NOT NULL,
     category    TEXT NOT NULL,
     granted     INTEGER NOT NULL DEFAULT 0,
     version     TEXT NOT NULL,
@@ -574,7 +596,7 @@ CREATE TABLE IF NOT EXISTS consent_records (
 );
 
 CREATE TABLE IF NOT EXISTS mfa_secrets (
-    user_id     TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    user_id     TEXT PRIMARY KEY,
     secret      TEXT NOT NULL,
     enabled     INTEGER NOT NULL DEFAULT 0,
     updated_at  TEXT NOT NULL
@@ -582,7 +604,7 @@ CREATE TABLE IF NOT EXISTS mfa_secrets (
 
 CREATE TABLE IF NOT EXISTS subscriptions (
     id         TEXT PRIMARY KEY,
-    user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id    TEXT NOT NULL,
     plan       TEXT NOT NULL DEFAULT 'free',             -- free | premium
     status     TEXT NOT NULL DEFAULT 'active',
     started_at TEXT,
@@ -591,7 +613,7 @@ CREATE TABLE IF NOT EXISTS subscriptions (
 );
 
 CREATE TABLE IF NOT EXISTS session_preferences (
-    user_id                  TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    user_id                  TEXT PRIMARY KEY,
     default_duration_seconds INTEGER NOT NULL DEFAULT 1800,
     default_voice_id         TEXT,
     updated_at               TEXT NOT NULL
@@ -599,7 +621,7 @@ CREATE TABLE IF NOT EXISTS session_preferences (
 
 CREATE TABLE IF NOT EXISTS schedules (
     id               TEXT PRIMARY KEY,
-    user_id          TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id          TEXT NOT NULL,
     label            TEXT NOT NULL,
     time             TEXT NOT NULL,                      -- 'HH:MM' local
     days_of_week     TEXT NOT NULL DEFAULT '1,2,3,4,5,6,7', -- 1=Mon .. 7=Sun
@@ -615,7 +637,7 @@ CREATE TABLE IF NOT EXISTS schedules (
 -- ============================= SESSIONS =============================
 CREATE TABLE IF NOT EXISTS sessions (
     id               TEXT PRIMARY KEY,
-    user_id          TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id          TEXT NOT NULL,
     type             TEXT NOT NULL DEFAULT 'standard',   -- quick | standard | deep | custom | personal
     duration_seconds INTEGER NOT NULL,
     voice_id         TEXT,
@@ -635,9 +657,9 @@ CREATE TABLE IF NOT EXISTS sessions (
 -- what makes multi-device conflict resolution deterministic rather than
 -- whichever request happened to arrive last.
 CREATE TABLE IF NOT EXISTS session_progress (
-    session_id      TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
-    user_id         TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    queue_item_id   TEXT REFERENCES session_items(id) ON DELETE SET NULL,
+    session_id      TEXT PRIMARY KEY,
+    user_id         TEXT NOT NULL,
+    queue_item_id   TEXT,
     position_ms     INTEGER NOT NULL DEFAULT 0,
     completed_items INTEGER NOT NULL DEFAULT 0,
     device_id       TEXT,
@@ -647,8 +669,8 @@ CREATE INDEX IF NOT EXISTS idx_session_progress_user ON session_progress(user_id
 
 CREATE TABLE IF NOT EXISTS session_items (
     id               TEXT PRIMARY KEY,
-    session_id       TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-    confession_id    TEXT NOT NULL REFERENCES confessions(id) ON DELETE CASCADE,
+    session_id       TEXT NOT NULL,
+    confession_id    TEXT NOT NULL,
     variant_id       TEXT,
     voice_id         TEXT,
     audio_asset_id   TEXT,
@@ -660,7 +682,7 @@ CREATE TABLE IF NOT EXISTS session_items (
 -- ============================= ENGAGEMENT =============================
 CREATE TABLE IF NOT EXISTS favorites (
     id          TEXT PRIMARY KEY,
-    user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id     TEXT NOT NULL,
     entity_type TEXT NOT NULL,                           -- confession | category | session | voice
     entity_id   TEXT NOT NULL,
     created_at  TEXT NOT NULL
@@ -668,7 +690,7 @@ CREATE TABLE IF NOT EXISTS favorites (
 
 CREATE TABLE IF NOT EXISTS playback_history (
     id               TEXT PRIMARY KEY,
-    user_id          TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id          TEXT NOT NULL,
     session_id       TEXT,
     confession_id    TEXT,
     duration_seconds INTEGER,
@@ -680,7 +702,7 @@ CREATE TABLE IF NOT EXISTS playback_history (
 -- ============================= USER CONTENT =============================
 CREATE TABLE IF NOT EXISTS user_confessions (
     id          TEXT PRIMARY KEY,
-    user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id     TEXT NOT NULL,
     title       TEXT NOT NULL,
     text        TEXT NOT NULL,
     category_id TEXT,
@@ -691,7 +713,7 @@ CREATE TABLE IF NOT EXISTS user_confessions (
 
 CREATE TABLE IF NOT EXISTS user_confession_audio (
     id                 TEXT PRIMARY KEY,
-    user_confession_id TEXT NOT NULL REFERENCES user_confessions(id) ON DELETE CASCADE,
+    user_confession_id TEXT NOT NULL,
     voice_id           TEXT,
     url                TEXT,
     status             TEXT NOT NULL DEFAULT 'queued',
@@ -701,7 +723,7 @@ CREATE TABLE IF NOT EXISTS user_confession_audio (
 -- ============================= ADMIN =============================
 CREATE TABLE IF NOT EXISTS admin_users (
     id         TEXT PRIMARY KEY,
-    user_id    TEXT NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+    user_id    TEXT NOT NULL UNIQUE,
     role       TEXT NOT NULL DEFAULT 'support',          -- super_admin | content_admin | audio_producer | theological_reviewer | support_admin | analytics_admin
     created_at TEXT NOT NULL
 );
@@ -792,7 +814,7 @@ CREATE INDEX IF NOT EXISTS idx_favorites_user ON favorites(user_id);
 -- these belong to a person, not to the catalogue.
 CREATE TABLE IF NOT EXISTS user_collections (
     id          TEXT PRIMARY KEY,
-    user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id     TEXT NOT NULL,
     name        TEXT NOT NULL,
     description TEXT,
     cover_url   TEXT,
@@ -804,8 +826,8 @@ CREATE INDEX IF NOT EXISTS idx_user_collections_user ON user_collections(user_id
 
 CREATE TABLE IF NOT EXISTS user_collection_items (
     id            TEXT PRIMARY KEY,
-    collection_id TEXT NOT NULL REFERENCES user_collections(id) ON DELETE CASCADE,
-    confession_id TEXT NOT NULL REFERENCES confessions(id) ON DELETE CASCADE,
+    collection_id TEXT NOT NULL,
+    confession_id TEXT NOT NULL,
     position      INTEGER NOT NULL DEFAULT 0,
     created_at    TEXT NOT NULL,
     UNIQUE(collection_id, confession_id)
@@ -815,7 +837,7 @@ CREATE INDEX IF NOT EXISTS idx_user_collection_items ON user_collection_items(co
 -- Notification preferences. Separate from user_preferences so adding a channel
 -- does not require touching the main preference row.
 CREATE TABLE IF NOT EXISTS notification_preferences (
-    user_id            TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    user_id            TEXT PRIMARY KEY,
     scheduled_sessions INTEGER NOT NULL DEFAULT 1,
     new_content        INTEGER NOT NULL DEFAULT 1,
     recommendations    INTEGER NOT NULL DEFAULT 1,
@@ -893,8 +915,8 @@ CREATE INDEX IF NOT EXISTS idx_user_devices_push
 -- guarantee, not application logic.
 CREATE TABLE IF NOT EXISTS scheduled_deliveries (
     id            TEXT PRIMARY KEY,
-    schedule_id   TEXT NOT NULL REFERENCES schedules(id) ON DELETE CASCADE,
-    user_id       TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    schedule_id   TEXT NOT NULL,
+    user_id       TEXT NOT NULL,
     -- occurrence_key is the schedule's local date+time, e.g. "2026-09-02T06:00".
     -- Keyed on local wall-clock rather than UTC so a timezone change does not
     -- create a duplicate for the same intended moment.
@@ -964,22 +986,23 @@ CREATE INDEX IF NOT EXISTS idx_confessions_visibility ON confessions(visibility)
 
 -- M2M for multi-category + voice assignment (spec §8)
 CREATE TABLE IF NOT EXISTS confession_categories (
-    confession_id TEXT NOT NULL REFERENCES confessions(id) ON DELETE CASCADE,
-    category_id   TEXT NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+    confession_id TEXT NOT NULL,
+    category_id   TEXT NOT NULL,
     weight        INTEGER NOT NULL DEFAULT 100,
     sort_order    INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (confession_id, category_id)
 );
 CREATE INDEX IF NOT EXISTS idx_confession_categories_cat ON confession_categories(category_id);
 CREATE TABLE IF NOT EXISTS confession_voices (
-    confession_id TEXT NOT NULL REFERENCES confessions(id) ON DELETE CASCADE,
-    voice_id      TEXT NOT NULL REFERENCES voices(id) ON DELETE RESTRICT,
+    confession_id TEXT NOT NULL,
+    voice_id      TEXT NOT NULL,
     is_default    INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (confession_id, voice_id)
 );
 -- backfill M2M from legacy single category_id
-INSERT OR IGNORE INTO confession_categories (confession_id, category_id)
-SELECT id, category_id FROM confessions WHERE category_id IS NOT NULL;
+INSERT INTO confession_categories (confession_id, category_id)
+SELECT id, category_id FROM confessions WHERE category_id IS NOT NULL
+ON CONFLICT DO NOTHING;
 
 -- Voices display fields (§12)
 ALTER TABLE voices ADD COLUMN display_name TEXT;
@@ -1014,7 +1037,7 @@ UPDATE session_items SET planned_duration = COALESCE(planned_duration, duration_
 -- Idempotency + outbox + feature flags (§47-§48, §111)
 CREATE TABLE IF NOT EXISTS idempotency_keys (
     key TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL,
     method TEXT NOT NULL,
     path TEXT NOT NULL,
     response_status INTEGER,
@@ -1046,13 +1069,14 @@ CREATE TABLE IF NOT EXISTS feature_flags (
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
-INSERT OR IGNORE INTO feature_flags (key, enabled, rollout_percent, platforms, created_at, updated_at) VALUES
- ('new_player', 0, 0, '', datetime('now'), datetime('now')),
- ('ai_session_builder', 0, 0, '', datetime('now'), datetime('now')),
- ('community', 0, 0, '', datetime('now'), datetime('now')),
- ('offline_downloads', 1, 100, '', datetime('now'), datetime('now')),
- ('new_home', 0, 0, '', datetime('now'), datetime('now')),
- ('premium_voices', 1, 100, '', datetime('now'), datetime('now'));
+INSERT INTO feature_flags (key, enabled, rollout_percent, platforms, created_at, updated_at) VALUES
+ ('new_player', 0, 0, '', now(), now()),
+ ('ai_session_builder', 0, 0, '', now(), now()),
+ ('community', 0, 0, '', now(), now()),
+ ('offline_downloads', 1, 100, '', now(), now()),
+ ('new_home', 0, 0, '', now(), now()),
+ ('premium_voices', 1, 100, '', now(), now())
+ON CONFLICT DO NOTHING;
 
 -- ==================== PHASE-2 CONTENT & AUDIO GOVERNANCE (2026-09-05) ====================
 -- §7–§12, §74–§75, §96–§97 — moderation queue, QA gate, version polish
@@ -1077,7 +1101,7 @@ CREATE TABLE IF NOT EXISTS moderation_cases (
     entity_id TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'open',
     reason TEXT,
-    actor TEXT REFERENCES users(id) ON DELETE SET NULL,
+    actor TEXT,
     before TEXT,
     after TEXT,
     detail TEXT,
@@ -1087,7 +1111,7 @@ CREATE TABLE IF NOT EXISTS moderation_cases (
 CREATE INDEX IF NOT EXISTS idx_mod_entity ON moderation_cases(entity_type, entity_id);
 CREATE TABLE IF NOT EXISTS reports (
     id TEXT PRIMARY KEY,
-    reporter_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    reporter_id TEXT NOT NULL,
     entity_type TEXT NOT NULL,
     entity_id TEXT NOT NULL,
     reason TEXT NOT NULL,
@@ -1097,10 +1121,10 @@ CREATE TABLE IF NOT EXISTS reports (
 );
 CREATE TABLE IF NOT EXISTS content_moderation_history (
     id TEXT PRIMARY KEY,
-    confession_id TEXT NOT NULL REFERENCES confessions(id) ON DELETE CASCADE,
+    confession_id TEXT NOT NULL,
     from_status TEXT NOT NULL,
     to_status TEXT NOT NULL,
-    actor TEXT REFERENCES users(id) ON DELETE SET NULL,
+    actor TEXT,
     reason TEXT,
     created_at TEXT NOT NULL
 );
@@ -1120,7 +1144,7 @@ CREATE INDEX IF NOT EXISTS idx_vr_status_expiry ON voice_rights(status, expiry_d
 -- ==================== PHASE-5 TEMPLATES (custom sessions) ====================
 CREATE TABLE IF NOT EXISTS user_templates (
     id            TEXT PRIMARY KEY,
-    user_id       TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id       TEXT NOT NULL,
     name          TEXT NOT NULL,
     description   TEXT,
     category_ids  TEXT NOT NULL,
@@ -1138,3 +1162,76 @@ CREATE INDEX IF NOT EXISTS idx_templates_share ON user_templates(share_token) WH
 
 -- 39 categories are backend-controlled; see scripts/seed.sh and migrations 0002-0006.
 -- No hard-coded taxonomy in mobile.
+-- ===================== FOREIGN KEYS =====================
+-- Declared after every table exists. See note 2 in the header.
+
+ALTER TABLE collection_categories ADD CONSTRAINT collection_categories_collection_id_fkey FOREIGN KEY (collection_id) REFERENCES collections(id) ON DELETE CASCADE;
+ALTER TABLE collection_categories ADD CONSTRAINT collection_categories_category_id_fkey FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE;
+ALTER TABLE confessions ADD CONSTRAINT confessions_category_id_fkey FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE;
+ALTER TABLE confession_variants ADD CONSTRAINT confession_variants_confession_id_fkey FOREIGN KEY (confession_id) REFERENCES confessions(id) ON DELETE CASCADE;
+ALTER TABLE scripture_references ADD CONSTRAINT scripture_references_confession_id_fkey FOREIGN KEY (confession_id) REFERENCES confessions(id) ON DELETE CASCADE;
+ALTER TABLE voice_licenses ADD CONSTRAINT voice_licenses_voice_id_fkey FOREIGN KEY (voice_id) REFERENCES voices(id) ON DELETE CASCADE;
+ALTER TABLE content_versions ADD CONSTRAINT content_versions_confession_id_fkey FOREIGN KEY (confession_id) REFERENCES confessions(id) ON DELETE CASCADE;
+ALTER TABLE audio_assets ADD CONSTRAINT audio_assets_content_id_fkey FOREIGN KEY (content_id) REFERENCES confessions(id) ON DELETE CASCADE;
+ALTER TABLE audio_assets ADD CONSTRAINT audio_assets_content_version_id_fkey FOREIGN KEY (content_version_id) REFERENCES content_versions(id) ON DELETE SET NULL;
+ALTER TABLE audio_assets ADD CONSTRAINT audio_assets_voice_id_fkey FOREIGN KEY (voice_id) REFERENCES voices(id) ON DELETE RESTRICT;
+ALTER TABLE audio_generation_jobs ADD CONSTRAINT audio_generation_jobs_content_version_id_fkey FOREIGN KEY (content_version_id) REFERENCES content_versions(id) ON DELETE CASCADE;
+ALTER TABLE audio_generation_jobs ADD CONSTRAINT audio_generation_jobs_voice_id_fkey FOREIGN KEY (voice_id) REFERENCES voices(id) ON DELETE RESTRICT;
+ALTER TABLE audio_variants ADD CONSTRAINT audio_variants_audio_asset_id_fkey FOREIGN KEY (audio_asset_id) REFERENCES audio_assets(id) ON DELETE CASCADE;
+ALTER TABLE audio_processing_logs ADD CONSTRAINT audio_processing_logs_audio_asset_id_fkey FOREIGN KEY (audio_asset_id) REFERENCES audio_assets(id) ON DELETE CASCADE;
+ALTER TABLE audio_checksums ADD CONSTRAINT audio_checksums_audio_asset_id_fkey FOREIGN KEY (audio_asset_id) REFERENCES audio_assets(id) ON DELETE CASCADE;
+ALTER TABLE voice_rights ADD CONSTRAINT voice_rights_voice_id_fkey FOREIGN KEY (voice_id) REFERENCES voices(id) ON DELETE CASCADE;
+ALTER TABLE signed_urls ADD CONSTRAINT signed_urls_audio_asset_id_fkey FOREIGN KEY (audio_asset_id) REFERENCES audio_assets(id) ON DELETE CASCADE;
+ALTER TABLE signed_urls ADD CONSTRAINT signed_urls_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE audio_playback_sessions ADD CONSTRAINT audio_playback_sessions_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE audio_playback_sessions ADD CONSTRAINT audio_playback_sessions_audio_asset_id_fkey FOREIGN KEY (audio_asset_id) REFERENCES audio_assets(id) ON DELETE CASCADE;
+ALTER TABLE audio_playback_sessions ADD CONSTRAINT audio_playback_sessions_session_id_fkey FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE SET NULL;
+ALTER TABLE audio_downloads ADD CONSTRAINT audio_downloads_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE audio_downloads ADD CONSTRAINT audio_downloads_audio_asset_id_fkey FOREIGN KEY (audio_asset_id) REFERENCES audio_assets(id) ON DELETE CASCADE;
+ALTER TABLE playback_progress ADD CONSTRAINT playback_progress_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE playback_progress ADD CONSTRAINT playback_progress_audio_asset_id_fkey FOREIGN KEY (audio_asset_id) REFERENCES audio_assets(id) ON DELETE CASCADE;
+ALTER TABLE audio_events ADD CONSTRAINT audio_events_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE audio_events ADD CONSTRAINT audio_events_audio_asset_id_fkey FOREIGN KEY (audio_asset_id) REFERENCES audio_assets(id) ON DELETE SET NULL;
+ALTER TABLE audio_qoe_metrics ADD CONSTRAINT audio_qoe_metrics_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE audio_qoe_metrics ADD CONSTRAINT audio_qoe_metrics_audio_asset_id_fkey FOREIGN KEY (audio_asset_id) REFERENCES audio_assets(id) ON DELETE CASCADE;
+ALTER TABLE user_profiles ADD CONSTRAINT user_profiles_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE user_preferences ADD CONSTRAINT user_preferences_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE user_interests ADD CONSTRAINT user_interests_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE user_voice_preferences ADD CONSTRAINT user_voice_preferences_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE user_identities ADD CONSTRAINT user_identities_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE email_verification_tokens ADD CONSTRAINT email_verification_tokens_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE password_reset_tokens ADD CONSTRAINT password_reset_tokens_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE refresh_tokens ADD CONSTRAINT refresh_tokens_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE user_devices ADD CONSTRAINT user_devices_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE consent_records ADD CONSTRAINT consent_records_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE mfa_secrets ADD CONSTRAINT mfa_secrets_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE subscriptions ADD CONSTRAINT subscriptions_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE session_preferences ADD CONSTRAINT session_preferences_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE schedules ADD CONSTRAINT schedules_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE sessions ADD CONSTRAINT sessions_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE session_progress ADD CONSTRAINT session_progress_session_id_fkey FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE;
+ALTER TABLE session_progress ADD CONSTRAINT session_progress_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE session_progress ADD CONSTRAINT session_progress_queue_item_id_fkey FOREIGN KEY (queue_item_id) REFERENCES session_items(id) ON DELETE SET NULL;
+ALTER TABLE session_items ADD CONSTRAINT session_items_session_id_fkey FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE;
+ALTER TABLE session_items ADD CONSTRAINT session_items_confession_id_fkey FOREIGN KEY (confession_id) REFERENCES confessions(id) ON DELETE CASCADE;
+ALTER TABLE favorites ADD CONSTRAINT favorites_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE playback_history ADD CONSTRAINT playback_history_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE user_confessions ADD CONSTRAINT user_confessions_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE user_confession_audio ADD CONSTRAINT user_confession_audio_user_confession_id_fkey FOREIGN KEY (user_confession_id) REFERENCES user_confessions(id) ON DELETE CASCADE;
+ALTER TABLE admin_users ADD CONSTRAINT admin_users_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE user_collections ADD CONSTRAINT user_collections_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE user_collection_items ADD CONSTRAINT user_collection_items_collection_id_fkey FOREIGN KEY (collection_id) REFERENCES user_collections(id) ON DELETE CASCADE;
+ALTER TABLE user_collection_items ADD CONSTRAINT user_collection_items_confession_id_fkey FOREIGN KEY (confession_id) REFERENCES confessions(id) ON DELETE CASCADE;
+ALTER TABLE notification_preferences ADD CONSTRAINT notification_preferences_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE scheduled_deliveries ADD CONSTRAINT scheduled_deliveries_schedule_id_fkey FOREIGN KEY (schedule_id) REFERENCES schedules(id) ON DELETE CASCADE;
+ALTER TABLE scheduled_deliveries ADD CONSTRAINT scheduled_deliveries_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE confession_categories ADD CONSTRAINT confession_categories_confession_id_fkey FOREIGN KEY (confession_id) REFERENCES confessions(id) ON DELETE CASCADE;
+ALTER TABLE confession_categories ADD CONSTRAINT confession_categories_category_id_fkey FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE;
+ALTER TABLE confession_voices ADD CONSTRAINT confession_voices_confession_id_fkey FOREIGN KEY (confession_id) REFERENCES confessions(id) ON DELETE CASCADE;
+ALTER TABLE confession_voices ADD CONSTRAINT confession_voices_voice_id_fkey FOREIGN KEY (voice_id) REFERENCES voices(id) ON DELETE RESTRICT;
+ALTER TABLE idempotency_keys ADD CONSTRAINT idempotency_keys_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE moderation_cases ADD CONSTRAINT moderation_cases_actor_fkey FOREIGN KEY (actor) REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE reports ADD CONSTRAINT reports_reporter_id_fkey FOREIGN KEY (reporter_id) REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE content_moderation_history ADD CONSTRAINT content_moderation_history_confession_id_fkey FOREIGN KEY (confession_id) REFERENCES confessions(id) ON DELETE CASCADE;
+ALTER TABLE content_moderation_history ADD CONSTRAINT content_moderation_history_actor_fkey FOREIGN KEY (actor) REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE user_templates ADD CONSTRAINT user_templates_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;

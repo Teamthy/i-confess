@@ -2,15 +2,15 @@ package community
 
 import (
 	"context"
-	"database/sql"
+	"github.com/Teamthy/i-confess/internal/db"
 	"time"
 
 	"github.com/google/uuid"
 )
 
-type Store struct{ db *sql.DB }
+type Store struct{ db *db.DB }
 
-func NewStore(db *sql.DB) *Store { return &Store{db: db} }
+func NewStore(db *db.DB) *Store { return &Store{db: db} }
 
 func (s *Store) Create(ctx context.Context, authorID, body, visibility string) (*Post, error) {
 	p := &Post{ID: uuid.NewString(), AuthorID: authorID, Body: body, Visibility: visibility, Status: StatusSubmitted, CreatedAt: time.Now().UTC()}

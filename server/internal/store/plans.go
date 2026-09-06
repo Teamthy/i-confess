@@ -2,17 +2,17 @@ package store
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
+	"github.com/Teamthy/i-confess/internal/db"
 	"time"
 
 	"github.com/Teamthy/i-confess/internal/billing"
 )
 
 // PlanStore is DB-backed catalog; if DB empty it falls back to billing.DefaultPlans.
-type PlanStore struct{ db *sql.DB }
+type PlanStore struct{ db *db.DB }
 
-func NewPlanStore(db *sql.DB) *PlanStore { return &PlanStore{db: db} }
+func NewPlanStore(db *db.DB) *PlanStore { return &PlanStore{db: db} }
 
 func (s *PlanStore) List(ctx context.Context) ([]billing.Plan, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT id, name, description, interval, trial_days, prices, features FROM subscription_plans WHERE active=1 ORDER BY id`)

@@ -2,16 +2,16 @@ package search
 
 import (
 	"context"
-	"database/sql"
+	"github.com/Teamthy/i-confess/internal/db"
 	"strings"
 )
 
 // SearchStore provides full-text and keyword search across content.
 type SearchStore struct {
-	db *sql.DB
+	db *db.DB
 }
 
-func NewSearchStore(db *sql.DB) *SearchStore {
+func NewSearchStore(db *db.DB) *SearchStore {
 	return &SearchStore{db: db}
 }
 

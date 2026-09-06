@@ -1,8 +1,8 @@
 package api
 
 import (
-	"database/sql"
 	"errors"
+	"github.com/Teamthy/i-confess/internal/db"
 	"log"
 	"net"
 	"net/http"
@@ -51,7 +51,7 @@ type Handler struct {
 	pipeline *voice.Pipeline
 	// vrights stores voice authorization metadata.
 	vrights *store.VoiceRightsStore
-	db      *sql.DB
+	db      *db.DB
 	// devTokenSink receives one-time tokens in development and tests. Nil in
 	// production, where tokens go only to the email queue.
 	devTokenSink func(purpose, email, token string)
@@ -113,7 +113,7 @@ type Config struct {
 	TokenTTL  string
 }
 
-func NewHandler(cfg Config, db *sql.DB) *Handler {
+func NewHandler(cfg Config, db *db.DB) *Handler {
 	return &Handler{
 		cfg:          cfg,
 		users:        store.NewUserStore(db),
@@ -163,7 +163,7 @@ func (h *Handler) auditRights(r *http.Request, voiceID string, aiGranted bool, a
 
 // usersDB exposes the underlying database handle for tests that need to
 // manipulate subscription state directly.
-func (h *Handler) usersDB() *sql.DB { return h.db }
+func (h *Handler) usersDB() *db.DB { return h.db }
 
 // BuildEngine wires the session engine after handler construction.
 func (h *Handler) BuildEngine() {

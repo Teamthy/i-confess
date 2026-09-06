@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"github.com/Teamthy/i-confess/internal/db"
 	"time"
 )
 
@@ -22,9 +23,9 @@ type IdempotencyRecord struct {
 // (§47). It is deliberately backed by the same durable database as everything
 // else: a retry that lands on a different API instance must still be caught,
 // which rules out in-process memory.
-type IdempotencyStore struct{ db *sql.DB }
+type IdempotencyStore struct{ db *db.DB }
 
-func NewIdempotencyStore(db *sql.DB) *IdempotencyStore { return &IdempotencyStore{db: db} }
+func NewIdempotencyStore(db *db.DB) *IdempotencyStore { return &IdempotencyStore{db: db} }
 
 // Lookup returns a live record for the key, if one exists.
 //

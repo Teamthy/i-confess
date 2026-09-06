@@ -30,7 +30,7 @@ func main() {
 		log.Fatalf("config: %v", err)
 	}
 
-	conn, err := db.Open(cfg.DBPath)
+	conn, err := db.Open(cfg.DatabaseURL)
 	if err != nil {
 		log.Fatalf("db: %v", err)
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"github.com/Teamthy/i-confess/internal/db"
 	"time"
 
 	"github.com/Teamthy/i-confess/internal/models"
@@ -16,9 +17,9 @@ import (
 // copy. Storing an expiry is what makes a cancelled subscription eventually
 // stop working offline without relying on the app to police itself — a client
 // that has the file could otherwise keep playing it indefinitely.
-type DownloadStore struct{ db *sql.DB }
+type DownloadStore struct{ db *db.DB }
 
-func NewDownloadStore(db *sql.DB) *DownloadStore { return &DownloadStore{db: db} }
+func NewDownloadStore(db *db.DB) *DownloadStore { return &DownloadStore{db: db} }
 
 // ErrDownloadLimit is returned when a user is at their plan's cap.
 var ErrDownloadLimit = errors.New("download limit reached")

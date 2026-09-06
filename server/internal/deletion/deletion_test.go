@@ -9,25 +9,18 @@ import (
 	"time"
 
 	"github.com/Teamthy/i-confess/internal/db"
-	_ "modernc.org/sqlite"
+	"github.com/Teamthy/i-confess/internal/db/dbtest"
 )
 
 var frozen = time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
 
-func newDB(t *testing.T) *sql.DB {
+// newDB returns a fresh PostgreSQL database with the canonical schema loaded.
+func newDB(t *testing.T) *db.DB {
 	t.Helper()
-	conn, err := sql.Open("sqlite", ":memory:")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := db.InitSchema(conn, db.SchemaSQL); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { conn.Close() })
-	return conn
+	return dbtest.New(t)
 }
 
-func newService(t *testing.T, conn *sql.DB) *Service {
+func newService(t *testing.T, conn *db.DB) *Service {
 	t.Helper()
 	s := NewService(conn)
 	s.Now = func() time.Time { return frozen }
@@ -36,7 +29,7 @@ func newService(t *testing.T, conn *sql.DB) *Service {
 
 // seedUser creates an account with data spread across the tables deletion
 // touches, so an erasure has something real to remove.
-func seedUser(t *testing.T, conn *sql.DB, id, email string) {
+func seedUser(t *testing.T, conn *db.DB, id, email string) {
 	t.Helper()
 	ctx := context.Background()
 	exec := func(q string, args ...any) {
@@ -77,7 +70,7 @@ func seedUser(t *testing.T, conn *sql.DB, id, email string) {
 	      VALUES (?,?,?,?,?,?)`, "con-"+id, id, "terms", 1, "v1", now)
 }
 
-func count(t *testing.T, conn *sql.DB, table, where string, args ...any) int {
+func count(t *testing.T, conn *db.DB, table, where string, args ...any) int {
 	t.Helper()
 	var n int
 	q := "SELECT COUNT(*) FROM " + table
@@ -111,14 +104,17 @@ func TestEveryUserTableHasAPolicy(t *testing.T) {
 
 	// Parse the schema for tables referencing users(id).
 	// Both CREATE TABLE and ALTER TABLE introduce a table context. Tracking
-	// only CREATE TABLE misattributes a REFERENCES users(id) inside an ALTER
-	// to the previous CREATE, which once flagged feature_flags — a table with
-	// no user column at all. A policy for it would have made erasure run
-	// `DELETE FROM feature_flags WHERE user_id = ?` and broken deletion.
+	// This parser once tracked only CREATE TABLE and so misattributed a
+	// REFERENCES users(id) inside an ALTER to the preceding CREATE, flagging
+	// feature_flags - a table with no user column at all. A policy for it would
+	// have made erasure run `DELETE FROM feature_flags WHERE user_id = ?` and
+	// broken account deletion. The PostgreSQL schema declares every foreign key
+	// on an ALTER TABLE line naming its own table, so the hazard is gone; the
+	// ALTER TABLE arm of the pattern is what makes that hold.
 	tableRe := regexp.MustCompile(`(?:CREATE TABLE IF NOT EXISTS|ALTER TABLE)\s+([a-z_]+)`)
 	var current string
 	var missing []string
-	for _, line := range strings.Split(db.SchemaSQL, "\n") {
+	for _, line := range strings.Split(db.SchemaPostgresSQL, "\n") {
 		if m := tableRe.FindStringSubmatch(line); m != nil {
 			current = m[1]
 		}

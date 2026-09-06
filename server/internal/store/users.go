@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"github.com/Teamthy/i-confess/internal/db"
 	"strings"
 	"time"
 
@@ -19,9 +20,9 @@ func now() string { return time.Now().UTC().Format(time.RFC3339) }
 func newID() string { return uuid.NewString() }
 
 // UserStore manages users, subscriptions, and admin roles.
-type UserStore struct{ db *sql.DB }
+type UserStore struct{ db *db.DB }
 
-func NewUserStore(db *sql.DB) *UserStore { return &UserStore{db: db} }
+func NewUserStore(db *db.DB) *UserStore { return &UserStore{db: db} }
 
 func (s *UserStore) Create(ctx context.Context, email, hash, name, tz string) (*models.User, error) {
 	u := &models.User{ID: newID(), Email: email, DisplayName: name, Timezone: tz, Status: "active", CreatedAt: now()}

@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"github.com/Teamthy/i-confess/internal/db"
 	"time"
 
 	"github.com/Teamthy/i-confess/internal/models"
@@ -11,10 +12,10 @@ import (
 
 // VoiceRightsStore manages voice authorization and legal metadata.
 type VoiceRightsStore struct {
-	db *sql.DB
+	db *db.DB
 }
 
-func NewVoiceRightsStore(db *sql.DB) *VoiceRightsStore {
+func NewVoiceRightsStore(db *db.DB) *VoiceRightsStore {
 	return &VoiceRightsStore{db: db}
 }
 
