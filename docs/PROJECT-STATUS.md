@@ -1,6 +1,6 @@
 # Project Status
 
-**Last verified:** 2026-09-06, at PHASE 04.
+**Last verified:** 2026-09-06, at PHASE 05.
 
 This file supersedes `MASTER-PROMPT-COMPLETION.md`,
 `CONTENT-DOMAIN-COMPLETION.md`, `AUDIO-PLATFORM-STATUS.md`, `SESSION-NOTES.md`
@@ -17,7 +17,7 @@ it.** Every claim below was produced by running something.
 | Claim | Evidence |
 |---|---|
 | Backend builds | `make build` |
-| 22 test packages pass against PostgreSQL 17 | `make test` |
+| 23 test packages pass against PostgreSQL 17 | `make test` |
 | No data races | `make race` |
 | Lint clean, 10 linters | `make lint` → 0 issues |
 | Schema loads 64 tables, 76 foreign keys | `internal/db` tests |
@@ -40,6 +40,7 @@ it.** Every claim below was produced by running something.
 | **6 handlers** | Still return 501: recommendations, subscription, entitlements, confession QA, moderation queue, user confession review. |
 | **Database constraints** | 22 `status` columns, 5 CHECK constraints. |
 | **Cache** | Per-process only; no cross-instance invalidation. |
+| **Design system** | 120 tokens, contrast-verified, but not yet consumed by any real surface. |
 | **Observability** | No cache hit-rate metric; runtime dependency failure untested. |
 
 ## Phase progress
@@ -49,15 +50,17 @@ PHASE 01 Domain Model — **PASS**
 PHASE 02 System Architecture — **PASS**
 PHASE 03 Technology Decisions — **PASS**
 PHASE 04 Repository Bootstrap — **PASS**
-PHASE 05 Design System — not started
+PHASE 05 Design System — **PASS**
+PHASE 06 UX / Information Architecture — not started
 
-Open gaps carried forward: G-2, G-3, G-4, G-5, G-6, G-7, G-9, G-10, G-12, G-13.
+Open gaps carried forward: G-2, G-3, G-4, G-5, G-6, G-7, G-9, G-10, G-12, G-13,
+G-14, G-15, G-16.
 Each is described in the phase document that raised it.
 
 ## Reproducing any of this
 
 ```
-make verify      # fmt-check, build, vet, lint, test
+make verify      # fmt-check, design-check, build, vet, lint, test
 ```
 
 Requires Go 1.25+ and a PostgreSQL 17 reachable at `TEST_DATABASE_URL`.

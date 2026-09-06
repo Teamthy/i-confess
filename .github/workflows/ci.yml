@@ -77,6 +77,11 @@ jobs:
       # reported in seconds rather than after the database suite. It uses
       # new-from-merge-base, so only findings introduced by the branch fail the
       # build; the pre-existing debt is tracked in docs/PROJECT-STATUS.md.
+      - name: Design tokens
+        run: |
+          python3 design/generate.py --check
+          python3 design/test_design.py
+
       - name: Lint
         uses: golangci/golangci-lint-action@v8
         with:

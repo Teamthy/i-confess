@@ -16,7 +16,11 @@ export TEST_DATABASE_URL ?= host=127.0.0.1 port=5432 user=iconfess password=icon
 SERVER  := server
 LINT    := golangci-lint
 
-.PHONY: help build test race vet lint lint-fix fmt fmt-check tidy verify clean
+.PHONY: help build test race vet lint lint-fix fmt fmt-check tidy verify clean \
+	design design-check design-contrast
+
+PY ?= python3
+DESIGN := design
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -52,7 +56,17 @@ tidy: ## Tidy go.mod and go.sum
 
 # The full local gate. This is what CI runs, so passing it here means the
 # pull request will not fail there.
-verify: fmt-check build vet lint test ## Run everything CI runs
+design: ## Regenerate Dart/CSS/TS from design/tokens.json
+	$(PY) $(DESIGN)/generate.py
+
+design-check: ## Fail if generated design code is stale or section 12 is violated
+	$(PY) $(DESIGN)/generate.py --check
+	$(PY) $(DESIGN)/test_design.py
+
+design-contrast: ## Report WCAG contrast for every text pairing
+	$(PY) $(DESIGN)/check_contrast.py
+
+verify: fmt-check design-check build vet lint test ## Run everything CI runs
 	@echo "verify: all checks passed"
 
 clean: ## Remove build artifacts
