@@ -49,11 +49,30 @@ func main() {
 		log.Fatalf("storage: %v", err)
 	}
 
-	// Seed dev content when the database is empty (development only).
+	// Seed demo content (development only). This is what creates placeholder
+	// audio and the demo accounts, and neither of those belongs in production.
 	if cfg.Env == "development" || os.Getenv("SEED") == "1" {
 		if err := seed.Seed(conn, objStore); err != nil {
 			log.Printf("seed: %v", err)
 		}
+	}
+
+	// Ensure the canonical content library exists in EVERY environment.
+	//
+	// This used to be covered by Seed alone, which does not run in production,
+	// so a deployed server came up with an empty catalogue. Categories and
+	// confessions are the product's inventory, not demo data.
+	//
+	// It is idempotent: after Seed has populated a dev database this is a
+	// no-op. It creates no audio - audio comes from the generation pipeline
+	// behind the rights gate, never from a bootstrap.
+	//
+	// Failure is logged loudly but not fatal: auth, profile and admin still
+	// work with an empty catalogue, and a crash loop is the worse outcome. It
+	// does mean a boot can succeed with no content, which is why the log line
+	// is an error rather than an info.
+	if _, _, err := seed.EnsureContent(context.Background(), conn); err != nil {
+		log.Printf("content: FAILED to ensure the canonical library: %v", err)
 	}
 
 	h := api.NewHandler(api.Config{JWTSecret: cfg.JWTSecret, TokenTTL: cfg.TokenTTL}, conn)
