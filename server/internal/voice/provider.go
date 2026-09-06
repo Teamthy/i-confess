@@ -15,6 +15,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/Teamthy/i-confess/internal/backoff"
 )
 
 // Provider synthesizes speech. Implementations must be safe for concurrent use.
@@ -79,14 +81,8 @@ func IsRetryable(err error) bool {
 
 // Backoff returns the delay before attempt n (1-based), with exponential growth
 // capped so a struggling provider is retried patiently rather than hammered.
-func Backoff(attempt int) time.Duration {
-	if attempt < 1 {
-		attempt = 1
-	}
-	d := time.Duration(1<<uint(attempt-1)) * 30 * time.Second
-	const max = 30 * time.Minute
-	if d > max || d <= 0 {
-		return max
-	}
-	return d
-}
+// The schedule itself lives in internal/backoff, shared with the job queue and
+// the mailer.
+var generationBackoff = backoff.New(30*time.Second, 30*time.Minute)
+
+func Backoff(attempt int) time.Duration { return generationBackoff.Next(attempt) }

@@ -51,6 +51,11 @@ var dbMethods = map[string]bool{
 var sqlKeywords = map[string]bool{
 	"select": true, "set": true, "values": true, "where": true, "dual": true,
 	"only": true, "lateral": true, "unnest": true,
+	// "skip" is matched because tableRefRe looks for UPDATE followed by a name,
+	// and the row-locking clause FOR UPDATE SKIP LOCKED reads to it as
+	// "UPDATE skip". That clause is how the job queue claims work without two
+	// workers taking the same row, so it is not going away.
+	"skip": true,
 }
 
 func TestEveryTableReferencedInGoExistsInTheSchema(t *testing.T) {

@@ -14,9 +14,11 @@ import (
 	"github.com/Teamthy/i-confess/internal/audio"
 	"github.com/Teamthy/i-confess/internal/auth"
 	"github.com/Teamthy/i-confess/internal/httpx"
+	"github.com/Teamthy/i-confess/internal/jobs"
 	"github.com/Teamthy/i-confess/internal/models"
 	"github.com/Teamthy/i-confess/internal/rights"
 	"github.com/Teamthy/i-confess/internal/voice"
+	"github.com/Teamthy/i-confess/internal/workers"
 )
 
 // Voice-rights and audio-generation admin endpoints (§13, §14, §30, §61).
@@ -385,12 +387,17 @@ func (h *Handler) adminGenerateAudio(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		code := "provider_error"
 		status := http.StatusBadGateway
-		if !voice.IsRetryable(err) {
+		retryable := voice.IsRetryable(err)
+		if !retryable {
 			code = "provider_rejected"
 			status = http.StatusUnprocessableEntity
 		}
 		if _, ferr := h.audio.FailJob(genCtx, job.ID, code, err.Error()); ferr != nil {
 			log.Printf("audio: could not record failure on job %s: %v", job.ID, ferr)
+		}
+		if retryable {
+			h.enqueueGenerationRetry(genCtx, req.ConfessionID, req.VariantID, req.VoiceID,
+				req.Language, version.ID, actor)
 		}
 		httpx.WriteError(w, status, "audio generation failed: "+err.Error())
 		return
@@ -490,4 +497,43 @@ func validateTime(s string) error {
 		}
 	}
 	return errors.New("unparseable time")
+}
+
+// enqueueGenerationRetry hands a render the provider could not finish to the
+// background queue.
+//
+// A retryable provider fault is precisely the case a queue exists for: the
+// request was well-formed, the rights were in order, the operator did everything
+// right, and the only problem is that the provider was briefly unavailable.
+// Without this the render stays failed until somebody notices and resubmits it
+// by hand, and the confession is left without audio in the meantime.
+//
+// The idempotency key is derived from the render, so a second failure of the
+// same render does not queue a second job behind the first.
+func (h *Handler) enqueueGenerationRetry(ctx context.Context,
+	confessionID, variantID, voiceID, language, versionID, actor string) {
+	if h.queue == nil {
+		return
+	}
+	id, err := h.queue.Enqueue(ctx, jobs.Job{
+		Type: workers.TypeAudioGenerate,
+		Payload: map[string]any{
+			"confession_id": confessionID,
+			"variant_id":    variantID,
+			"voice_id":      voiceID,
+			"language":      language,
+			"actor":         actor,
+		},
+		IdempotencyKey: "retry:" + generationKey(confessionID, variantID, voiceID, language, versionID, false),
+		MaxAttempts:    jobs.DefaultMaxAttempts,
+	})
+	switch {
+	case errors.Is(err, jobs.ErrDuplicateJob):
+		log.Printf("audio: a retry for this render is already queued (%s)", id)
+	case err != nil:
+		log.Printf("audio: could not queue a retry for %s/%s: %v", confessionID, voiceID, err)
+	default:
+		log.Printf("audio: queued retry %s for %s/%s after a retryable provider fault",
+			id, confessionID, voiceID)
+	}
 }

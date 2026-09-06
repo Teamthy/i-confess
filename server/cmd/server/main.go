@@ -19,7 +19,9 @@ import (
 	"github.com/Teamthy/i-confess/internal/ratelimit"
 	"github.com/Teamthy/i-confess/internal/seed"
 	"github.com/Teamthy/i-confess/internal/storage"
+	"github.com/Teamthy/i-confess/internal/store"
 	"github.com/Teamthy/i-confess/internal/voice"
+	"github.com/Teamthy/i-confess/internal/workers"
 )
 
 func main() {
@@ -158,12 +160,14 @@ func main() {
 		log.Printf("voice: ELEVENLABS_API_KEY unset - synthesis endpoints report 503")
 	}
 
-	// Start background job workers.
+	// Background job queue.
+	//
+	// The durable PostgreSQL implementation rather than the in-process default:
+	// work still pending when the process stops survives, and a stop is a deploy
+	// rather than an accident. Claiming is a single statement with FOR UPDATE
+	// SKIP LOCKED, so several workers over one table never share a job.
+	h.SetQueue(store.NewJobQueue(conn))
 	queue := h.GetQueue()
-	jobs.RegisterHandlers(queue)
-	worker := jobs.NewWorker(queue, cfg.QueueWorkers)
-	worker.Start(context.Background())
-	defer worker.Stop()
 
 	// Push notifications. Without a configured provider, scheduled reminders
 	// are logged rather than delivered - the schedule still fires, so the
@@ -191,12 +195,30 @@ func main() {
 		}
 	}
 
+	var pushSender push.Sender = push.LogSender{}
 	if router.Configured() {
+		pushSender = router
 		h.SetPushSender(router)
 	} else {
 		log.Printf("push: no provider configured - scheduled reminders will be logged, not delivered")
 		h.SetPushSender(push.LogSender{})
 	}
+
+	// Register the job handlers and start the worker pool.
+	//
+	// Only types with a real collaborator are registered; anything else is left
+	// uninstalled so the queue parks such a job with "no handler registered"
+	// rather than accepting work it cannot do. Generation runs through the same
+	// pipeline the synchronous admin endpoint uses, so the queued path is not a
+	// cheaper version of the real thing.
+	installed := workers.Register(queue, workers.Services{
+		Generate: h,
+		Notify:   pushSender,
+	})
+	worker := jobs.NewWorker(queue, cfg.QueueWorkers)
+	worker.Start(context.Background())
+	defer worker.Stop()
+	log.Printf("queue: %d workers, handlers %v", cfg.QueueWorkers, installed)
 
 	// Fire scheduled session reminders. A one-minute tick keeps delivery
 	// within a minute of the user's chosen time; the occurrence key makes a
