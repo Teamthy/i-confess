@@ -1,26 +1,59 @@
 package storage
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"mime"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	awscreds "github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 )
 
-// S3Storage implements ObjectStorage for Amazon S3.
-type S3Storage struct {
-	bucket string
-	region string
-	// client *s3.Client (to be initialized with AWS SDK)
+// S3API is the subset of the AWS S3 client this provider calls. It exists so
+// the provider can be tested against a fake instead of a live bucket: there is
+// no other way to prove upload, signing and not-found handling actually work.
+type S3API interface {
+	PutObject(ctx context.Context, params *s3.PutObjectInput, optFns ...func(*s3.Options)) (*s3.PutObjectOutput, error)
+	GetObject(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error)
+	DeleteObject(ctx context.Context, params *s3.DeleteObjectInput, optFns ...func(*s3.Options)) (*s3.DeleteObjectOutput, error)
+	HeadObject(ctx context.Context, params *s3.HeadObjectInput, optFns ...func(*s3.Options)) (*s3.HeadObjectOutput, error)
+	ListObjectsV2(ctx context.Context, params *s3.ListObjectsV2Input, optFns ...func(*s3.Options)) (*s3.ListObjectsV2Output, error)
 }
 
-// NewS3Storage creates a new S3 storage provider.
+// S3Presigner is the subset of s3.PresignClient this provider calls.
+type S3Presigner interface {
+	PresignGetObject(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.PresignOptions)) (*v4.PresignedHTTPRequest, error)
+}
+
+// S3Storage implements ObjectStorage for Amazon S3 using the AWS SDK v2.
+type S3Storage struct {
+	client    S3API
+	presigner S3Presigner
+	bucket    string
+	region    string
+}
+
+// NewS3Storage creates a working S3 storage provider.
+//
+// Credentials resolve in this order: explicit S3AccessKey/S3SecretKey when
+// both are set, otherwise the SDK default chain (env, shared config, then
+// instance/task role). The default chain is what production should use, since
+// an instance role needs no secret on disk.
 func NewS3Storage(cfg *StorageConfig) (ObjectStorage, error) {
 	if cfg.S3Bucket == "" {
 		return nil, fmt.Errorf("S3_BUCKET not configured")
@@ -29,185 +62,274 @@ func NewS3Storage(cfg *StorageConfig) (ObjectStorage, error) {
 		return nil, fmt.Errorf("S3_REGION not configured")
 	}
 
-	// TODO: Initialize AWS S3 client with credentials from cfg.S3AccessKey, cfg.S3SecretKey
-	// For now, stub implementation
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 
+	loadOpts := []func(*awsconfig.LoadOptions) error{
+		awsconfig.WithRegion(cfg.S3Region),
+	}
+	if cfg.S3AccessKey != "" && cfg.S3SecretKey != "" {
+		loadOpts = append(loadOpts, awsconfig.WithCredentialsProvider(
+			awscreds.NewStaticCredentialsProvider(cfg.S3AccessKey, cfg.S3SecretKey, "")))
+	}
+
+	awscfg, err := awsconfig.LoadDefaultConfig(ctx, loadOpts...)
+	if err != nil {
+		return nil, fmt.Errorf("load aws config: %w", err)
+	}
+
+	var clientOpts []func(*s3.Options)
+	if cfg.S3Endpoint != "" {
+		// An explicit endpoint means an S3-compatible service (MinIO, R2,
+		// Ceph), which generally requires path-style addressing.
+		clientOpts = append(clientOpts, func(o *s3.Options) {
+			o.BaseEndpoint = aws.String(cfg.S3Endpoint)
+			o.UsePathStyle = true
+		})
+	}
+
+	client := s3.NewFromConfig(awscfg, clientOpts...)
 	return &S3Storage{
-		bucket: cfg.S3Bucket,
-		region: cfg.S3Region,
+		client:    client,
+		presigner: s3.NewPresignClient(client),
+		bucket:    cfg.S3Bucket,
+		region:    cfg.S3Region,
 	}, nil
+}
+
+// newS3WithClients builds a provider around injected clients. Tests use this.
+func newS3WithClients(client S3API, presigner S3Presigner, bucket string) *S3Storage {
+	return &S3Storage{client: client, presigner: presigner, bucket: bucket, region: "test"}
 }
 
 func (s *S3Storage) Upload(ctx context.Context, key string, data []byte, metadata map[string]string) error {
-	// TODO: Implement S3 PutObject with metadata
-	return fmt.Errorf("S3Storage.Upload not yet implemented")
+	if !ValidKey(key) {
+		return &StorageError{Op: "upload", Key: key, Err: fmt.Errorf("invalid storage key")}
+	}
+	input := &s3.PutObjectInput{
+		Bucket:      aws.String(s.bucket),
+		Key:         aws.String(key),
+		Body:        bytes.NewReader(data),
+		ContentType: aws.String(contentTypeForKey(key)),
+		// Audio objects are immutable: the key encodes content, version and
+		// voice, so a key never changes meaning once written. That is what
+		// makes aggressive caching safe.
+		CacheControl: aws.String("public, max-age=31536000, immutable"),
+	}
+	if len(metadata) > 0 {
+		input.Metadata = metadata
+	}
+	if _, err := s.client.PutObject(ctx, input); err != nil {
+		return s3Error("upload", key, err)
+	}
+	return nil
 }
 
-func (s *S3Storage) Download(ctx context.Context, key string) ([]byte, error) {
-	// TODO: Implement S3 GetObject
-	return nil, fmt.Errorf("S3Storage.Download not yet implemented")
+func (s *S3Storage) Download(ctx context.Context, key string) (data []byte, err error) {
+	out, gerr := s.client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(key),
+	})
+	if gerr != nil {
+		return nil, s3Error("download", key, gerr)
+	}
+	// A close failure on a streaming body can mean the transfer was cut short.
+	// Reporting success here would hand back a partial file, which the audio
+	// inspector could still parse - as shorter audio than what was stored.
+	defer func() {
+		if cerr := out.Body.Close(); cerr != nil && err == nil {
+			err = &StorageError{Op: "download", Key: key, Err: cerr, Retryable: true}
+		}
+	}()
+
+	data, rerr := io.ReadAll(out.Body)
+	if rerr != nil {
+		return nil, &StorageError{Op: "download", Key: key, Err: rerr, Retryable: true}
+	}
+	return data, nil
 }
 
 func (s *S3Storage) Delete(ctx context.Context, key string) error {
-	// TODO: Implement S3 DeleteObject
-	return fmt.Errorf("S3Storage.Delete not yet implemented")
+	// S3 DELETE is idempotent: deleting an absent key succeeds. Callers may
+	// therefore retry a cleanup job without first checking existence.
+	if _, err := s.client.DeleteObject(ctx, &s3.DeleteObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(key),
+	}); err != nil {
+		return s3Error("delete", key, err)
+	}
+	return nil
 }
 
 func (s *S3Storage) GenerateSignedURL(ctx context.Context, key string, ttl time.Duration) (string, error) {
-	// TODO: Use AWS Signature Version 4 presigner for time-limited GET access
-	return "", fmt.Errorf("S3Storage.GenerateSignedURL not yet implemented")
+	if !ValidKey(key) {
+		return "", &StorageError{Op: "sign_url", Key: key, Err: fmt.Errorf("invalid storage key")}
+	}
+	if ttl <= 0 {
+		ttl = 15 * time.Minute
+	}
+	res, err := s.presigner.PresignGetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(key),
+	}, func(o *s3.PresignOptions) {
+		o.Expires = ttl
+	})
+	if err != nil {
+		return "", s3Error("sign_url", key, err)
+	}
+	return res.URL, nil
 }
 
 func (s *S3Storage) List(ctx context.Context, prefix string) ([]string, error) {
-	// TODO: Implement S3 ListObjectsV2
-	return nil, fmt.Errorf("S3Storage.List not yet implemented")
+	var keys []string
+	var token *string
+
+	for {
+		out, err := s.client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
+			Bucket:            aws.String(s.bucket),
+			Prefix:            aws.String(prefix),
+			ContinuationToken: token,
+		})
+		if err != nil {
+			return nil, s3Error("list", prefix, err)
+		}
+		for _, o := range out.Contents {
+			if o.Key != nil {
+				keys = append(keys, *o.Key)
+			}
+		}
+		if out.IsTruncated == nil || !*out.IsTruncated {
+			return keys, nil
+		}
+		token = out.NextContinuationToken
+	}
 }
 
 func (s *S3Storage) Exists(ctx context.Context, key string) (bool, error) {
-	// TODO: Use HeadObject to check existence without downloading
-	return false, fmt.Errorf("S3Storage.Exists not yet implemented")
+	_, err := s.client.HeadObject(ctx, &s3.HeadObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		// A missing object is a legitimate answer to "does this exist", not a
+		// failure. Any other error must surface or callers will conclude the
+		// object is absent and regenerate audio that is already stored.
+		if isNotFoundErr(err) {
+			return false, nil
+		}
+		return false, s3Error("exists", key, err)
+	}
+	return true, nil
 }
 
 func (s *S3Storage) GetSize(ctx context.Context, key string) (int64, error) {
-	// TODO: Use HeadObject to get ContentLength
-	return 0, fmt.Errorf("S3Storage.GetSize not yet implemented")
+	out, err := s.client.HeadObject(ctx, &s3.HeadObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		return 0, s3Error("get_size", key, err)
+	}
+	if out.ContentLength == nil {
+		return 0, nil
+	}
+	return *out.ContentLength, nil
 }
 
 func (s *S3Storage) GetMetadata(ctx context.Context, key string) (map[string]string, error) {
-	// TODO: Use HeadObject to retrieve Metadata
-	return nil, fmt.Errorf("S3Storage.GetMetadata not yet implemented")
+	out, err := s.client.HeadObject(ctx, &s3.HeadObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		return nil, s3Error("get_metadata", key, err)
+	}
+	if out.Metadata == nil {
+		return map[string]string{}, nil
+	}
+	return out.Metadata, nil
 }
 
-// ===== GCS Storage =====
-
-// GCSStorage implements ObjectStorage for Google Cloud Storage.
-type GCSStorage struct {
-	project string
-	bucket  string
-	// client *storage.Client (to be initialized with GCS SDK)
+// s3Error wraps an AWS failure with a retry decision.
+func s3Error(op, key string, err error) error {
+	return &StorageError{Op: op, Key: key, Err: err, Retryable: retryableAWSError(err)}
 }
 
-// NewGCSStorage creates a new GCS storage provider.
+// retryableAWSError is true for faults that may succeed on a later attempt:
+// throttling, server faults, and connection problems. A 403 or 400 will fail
+// identically every time, and retrying it only burns money and latency.
+func retryableAWSError(err error) bool {
+	var respErr interface{ HTTPStatusCode() int }
+	if errors.As(err, &respErr) {
+		code := respErr.HTTPStatusCode()
+		return code == http.StatusTooManyRequests || code >= 500
+	}
+	var netErr net.Error
+	return errors.As(err, &netErr)
+}
+
+func isNotFoundErr(err error) bool {
+	var nf *s3types.NotFound
+	if errors.As(err, &nf) {
+		return true
+	}
+	var nsk *s3types.NoSuchKey
+	if errors.As(err, &nsk) {
+		return true
+	}
+	var respErr interface{ HTTPStatusCode() int }
+	return errors.As(err, &respErr) && respErr.HTTPStatusCode() == http.StatusNotFound
+}
+
+// contentTypeForKey maps the audio extensions this system stores. mime's table
+// does not know m4a, and an empty Content-Type would make browsers download
+// rather than play.
+func contentTypeForKey(key string) string {
+	switch strings.ToLower(filepath.Ext(key)) {
+	case ".m4a":
+		return "audio/mp4"
+	case ".mp3":
+		return "audio/mpeg"
+	case ".wav":
+		return "audio/wav"
+	case ".flac":
+		return "audio/flac"
+	case ".ogg":
+		return "audio/ogg"
+	case ".weba", ".webm":
+		return "audio/webm"
+	}
+	if ct := mime.TypeByExtension(filepath.Ext(key)); ct != "" {
+		return ct
+	}
+	return "application/octet-stream"
+}
+
+// ===== Providers that are not implemented =====
+//
+// GCS and Azure are named in StorageConfig and in audio_assets.storage_provider,
+// but neither has an implementation. The previous versions of these types had
+// a full set of methods that each returned "not yet implemented". That is worse
+// than having no code at all: a stub satisfies the interface, so the provider
+// constructs successfully and the failure surfaces at the first upload in
+// production instead of at boot.
+//
+// These constructors fail immediately and say what to use instead. New() also
+// refuses them, so a misconfiguration is caught before the process serves
+// traffic.
+
+// ErrProviderUnavailable is returned by providers named in configuration but
+// not implemented. It is a configuration error, not a runtime fault.
+var ErrProviderUnavailable = errors.New("storage provider is not implemented")
+
+// NewGCSStorage always fails. Google Cloud Storage is not implemented.
 func NewGCSStorage(cfg *StorageConfig) (ObjectStorage, error) {
-	if cfg.GCSProject == "" {
-		return nil, fmt.Errorf("GCS_PROJECT not configured")
-	}
-	if cfg.GCSBucket == "" {
-		return nil, fmt.Errorf("GCS_BUCKET not configured")
-	}
-
-	// TODO: Initialize GCS client from cfg.GCSCredentialsJSON
-
-	return &GCSStorage{
-		project: cfg.GCSProject,
-		bucket:  cfg.GCSBucket,
-	}, nil
+	return nil, fmt.Errorf("%w: \"gcs\" — use \"s3\" or \"local\"", ErrProviderUnavailable)
 }
 
-func (g *GCSStorage) Upload(ctx context.Context, key string, data []byte, metadata map[string]string) error {
-	// TODO: Implement GCS object write with metadata
-	return fmt.Errorf("GCSStorage.Upload not yet implemented")
-}
-
-func (g *GCSStorage) Download(ctx context.Context, key string) ([]byte, error) {
-	// TODO: Implement GCS object read
-	return nil, fmt.Errorf("GCSStorage.Download not yet implemented")
-}
-
-func (g *GCSStorage) Delete(ctx context.Context, key string) error {
-	// TODO: Implement GCS object delete
-	return fmt.Errorf("GCSStorage.Delete not yet implemented")
-}
-
-func (g *GCSStorage) GenerateSignedURL(ctx context.Context, key string, ttl time.Duration) (string, error) {
-	// TODO: Use storage.SignedURL with service account key for time-limited GET
-	return "", fmt.Errorf("GCSStorage.GenerateSignedURL not yet implemented")
-}
-
-func (g *GCSStorage) List(ctx context.Context, prefix string) ([]string, error) {
-	// TODO: Implement GCS object iteration with prefix
-	return nil, fmt.Errorf("GCSStorage.List not yet implemented")
-}
-
-func (g *GCSStorage) Exists(ctx context.Context, key string) (bool, error) {
-	// TODO: Use Attrs to check existence
-	return false, fmt.Errorf("GCSStorage.Exists not yet implemented")
-}
-
-func (g *GCSStorage) GetSize(ctx context.Context, key string) (int64, error) {
-	// TODO: Use Attrs to get Size
-	return 0, fmt.Errorf("GCSStorage.GetSize not yet implemented")
-}
-
-func (g *GCSStorage) GetMetadata(ctx context.Context, key string) (map[string]string, error) {
-	// TODO: Use Attrs to retrieve Metadata
-	return nil, fmt.Errorf("GCSStorage.GetMetadata not yet implemented")
-}
-
-// ===== Azure Storage =====
-
-// AzureStorage implements ObjectStorage for Azure Blob Storage.
-type AzureStorage struct {
-	account   string
-	container string
-	// client *azblob.Client (to be initialized with Azure SDK)
-}
-
-// NewAzureStorage creates a new Azure storage provider.
+// NewAzureStorage always fails. Azure Blob Storage is not implemented.
 func NewAzureStorage(cfg *StorageConfig) (ObjectStorage, error) {
-	if cfg.AzureAccount == "" {
-		return nil, fmt.Errorf("AZURE_ACCOUNT not configured")
-	}
-	if cfg.AzureContainer == "" {
-		return nil, fmt.Errorf("AZURE_CONTAINER not configured")
-	}
-
-	// TODO: Initialize Azure blob client from cfg.AzureKey
-
-	return &AzureStorage{
-		account:   cfg.AzureAccount,
-		container: cfg.AzureContainer,
-	}, nil
-}
-
-func (a *AzureStorage) Upload(ctx context.Context, key string, data []byte, metadata map[string]string) error {
-	// TODO: Implement Azure Upload with metadata
-	return fmt.Errorf("AzureStorage.Upload not yet implemented")
-}
-
-func (a *AzureStorage) Download(ctx context.Context, key string) ([]byte, error) {
-	// TODO: Implement Azure Download
-	return nil, fmt.Errorf("AzureStorage.Download not yet implemented")
-}
-
-func (a *AzureStorage) Delete(ctx context.Context, key string) error {
-	// TODO: Implement Azure Delete
-	return fmt.Errorf("AzureStorage.Delete not yet implemented")
-}
-
-func (a *AzureStorage) GenerateSignedURL(ctx context.Context, key string, ttl time.Duration) (string, error) {
-	// TODO: Use SAS token for time-limited access
-	return "", fmt.Errorf("AzureStorage.GenerateSignedURL not yet implemented")
-}
-
-func (a *AzureStorage) List(ctx context.Context, prefix string) ([]string, error) {
-	// TODO: Implement Azure List blobs with prefix
-	return nil, fmt.Errorf("AzureStorage.List not yet implemented")
-}
-
-func (a *AzureStorage) Exists(ctx context.Context, key string) (bool, error) {
-	// TODO: Use GetProperties to check existence
-	return false, fmt.Errorf("AzureStorage.Exists not yet implemented")
-}
-
-func (a *AzureStorage) GetSize(ctx context.Context, key string) (int64, error) {
-	// TODO: Use GetProperties to get ContentLength
-	return 0, fmt.Errorf("AzureStorage.GetSize not yet implemented")
-}
-
-func (a *AzureStorage) GetMetadata(ctx context.Context, key string) (map[string]string, error) {
-	// TODO: Use GetProperties to retrieve metadata
-	return nil, fmt.Errorf("AzureStorage.GetMetadata not yet implemented")
+	return nil, fmt.Errorf("%w: \"azure\" — use \"s3\" or \"local\"", ErrProviderUnavailable)
 }
 
 // ===== Local File Storage =====

@@ -117,6 +117,11 @@ func TestValidProductionConfigPasses(t *testing.T) {
 	t.Setenv("POSTMARK_TOKEN", "pm-token")
 	t.Setenv("PUBLIC_BASE_URL", "https://iconfess.app")
 	t.Setenv("REDIS_ADDR", "redis:6379")
+	// Production audio must live in object storage (§6). STORAGE_PROVIDER
+	// defaults to "local", which Validate now refuses outside development.
+	t.Setenv("STORAGE_PROVIDER", "s3")
+	t.Setenv("S3_BUCKET", "iconfess-audio")
+	t.Setenv("S3_REGION", "eu-west-1")
 
 	if err := Load().Validate(); err != nil {
 		t.Errorf("a correctly configured production deployment was rejected: %v", err)
@@ -135,5 +140,77 @@ func TestDevelopmentDefaultIsThePublishedSecret(t *testing.T) {
 	if got := Load().JWTSecret; got != publishedJWTSecret {
 		t.Errorf("development default JWT_SECRET = %q, want %q - update the tests above if this changed intentionally",
 			got, publishedJWTSecret)
+	}
+}
+
+// productionBase sets every variable a valid production deployment needs, so
+// the storage tests below isolate the one variable each is about.
+func productionBase(t *testing.T) {
+	t.Helper()
+	t.Setenv("ENV", "production")
+	t.Setenv("JWT_SECRET", "a-genuinely-random-secret-value")
+	t.Setenv("AUDIO_SIGN_SECRET", "another-genuinely-random-value")
+	t.Setenv("EMAIL_PROVIDER", "postmark")
+	t.Setenv("POSTMARK_TOKEN", "pm-token")
+	t.Setenv("PUBLIC_BASE_URL", "https://iconfess.app")
+	t.Setenv("REDIS_ADDR", "redis:6379")
+}
+
+// TestProductionRefusesLocalStorage covers the PHASE 13 boot guard.
+//
+// This is the failure the guard exists to prevent: STORAGE_PROVIDER defaulted
+// to "local" and main.go hard-coded it, so a production deployment booted
+// healthy and served audio from the container filesystem indefinitely. Nothing
+// on that path complained. But the bytes die on restart and are invisible to
+// every other replica, so audio generated on one instance is unreachable from
+// the next — precisely what §6 forbids.
+func TestProductionRefusesLocalStorage(t *testing.T) {
+	productionBase(t)
+	t.Setenv("STORAGE_PROVIDER", "local")
+
+	err := Load().Validate()
+	if err == nil {
+		t.Fatal("production booted with STORAGE_PROVIDER=local")
+	}
+	if !strings.Contains(err.Error(), "local") {
+		t.Errorf("error should name the rejected provider, got: %v", err)
+	}
+}
+
+// TestProductionRejectsHalfConfiguredS3 covers the other silent failure: naming
+// S3 without a bucket, which would otherwise fail at the first upload rather
+// than at boot.
+func TestProductionRejectsHalfConfiguredS3(t *testing.T) {
+	productionBase(t)
+	t.Setenv("STORAGE_PROVIDER", "s3")
+	t.Setenv("S3_BUCKET", "")
+
+	if err := Load().Validate(); err == nil {
+		t.Fatal("production accepted STORAGE_PROVIDER=s3 with no S3_BUCKET")
+	}
+}
+
+// TestUnimplementedProvidersAreRefusedAtBoot covers gcs and azure, which are
+// named in the schema but have no implementation. Their previous stub methods
+// satisfied the interface, so the provider constructed successfully and the
+// failure surfaced at the first upload instead.
+func TestUnimplementedProvidersAreRefusedAtBoot(t *testing.T) {
+	for _, provider := range []string{"gcs", "azure"} {
+		productionBase(t)
+		t.Setenv("STORAGE_PROVIDER", provider)
+
+		if err := Load().Validate(); err == nil {
+			t.Errorf("production accepted STORAGE_PROVIDER=%s", provider)
+		}
+	}
+}
+
+// TestDevelopmentMayUseLocalStorage keeps the guard from breaking local work.
+func TestDevelopmentMayUseLocalStorage(t *testing.T) {
+	t.Setenv("ENV", "development")
+	t.Setenv("STORAGE_PROVIDER", "local")
+
+	if err := Load().Validate(); err != nil {
+		t.Errorf("development rejected local storage: %v", err)
 	}
 }

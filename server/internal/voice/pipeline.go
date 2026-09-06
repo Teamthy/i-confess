@@ -7,8 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strconv"
 	"time"
 
+	"github.com/Teamthy/i-confess/internal/audio"
 	"github.com/Teamthy/i-confess/internal/rights"
 	"github.com/Teamthy/i-confess/internal/storage"
 )
@@ -189,7 +191,35 @@ func (p *Pipeline) Generate(ctx context.Context, lic *rights.License, req Genera
 		return nil, err
 	}
 
-	// ---- 4. Store. ----
+	// ---- 4. Verify the bytes before anything trusts them. ----
+	//
+	// Duration is measured here, never taken from the provider's word. The
+	// session planner schedules every queue item against duration_seconds, so a
+	// provider that under-reports lets a session overrun its plan and one that
+	// over-reports leaves trailing silence. SynthesisResult documents its
+	// DurationSeconds as "may be zero ... the pipeline then derives it during
+	// post-processing" - this is that derivation, and it is also the point
+	// where a truncated or corrupt render is caught, before it is stored and
+	// billed for.
+	report, err := audio.Inspect(out.Audio, "")
+	if err != nil {
+		audit.Allowed = true
+		audit.Reason = "rejected"
+		audit.Detail = "provider returned audio this system cannot verify: " + err.Error()
+		p.record(ctx, audit)
+		return nil, fmt.Errorf("verify generated audio: %w", err)
+	}
+
+	// A provider whose self-report disagrees with the container is not failing
+	// yet, but it is worth recording: the audio team needs to know before the
+	// drift shows up as sessions that run long.
+	detail := ""
+	if out.DurationSeconds > 0 && absInt(out.DurationSeconds-report.DurationSeconds) > 1 {
+		detail = fmt.Sprintf("provider reported %ds, container measures %ds",
+			out.DurationSeconds, report.DurationSeconds)
+	}
+
+	// ---- 5. Store. ----
 	sum := sha256.Sum256(out.Audio)
 	checksum := hex.EncodeToString(sum[:])
 	meta := map[string]string{
@@ -198,6 +228,11 @@ func (p *Pipeline) Generate(ctx context.Context, lic *rights.License, req Genera
 		"language":      req.Language,
 		"codec":         out.Codec,
 		"checksum":      checksum,
+		// Measured, not claimed. Anything reading this back gets the number the
+		// planner was built on.
+		"duration_seconds": strconv.Itoa(report.DurationSeconds),
+		"sample_rate":      strconv.Itoa(report.SampleRate),
+		"format":           report.Format,
 	}
 	if err := p.Store.Upload(ctx, key, out.Audio, meta); err != nil {
 		audit.Allowed = true
@@ -209,13 +244,23 @@ func (p *Pipeline) Generate(ctx context.Context, lic *rights.License, req Genera
 
 	audit.Allowed = true
 	audit.Reason = "generated"
+	audit.Detail = detail
 	p.record(ctx, audit)
 
 	return &GenerateResult{
 		Key: key, SizeBytes: int64(len(out.Audio)), Checksum: checksum,
-		Codec: out.Codec, BitrateKbps: out.BitrateKbps, SampleRate: out.SampleRate,
-		DurationSeconds: out.DurationSeconds,
+		Codec: out.Codec, BitrateKbps: out.BitrateKbps,
+		// From the container, not from the provider.
+		SampleRate:      report.SampleRate,
+		DurationSeconds: report.DurationSeconds,
 	}, nil
+}
+
+func absInt(n int) int {
+	if n < 0 {
+		return -n
+	}
+	return n
 }
 
 func (p *Pipeline) record(ctx context.Context, e AuditEntry) {

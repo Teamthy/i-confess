@@ -2,9 +2,11 @@ package voice
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -34,10 +36,37 @@ func (s *spyProvider) Synthesize(_ context.Context, req SynthesisRequest) (*Synt
 	if s.result != nil {
 		return s.result, nil
 	}
+	// Real audio, deliberately misreported as 30s when the payload is 3s. The
+	// pipeline measures rather than trusts, so a stub that returned arbitrary
+	// bytes would no longer represent a provider that worked - and a stub that
+	// reported honestly would not prove the measurement is the one used.
 	return &SynthesisResult{
-		Audio: []byte("fake-mp3-bytes"), ContentType: "audio/mpeg",
-		Codec: "mp3", BitrateKbps: 128, SampleRate: 44100, DurationSeconds: 30,
+		Audio: testWAV(3), ContentType: "audio/wav",
+		Codec: "pcm", BitrateKbps: 128, SampleRate: 8000, DurationSeconds: 30,
 	}, nil
+}
+
+// testWAV builds a genuine WAV payload. 8 kHz mono keeps the fixture small
+// while still being parseable by the inspector.
+func testWAV(seconds int) []byte {
+	const sampleRate, channels, bits = 8000, 1, 16
+	byteRate := uint32(sampleRate * channels * bits / 8)
+	dataSize := byteRate * uint32(seconds)
+
+	b := []byte("RIFF")
+	b = binary.LittleEndian.AppendUint32(b, 4+24+8+dataSize)
+	b = append(b, "WAVE"...)
+	b = append(b, "fmt "...)
+	b = binary.LittleEndian.AppendUint32(b, 16)
+	b = binary.LittleEndian.AppendUint16(b, 1)
+	b = binary.LittleEndian.AppendUint16(b, uint16(channels))
+	b = binary.LittleEndian.AppendUint32(b, uint32(sampleRate))
+	b = binary.LittleEndian.AppendUint32(b, byteRate)
+	b = binary.LittleEndian.AppendUint16(b, uint16(channels*bits/8))
+	b = binary.LittleEndian.AppendUint16(b, bits)
+	b = append(b, "data"...)
+	b = binary.LittleEndian.AppendUint32(b, dataSize)
+	return append(b, make([]byte, dataSize)...)
 }
 
 type memAudit struct{ entries []AuditEntry }
@@ -362,5 +391,51 @@ func TestElevenLabsRejectsEmptyAudio(t *testing.T) {
 	}
 	if !IsRetryable(err) {
 		t.Fatal("an empty body is a transient upstream fault and should be retryable")
+	}
+}
+
+// TestDurationIsMeasuredNotTakenFromTheProvider covers the PHASE 13 fix. The
+// stub reports 30s for a payload that is a 3-second WAV. duration_seconds is
+// what the session planner schedules every queue item against, so the
+// container's figure must win over the provider's word.
+func TestDurationIsMeasuredNotTakenFromTheProvider(t *testing.T) {
+	spy := &spyProvider{}
+	p, _ := newPipeline(t, spy)
+
+	res, err := p.Generate(context.Background(), grant(), req())
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	if res.DurationSeconds != 3 {
+		t.Errorf("DurationSeconds = %d, want 3 (measured from the container), not the provider's claim of 30",
+			res.DurationSeconds)
+	}
+	if res.SampleRate != 8000 {
+		t.Errorf("SampleRate = %d, want 8000 from the WAV header", res.SampleRate)
+	}
+}
+
+// TestGenerateRejectsAudioItCannotVerify proves the boundary fails closed: a
+// provider that returns something that is not audio must not have it stored,
+// billed for, and scheduled into a user's session.
+func TestGenerateRejectsAudioItCannotVerify(t *testing.T) {
+	spy := &spyProvider{result: &SynthesisResult{
+		Audio: []byte("not audio at all, just bytes"), ContentType: "audio/mpeg",
+		Codec: "mp3", DurationSeconds: 30,
+	}}
+	p, audit := newPipeline(t, spy)
+
+	_, err := p.Generate(context.Background(), grant(), req())
+	if err == nil {
+		t.Fatal("generate accepted a payload that is not audio")
+	}
+	if !strings.Contains(err.Error(), "verify generated audio") {
+		t.Errorf("error should name the verification step, got: %v", err)
+	}
+	if len(audit.entries) != 1 || audit.entries[0].Reason != "rejected" {
+		t.Fatalf("unexpected audit trail: %+v", audit.entries)
+	}
+	if !audit.entries[0].Allowed {
+		t.Error("the rights decision was sound; only the payload was bad")
 	}
 }

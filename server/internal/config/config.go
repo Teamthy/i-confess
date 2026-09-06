@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Teamthy/i-confess/internal/storage"
 )
 
 // Config holds runtime configuration sourced from environment variables.
@@ -32,6 +34,20 @@ type Config struct {
 	// ElevenLabsAPIKey enables synthesis. Server-side only; never sent to a
 	// client (PRD S14).
 	ElevenLabsAPIKey string
+
+	// --- Object storage (§6) ---
+	// StorageProvider selects where audio binaries live. "s3" in production,
+	// "local" for development. "gcs" and "azure" are named in the schema but
+	// not implemented, and boot refuses them rather than failing at the first
+	// upload.
+	StorageProvider string
+	S3Bucket        string
+	S3Region        string
+	S3AccessKey     string
+	S3SecretKey     string
+	// S3Endpoint points at an S3-compatible service (MinIO, R2, Ceph). Leave
+	// empty for AWS itself.
+	S3Endpoint string
 
 	// --- Email (PRD S57, S58) ---
 	// EmailProvider selects the transactional sender: "postmark" or "log".
@@ -91,6 +107,15 @@ func Load() Config {
 		MediaBaseURL:     getenv("MEDIA_BASE_URL", "/media"),
 		AudioSignSecret:  getenv("AUDIO_SIGN_SECRET", "dev-only-audio-secret"),
 		ElevenLabsAPIKey: os.Getenv("ELEVENLABS_API_KEY"),
+
+		StorageProvider: strings.ToLower(getenv("STORAGE_PROVIDER", "local")),
+		S3Bucket:        os.Getenv("S3_BUCKET"),
+		// AWS_REGION is the SDK's own variable; honour it so deployments that
+		// already set it do not have to set S3_REGION too.
+		S3Region:    getenv("S3_REGION", os.Getenv("AWS_REGION")),
+		S3AccessKey: os.Getenv("S3_ACCESS_KEY"),
+		S3SecretKey: os.Getenv("S3_SECRET_KEY"),
+		S3Endpoint:  os.Getenv("S3_ENDPOINT"),
 
 		EmailProvider: getenv("EMAIL_PROVIDER", "log"),
 		PostmarkToken: os.Getenv("POSTMARK_TOKEN"),
@@ -169,6 +194,14 @@ func (c Config) Validate() error {
 	}
 	if c.AudioSignSecret == "" || c.AudioSignSecret == "dev-only-audio-secret" {
 		return errors.New("AUDIO_SIGN_SECRET must be set to a non-default value in production")
+	}
+	if err := storage.ValidateProvider(&storage.StorageConfig{
+		Provider:      c.StorageProvider,
+		S3Bucket:      c.S3Bucket,
+		S3Region:      c.S3Region,
+		LocalRootPath: c.MediaDir,
+	}, c.IsProduction()); err != nil {
+		return fmt.Errorf("object storage: %w", err)
 	}
 	// The log sender prints verification and reset links. In production that
 	// would write working credentials to the log stream, so it is refused.

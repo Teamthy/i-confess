@@ -36,12 +36,22 @@ func main() {
 	}
 	defer conn.Close()
 
-	// Object storage. Development uses a filesystem provider that enforces the
-	// same signature and expiry rules as the production CDN, so signed
-	// delivery is exercised in every environment (PRD S11).
+	// Object storage. The provider comes from configuration, not from the code:
+	// hard-coding it here meant production ran on a local filesystem while the
+	// cloud providers sat unimplemented, and nothing on that path complained.
+	//
+	// Development uses a filesystem provider that enforces the same signature
+	// and expiry rules as the production CDN, so signed delivery is exercised
+	// in every environment (PRD S11). config.Validate has already refused
+	// STORAGE_PROVIDER=local outside development.
 	objStore, err := storage.New(&storage.StorageConfig{
-		Provider:      "local",
+		Provider:      cfg.StorageProvider,
 		LocalRootPath: cfg.MediaDir,
+		S3Bucket:      cfg.S3Bucket,
+		S3Region:      cfg.S3Region,
+		S3AccessKey:   cfg.S3AccessKey,
+		S3SecretKey:   cfg.S3SecretKey,
+		S3Endpoint:    cfg.S3Endpoint,
 		CDNDomain:     cfg.MediaBaseURL,
 		SigningSecret: cfg.AudioSignSecret,
 	})

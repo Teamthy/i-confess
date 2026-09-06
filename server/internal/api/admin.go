@@ -1,12 +1,15 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 
+	"github.com/Teamthy/i-confess/internal/audio"
 	"github.com/Teamthy/i-confess/internal/content"
 	"github.com/Teamthy/i-confess/internal/httpx"
 	"github.com/Teamthy/i-confess/internal/models"
+	"github.com/Teamthy/i-confess/internal/storage"
 )
 
 // ---------- Admin: categories ----------
@@ -225,6 +228,39 @@ func (h *Handler) adminUpsertAudio(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusBadRequest, "confession_id, voice_id and url are required")
 		return
 	}
+	// Duration is measured when the bytes are reachable, and bounds-checked
+	// when they are not.
+	//
+	// This endpoint records audio that already exists somewhere. When that
+	// somewhere is our own object storage the key is downloadable, so the
+	// duration is measured and the caller's figure is discarded: a number typed
+	// into an admin form is a claim, and the session planner schedules every
+	// queue item against duration_seconds. An external CDN URL cannot be read
+	// from here, so its figure is range-checked instead - which still stops a
+	// typo or a malicious value from putting an absurd number into the planner.
+	duration := req.DurationSeconds
+	sizeBytes := req.SizeBytes
+
+	if h.signer != nil && storage.ValidKey(req.URL) {
+		if data, err := h.signer.Download(r.Context(), req.URL); err == nil {
+			if rep, err := audio.Inspect(data, ""); err == nil {
+				duration = rep.DurationSeconds
+				if sizeBytes <= 0 {
+					sizeBytes = int64(rep.SizeBytes)
+				}
+			}
+		}
+		// A download or inspection failure is not fatal here: the asset may be
+		// pending upload. The bounds check below is what actually gates it.
+	}
+
+	if duration < audio.MinDurationSeconds || duration > audio.MaxDurationSeconds {
+		httpx.WriteError(w, http.StatusUnprocessableEntity, fmt.Sprintf(
+			"duration_seconds must be between %d and %d, or the audio must be stored under a key this service can read so its duration can be measured",
+			audio.MinDurationSeconds, audio.MaxDurationSeconds))
+		return
+	}
+
 	if _, err := h.audio.VoiceByID(r.Context(), req.VoiceID); err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "voice not found")
 		return
@@ -235,7 +271,7 @@ func (h *Handler) adminUpsertAudio(w http.ResponseWriter, r *http.Request) {
 	}
 	a := &models.AudioAsset{
 		ConfessionID: req.ConfessionID, VariantID: req.VariantID, VoiceID: req.VoiceID,
-		URL: req.URL, DurationSeconds: req.DurationSeconds, SizeBytes: req.SizeBytes, Status: req.Status,
+		URL: req.URL, DurationSeconds: duration, SizeBytes: sizeBytes, Status: req.Status,
 	}
 	if err := h.audio.UpsertAsset(r.Context(), a); err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to save audio")
