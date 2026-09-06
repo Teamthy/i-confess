@@ -1,6 +1,6 @@
 # PHASE 01 — Domain Model
 
-**Status:** PASS WITH CONDITIONS
+**Status:** PASS
 **Date:** 2026-09-06
 **Branch base:** `main` @ `cbdee9d`
 **Depends on:** PHASE 00 (PASS)
@@ -115,7 +115,7 @@ it, and how that is proven.
 |---|---|---|---|
 | **I-1** | A session cannot reach `COMPLETED` without passing through a state where audio actually ran | `internal/sessions` transition graph | `TestCompletionRequiresPlaybackOnEveryPath` walks the whole graph; `TestPlaybackStatesAreTheOnlyOnesThatMayComplete` |
 | **I-2** | Terminal states admit no exit | `terminal` map | `TestTerminalStatesHaveNoExit` |
-| **I-3** | A built session's queue is a snapshot; later content edits do not mutate it | queue materialised at build time | **not covered by a test — see §6, G-1** |
+| **I-3** | A built session's queue is a snapshot; later content edits do not mutate it | snapshot columns on `session_items`, written in the same transaction | `TestQueueIsASnapshotAndDoesNotMutateWithContent` + 2 companions |
 | **I-4** | Audio is never generated without valid rights | `internal/rights` gate | `rights_test.go`, 6 tests |
 | **I-5** | A free plan cannot play premium voice or content | `internal/entitlements` | `TestFreePlanCannotPlayPremiumVoiceOrContent` |
 | **I-6** | Unpublished content is refused even for premium | `internal/entitlements` | `TestUnpublishedBeatsPremiumRefusal` — ordering matters, premium must not override publication |
@@ -142,7 +142,7 @@ access to unpublished drafts. The test exists because the ordering is the rule.
 |---|---|---|---|
 | **Session** | 11 states (§7) | 11 states, transition table, 13 tests | **complete** |
 | **Session item** | 5 statuses (§9) | `QUEUED PLAYING COMPLETED SKIPPED FAILED` + legacy normalisation | **complete** |
-| **Content** | DRAFT→REVIEW→APPROVED→PUBLISHED→DEPRECATED (§19) | `draft approved published rejected archived` | **partial** — no `REVIEW`, no `DEPRECATED` |
+| **Content** | DRAFT→REVIEW→APPROVED→PUBLISHED→DEPRECATED (§19) | schema comment documents 8 states (`draft content_review theological_review audio_production audio_qa approved published archived`); Go code uses a different, overlapping subset | **divergent** — see below |
 | **UGC** | PRIVATE/SHARED/PUBLIC (§22) | `private shared` only; 7 statuses | **partial** — no `PUBLIC` visibility |
 | **Trial** | ELIGIBLE→STARTED→ACTIVE→EXPIRING→EXPIRED→CONVERTED (§36) | none of these names exist | **absent** |
 | **Voice rights** | 11 fields (§5) | `models.VoiceRights`, 14 fields | **complete, superset** |
@@ -155,12 +155,22 @@ it, and a phase that is told up front can plan.
 
 ## 6. GAPS
 
-**G-1 — Snapshot immutability (I-3) is untested.**
-The directive is explicit (§9): "Do not let later content changes unexpectedly
-mutate an already-created session." The queue is materialised at build time, so
-the behaviour is probably correct, but nothing proves it. A test must edit a
-confession after a session is built and assert the queue is unchanged. This is
-the single most important missing test in the domain.
+**G-1 — Snapshot immutability (I-3). CLOSED.**
+It was not merely untested — it was violated. `duration_seconds` and
+`audio_asset_id` were snapshotted, but `SessionStore.Items` read title, category
+name and text live through a JOIN to `confessions`, so an editor fixing a typo
+on Monday night changed what a user heard from the session they had built and
+scheduled for Tuesday morning. Repetition is the product's premise, so the words
+a user committed to have to be the words they receive.
+
+`session_items` now carries `title`, `category_name` and `text`, written inside
+the same transaction as the queue, and read with `COALESCE` so pre-existing rows
+still resolve. Proven by `TestQueueIsASnapshotAndDoesNotMutateWithContent`,
+which rewrites the confession and renames the category after the session is
+built; by `TestNewSessionsSeeCurrentContent`, which guards the other half of the
+contract so the snapshot cannot degrade into a stale cache; and by
+`TestSessionCreationFailsOnUnknownConfession`, which checks the resolver fails
+and rolls back rather than persisting an empty title.
 
 **G-2 — 22 `status` columns, 5 CHECK constraints.**
 Only `sessions.status` and the four added in PHASE 00 are constrained. The other
@@ -177,10 +187,21 @@ cannot be a small phase.
 level, `PUBLIC`, has no representation, so the public moderation pipeline (§22)
 has nothing to publish *to*.
 
-**G-5 — No `DEPRECATED` content state.**
-Content can be `archived`, which may be the same idea under another name. If it
-is, the directive's vocabulary should be adopted; if it is not, the distinction
-needs defining. Either way the ambiguity should not survive into PHASE 12.
+**G-5 — The content lifecycle exists only as a comment.**
+`schema.postgres.sql` documents eight states on `confessions.status`:
+`draft content_review theological_review audio_production audio_qa approved
+published archived`. There is no CHECK constraint enforcing them, and the Go
+code uses a different, overlapping set (`draft approved published rejected
+archived submitted under_review`) — including `rejected`, which the documented
+lifecycle does not contain, and omitting four states it does.
+
+So this is not "a state is missing". It is two vocabularies, neither enforced,
+in the same system. PHASE 12 (Content Governance) must pick one, put it in a
+CHECK constraint, and migrate to it. It cannot be resolved by adding a state.
+
+**G-6 — No `DEPRECATED` content state.** `archived` may be the same idea under
+another name. If it is, adopt the directive's word; if it is not, define the
+distinction.
 
 ## TESTING
 
@@ -242,7 +263,7 @@ when PHASE 15 adds session persistence under load.
 | Ubiquitous language defined | Done |
 | Bounded contexts mapped to real packages | Done |
 | Aggregates and their boundaries named | Done |
-| Invariants listed with their enforcement and proof | 11 listed, 10 proven |
+| Invariants listed with their enforcement and proof | 11 listed, **11 proven** |
 | Lifecycles compared against the directive | Done, 5 divergences recorded |
 | Gaps identified and owned by a later phase | 5 gaps, all mapped |
 | Tests pass | 21/21 packages |
@@ -261,7 +282,7 @@ when PHASE 15 adds session persistence under load.
 8. **Security considerations:** entitlement and rights gate confirmed single-path; G-2 recorded as residual risk.
 9. **Performance considerations:** none material.
 10. **Known issues:** G-1 through G-5.
-11. **Remaining work:** G-1 (the snapshot test) should be closed before PHASE 15 builds on the queue.
+11. **Remaining work:** G-2 through G-6. G-5 (two unenforced content vocabularies) must be resolved in PHASE 12.
 12. **Phase score:** 8/10. Docked for G-1 — the most important invariant in the content domain is unproven — and for the five lifecycle divergences that later phases will have to absorb.
-13. **Decision:** **PASS WITH CONDITIONS** — condition is G-1.
-14. **Recommended next phase:** **PHASE 02 — System Architecture**, with G-1 closed first since it is a one-test fix.
+13. **Decision:** **PASS** — G-1 closed.
+14. **Recommended next phase:** **PHASE 02 — System Architecture**.
