@@ -89,17 +89,17 @@ func (p Parsed) ToEngineRequest() (engine.Request, error) {
 	if p.Duration < 60 || p.Duration > 3*3600 {
 		return engine.Request{}, errors.New("duration out of range")
 	}
-	strat := p.Strategy
-	if strat == "" {
-		strat = engine.StrategyBalanced
+	start := p.Strategy
+	if start == "" {
+		start = engine.StrategyBalanced
 	}
-	if !engine.IsValidStrategy(strat) {
+	if !engine.IsValidStrategy(start) {
 		return engine.Request{}, errors.New("invalid strategy")
 	}
 	return engine.Request{
 		CategoryIDs:     p.Categories,
 		DurationSeconds: p.Duration,
-		Strategy:        engine.NormalizeStrategy(strat),
+		Strategy:        engine.NormalizeStrategy(start),
 		VoiceID:         p.VoiceID,
 	}, nil
 }

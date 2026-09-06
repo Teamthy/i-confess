@@ -7,15 +7,37 @@ import (
 	"strings"
 )
 
-// EnvVerifier selects the real verifier from env. In production set
-// BILLING_VERIFIER=apple|google|chained ; default is NoopVerifier (dev/test).
-// Production verifiers are stubbed here and must be replaced with
-// App Store Server API / Play Developer API calls before launch.
-type EnvVerifier struct{ inner Verifier }
+// prodBlocker rejects every receipt unconditionally.
+//
+// It exists because of a real defect, not as a hypothetical. POST
+// /subscriptions/verify is an authenticated public route that grants premium
+// from whatever the selected verifier accepts. Every verifier in this file is a
+// stub: NoopVerifier accepts any receipt beginning "valid_", and appleVerifier
+// and googleVerifier accept "apple_valid_" and "google_valid_". Nothing checked
+// the environment, so a production deployment with BILLING_VERIFIER unset - the
+// default - granted premium to anyone who posted {"receipt":"valid_monthly"}.
+//
+// Until a real App Store Server API / Play Developer API verifier exists, the
+// only safe production behaviour is to refuse. Failing closed on payments costs
+// a launch delay; failing open costs revenue and is a §37 violation, since the
+// rule is that the server validates purchases and never trusts the client.
+type prodBlocker struct{}
 
+func (prodBlocker) Verify(context.Context, string, string) (Verification, error) {
+	return Verification{}, errors.New(
+		"billing: no real store verifier is configured; refusing receipts in production")
+}
+
+// VerifierFromEnv selects the verifier from BILLING_VERIFIER
+// (apple|google|chained), defaulting to NoopVerifier for dev and test.
+//
+// In production every current option is a stub, so production gets prodBlocker
+// instead. This is the guard that was missing.
 func VerifierFromEnv() Verifier {
-	mode := strings.ToLower(strings.TrimSpace(os.Getenv("BILLING_VERIFIER")))
-	switch mode {
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("ENV")), "production") {
+		return prodBlocker{}
+	}
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("BILLING_VERIFIER"))) {
 	case "apple":
 		return appleVerifier{}
 	case "google":

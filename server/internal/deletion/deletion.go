@@ -5,9 +5,10 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"github.com/Teamthy/i-confess/internal/db"
 	"strings"
 	"time"
+
+	"github.com/Teamthy/i-confess/internal/db"
 
 	"github.com/google/uuid"
 )

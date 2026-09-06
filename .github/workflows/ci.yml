@@ -73,6 +73,16 @@ jobs:
       - name: Test
         run: go test -race ./...
 
+      # Lint runs before the tests so a style or correctness finding is
+      # reported in seconds rather than after the database suite. It uses
+      # new-from-merge-base, so only findings introduced by the branch fail the
+      # build; the pre-existing debt is tracked in docs/PROJECT-STATUS.md.
+      - name: Lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.13
+          working-directory: server
+
       - name: gofmt check
         run: |
           files=$(gofmt -l .)

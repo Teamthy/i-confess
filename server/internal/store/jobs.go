@@ -4,8 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"github.com/Teamthy/i-confess/internal/db"
 	"time"
+
+	"github.com/Teamthy/i-confess/internal/db"
 
 	"github.com/Teamthy/i-confess/internal/jobs"
 	"github.com/google/uuid"

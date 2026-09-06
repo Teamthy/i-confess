@@ -5,9 +5,10 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"github.com/Teamthy/i-confess/internal/db"
 	"strings"
 	"time"
+
+	"github.com/Teamthy/i-confess/internal/db"
 
 	"github.com/Teamthy/i-confess/internal/models"
 	"github.com/google/uuid"

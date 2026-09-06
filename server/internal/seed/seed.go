@@ -6,9 +6,10 @@ package seed
 import (
 	"context"
 	"fmt"
-	"github.com/Teamthy/i-confess/internal/db"
 	"log"
 	"os"
+
+	"github.com/Teamthy/i-confess/internal/db"
 
 	"github.com/Teamthy/i-confess/internal/auth"
 	"github.com/Teamthy/i-confess/internal/media"

@@ -2,8 +2,9 @@ package community
 
 import (
 	"context"
-	"github.com/Teamthy/i-confess/internal/db"
 	"time"
+
+	"github.com/Teamthy/i-confess/internal/db"
 
 	"github.com/google/uuid"
 )

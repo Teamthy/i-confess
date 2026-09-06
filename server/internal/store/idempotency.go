@@ -4,8 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"github.com/Teamthy/i-confess/internal/db"
 	"time"
+
+	"github.com/Teamthy/i-confess/internal/db"
 )
 
 // IdempotencyRecord is a stored response for a previously executed mutation.

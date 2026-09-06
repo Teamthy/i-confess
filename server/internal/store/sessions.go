@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+
 	"github.com/Teamthy/i-confess/internal/db"
 
 	"github.com/Teamthy/i-confess/internal/models"

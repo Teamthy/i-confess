@@ -2,12 +2,13 @@ package api
 
 import (
 	"errors"
-	"github.com/Teamthy/i-confess/internal/db"
 	"log"
 	"net"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/Teamthy/i-confess/internal/db"
 
 	"github.com/Teamthy/i-confess/internal/auth"
 	"github.com/Teamthy/i-confess/internal/cache"

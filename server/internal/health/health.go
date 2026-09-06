@@ -2,9 +2,10 @@ package health
 
 import (
 	"context"
-	"github.com/Teamthy/i-confess/internal/db"
 	"net/http"
 	"time"
+
+	"github.com/Teamthy/i-confess/internal/db"
 
 	"github.com/Teamthy/i-confess/internal/httpx"
 )
