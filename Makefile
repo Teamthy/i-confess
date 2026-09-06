@@ -17,10 +17,12 @@ SERVER  := server
 LINT    := golangci-lint
 
 .PHONY: help build test race vet lint lint-fix fmt fmt-check tidy verify clean \
-	design design-check design-contrast routes
+	design design-check design-contrast routes mobile-check
 
 PY ?= python3
 DESIGN := design
+MOBILE := apps/mobile
+FLUTTER ?= flutter
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -71,7 +73,14 @@ routes: ## Re-export the live route table to design/routes.json
 	cd $(SERVER) && EXPORT_ROUTES=1 EXPORT_ROUTES_PATH=$(CURDIR)/$(DESIGN)/routes.json \
 	  $(GO) test ./internal/api/ -run TestExportRouteTable -count=1
 
-verify: fmt-check design-check build vet lint test ## Run everything CI runs
+mobile-check: ## Analyse and test the Flutter app
+	@if command -v $(FLUTTER) >/dev/null 2>&1; then \
+		cd $(MOBILE) && $(FLUTTER) pub get && $(FLUTTER) analyze && $(FLUTTER) test; \
+	else \
+		echo "mobile-check: SKIPPED - $(FLUTTER) is not on PATH, so the app was not checked"; \
+	fi
+
+verify: fmt-check design-check build vet lint test mobile-check ## Run everything CI runs
 	@echo "verify: all checks passed"
 
 clean: ## Remove build artifacts

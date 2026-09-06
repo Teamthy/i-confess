@@ -203,6 +203,43 @@ def gen_dart(data, flat, order):
     return "\n".join(L)
 
 
+# The Flutter app consumes the Dart tokens directly, and a Dart package cannot
+# import across the repository from design/generated. So the same bytes are
+# mirrored into the app's own source tree.
+#
+# Mirroring from the generator rather than copying by hand is what keeps the two
+# from drifting, and --check covers the mirror as well as the original: an app
+# theme built on a stale palette is exactly the failure the check exists to
+# catch. A mirror whose app directory does not exist is skipped, so this does not
+# couple the design build to an app that has not been created yet.
+MIRRORS = {
+    "tokens.dart": [
+        HERE.parent / "apps" / "mobile" / "lib" / "src" / "core" / "theme" / "tokens.dart",
+    ],
+}
+
+
+def _mirror_targets(name: str):
+    """Yields the mirror paths whose app is present.
+
+    The test is whether the *app root* exists, not the destination directory.
+    Testing the destination would make --check skip a mirror that is merely
+    missing, so an app whose tokens were never generated would pass the
+    staleness check and then fail to compile.
+    """
+    for target in MIRRORS.get(name, []):
+        if _app_root(target).exists():
+            yield target
+
+
+def _app_root(target: Path) -> Path:
+    """Walks up from a mirror path to the app it belongs to (the apps/<name> dir)."""
+    for parent in target.parents:
+        if parent.parent.name == "apps":
+            return parent
+    return target.parent
+
+
 def main() -> int:
     check = "--check" in sys.argv
     data, flat, order = load()
@@ -216,14 +253,16 @@ def main() -> int:
 
     stale = []
     for name, content in files.items():
-        target = OUT / name
-        existing = target.read_text() if target.exists() else None
-        if check:
-            if existing != content:
-                stale.append(name)
-        else:
-            target.write_text(content)
-            print(f"  wrote design/generated/{name} ({len(content)} bytes)")
+        targets = [OUT / name] + list(_mirror_targets(name))
+        for target in targets:
+            existing = target.read_text() if target.exists() else None
+            if check:
+                if existing != content:
+                    stale.append(str(target.relative_to(HERE.parent)))
+            else:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(content)
+                print(f"  wrote {target.relative_to(HERE.parent)} ({len(content)} bytes)")
 
     if check:
         if stale:
