@@ -68,8 +68,17 @@ func (s *SessionStore) Create(ctx context.Context, sess *models.Session) error {
 			it.ID = newID()
 		}
 		it.SessionID = sess.ID
-		if it.Status == "" {
-			it.Status = "queued"
+		// Callers hand in a mix of spellings, including the lowercase ones this
+		// column was originally constrained to. Folding them here means a
+		// caller cannot fail the CHECK on a status the state machine already
+		// understands - and one it does not understand is rejected rather than
+		// quietly stored as something else.
+		if canonical := sessions.NormalizeItemStatus(it.Status); canonical != "" {
+			it.Status = canonical
+		} else if it.Status == "" {
+			it.Status = string(sessions.ItemQueued)
+		} else {
+			return fmt.Errorf("session item %s has unrecognised status %q", it.ID, it.Status)
 		}
 		snap := snapshots[it.ConfessionID]
 		_, err = tx.ExecContext(ctx,
@@ -121,7 +130,7 @@ func (s *SessionStore) Items(ctx context.Context, sessionID string) ([]models.Se
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT si.id, si.confession_id, COALESCE(si.variant_id,''), COALESCE(si.voice_id,''), COALESCE(si.audio_asset_id,''), si.position, si.duration_seconds, si.status,
 		        COALESCE(si.title, c.title), COALESCE(si.category_name, cat.name), COALESCE(a.cdn_path, a.storage_key, ''),
-		        COALESCE(si.text, c.medium_text, c.short_text, '')
+		        COALESCE(si.text, c.medium_text, c.short_text, ''), COALESCE(a.status, '')
 		 FROM session_items si
 		 JOIN confessions c ON c.id = si.confession_id
 		 JOIN categories cat ON cat.id = c.category_id
@@ -134,7 +143,7 @@ func (s *SessionStore) Items(ctx context.Context, sessionID string) ([]models.Se
 	var out []models.SessionItem
 	for rows.Next() {
 		var it models.SessionItem
-		if err := rows.Scan(&it.ID, &it.ConfessionID, &it.VariantID, &it.VoiceID, &it.AudioAssetID, &it.Position, &it.DurationSeconds, &it.Status, &it.Title, &it.Category, &it.AudioURL, &it.Text); err != nil {
+		if err := rows.Scan(&it.ID, &it.ConfessionID, &it.VariantID, &it.VoiceID, &it.AudioAssetID, &it.Position, &it.DurationSeconds, &it.Status, &it.Title, &it.Category, &it.AudioURL, &it.Text, &it.AssetStatus); err != nil {
 			return nil, err
 		}
 		it.SessionID = sessionID
@@ -205,7 +214,14 @@ func (s *SessionStore) ListByUser(ctx context.Context, userID string, limit int)
 // The status must already be canonical; the sessions package owns that
 // vocabulary and the API layer normalises before reaching here.
 func (s *SessionStore) UpdateItemStatus(ctx context.Context, itemID string, status string) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE session_items SET status=? WHERE id=?`, status, itemID)
+	// Same folding as CreateSession: the column is constrained to the canonical
+	// vocabulary, and a caller should not have to know which spelling of a state
+	// the state machine settled on to write it.
+	canonical := sessions.NormalizeItemStatus(status)
+	if canonical == "" {
+		return fmt.Errorf("unrecognised session item status %q", status)
+	}
+	_, err := s.db.ExecContext(ctx, `UPDATE session_items SET status=? WHERE id=?`, canonical, itemID)
 	return err
 }
 

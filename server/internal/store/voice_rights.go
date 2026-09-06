@@ -31,11 +31,16 @@ func (s *VoiceRightsStore) Create(ctx context.Context, vr *models.VoiceRights) e
 
 	_, err := s.db.ExecContext(ctx,
 		`INSERT INTO voice_rights (id, voice_id, rights_holder, authorization_reference, allowed_use, 
-		                            territories, start_date, expiry_date, status, metadata, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		                            territories, start_date, expiry_date, status, metadata, created_at, updated_at,
+		                            license_status, commercial_use, ai_generation_allowed, marketing_allowed,
+		                            expiration_date, revocation_terms, provider, provider_voice_id, notes)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		vr.ID, vr.VoiceID, vr.RightsHolder, nullIfEmpty(vr.AuthorizationReference), vr.AllowedUse,
 		vr.Territories, nullIfEmpty(vr.StartDate), nullIfEmpty(vr.ExpiryDate), vr.Status,
-		nullIfEmpty(vr.Metadata), vr.CreatedAt, vr.UpdatedAt)
+		nullIfEmpty(vr.Metadata), vr.CreatedAt, vr.UpdatedAt,
+		nullIfEmpty(vr.LicenseStatus), boolInt(vr.CommercialUse), boolInt(vr.AIGenerationAllowed),
+		boolInt(vr.MarketingAllowed), nullIfEmpty(vr.ExpirationDate), nullIfEmpty(vr.RevocationTerms),
+		nullIfEmpty(vr.Provider), nullIfEmpty(vr.ProviderVoiceID), nullIfEmpty(vr.Notes))
 	return err
 }
 
@@ -43,18 +48,38 @@ func (s *VoiceRightsStore) Create(ctx context.Context, vr *models.VoiceRights) e
 func (s *VoiceRightsStore) ByVoiceID(ctx context.Context, voiceID string) (*models.VoiceRights, error) {
 	var vr models.VoiceRights
 	var authRef, startDate, expiryDate, metadata sql.NullString
+	var licenseStatus, expirationDate, revocationTerms, provider, providerVoiceID, notes sql.NullString
+	var commercialUse, aiGeneration, marketing int
 
+	// Every one of these is read by rights.Evaluate. Reading back zero values
+	// for them - which is what happened while the columns did not exist - makes
+	// every licence look like it forbids AI generation and commercial use, and
+	// no write could correct it.
 	err := s.db.QueryRowContext(ctx,
 		`SELECT id, voice_id, rights_holder, COALESCE(authorization_reference, ''), allowed_use, 
 		        territories, COALESCE(start_date, ''), COALESCE(expiry_date, ''), status, 
-		        COALESCE(metadata, ''), created_at, updated_at
+		        COALESCE(metadata, ''), created_at, updated_at,
+		        license_status, commercial_use, ai_generation_allowed, marketing_allowed,
+		        expiration_date, revocation_terms, provider, provider_voice_id, notes
 		 FROM voice_rights WHERE voice_id = ?`, voiceID).
 		Scan(&vr.ID, &vr.VoiceID, &vr.RightsHolder, &authRef, &vr.AllowedUse,
 			&vr.Territories, &startDate, &expiryDate, &vr.Status,
-			&metadata, &vr.CreatedAt, &vr.UpdatedAt)
+			&metadata, &vr.CreatedAt, &vr.UpdatedAt,
+			&licenseStatus, &commercialUse, &aiGeneration, &marketing,
+			&expirationDate, &revocationTerms, &provider, &providerVoiceID, &notes)
 	if err != nil {
 		return nil, err
 	}
+
+	vr.LicenseStatus = licenseStatus.String
+	vr.CommercialUse = commercialUse != 0
+	vr.AIGenerationAllowed = aiGeneration != 0
+	vr.MarketingAllowed = marketing != 0
+	vr.ExpirationDate = expirationDate.String
+	vr.RevocationTerms = revocationTerms.String
+	vr.Provider = provider.String
+	vr.ProviderVoiceID = providerVoiceID.String
+	vr.Notes = notes.String
 
 	if authRef.Valid {
 		vr.AuthorizationReference = authRef.String
@@ -78,10 +103,16 @@ func (s *VoiceRightsStore) Update(ctx context.Context, vr *models.VoiceRights) e
 
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE voice_rights SET rights_holder=?, authorization_reference=?, allowed_use=?, 
-		                         territories=?, start_date=?, expiry_date=?, status=?, metadata=?, updated_at=?
+		                         territories=?, start_date=?, expiry_date=?, status=?, metadata=?, updated_at=?,
+		                         license_status=?, commercial_use=?, ai_generation_allowed=?, marketing_allowed=?,
+		                         expiration_date=?, revocation_terms=?, provider=?, provider_voice_id=?, notes=?
 		 WHERE voice_id = ?`,
 		vr.RightsHolder, nullIfEmpty(vr.AuthorizationReference), vr.AllowedUse,
 		vr.Territories, nullIfEmpty(vr.StartDate), nullIfEmpty(vr.ExpiryDate), vr.Status,
-		nullIfEmpty(vr.Metadata), vr.UpdatedAt, vr.VoiceID)
+		nullIfEmpty(vr.Metadata), vr.UpdatedAt,
+		nullIfEmpty(vr.LicenseStatus), boolInt(vr.CommercialUse), boolInt(vr.AIGenerationAllowed),
+		boolInt(vr.MarketingAllowed), nullIfEmpty(vr.ExpirationDate), nullIfEmpty(vr.RevocationTerms),
+		nullIfEmpty(vr.Provider), nullIfEmpty(vr.ProviderVoiceID), nullIfEmpty(vr.Notes),
+		vr.VoiceID)
 	return err
 }

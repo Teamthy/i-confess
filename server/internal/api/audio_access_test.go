@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Teamthy/i-confess/internal/db"
 	"github.com/Teamthy/i-confess/internal/media"
 	"github.com/Teamthy/i-confess/internal/models"
 	"github.com/Teamthy/i-confess/internal/storage"
@@ -24,6 +25,7 @@ import (
 
 type audioFixture struct {
 	h        *Handler
+	db       *db.DB
 	router   http.Handler
 	srv      *httptest.Server
 	store    storage.ObjectStorage
@@ -112,7 +114,7 @@ func newAudioFixture(t *testing.T) *audioFixture {
 	}
 
 	f := &audioFixture{
-		h: h, router: router, srv: srv, store: objStore,
+		h: h, db: dbConn, router: router, srv: srv, store: objStore,
 		catID: cat.ID, voiceStd: std.ID, voicePrm: prm.ID,
 	}
 	f.freeTok = f.register(t, "free@test.com")
@@ -164,10 +166,12 @@ type sessionResp struct {
 	VoiceDowngraded      bool   `json:"voice_downgraded"`
 	VoiceDowngradeReason string `json:"voice_downgrade_reason"`
 	Items                []struct {
-		AudioURL   string `json:"audio_url"`
-		VoiceID    string `json:"voice_id"`
-		Locked     bool   `json:"locked"`
-		LockReason string `json:"lock_reason"`
+		ConfessionID string `json:"confession_id"`
+		AudioAssetID string `json:"audio_asset_id"`
+		AudioURL     string `json:"audio_url"`
+		VoiceID      string `json:"voice_id"`
+		Locked       bool   `json:"locked"`
+		LockReason   string `json:"lock_reason"`
 	} `json:"items"`
 }
 

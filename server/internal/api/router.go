@@ -228,6 +228,21 @@ func (h *Handler) Routes() http.Handler {
 	audioMgr := auth.RequireRoleWithSessions(h.cfg.JWTSecret, sv, auth.RoleAudioProducer, auth.RoleVoiceManager)
 	h.route(mux, "POST /admin/audio/generate", "audio_producer,voice_manager", "admin-audio", "Generate audio; refused 451 when voice rights disallow it", audioMgr, h.adminGenerateAudio)
 
+	// Generation requests and their outcomes. These are what make a generation
+	// observable: until now a render was a synchronous call with no record, so
+	// there was nothing to poll and nothing to retry.
+	h.route(mux, "GET /admin/audio/jobs", "audio_producer,voice_manager", "admin-audio", "List generation requests, newest first", audioMgr, h.adminListAudioJobs)
+	h.route(mux, "GET /admin/audio/jobs/{id}", "audio_producer,voice_manager", "admin-audio", "One generation request with its outcome", audioMgr, h.adminGetAudioJob)
+
+	// Asset QA. Generated audio enters 'processing'; nothing could previously
+	// move it out, because the codebase had no UPDATE audio_assets at all.
+	// Approving is what makes a render servable, and rejecting records who
+	// decided and why.
+	h.route(mux, "POST /admin/audio/{id}/qa/approve", "audio_producer,voice_manager", "admin-audio", "Approve a render for listeners", audioMgr, h.adminApproveAudio)
+	h.route(mux, "POST /admin/audio/{id}/qa/reject", "audio_producer,voice_manager", "admin-audio", "Reject a render; a note is required", audioMgr, h.adminRejectAudio)
+	h.route(mux, "POST /admin/audio/{id}/publish", "audio_producer,voice_manager", "admin-audio", "Surface an approved render in discovery", audioMgr, h.adminPublishAudio)
+	h.route(mux, "POST /admin/audio/{id}/archive", "audio_producer,voice_manager", "admin-audio", "Withdraw a render, including from existing sessions", audioMgr, h.adminArchiveAudio)
+
 	// ─────────────────────────────────────────────────────────────────
 	// Routes that existed only under /v1/. The comment below promises every
 	// API route is served under both prefixes; these had drifted, so a client
@@ -426,6 +441,12 @@ func (h *Handler) Routes() http.Handler {
 	h.route(mux, "PUT /v1/admin/voices/{id}/rights", "voice_manager", "admin-voice", "Set rights; AI grants require an attestation", voiceMgr, h.adminUpsertVoiceRights)
 	h.route(mux, "POST /v1/admin/voices/{id}/rights/revoke", "voice_manager", "admin-voice", "Revoke every use of a voice", voiceMgr, h.adminRevokeVoiceRights)
 	h.route(mux, "POST /v1/admin/audio/generate", "audio_producer,voice_manager", "admin-audio", "Generate audio; refused 451 when voice rights disallow it", audioMgr, h.adminGenerateAudio)
+	h.route(mux, "GET /v1/admin/audio/jobs", "audio_producer,voice_manager", "admin-audio", "List generation requests, newest first", audioMgr, h.adminListAudioJobs)
+	h.route(mux, "GET /v1/admin/audio/jobs/{id}", "audio_producer,voice_manager", "admin-audio", "One generation request with its outcome", audioMgr, h.adminGetAudioJob)
+	h.route(mux, "POST /v1/admin/audio/{id}/qa/approve", "audio_producer,voice_manager", "admin-audio", "Approve a render for listeners", audioMgr, h.adminApproveAudio)
+	h.route(mux, "POST /v1/admin/audio/{id}/qa/reject", "audio_producer,voice_manager", "admin-audio", "Reject a render; a note is required", audioMgr, h.adminRejectAudio)
+	h.route(mux, "POST /v1/admin/audio/{id}/publish", "audio_producer,voice_manager", "admin-audio", "Surface an approved render in discovery", audioMgr, h.adminPublishAudio)
+	h.route(mux, "POST /v1/admin/audio/{id}/archive", "audio_producer,voice_manager", "admin-audio", "Withdraw a render, including from existing sessions", audioMgr, h.adminArchiveAudio)
 
 	return RequestIDMiddleware(tracing.Middleware(logRequests(mux)))
 }

@@ -99,8 +99,50 @@ type AudioAsset struct {
 	Checksum        string `json:"checksum,omitempty"`
 	Language        string `json:"language,omitempty"`
 	Status          string `json:"status"`
-	CreatedAt       string `json:"created_at"`
-	UpdatedAt       string `json:"updated_at"`
+	// ContentVersionID is the exact text snapshot this render was produced
+	// from. It is what makes a QA review meaningful: a reviewer approves audio
+	// against the words that were spoken, not against whatever the confession
+	// says today.
+	ContentVersionID string `json:"content_version_id,omitempty"`
+	CreatedAt        string `json:"created_at"`
+	UpdatedAt        string `json:"updated_at"`
+	// QA review record. Empty until a human has looked at the render.
+	QAReviewedBy string `json:"qa_reviewed_by,omitempty"`
+	QAReviewedAt string `json:"qa_reviewed_at,omitempty"`
+	QANote       string `json:"qa_note,omitempty"`
+}
+
+// AudioJob is one generation request and its outcome.
+//
+// The audio_generation_jobs table has existed since the baseline schema with
+// status, attempt counts, error fields and a unique idempotency key, and
+// nothing in the codebase had ever written to it. So a generation was a
+// synchronous call inside an HTTP request: no record of what was asked for, no
+// status to poll, nothing to retry, and a client disconnect mid-render threw
+// the work away.
+type AudioJob struct {
+	ID               string `json:"id"`
+	ContentVersionID string `json:"content_version_id"`
+	ConfessionID     string `json:"confession_id"`
+	VariantID        string `json:"variant_id,omitempty"`
+	VoiceID          string `json:"voice_id"`
+	Provider         string `json:"provider,omitempty"`
+	ProviderJobID    string `json:"provider_job_id,omitempty"`
+	QualityTier      string `json:"quality_tier,omitempty"`
+	Format           string `json:"format,omitempty"`
+	// Status is queued | processing | succeeded | failed | cancelled.
+	Status         string `json:"status"`
+	AttemptCount   int    `json:"attempt_count"`
+	MaxAttempts    int    `json:"max_attempts"`
+	RequestedBy    string `json:"requested_by,omitempty"`
+	StartedAt      string `json:"started_at,omitempty"`
+	CompletedAt    string `json:"completed_at,omitempty"`
+	ErrorCode      string `json:"error_code,omitempty"`
+	ErrorMessage   string `json:"error_message,omitempty"`
+	IdempotencyKey string `json:"-"`
+	AudioAssetID   string `json:"audio_asset_id,omitempty"`
+	CreatedAt      string `json:"created_at"`
+	UpdatedAt      string `json:"updated_at"`
 }
 
 type User struct {
@@ -192,12 +234,18 @@ type SessionProgress struct {
 }
 
 type SessionItem struct {
-	ID              string `json:"id"`
-	SessionID       string `json:"session_id"`
-	ConfessionID    string `json:"confession_id"`
-	VariantID       string `json:"variant_id,omitempty"`
-	VoiceID         string `json:"voice_id,omitempty"`
-	AudioAssetID    string `json:"audio_asset_id,omitempty"`
+	ID           string `json:"id"`
+	SessionID    string `json:"session_id"`
+	ConfessionID string `json:"confession_id"`
+	VariantID    string `json:"variant_id,omitempty"`
+	VoiceID      string `json:"voice_id,omitempty"`
+	AudioAssetID string `json:"audio_asset_id,omitempty"`
+	// AssetStatus is the referenced audio asset's CURRENT status, read on every
+	// fetch. A session queue is a snapshot of what to play, not a permanent
+	// grant to play it: an asset pulled after the session was built - QA
+	// rejected, rights revoked, render failed - must stop being served. Empty
+	// when the item has no asset.
+	AssetStatus     string `json:"-"`
 	Position        int    `json:"position"`
 	DurationSeconds int    `json:"duration_seconds"`
 	Status          string `json:"status"`
