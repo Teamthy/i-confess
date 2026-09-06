@@ -265,7 +265,7 @@ func TestFederatedAccountCannotLoginWithEmptyPassword(t *testing.T) {
 	a, _ := newSocialHarness(t, googleIdentity("nopass", "nopass@example.com", true))
 	a.do("POST", "/auth/social/google", "", map[string]string{"id_token": "tok"})
 
-	for _, pw := range []string{"", " ", "password123"} {
+	for _, pw := range []string{"", " ", "test-passphrase-2026"} {
 		code, _ := a.do("POST", "/auth/login", "", map[string]string{
 			"email": "nopass@example.com", "password": pw,
 		})

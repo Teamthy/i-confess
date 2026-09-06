@@ -55,10 +55,18 @@ func SignToken(secret, ttl, sub, email, role string) (string, error) {
 }
 
 // SignSessionToken issues an access token bound to a server-side session.
+// fallbackTokenTTL is used when a token TTL cannot be parsed. Short on purpose.
+const FallbackTokenTTL = 15 * time.Minute
+
 func SignSessionToken(secret, ttl, sub, email, role, sessionID string) (string, error) {
 	d, err := time.ParseDuration(ttl)
 	if err != nil {
-		d = 720 * time.Hour
+		// Fail short, never long. This path means TOKEN_TTL was unparseable;
+		// issuing a 30-day token because a config value had a typo in it turns a
+		// configuration mistake into a month-long window on a stolen token.
+		// config.Validate rejects an unparseable value at boot, so reaching here
+		// at all is already a bug.
+		d = FallbackTokenTTL
 	}
 	claims := Claims{
 		Sub:       sub,

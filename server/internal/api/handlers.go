@@ -203,8 +203,15 @@ func (h *Handler) register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
-	if req.Email == "" || len(req.Password) < 8 {
-		httpx.WriteError(w, http.StatusBadRequest, "email and a password of at least 8 characters are required")
+	if req.Email == "" {
+		httpx.WriteError(w, http.StatusBadRequest, "email is required")
+		return
+	}
+	// One policy, applied at every point a password is set. It used to be an
+	// inline length check duplicated per handler, which meant a new entry point
+	// could be added without it and nothing would notice.
+	if err := auth.ValidatePassword(req.Password); err != nil {
+		httpx.WriteError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	// An existing address must not be confirmed to the caller (S65). Instead of
@@ -361,7 +368,7 @@ func (h *Handler) issueToken(w http.ResponseWriter, r *http.Request, u *models.U
 
 	ttl, err := time.ParseDuration(h.cfg.TokenTTL)
 	if err != nil {
-		ttl = 720 * time.Hour
+		ttl = auth.FallbackTokenTTL
 	}
 	sessionID, err := h.users.CreateAuthSession(r.Context(), u.ID,
 		r.Header.Get("X-Platform"), r.UserAgent(), clientIP(r), ttl)
@@ -420,8 +427,8 @@ func (h *Handler) changePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if len(req.NewPassword) < 8 {
-		httpx.WriteError(w, http.StatusBadRequest, "new password must be at least 8 characters")
+	if err := auth.ValidatePassword(req.NewPassword); err != nil {
+		httpx.WriteError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -497,7 +504,7 @@ func (h *Handler) refreshToken(w http.ResponseWriter, r *http.Request) {
 
 	ttl, err := time.ParseDuration(h.cfg.TokenTTL)
 	if err != nil {
-		ttl = 720 * time.Hour
+		ttl = auth.FallbackTokenTTL
 	}
 
 	sessionID := claims.SessionID
@@ -670,8 +677,12 @@ func (h *Handler) resetPassword(w http.ResponseWriter, r *http.Request) {
 		Token    string `json:"token"`
 		Password string `json:"password"`
 	}
-	if err := httpx.DecodeJSON(r, &req); err != nil || req.Token == "" || len(req.Password) < 8 {
-		httpx.WriteError(w, http.StatusBadRequest, "token and a password of at least 8 characters are required")
+	if err := httpx.DecodeJSON(r, &req); err != nil || req.Token == "" {
+		httpx.WriteError(w, http.StatusBadRequest, "token is required")
+		return
+	}
+	if err := auth.ValidatePassword(req.Password); err != nil {
+		httpx.WriteError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	// Only hashes are stored, so hash the presented token before lookup.

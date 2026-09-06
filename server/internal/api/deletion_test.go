@@ -21,7 +21,7 @@ func TestDeletionRequestEndsAllSessions(t *testing.T) {
 	}
 
 	code, out := a.do("POST", "/me/deletion", token, map[string]any{
-		"password": "password123", "confirm": "DELETE", "reason": "finished",
+		"password": "test-passphrase-2026", "confirm": "DELETE", "reason": "finished",
 	})
 	if code != http.StatusOK {
 		t.Fatalf("request deletion: %d %v", code, out)
@@ -57,9 +57,9 @@ func TestDeletionRequiresExplicitConfirmation(t *testing.T) {
 	token, _ := a.register(t, "del3@test.com")
 
 	for _, body := range []map[string]any{
-		{"password": "password123"},
-		{"password": "password123", "confirm": "yes"},
-		{"password": "password123", "confirm": "delete"},
+		{"password": "test-passphrase-2026"},
+		{"password": "test-passphrase-2026", "confirm": "yes"},
+		{"password": "test-passphrase-2026", "confirm": "delete"},
 	} {
 		code, out := a.do("POST", "/me/deletion", token, body)
 		if code != http.StatusBadRequest {
@@ -80,13 +80,13 @@ func TestDeletionCanBeCancelledDuringGracePeriod(t *testing.T) {
 	token, _ := a.register(t, "del4@test.com")
 
 	a.do("POST", "/me/deletion", token, map[string]any{
-		"password": "password123", "confirm": "DELETE",
+		"password": "test-passphrase-2026", "confirm": "DELETE",
 	})
 
 	// Signing in again is possible during the grace period, which is how the
 	// owner recovers the account.
 	code, out := a.do("POST", "/auth/login", "", map[string]string{
-		"email": "del4@test.com", "password": "password123",
+		"email": "del4@test.com", "password": "test-passphrase-2026",
 	})
 	if code != http.StatusOK {
 		t.Fatalf("owner cannot sign in to cancel: %d %v", code, out)
@@ -131,7 +131,7 @@ func TestDeletionNotifiesTheOwner(t *testing.T) {
 	sender.Reset()
 
 	a.do("POST", "/me/deletion", token, map[string]any{
-		"password": "password123", "confirm": "DELETE",
+		"password": "test-passphrase-2026", "confirm": "DELETE",
 	})
 
 	msg := waitForTaggedMail(t, sender, "del6@test.com", "security_alert")
@@ -152,7 +152,7 @@ func TestErasedAccountCannotAuthenticate(t *testing.T) {
 	a.do("POST", "/me/collections", token, map[string]any{"name": "Gone Soon"})
 
 	a.do("POST", "/me/deletion", token, map[string]any{
-		"password": "password123", "confirm": "DELETE",
+		"password": "test-passphrase-2026", "confirm": "DELETE",
 	})
 
 	// Erase directly, as the sweeper would once the grace period elapsed.
@@ -167,7 +167,7 @@ func TestErasedAccountCannotAuthenticate(t *testing.T) {
 	}
 	// The password no longer works.
 	if code, _ := a.do("POST", "/auth/login", "", map[string]string{
-		"email": "erased@test.com", "password": "password123",
+		"email": "erased@test.com", "password": "test-passphrase-2026",
 	}); code == http.StatusOK {
 		t.Fatal("erased account can still sign in")
 	}
@@ -186,7 +186,7 @@ func TestReRegisteringAfterErasureStartsFresh(t *testing.T) {
 	token, userID := a.register(t, "reuse@test.com")
 	a.do("POST", "/me/collections", token, map[string]any{"name": "OldSecretCollection"})
 	a.do("POST", "/me/deletion", token, map[string]any{
-		"password": "password123", "confirm": "DELETE",
+		"password": "test-passphrase-2026", "confirm": "DELETE",
 	})
 
 	svc := deletion.NewService(a.h.db)
@@ -231,7 +231,7 @@ func TestCannotDeleteAnotherUsersAccount(t *testing.T) {
 	// Bob supplies Alice's id; identity comes from the token, so this deletes
 	// Bob's own account at most.
 	a.do("POST", "/me/deletion", bob, map[string]any{
-		"password": "password123", "confirm": "DELETE", "user_id": "alice",
+		"password": "test-passphrase-2026", "confirm": "DELETE", "user_id": "alice",
 	})
 
 	if code, _ := a.do("GET", "/me", alice, nil); code != http.StatusOK {
@@ -259,7 +259,7 @@ func TestSweepOnlyErasesExpiredRequests(t *testing.T) {
 	a := newAuthHarness(t)
 	token, _ := a.register(t, "sweep@test.com")
 	a.do("POST", "/me/deletion", token, map[string]any{
-		"password": "password123", "confirm": "DELETE",
+		"password": "test-passphrase-2026", "confirm": "DELETE",
 	})
 
 	n, err := a.h.RunDeletionSweep(context.Background())

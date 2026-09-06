@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/Teamthy/i-confess/internal/auth"
 	"github.com/Teamthy/i-confess/internal/db"
@@ -40,7 +41,7 @@ func TestRegister(t *testing.T) {
 			"valid registration",
 			map[string]string{
 				"email":        "user@example.com",
-				"password":     "password123",
+				"password":     "test-passphrase-2026",
 				"display_name": "Test User",
 				"timezone":     "UTC",
 			},
@@ -54,7 +55,7 @@ func TestRegister(t *testing.T) {
 			"duplicate email is not disclosed",
 			map[string]string{
 				"email":    "user@example.com",
-				"password": "password456",
+				"password": "other-passphrase-2026",
 			},
 			http.StatusOK,
 			true,
@@ -71,7 +72,7 @@ func TestRegister(t *testing.T) {
 		{
 			"missing email",
 			map[string]string{
-				"password": "password123",
+				"password": "test-passphrase-2026",
 			},
 			http.StatusBadRequest,
 			true,
@@ -123,7 +124,7 @@ func TestLogin(t *testing.T) {
 
 	// Create a test user
 	email := "login@example.com"
-	password := "password123"
+	password := "test-passphrase-2026"
 	hash, _ := auth.HashPassword(password)
 	h.users.Create(context.Background(), email, hash, "Test User", "UTC")
 
@@ -184,7 +185,7 @@ func TestChangePassword(t *testing.T) {
 
 	// Create a test user
 	email := "change@example.com"
-	password := "password123"
+	password := "test-passphrase-2026"
 	hash, _ := auth.HashPassword(password)
 	user, _ := h.users.Create(context.Background(), email, hash, "Test User", "UTC")
 
@@ -193,7 +194,7 @@ func TestChangePassword(t *testing.T) {
 
 	payload := map[string]string{
 		"current_password": password,
-		"new_password":     "newpassword456",
+		"new_password":     "newother-passphrase-2026",
 	}
 	body, _ := json.Marshal(payload)
 	req := httptest.NewRequest("POST", "/auth/change-password", bytes.NewReader(body))
@@ -219,7 +220,7 @@ func TestRefreshToken(t *testing.T) {
 
 	// Create a test user
 	email := "refresh@example.com"
-	password := "password123"
+	password := "test-passphrase-2026"
 	hash, _ := auth.HashPassword(password)
 	user, _ := h.users.Create(context.Background(), email, hash, "Test User", "UTC")
 
@@ -259,11 +260,11 @@ func TestAdminSetUserRole(t *testing.T) {
 
 	// Create test users
 	email1 := "user1@example.com"
-	hash1, _ := auth.HashPassword("password123")
+	hash1, _ := auth.HashPassword("test-passphrase-2026")
 	user1, _ := h.users.Create(context.Background(), email1, hash1, "User 1", "UTC")
 
 	email2 := "admin@example.com"
-	hash2, _ := auth.HashPassword("password123")
+	hash2, _ := auth.HashPassword("test-passphrase-2026")
 	user2, _ := h.users.Create(context.Background(), email2, hash2, "Admin", "UTC")
 
 	// Make user2 an admin
@@ -310,11 +311,11 @@ func TestAdminRemoveUserRole(t *testing.T) {
 
 	// Create test users
 	email1 := "user1@example.com"
-	hash1, _ := auth.HashPassword("password123")
+	hash1, _ := auth.HashPassword("test-passphrase-2026")
 	user1, _ := h.users.Create(context.Background(), email1, hash1, "User 1", "UTC")
 
 	email2 := "admin@example.com"
-	hash2, _ := auth.HashPassword("password123")
+	hash2, _ := auth.HashPassword("test-passphrase-2026")
 	user2, _ := h.users.Create(context.Background(), email2, hash2, "Admin", "UTC")
 
 	// Make both users admins
@@ -361,11 +362,11 @@ func TestAdminListAdmins(t *testing.T) {
 
 	// Create test users
 	email1 := "user1@example.com"
-	hash1, _ := auth.HashPassword("password123")
+	hash1, _ := auth.HashPassword("test-passphrase-2026")
 	user1, _ := h.users.Create(context.Background(), email1, hash1, "User 1", "UTC")
 
 	email2 := "admin@example.com"
-	hash2, _ := auth.HashPassword("password123")
+	hash2, _ := auth.HashPassword("test-passphrase-2026")
 	user2, _ := h.users.Create(context.Background(), email2, hash2, "Admin", "UTC")
 
 	// Make both users admins
@@ -429,14 +430,16 @@ func TestIdentityFlows(t *testing.T) {
 		t.Fatalf("reset password: %v", err)
 	}
 
-	if _, err := h.users.CreateRefreshToken(context.Background(), "rt1", user.ID, "device-1", "ios"); err != nil {
-		t.Fatalf("create refresh token: %v", err)
+	// Sessions are created through the live API. The functions this used to
+	// call stored bearer tokens in plaintext and were removed; the session
+	// identifier they would have stored grants nothing without the JWT
+	// signature over it.
+	ttl := time.Hour
+	if _, err := h.users.CreateAuthSession(context.Background(), user.ID, "ios", "test-agent", "127.0.0.1", ttl); err != nil {
+		t.Fatalf("create session: %v", err)
 	}
-	if _, err := h.users.CreateRefreshToken(context.Background(), "rt2", user.ID, "device-2", "android"); err != nil {
-		t.Fatalf("create second refresh token: %v", err)
-	}
-	if _, err := h.users.RotateRefreshToken(context.Background(), "rt1", user.ID, "device-1", "ios"); err != nil {
-		t.Fatalf("rotate refresh token: %v", err)
+	if _, err := h.users.CreateAuthSession(context.Background(), user.ID, "android", "test-agent", "127.0.0.1", ttl); err != nil {
+		t.Fatalf("create second session: %v", err)
 	}
 	if err := h.users.RevokeAllSessions(context.Background(), user.ID); err != nil {
 		t.Fatalf("revoke all sessions: %v", err)

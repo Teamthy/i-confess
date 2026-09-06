@@ -6,6 +6,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Config holds runtime configuration sourced from environment variables.
@@ -154,6 +155,17 @@ func (c Config) Validate() error {
 	}
 	if c.JWTSecret == "" || c.JWTSecret == "dev-only-change-me" {
 		return errors.New("JWT_SECRET must be set to a non-default value in production")
+	}
+	// A malformed TOKEN_TTL silently fell back to 30 days at runtime in three
+	// separate places. Validating it here means the process refuses to start
+	// instead, and the runtime fallback is now 15 minutes.
+	if _, err := time.ParseDuration(c.TokenTTL); err != nil {
+		return fmt.Errorf("TOKEN_TTL=%q is not a valid Go duration: %w", c.TokenTTL, err)
+	}
+	if d, err := time.ParseDuration(c.TokenTTL); err == nil && d > 24*time.Hour {
+		return fmt.Errorf(
+			"TOKEN_TTL=%s exceeds 24h: an access token that outlives a working day "+
+				"stays usable long after it is stolen; use refresh for longer sessions", c.TokenTTL)
 	}
 	if c.AudioSignSecret == "" || c.AudioSignSecret == "dev-only-audio-secret" {
 		return errors.New("AUDIO_SIGN_SECRET must be set to a non-default value in production")

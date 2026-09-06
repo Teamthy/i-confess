@@ -108,7 +108,7 @@ func TestReuseDoesNotAffectUnrelatedDevices(t *testing.T) {
 
 	// A separate login represents a different device with its own chain.
 	_, out := a.do("POST", "/auth/login", "", map[string]string{
-		"email": "rot5@test.com", "password": "password123",
+		"email": "rot5@test.com", "password": "test-passphrase-2026",
 	})
 	laptop, _ := out["token"].(string)
 	if laptop == "" {

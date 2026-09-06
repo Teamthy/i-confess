@@ -135,7 +135,7 @@ func (f *audioFixture) register(t *testing.T, email string) string {
 func (f *audioFixture) registerWithID(t *testing.T, email string) (string, string) {
 	t.Helper()
 	body, _ := json.Marshal(map[string]string{
-		"email": email, "password": "password123", "display_name": "T", "timezone": "UTC",
+		"email": email, "password": "test-passphrase-2026", "display_name": "T", "timezone": "UTC",
 	})
 	rec := httptest.NewRecorder()
 	f.router.ServeHTTP(rec, httptest.NewRequest("POST", "/auth/register", bytes.NewReader(body)))

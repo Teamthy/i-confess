@@ -55,7 +55,7 @@ func (a *authHarness) do(method, path, token string, body any) (int, map[string]
 func (a *authHarness) register(t *testing.T, email string) (token, userID string) {
 	t.Helper()
 	code, out := a.do("POST", "/auth/register", "", map[string]string{
-		"email": email, "password": "password123", "display_name": "T", "timezone": "UTC",
+		"email": email, "password": "test-passphrase-2026", "display_name": "T", "timezone": "UTC",
 	})
 	if code != http.StatusOK {
 		t.Fatalf("register: %d %v", code, out)
@@ -95,7 +95,7 @@ func TestLogoutAllInvalidatesEveryDevice(t *testing.T) {
 
 	// A second login represents another device.
 	code, out := a.do("POST", "/auth/login", "", map[string]string{
-		"email": "multi@test.com", "password": "password123",
+		"email": "multi@test.com", "password": "test-passphrase-2026",
 	})
 	if code != http.StatusOK {
 		t.Fatalf("second login: %d", code)
@@ -143,7 +143,7 @@ func TestPasswordChangeRevokesOtherSessions(t *testing.T) {
 	attacker, _ := a.register(t, "victim@test.com")
 
 	code, out := a.do("POST", "/auth/login", "", map[string]string{
-		"email": "victim@test.com", "password": "password123",
+		"email": "victim@test.com", "password": "test-passphrase-2026",
 	})
 	if code != http.StatusOK {
 		t.Fatalf("login: %d", code)
@@ -151,7 +151,7 @@ func TestPasswordChangeRevokesOtherSessions(t *testing.T) {
 	owner, _ := out["token"].(string)
 
 	if code, _ := a.do("POST", "/auth/change-password", owner, map[string]string{
-		"current_password": "password123", "new_password": "a-much-better-password",
+		"current_password": "test-passphrase-2026", "new_password": "a-much-better-password",
 	}); code != http.StatusOK {
 		t.Fatalf("change password: %d", code)
 	}
@@ -271,7 +271,7 @@ func TestPasswordResetFlowUsesUnguessableTokens(t *testing.T) {
 		t.Fatalf("login with new password: %d", code)
 	}
 	if code, _ := a.do("POST", "/auth/login", "", map[string]string{
-		"email": "reset@test.com", "password": "password123",
+		"email": "reset@test.com", "password": "test-passphrase-2026",
 	}); code == http.StatusOK {
 		t.Fatal("old password still works after reset")
 	}
@@ -373,7 +373,7 @@ func TestThrottlingOneAccountDoesNotBlockAnother(t *testing.T) {
 	// The bystander shares the test's client address but a different account,
 	// so the per-account limit must not have consumed their budget.
 	code, _ := a.do("POST", "/auth/login", "", map[string]string{
-		"email": "bystander@test.com", "password": "password123",
+		"email": "bystander@test.com", "password": "test-passphrase-2026",
 	})
 	if code == http.StatusTooManyRequests {
 		t.Skip("per-IP limit reached first; per-account isolation covered by unit tests")
@@ -417,7 +417,7 @@ func TestListAndRevokeIndividualSessions(t *testing.T) {
 	phone, _ := a.register(t, "devices@test.com")
 
 	code, out := a.do("POST", "/auth/login", "", map[string]string{
-		"email": "devices@test.com", "password": "password123",
+		"email": "devices@test.com", "password": "test-passphrase-2026",
 	})
 	if code != http.StatusOK {
 		t.Fatalf("second login: %d", code)

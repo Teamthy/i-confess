@@ -401,43 +401,6 @@ func (s *UserStore) UserIDByVerificationToken(ctx context.Context, token string)
 	return userID, err
 }
 
-func (s *UserStore) CreateRefreshToken(ctx context.Context, token, userID, deviceID, platform string) (string, error) {
-	hash := token
-	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO refresh_tokens (id, user_id, token_hash, device_id, platform, expires_at, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?)`, newID(), userID, hash, deviceID, platform, time.Now().Add(30*24*time.Hour).UTC().Format(time.RFC3339), now())
-	return hash, err
-}
-
-func (s *UserStore) RotateRefreshToken(ctx context.Context, currentToken, userID, deviceID, platform string) (string, error) {
-	var rowID string
-	err := s.db.QueryRowContext(ctx,
-		`SELECT id FROM refresh_tokens WHERE user_id = ? AND token_hash = ? AND revoked_at IS NULL`, userID, currentToken).Scan(&rowID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return "", ErrNotFound
-	}
-	if err != nil {
-		return "", err
-	}
-	newToken := uuid.NewString()
-	_, err = s.db.ExecContext(ctx,
-		`UPDATE refresh_tokens SET revoked_at = ?, replaced_by = ? WHERE id = ?`, now(), newToken, rowID)
-	if err != nil {
-		return "", err
-	}
-	_, err = s.CreateRefreshToken(ctx, newToken, userID, deviceID, platform)
-	if err != nil {
-		return "", err
-	}
-	return newToken, nil
-}
-
-func (s *UserStore) RevokeRefreshToken(ctx context.Context, userID, token string) error {
-	_, err := s.db.ExecContext(ctx,
-		`UPDATE refresh_tokens SET revoked_at = ? WHERE user_id = ? AND token_hash = ? AND revoked_at IS NULL`, now(), userID, token)
-	return err
-}
-
 func (s *UserStore) RevokeAllSessions(ctx context.Context, userID string) error {
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE refresh_tokens SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL`, now(), userID)
@@ -522,6 +485,18 @@ func boolToInt(v bool) int {
 // ---------------------------------------------------------------------------
 // Auth sessions (PRD S22, S28, S29, S54)
 // ---------------------------------------------------------------------------
+
+// Note on refresh_tokens: the column is named token_hash but it holds a session
+// identifier, not a hash. That is safe for the live mechanism - CreateAuthSession
+// and RotateSession - because the identifier is embedded in a signed JWT and
+// grants nothing on its own. It is not safe for a bearer token.
+//
+// Three functions that did store bearer tokens there in plaintext
+// (CreateRefreshToken, RotateRefreshToken, RevokeRefreshToken) were removed.
+// They had no production caller and were exercised only by tests, but their
+// names invited exactly the mistake they embodied: wire one up and every refresh
+// token becomes readable from a database dump or a leaked backup. If a bearer
+// refresh token is ever introduced, store a hash of it and look it up by hash.
 
 // CreateAuthSession opens a server-side session and returns its id, which is
 // embedded in the access token so the token can later be revoked.
