@@ -36,3 +36,4 @@ FIX_*.ps1
 *.patch
 *.orig
 *.rej
+.md
