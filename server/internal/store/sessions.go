@@ -4,20 +4,21 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"github.com/Teamthy/i-confess/internal/db"
 
 	"github.com/Teamthy/i-confess/internal/models"
 	"github.com/Teamthy/i-confess/internal/sessions"
 )
 
 // SessionStore manages sessions and session items.
-type SessionStore struct{ db *sql.DB }
+type SessionStore struct{ db *db.DB }
 
 // defaultSessionStrategy is the duration strategy applied when a caller does
 // not name one. Keep in sync with engine.DefaultStrategy; the store cannot
 // import engine, because engine imports the store.
 const defaultSessionStrategy = "BALANCED"
 
-func NewSessionStore(db *sql.DB) *SessionStore { return &SessionStore{db: db} }
+func NewSessionStore(db *db.DB) *SessionStore { return &SessionStore{db: db} }
 
 func (s *SessionStore) Create(ctx context.Context, sess *models.Session) error {
 	if sess.ID == "" {

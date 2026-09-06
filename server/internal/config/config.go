@@ -9,8 +9,10 @@ import (
 
 // Config holds runtime configuration sourced from environment variables.
 type Config struct {
-	Port         string
-	DBPath       string
+	Port string
+	// DatabaseURL is a lib/pq connection string. PostgreSQL is the only
+	// supported dialect; there is no fallback.
+	DatabaseURL  string
 	JWTSecret    string
 	TokenTTL     string
 	Env          string
@@ -70,7 +72,7 @@ type Config struct {
 func Load() Config {
 	return Config{
 		Port:         getenv("PORT", "8080"),
-		DBPath:       getenv("DB_PATH", "data/iconfess.db"),
+		DatabaseURL:  getenv("DATABASE_URL", "host=127.0.0.1 port=5432 user=iconfess password=iconfess dbname=iconfess sslmode=disable"),
 		JWTSecret:    getenv("JWT_SECRET", "dev-only-change-me"),
 		TokenTTL:     getenv("TOKEN_TTL", "720h"),
 		Env:          getenv("ENV", "development"),

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"github.com/Teamthy/i-confess/internal/db"
 	"strings"
 
 	"github.com/Teamthy/i-confess/internal/models"
@@ -16,9 +17,9 @@ import (
 // identity record is security-critical and rarely written, while preferences
 // change constantly. Keeping them apart means a preference toggle never
 // contends with authentication reads (§113).
-type ProfileStore struct{ db *sql.DB }
+type ProfileStore struct{ db *db.DB }
 
-func NewProfileStore(db *sql.DB) *ProfileStore { return &ProfileStore{db: db} }
+func NewProfileStore(db *db.DB) *ProfileStore { return &ProfileStore{db: db} }
 
 // ---------------------------------------------------------------------------
 // Profile

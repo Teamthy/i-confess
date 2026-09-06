@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"github.com/Teamthy/i-confess/internal/db"
 	"strconv"
 	"strings"
 
@@ -10,9 +11,9 @@ import (
 )
 
 // ScheduleStore manages user schedules.
-type ScheduleStore struct{ db *sql.DB }
+type ScheduleStore struct{ db *db.DB }
 
-func NewScheduleStore(db *sql.DB) *ScheduleStore { return &ScheduleStore{db: db} }
+func NewScheduleStore(db *db.DB) *ScheduleStore { return &ScheduleStore{db: db} }
 
 func (s *ScheduleStore) Create(ctx context.Context, sc *models.Schedule) error {
 	if sc.ID == "" {

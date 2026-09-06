@@ -2,7 +2,7 @@ package health
 
 import (
 	"context"
-	"database/sql"
+	"github.com/Teamthy/i-confess/internal/db"
 	"net/http"
 	"time"
 
@@ -11,10 +11,10 @@ import (
 
 // Checker performs application health checks.
 type Checker struct {
-	db *sql.DB
+	db *db.DB
 }
 
-func New(db *sql.DB) *Checker {
+func New(db *db.DB) *Checker {
 	return &Checker{db: db}
 }
 

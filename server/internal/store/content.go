@@ -4,15 +4,16 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"github.com/Teamthy/i-confess/internal/db"
 	"strings"
 
 	"github.com/Teamthy/i-confess/internal/models"
 )
 
 // ContentStore manages collections, categories, confessions, variants, and scriptures.
-type ContentStore struct{ db *sql.DB }
+type ContentStore struct{ db *db.DB }
 
-func NewContentStore(db *sql.DB) *ContentStore { return &ContentStore{db: db} }
+func NewContentStore(db *db.DB) *ContentStore { return &ContentStore{db: db} }
 
 // ---------- Collections ----------
 
@@ -142,7 +143,7 @@ func (s *ContentStore) CreateConfession(ctx context.Context, c *models.Confessio
 	return tx.Commit()
 }
 
-func insertVariant(ctx context.Context, tx *sql.Tx, confessionID string, v models.ConfessionVariant) error {
+func insertVariant(ctx context.Context, tx *db.Tx, confessionID string, v models.ConfessionVariant) error {
 	if v.ID == "" {
 		v.ID = newID()
 	}
@@ -152,7 +153,7 @@ func insertVariant(ctx context.Context, tx *sql.Tx, confessionID string, v model
 	return err
 }
 
-func insertScripture(ctx context.Context, tx *sql.Tx, confessionID string, s models.ScriptureRef) error {
+func insertScripture(ctx context.Context, tx *db.Tx, confessionID string, s models.ScriptureRef) error {
 	if s.ID == "" {
 		s.ID = newID()
 	}

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/Teamthy/i-confess/internal/db"
 	"strings"
 	"time"
 
@@ -29,12 +30,12 @@ var (
 
 // Service performs account deletion.
 type Service struct {
-	db  *sql.DB
+	db  *db.DB
 	Now func() time.Time
 }
 
 // NewService wires a deletion service.
-func NewService(db *sql.DB) *Service {
+func NewService(db *db.DB) *Service {
 	return &Service{db: db, Now: time.Now}
 }
 
@@ -278,7 +279,7 @@ func (s *Service) Erase(ctx context.Context, userID string) (*ErasureReport, err
 }
 
 // applyPolicy executes one table's rule.
-func applyPolicy(ctx context.Context, tx *sql.Tx, p TablePolicy, userID string) (int, error) {
+func applyPolicy(ctx context.Context, tx *db.Tx, p TablePolicy, userID string) (int, error) {
 	switch p.Action {
 	case Retain:
 		return 0, nil

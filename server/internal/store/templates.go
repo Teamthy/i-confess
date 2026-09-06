@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
+	"github.com/Teamthy/i-confess/internal/db"
 	"strings"
 	"time"
 )
@@ -26,9 +27,9 @@ type Template struct {
 	UpdatedAt   string   `json:"updated_at"`
 }
 
-type TemplateStore struct{ db *sql.DB }
+type TemplateStore struct{ db *db.DB }
 
-func NewTemplateStore(db *sql.DB) *TemplateStore { return &TemplateStore{db: db} }
+func NewTemplateStore(db *db.DB) *TemplateStore { return &TemplateStore{db: db} }
 
 func (s *TemplateStore) Create(ctx context.Context, t *Template) error {
 	if t.ID == "" {

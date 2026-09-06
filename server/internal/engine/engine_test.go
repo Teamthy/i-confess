@@ -3,10 +3,9 @@ package engine
 import (
 	"context"
 	"errors"
-	"path/filepath"
 	"testing"
 
-	"github.com/Teamthy/i-confess/internal/db"
+	"github.com/Teamthy/i-confess/internal/db/dbtest"
 	"github.com/Teamthy/i-confess/internal/models"
 	"github.com/Teamthy/i-confess/internal/store"
 )
@@ -15,11 +14,7 @@ import (
 // and confessions with audio, then wires the engine.
 func setup(t *testing.T) (*Engine, *store.ContentStore, *store.AudioStore, *store.UserStore) {
 	t.Helper()
-	conn, err := db.Open(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatalf("db open: %v", err)
-	}
-	t.Cleanup(func() { conn.Close() })
+	conn := dbtest.New(t)
 
 	content := store.NewContentStore(conn)
 	audio := store.NewAudioStore(conn)

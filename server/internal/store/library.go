@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"github.com/Teamthy/i-confess/internal/db"
 
 	"github.com/Teamthy/i-confess/internal/models"
 	"github.com/google/uuid"
@@ -15,9 +16,9 @@ import (
 // Every read and write is scoped by user_id in SQL rather than filtered in Go.
 // Enforcing ownership in the query means a handler that forgets to check
 // returns nothing instead of returning someone else's data (§71).
-type LibraryStore struct{ db *sql.DB }
+type LibraryStore struct{ db *db.DB }
 
-func NewLibraryStore(db *sql.DB) *LibraryStore { return &LibraryStore{db: db} }
+func NewLibraryStore(db *db.DB) *LibraryStore { return &LibraryStore{db: db} }
 
 // ErrForbidden marks an attempt to touch another user's resource.
 var ErrForbidden = errors.New("resource does not belong to this user")

@@ -4,15 +4,16 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"github.com/Teamthy/i-confess/internal/db"
 	"strings"
 
 	"github.com/Teamthy/i-confess/internal/models"
 )
 
 // AudioStore manages voices and audio assets.
-type AudioStore struct{ db *sql.DB }
+type AudioStore struct{ db *db.DB }
 
-func NewAudioStore(db *sql.DB) *AudioStore { return &AudioStore{db: db} }
+func NewAudioStore(db *db.DB) *AudioStore { return &AudioStore{db: db} }
 
 func (s *AudioStore) CreateVoice(ctx context.Context, v *models.Voice) error {
 	if v.ID == "" {

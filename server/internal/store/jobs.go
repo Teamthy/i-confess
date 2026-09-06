@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"github.com/Teamthy/i-confess/internal/db"
 	"time"
 
 	"github.com/Teamthy/i-confess/internal/jobs"
@@ -12,10 +13,10 @@ import (
 
 // JobStore handles persistence of background jobs.
 type JobStore struct {
-	db *sql.DB
+	db *db.DB
 }
 
-func NewJobStore(db *sql.DB) *JobStore {
+func NewJobStore(db *db.DB) *JobStore {
 	return &JobStore{db: db}
 }
 

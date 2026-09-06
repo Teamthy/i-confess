@@ -2,15 +2,15 @@ package store
 
 import (
 	"context"
-	"database/sql"
+	"github.com/Teamthy/i-confess/internal/db"
 
 	"github.com/Teamthy/i-confess/internal/models"
 )
 
 // EngagementStore manages favorites, playback history, and user confessions.
-type EngagementStore struct{ db *sql.DB }
+type EngagementStore struct{ db *db.DB }
 
-func NewEngagementStore(db *sql.DB) *EngagementStore { return &EngagementStore{db: db} }
+func NewEngagementStore(db *db.DB) *EngagementStore { return &EngagementStore{db: db} }
 
 // ---------- Favorites ----------
 
