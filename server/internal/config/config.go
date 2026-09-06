@@ -2,6 +2,7 @@ package config
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -71,11 +72,16 @@ type Config struct {
 
 func Load() Config {
 	return Config{
-		Port:         getenv("PORT", "8080"),
-		DatabaseURL:  getenv("DATABASE_URL", "host=127.0.0.1 port=5432 user=iconfess password=iconfess dbname=iconfess sslmode=disable"),
-		JWTSecret:    getenv("JWT_SECRET", "dev-only-change-me"),
-		TokenTTL:     getenv("TOKEN_TTL", "720h"),
-		Env:          getenv("ENV", "development"),
+		Port:        getenv("PORT", "8080"),
+		DatabaseURL: getenv("DATABASE_URL", "host=127.0.0.1 port=5432 user=iconfess password=iconfess dbname=iconfess sslmode=disable"),
+		JWTSecret:   getenv("JWT_SECRET", "dev-only-change-me"),
+		// An access token, not a session. 720h (30 days) was the previous default:
+		// a stolen token stayed valid for a month, and nothing in the client needs
+		// a token that outlives a working day. Refresh covers longer sessions.
+		TokenTTL: getenv("TOKEN_TTL", "24h"),
+		// Lower-cased, because a safety check keyed on an exact string is a
+		// safety check that a capital letter defeats.
+		Env:          strings.ToLower(getenv("ENV", "development")),
 		MediaDir:     getenv("MEDIA_DIR", "data/media"),
 		PostgresDSN:  getenv("POSTGRES_DSN", ""),
 		RedisAddr:    getenv("REDIS_ADDR", ""),
@@ -108,12 +114,42 @@ func Load() Config {
 // IsProduction reports whether unsafe defaults must be rejected at boot.
 func (c Config) IsProduction() bool { return c.Env == "production" }
 
-// Validate refuses to start production with development secrets.
+// knownEnvironments is the complete set of accepted ENV values. Anything else
+// is a typo, and a typo must not silently select a more permissive mode.
+var knownEnvironments = map[string]bool{
+	"development": true,
+	"test":        true,
+	"staging":     true,
+	"production":  true,
+}
+
+// unsafeDefaultsAllowed reports whether this environment may run with
+// development secrets. Only development and test qualify.
 //
-// Failing loudly at boot is far better than silently signing audio with a
-// publicly known default, which would let anyone mint valid links.
+// This used to be "IsProduction()", which meant every check below ran only when
+// ENV was exactly "production". Verified against the running code, that let
+// ENV=prod, ENV=staging, ENV=Production and an unset ENV all boot with
+// JWT_SECRET=dev-only-change-me - a value published in this repository. Anyone
+// holding it can forge a session token for any user, including an admin.
+// Forgetting one environment variable is not a rare mistake, so the gate is
+// inverted: unsafe defaults are refused everywhere unless the environment is
+// explicitly one that is allowed to have them.
+func (c Config) unsafeDefaultsAllowed() bool {
+	return c.Env == "development" || c.Env == "test"
+}
+
+// Validate refuses to start with development secrets unless the environment is
+// explicitly one that may have them.
+//
+// Failing loudly at boot is far better than silently signing tokens or audio
+// with a publicly known default.
 func (c Config) Validate() error {
-	if !c.IsProduction() {
+	if !knownEnvironments[c.Env] {
+		return fmt.Errorf(
+			"ENV=%q is not a recognised environment (want development, test, staging or production); "+
+				"refusing to guess which safety checks apply", c.Env)
+	}
+	if c.unsafeDefaultsAllowed() {
 		return nil
 	}
 	if c.JWTSecret == "" || c.JWTSecret == "dev-only-change-me" {

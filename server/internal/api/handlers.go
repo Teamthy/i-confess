@@ -298,7 +298,27 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 
 	// Second factor, if enrolled. The password alone must not yield a session
 	// (S41): everything below this point requires the factor to be satisfied.
-	if enrolment, mErr := h.users.MFAEnrolmentFor(r.Context(), u.ID); mErr == nil && enrolment.Enabled {
+	//
+	// A failure to read the enrolment is refused, not ignored. The previous form
+	// was "mErr == nil && enrolment.Enabled", which meant any error - a dropped
+	// connection, a timeout, a failed query - evaluated the whole condition to
+	// false and issued a session with the second factor silently skipped. That
+	// turns an availability incident into an authentication bypass, and it fails
+	// in the direction an attacker would choose. A user who cannot sign in
+	// during an outage is inconvenienced; a user whose 2FA vanished is
+	// compromised.
+	//
+	// ErrNotFound means "not enrolled", which is a normal answer and not a
+	// failure. Every other error is refused. Collapsing the two - as
+	// "mErr == nil && enrolment.Enabled" did - is what let a database error
+	// skip the second factor entirely.
+	enrolment, mErr := h.users.MFAEnrolmentFor(r.Context(), u.ID)
+	if mErr != nil && !errors.Is(mErr, store.ErrNotFound) {
+		log.Printf("auth: cannot read MFA enrolment for %s, refusing sign-in: %v", u.ID, mErr)
+		httpx.WriteError(w, http.StatusServiceUnavailable, "sign-in is temporarily unavailable, try again")
+		return
+	}
+	if mErr == nil && enrolment.Enabled {
 		if req.Code == "" {
 			// Signals the client to prompt. Deliberately not an error: the
 			// credentials were correct, the login is simply incomplete.
