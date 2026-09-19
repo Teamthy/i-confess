@@ -905,6 +905,148 @@ final class Interests {
       );
 }
 
+/// A search result across confessions, categories, collections, voices.
+final class SearchResult {
+  const SearchResult({
+    required this.id,
+    this.type = '',
+    this.title = '',
+    this.description = '',
+    this.imageUrl = '',
+    this.score = 0,
+  });
+
+  final String id;
+  final String type;
+  final String title;
+  final String description;
+  final String imageUrl;
+  final double score;
+
+  factory SearchResult.fromJson(Map<String, dynamic> json) => SearchResult(
+        id: _str(json, 'id'),
+        type: _str(json, 'type'),
+        title: _str(json, 'title'),
+        description: _str(json, 'description'),
+        imageUrl: _str(json, 'image_url'),
+        score: (json['score'] is num) ? (json['score'] as num).toDouble() : 0,
+      );
+}
+
+/// Recommendations payload (deterministic v1).
+final class Recommendations {
+  const Recommendations({
+    this.categories = const [],
+    this.confessions = const [],
+    this.personalized = false,
+  });
+
+  final List<Category> categories;
+  final List<Confession> confessions;
+  final bool personalized;
+
+  factory Recommendations.fromJson(Map<String, dynamic> json) =>
+      Recommendations(
+        categories:
+            _list(json['categories']).map(Category.fromJson).toList(),
+        confessions:
+            _list(json['confessions']).map(Confession.fromJson).toList(),
+        personalized: _bool(json, 'personalized'),
+      );
+}
+
+/// Subscription plan with regional pricing.
+final class Plan {
+  const Plan({
+    required this.id,
+    this.name = '',
+    this.description = '',
+    this.interval = 'monthly',
+    this.prices = const {},
+    this.features = const [],
+    this.trialDays = 0,
+  });
+
+  final String id;
+  final String name;
+  final String description;
+  final String interval;
+  final Map<String, dynamic> prices;
+  final List<String> features;
+  final int trialDays;
+
+  String priceFor(String currency) {
+    final p = prices[currency];
+    if (p is Map<String, dynamic>) {
+      final amount = p['amount'];
+      final curr = p['currency'] ?? currency;
+      if (amount != null) return '$curr $amount';
+    }
+    if (p is num) return '$currency $p';
+    return '';
+  }
+
+  factory Plan.fromJson(Map<String, dynamic> json) => Plan(
+        id: _str(json, 'id'),
+        name: _str(json, 'name'),
+        description: _str(json, 'description'),
+        interval: _str(json, 'interval', 'monthly'),
+        prices: json['prices'] is Map<String, dynamic>
+            ? json['prices'] as Map<String, dynamic>
+            : const {},
+        features: (json['features'] is List)
+            ? (json['features'] as List).whereType<String>().toList()
+            : const [],
+        trialDays: _int(json, 'trial_days'),
+      );
+}
+
+/// Current subscription state.
+final class Subscription {
+  const Subscription({
+    this.plan = 'free',
+    this.status = 'active',
+    this.active = false,
+    this.maxSessionSeconds = 900,
+  });
+
+  final String plan;
+  final String status;
+  final bool active;
+  final int maxSessionSeconds;
+
+  bool get isPremium => plan == 'premium' && active;
+
+  factory Subscription.fromJson(Map<String, dynamic> json) => Subscription(
+        plan: _str(json, 'plan', 'free'),
+        status: _str(json, 'status', 'active'),
+        active: _bool(json, 'active'),
+        maxSessionSeconds: _int(json, 'max_session_seconds', 900),
+      );
+}
+
+/// Trial journey day.
+final class TrialDay {
+  const TrialDay({
+    this.day = 0,
+    this.title = '',
+    this.description = '',
+    this.cta = '',
+  });
+
+  final int day;
+  final String title;
+  final String description;
+  final String cta;
+
+  factory TrialDay.fromJson(Map<String, dynamic> json) => TrialDay(
+        day: _int(json, 'day'),
+        title: _str(json, 'title'),
+        description: _str(json, 'description'),
+        cta: _str(json, 'cta'),
+      );
+}
+
 /// Parses a list endpoint, tolerating both a bare array and a wrapped one.
 List<T> parseList<T>(Object? source, T Function(Map<String, dynamic>) fromJson) {
   if (source is List) return _list(source).map(fromJson).toList();

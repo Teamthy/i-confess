@@ -53,12 +53,30 @@ abstract final class AppRoutes {
   static const history = '/history';
   static const premium = '/premium';
   static const settings = '/settings';
+  static const library = '/library';
+  static const templates = '/templates';
+  static const templateShare = '/t';
+  static const meEdit = '/me/edit';
+  static const mePremium = '/me/premium';
+  static const meSettings = '/me/settings';
+  static const settingsPreferences = '/settings/preferences';
+  static const settingsInterests = '/settings/interests';
+  static const settingsNotifications = '/settings/notifications';
+  static const settingsDevices = '/settings/devices';
+  static const settingsSecurity = '/settings/security';
+  static const settingsDownloads = '/settings/downloads';
+  static const settingsDeletion = '/settings/deletion';
+  static const settingsExport = '/settings/export';
 
   /// Builds a category detail path.
   static String categoryDetail(String id) => '$category/$id';
 
   /// Builds a confession detail path.
   static String confessionDetail(String id) => '$confession/$id';
+
+  static String templateDetail(String id) => '$templates/$id';
+  static String collectionDetail(String id) => '$library/collection/$id';
+  static String playerWithId(String id) => '$player/$id';
 
   /// The five bottom-navigation destinations, in display order.
   ///
@@ -106,4 +124,20 @@ abstract final class AppRouteNames {
   static const history = 'history';
   static const premium = 'premium';
   static const settings = 'settings';
+  static const library = 'library';
+  static const templates = 'templates';
+  static const templateDetail = 'templateDetail';
+  static const templateShare = 'templateShare';
+  static const collectionDetail = 'collectionDetail';
+  static const meEdit = 'meEdit';
+  static const mePremium = 'mePremium';
+  static const meSettings = 'meSettings';
+  static const settingsPreferences = 'settingsPreferences';
+  static const settingsInterests = 'settingsInterests';
+  static const settingsNotifications = 'settingsNotifications';
+  static const settingsDevices = 'settingsDevices';
+  static const settingsSecurity = 'settingsSecurity';
+  static const settingsDownloads = 'settingsDownloads';
+  static const settingsDeletion = 'settingsDeletion';
+  static const settingsExport = 'settingsExport';
 }
