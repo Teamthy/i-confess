@@ -98,12 +98,14 @@ jobs:
           python3 design/test_design.py
           python3 design/test_ia.py
 
-      # new-from-merge-base: main needs a ref literally named `main`. The
+      # new-from-merge-base: main needs a ref literally named `main`. The PR
       # checkout is a detached merge ref, so create it before lint runs;
       # otherwise golangci cannot resolve the base and reports findings on
-      # lines the branch never touched as if they were new.
+      # lines the branch never touched as if they were new. On push runs the
+      # local branch already exists (it IS the checkout), so only create it
+      # when missing.
       - name: Resolve lint merge base
-        run: git branch --force main origin/main
+        run: git rev-parse --verify --quiet main >/dev/null || git branch main origin/main
 
       - name: Lint
         uses: golangci/golangci-lint-action@v8
