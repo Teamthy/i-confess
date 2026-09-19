@@ -66,9 +66,12 @@ linters:
       # the only caller left is the deferred function itself. Checking them
       # means either discarding the result explicitly at every call site or
       # leaking an error into a return value nothing reads. Both are worse than
-      # the exclusion. Any *other* unchecked error still fails the build.
+      # the exclusion. The receiver admits segments (`res.Body.Close`), which
+      # the original `\w+` silently dropped — five deferred HTTP-body closes
+      # were being flagged although this paragraph covers them exactly.
+      # Any *other* unchecked error still fails the build.
       - linters: [errcheck]
-        source: 'defer\s+\w+\.(Close|Rollback)\('
+        source: 'defer\s+[\w.]+\.(Close|Rollback)\('
 
 issues:
   max-issues-per-linter: 0

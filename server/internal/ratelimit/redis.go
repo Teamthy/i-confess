@@ -74,7 +74,9 @@ func (r *RedisStore) get() (net.Conn, error) {
 	}
 	if r.password != "" {
 		if _, err := roundTrip(c, r.Timeout, "AUTH", r.password); err != nil {
-			c.Close()
+			// The connection is broken and about to be dropped; a failed
+			// close has nothing left to protect.
+			_ = c.Close()
 			return nil, err
 		}
 	}
@@ -85,7 +87,9 @@ func (r *RedisStore) put(c net.Conn) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if len(r.conns) >= r.MaxIdle {
-		c.Close()
+		// Over the pool's idle limit: the connection is being thrown away,
+		// not handed back, so the close's error has no caller to inform.
+		_ = c.Close()
 		return
 	}
 	r.conns = append(r.conns, c)
@@ -110,7 +114,8 @@ func (r *RedisStore) Incr(key string, window time.Duration) (int, error) {
 		[]string{"EXPIRE", key, strconv.Itoa(secs), "NX"},
 	)
 	if err != nil {
-		c.Close()
+		// Discarded with the failed request, same as the AUTH path above.
+		_ = c.Close()
 		return 0, err
 	}
 	r.put(c)
@@ -124,7 +129,8 @@ func (r *RedisStore) Del(key string) error {
 		return err
 	}
 	if _, err := roundTrip(c, r.Timeout, "DEL", key); err != nil {
-		c.Close()
+		// Broken connection, discarded like the AUTH path's.
+		_ = c.Close()
 		return err
 	}
 	r.put(c)
@@ -136,7 +142,9 @@ func (r *RedisStore) Close() error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for _, c := range r.conns {
-		c.Close()
+		// Pool teardown: every connection is going away regardless, and the
+		// method's contract has no error to carry a close failure to.
+		_ = c.Close()
 	}
 	r.conns = nil
 	return nil
@@ -149,7 +157,8 @@ func (r *RedisStore) Ping() error {
 		return err
 	}
 	if _, err := roundTrip(c, r.Timeout, "PING"); err != nil {
-		c.Close()
+		// Broken connection, discarded like the AUTH path's.
+		_ = c.Close()
 		return err
 	}
 	r.put(c)

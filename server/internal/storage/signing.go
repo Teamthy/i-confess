@@ -34,7 +34,9 @@ const (
 // controls part of a key shift the boundary and reuse a signature.
 func Sign(secret, key string, expires int64) string {
 	mac := hmac.New(sha256.New, []byte(secret))
-	fmt.Fprintf(mac, "%s\n%d", key, expires)
+	// hash.Hash documents Write as never returning an error, so the discarded
+	// result is a deliberate statement of that contract, not an oversight.
+	_, _ = fmt.Fprintf(mac, "%s\n%d", key, expires) //nolint:errcheck
 	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 }
 

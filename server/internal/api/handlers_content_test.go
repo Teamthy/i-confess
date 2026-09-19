@@ -285,7 +285,9 @@ func createAdminUser(t *testing.T, dbConn interface{}, h *Handler, router http.H
 
 	var adminRegisterResult map[string]interface{}
 	json.Unmarshal(adminRegisterResp.Body.Bytes(), &adminRegisterResult)
-	adminToken := adminRegisterResult["token"].(string)
+	// The token issued at registration is never used - the flow re-authenticates
+	// below. The assertion stays as a sanity check on the register response.
+	_ = adminRegisterResult["token"].(string)
 
 	// Extract user ID and set admin role
 	adminUserData := adminRegisterResult["user"].(map[string]interface{})
@@ -320,7 +322,7 @@ func createAdminUser(t *testing.T, dbConn interface{}, h *Handler, router http.H
 
 	var adminLoginResult map[string]interface{}
 	json.Unmarshal(adminLoginResp.Body.Bytes(), &adminLoginResult)
-	adminToken = adminLoginResult["token"].(string)
+	adminToken := adminLoginResult["token"].(string)
 
 	_ = setRoleReq
 	_ = setRoleResp
