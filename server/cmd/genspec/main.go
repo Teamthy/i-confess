@@ -3,7 +3,6 @@ package main
 import (
 	"database/sql"
 	"encoding/json"
-	"fmt"
 	"os"
 
 	"github.com/Teamthy/i-confess/internal/api"
@@ -37,7 +36,6 @@ func main() {
 	if err := os.WriteFile(os.Args[1], append(out, '\n'), 0o644); err != nil {
 		panic(err)
 	}
-	if _, err := fmt.Printf("wrote %s (%d bytes, %d paths)\n", os.Args[1], len(out), len(spec["paths"].(map[string]any))); err != nil {
-		panic(err)
-	}
+	// No summary line: the exit code is the result. A write that cannot be
+	// checked without dragging its own finding around is not worth having.
 }
