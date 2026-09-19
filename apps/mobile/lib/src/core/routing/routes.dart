@@ -39,7 +39,14 @@ abstract final class AppRoutes {
   static const category = '/explore/category';
   static const confession = '/confession';
   static const player = '/player';
-  static const voices = '/voices';
+
+  /// The builder's steps after category selection, in walk order (§12:
+  /// `confess → confess/duration → confess/voice → confess/create → player`).
+  /// Paths match the information architecture one-to-one, because a deep
+  /// link lands on them verbatim.
+  static const builderDuration = '/confess/duration';
+  static const builderVoice = '/confess/voice';
+  static const builderCreate = '/confess/create';
   static const rituals = '/rituals';
   static const saved = '/saved';
   static const downloads = '/downloads';
@@ -90,7 +97,9 @@ abstract final class AppRouteNames {
   static const categoryDetail = 'categoryDetail';
   static const confessionDetail = 'confessionDetail';
   static const player = 'player';
-  static const voices = 'voices';
+  static const builderDuration = 'builderDuration';
+  static const builderVoice = 'builderVoice';
+  static const builderCreate = 'builderCreate';
   static const rituals = 'rituals';
   static const saved = 'saved';
   static const downloads = 'downloads';

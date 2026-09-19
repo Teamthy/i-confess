@@ -11,6 +11,9 @@ import '../../features/auth/sign_up_screen.dart';
 import '../../features/auth/verification_screen.dart';
 import '../../features/auth/welcome_screen.dart';
 import '../../features/confess/confess_screen.dart';
+import '../../features/confess/duration_screen.dart';
+import '../../features/confess/review_screen.dart';
+import '../../features/confess/voice_screen.dart';
 import '../../features/confession/confession_detail_screen.dart';
 import '../../features/explore/category_detail_screen.dart';
 import '../../features/explore/explore_screen.dart';
@@ -203,6 +206,27 @@ GoRouter createRouter(
               path: AppRoutes.confess,
               name: AppRouteNames.confess,
               builder: (context, state) => const ConfessScreen(),
+              routes: [
+                // The builder's steps, in walk order. They live inside the
+                // confess branch so the tab bar stays: building a session is
+                // not an immersive flow like playback, and a listener who
+                // taps Explore mid-build should not lose their place.
+                GoRoute(
+                  path: 'duration',
+                  name: AppRouteNames.builderDuration,
+                  builder: (context, state) => const DurationScreen(),
+                ),
+                GoRoute(
+                  path: 'voice',
+                  name: AppRouteNames.builderVoice,
+                  builder: (context, state) => const VoiceScreen(),
+                ),
+                GoRoute(
+                  path: 'create',
+                  name: AppRouteNames.builderCreate,
+                  builder: (context, state) => const ReviewScreen(),
+                ),
+              ],
             ),
           ]),
           StatefulShellBranch(routes: [
@@ -244,7 +268,7 @@ GoRouter createRouter(
         path: AppRoutes.player,
         name: AppRouteNames.player,
         builder: (context, state) =>
-            const PlaceholderScreen(title: 'Player', body: 'PHASE 23', immersive: true),
+            const PlaceholderScreen(title: 'Player', body: 'PHASE 24', immersive: true),
       ),
       GoRoute(
         path: '${AppRoutes.confession}/:id',
@@ -252,12 +276,6 @@ GoRouter createRouter(
         builder: (context, state) => ConfessionDetailScreen(
           confessionId: state.pathParameters['id'] ?? '',
         ),
-      ),
-      GoRoute(
-        path: AppRoutes.voices,
-        name: AppRouteNames.voices,
-        builder: (context, state) =>
-            const PlaceholderScreen(title: 'Choose a voice', body: 'PHASE 22'),
       ),
       GoRoute(
         path: AppRoutes.rituals,

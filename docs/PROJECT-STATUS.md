@@ -1,6 +1,16 @@
 # Project Status
 
-**Last verified:** 2026-09-19, at PHASE 22 (Mobile Confession Experience; detail screen with full texts, variants, scripture, tags, intensity, favourite toggle and build-session action; confess tab now a real category-selection surface; 121 app tests, 43 client tests, 28 Go packages, `make verify` partial — Go toolchain absent in sandbox but code unchanged).
+**Last verified:** 2026-09-19, at PHASE 23 (Mobile Session Builder; the builder
+walk confess/duration → confess/voice → confess/create is real: engine ladder
+and strategies with a source-reading drift guard, live `POST /sessions/preview`
+card, licensed-only voice picker, review that creates a session and offers the
+shape as a template; confession handoff from "Build a session with this";
+client contract shape-checked against a live server with a real database.
+Go toolchain 1.27.1 and PostgreSQL 17.10 installed from npm/PyPI mirrors;
+27/28 Go packages pass (one pre-existing, environmental `/etc/mime.types`
+failure in `internal/storage`); the Dart/Flutter SDKs remain unreachable from
+this sandbox, so `dart test` / `flutter test` are written and owed to CI —
+see PHASE 23 condition C-1).
 
 This file supersedes `MASTER-PROMPT-COMPLETION.md`,
 `CONTENT-DOMAIN-COMPLETION.md`, `AUDIO-PLATFORM-STATUS.md`, `SESSION-NOTES.md`
@@ -41,7 +51,7 @@ it.** Every claim below was produced by running something.
 | **Soft delete / versioning** | Present on 2 of 64 tables each. Section 25 asks for both generally. |
 | **Cache** | Per-process only; no cross-instance invalidation. |
 | **Design system** | 120 tokens, contrast-verified, but not yet consumed by any real surface. |
-| **Navigation** | 37 screens specified and validated; none are built. Mobile has 2 real screens and 3 placeholders. |
+| **Navigation** | 37 screens specified and validated; mobile has the shell plus real home, explore, category, confession and builder surfaces; activity, me, player and the rest are still placeholders (PHASE 24–30). |
 | **Observability** | No cache hit-rate metric; runtime dependency failure untested. |
 
 ## Phase progress
@@ -90,6 +100,19 @@ PHASE 22 Mobile Confession Experience — **PASS WITH CONDITIONS** (confession
     detail: full texts, variants, scripture anchors, intensity, tags, favourite
     toggle and build-session action; confess tab now a real category-selection
     surface; category rows navigate to detail)
+
+PHASE 23 Mobile Session Builder — **PASS WITH CONDITIONS** (the builder walk
+    is real end to end: duration step with the engine's ladder, a bounds-
+    enforcing custom field, the BALANCED-defaulted strategy selector and a
+    live `POST /sessions/preview` card; voice step filtering the catalogue to
+    `status == 'active'` with "no preference" as a first-class choice; review
+    step that creates the session — asserting the exact request body — shows
+    the composition with locked items and no play button, and offers the shape
+    as a template per §5.4; "Build a session with this" hands the confession
+    into the builder with its category pre-selected and announced; drift-guard
+    test reads `planner.go` and `handlers.go` so the client's mirrored
+    constants cannot rot; `contracts/openapi.json` regenerated from the live
+    route table after the audit found it 146 paths stale)
 
 Open gaps carried forward: G-2, G-3, G-7, G-9, G-10, G-12, G-13,
 G-14, G-15, G-16, G-17, G-18, G-19, G-20, G-21, G-22, G-23, G-24, G-25, G-26, G-27, G-28,

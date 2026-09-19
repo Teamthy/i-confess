@@ -447,9 +447,10 @@ class _Actions extends StatelessWidget {
         FilledButton.icon(
           key: const ValueKey('btn-build-session'),
           onPressed: () {
-            // Phase 23 will build a session from this confession; for now
-            // route to the builder with the confession id as a hint.
-            context.go('${AppRoutes.confess}?confession=${confession.id}');
+            // Into the builder with this confession as the starting point:
+            // the confess tab reads the parameter, pre-selects the
+            // confession's category and says so on screen.
+            context.go('${AppRoutes.confess}?confession=${Uri.encodeComponent(confession.id)}');
           },
           icon: const Icon(Icons.graphic_eq_rounded),
           label: const Text('Build a session with this'),

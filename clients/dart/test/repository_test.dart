@@ -345,6 +345,137 @@ void main() {
         reason: 'session lists are never served from the client cache');
   });
 
+  group('voices', () {
+    test('decodes catalogue voices and marks the unlicensed unselectable',
+        () async {
+      api.respond('/voices', 200, {
+        'data': [
+          {'id': 'grace', 'name': 'Grace', 'description': 'Warm, calm professional narration voice.', 'gender': 'female', 'premium': false, 'status': 'active'},
+          {'id': 'solace', 'name': 'Solace', 'premium': true, 'status': 'active'},
+          {'id': 'retired', 'name': 'Old Voice', 'premium': false, 'status': 'retired'},
+        ],
+      });
+
+      final loadable = await ContentRepository(client, cache).voices();
+      final voices = loadable.valueOrNull!;
+
+      expect(voices, hasLength(3));
+      expect(voices.first.description,
+          'Warm, calm professional narration voice.');
+      // The picker filters on this: a retired voice cannot be licensed, so
+      // offering it would build a session that fails at generation time.
+      expect(voices[0].isSelectable, isTrue);
+      expect(voices[2].isSelectable, isFalse);
+    });
+  });
+
+  group('session preview', () {
+    test('sends the same shape as create and decodes the would-be plan',
+        () async {
+      api.respond('/sessions/preview', 200, {
+        'target_seconds': 1800,
+        'actual_seconds': 1740,
+        'total_items': 12,
+        'items_preview': [
+          {'confession_id': 'c1', 'title': 'I am healed', 'duration_seconds': 300},
+          {'confession_id': 'c2', 'title': 'Peace, be still', 'duration_seconds': 180},
+          {'confession_id': 'c3', 'title': 'Fear not', 'duration_seconds': 300},
+        ],
+        'voice_id': 'grace',
+        'voice_downgraded': false,
+        'strategy': 'BALANCED',
+        'display': '30 MIN • 12 • grace',
+      });
+
+      final result = await ContentRepository(client, cache).previewSession(
+        categoryIds: ['cat1', 'cat2'],
+        durationSeconds: 1800,
+        voiceId: 'grace',
+        strategy: 'BALANCED',
+      );
+
+      final preview = (result as WriteSuccess<SessionPreview>).value;
+      expect(preview.targetSeconds, 1800);
+      expect(preview.actualSeconds, 1740,
+          reason: 'the builder shows why 30 minutes came back as 29');
+      expect(preview.totalItems, 12);
+      expect(preview.itemsPreview, hasLength(3));
+      expect(preview.display, '30 MIN • 12 • grace');
+      expect(preview.voiceDowngraded, isFalse);
+
+      // The dry-run must carry the same fields the create would: a preview
+      // that sends less than the create is a preview of a different session.
+      final sent = jsonDecode(api.lastBody!) as Map<String, dynamic>;
+      expect(sent['category_ids'], ['cat1', 'cat2']);
+      expect(sent['duration_seconds'], 1800);
+      expect(sent['voice_id'], 'grace');
+      expect(sent['strategy'], 'BALANCED');
+    });
+
+    test('a plan-capped length is a typed failure, not an exception', () async {
+      api.respond('/sessions/preview', 402, {
+        'error': 'your plan allows sessions up to 30 minutes',
+        'reason': 'plan_limit',
+      });
+
+      final result = await ContentRepository(client, cache)
+          .previewSession(categoryIds: ['cat1'], durationSeconds: 10800);
+
+      final failure = result as WriteFailure<SessionPreview>;
+      expect((failure.error as ApiError).requiresSubscription, isTrue,
+          reason: 'the builder must be able to tell "shorter, please" from '
+              '"you are offline"');
+    });
+  });
+
+  group('templates', () {
+    test('create sends shape fields and decodes the wrapped response',
+        () async {
+      api.respond('/templates', 201, {
+        'template': {
+          'id': 't1',
+          'user_id': 'u1',
+          'name': 'Morning on fear',
+          'category_ids': ['cat1'],
+          'voice_id': 'grace',
+          'is_public': false,
+          'share_token': 'tok-1',
+        },
+        'share_url': 'https://iconfess.app/t/tok-1',
+        'deeplink': 'iconfess://t/tok-1',
+      });
+
+      final result = await ContentRepository(client, cache).createTemplate(
+        name: 'Morning on fear',
+        categoryIds: ['cat1'],
+        voiceId: 'grace',
+      );
+
+      final template = (result as WriteSuccess<SessionTemplate>).value;
+      expect(template.id, 't1');
+      expect(template.name, 'Morning on fear');
+      expect(template.categoryIds, ['cat1']);
+      expect(template.shareUrl, 'https://iconfess.app/t/tok-1');
+      expect(template.deeplink, 'iconfess://t/tok-1');
+
+      final sent = jsonDecode(api.lastBody!) as Map<String, dynamic>;
+      expect(sent['name'], 'Morning on fear');
+      expect(sent['category_ids'], ['cat1']);
+      expect(sent.containsKey('voice_id'), isTrue);
+    });
+
+    test('a missing name is a 400 the UI can show inline', () async {
+      api.respond('/templates', 400, {
+        'error': 'name and at least one category are required',
+      });
+
+      final result = await ContentRepository(client, cache)
+          .createTemplate(name: '', categoryIds: ['cat1']);
+
+      expect(result is WriteFailure<SessionTemplate>, isTrue);
+    });
+  });
+
   group('downloads', () {
     test('reports licences expiring soon so they can be renewed', () async {
       final soon = DateTime.now().add(const Duration(hours: 12));

@@ -301,6 +301,13 @@ extension IConfessEndpoints on ApiClient {
   Future<Map<String, dynamic>> postSessions([Map<String, dynamic>? body]) =>
       post('/sessions', body);
 
+  /// Dry-run the session engine without persisting (§5.3). The builder calls
+  /// this so the listener sees the plan the engine chose — target versus
+  /// actual length, item count, voice downgrade — before committing.
+  Future<Map<String, dynamic>> postSessionsPreview(
+          [Map<String, dynamic>? body]) =>
+      post('/sessions/preview', body);
+
   /// Read a session with freshly signed audio
   Future<Map<String, dynamic>> getSessionsById(String id) =>
       get('/sessions/$id');
@@ -309,4 +316,9 @@ extension IConfessEndpoints on ApiClient {
   Future<Map<String, dynamic>> patchSessionsById(String id,
           [Map<String, dynamic>? body]) =>
       patch('/sessions/$id', body);
+
+  // ---- templates ----
+  /// Save the builder's current shape as a reusable template (§5.4).
+  Future<Map<String, dynamic>> postTemplates([Map<String, dynamic>? body]) =>
+      post('/templates', body);
 }
