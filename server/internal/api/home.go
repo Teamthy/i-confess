@@ -297,9 +297,9 @@ func (h *Handler) recommendations(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{
-		"categories":  recommendedCats,
-		"confessions": recommendedConfessions,
-		"count":       len(recommendedCats) + len(recommendedConfessions),
+		"categories":   recommendedCats,
+		"confessions":  recommendedConfessions,
+		"count":        len(recommendedCats) + len(recommendedConfessions),
 		"personalized": len(interestWeight) > 0,
 	})
 }
