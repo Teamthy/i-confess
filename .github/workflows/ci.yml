@@ -77,7 +77,15 @@ jobs:
       # reported in seconds rather than after the database suite. It uses
       # new-from-merge-base, so only findings introduced by the branch fail the
       # build; the pre-existing debt is tracked in docs/PROJECT-STATUS.md.
+      #
+      # The design scripts live at the repository root and resolve their inputs
+      # relative to the working directory, so this step overrides the job-level
+      # `working-directory: server`. Without the override it failed on every
+      # branch with "can't open file server/design/generate.py" while the real
+      # checks were never executed — a red build that proved nothing (PRs 24
+      # through 31 all merged with this step failing).
       - name: Design tokens
+        working-directory: .
         run: |
           python3 design/generate.py --check
           python3 design/test_design.py
