@@ -345,38 +345,156 @@ final class Collection {
       );
 }
 
+/// One length variant of a confession — 30s, 1m, 3m, 5m etc.
+final class ConfessionVariant {
+  const ConfessionVariant({
+    required this.id,
+    this.confessionId = '',
+    this.label = '',
+    this.durationSeconds = 0,
+    this.sortOrder = 0,
+  });
+
+  final String id;
+  final String confessionId;
+  final String label;
+  final int durationSeconds;
+  final int sortOrder;
+
+  factory ConfessionVariant.fromJson(Map<String, dynamic> json) =>
+      ConfessionVariant(
+        id: _str(json, 'id'),
+        confessionId: _str(json, 'confession_id'),
+        label: _str(json, 'label'),
+        durationSeconds: _int(json, 'duration_seconds'),
+        sortOrder: _int(json, 'sort_order'),
+      );
+}
+
+/// A Scripture anchor for a confession.
+final class ScriptureRef {
+  const ScriptureRef({
+    required this.id,
+    this.confessionId = '',
+    this.book = '',
+    this.chapter = 0,
+    this.verse = '',
+    this.translation = '',
+    this.isDirectQuote = false,
+    this.notes = '',
+    this.sortOrder = 0,
+  });
+
+  final String id;
+  final String confessionId;
+  final String book;
+  final int chapter;
+  final String verse;
+  final String translation;
+  final bool isDirectQuote;
+  final String notes;
+  final int sortOrder;
+
+  /// Human-readable reference like "John 3:16" or "Psalm 23".
+  String get reference {
+    if (book.isEmpty) return '';
+    if (chapter <= 0) return book;
+    if (verse.isEmpty) return '$book $chapter';
+    return '$book $chapter:$verse';
+  }
+
+  factory ScriptureRef.fromJson(Map<String, dynamic> json) => ScriptureRef(
+        id: _str(json, 'id'),
+        confessionId: _str(json, 'confession_id'),
+        book: _str(json, 'book'),
+        chapter: _int(json, 'chapter'),
+        verse: _str(json, 'verse'),
+        translation: _str(json, 'translation'),
+        isDirectQuote: _bool(json, 'is_direct_quote'),
+        notes: _str(json, 'notes'),
+        sortOrder: _int(json, 'sort_order'),
+      );
+}
+
 /// A confession as the catalogue publishes it.
 ///
 /// Text comes in three lengths; the browse surfaces use [shortText] and fall
 /// back to [description], never the full text — pulling a whole confession into
 /// a list row would both overcrowd it and spend bandwidth on words nobody sees.
+/// The detail screen uses all three lengths plus variants and scriptures.
 final class Confession {
   const Confession({
     required this.id,
     this.categoryId = '',
     this.title = '',
     this.shortText = '',
+    this.mediumText = '',
+    this.longText = '',
     this.description = '',
     this.intensity = 0,
+    this.tags = const [],
+    this.language = 'en',
+    this.status = '',
+    this.author = '',
+    this.version = 0,
+    this.variants = const [],
+    this.scriptures = const [],
   });
 
   final String id;
   final String categoryId;
   final String title;
   final String shortText;
+  final String mediumText;
+  final String longText;
   final String description;
   final int intensity;
+  final List<String> tags;
+  final String language;
+  final String status;
+  final String author;
+  final int version;
+  final List<ConfessionVariant> variants;
+  final List<ScriptureRef> scriptures;
 
   /// The line a card leads with when there is no title.
   String get lead => shortText.isNotEmpty ? shortText : description;
+
+  /// The fullest text available, for the detail screen.
+  String get fullText {
+    if (longText.isNotEmpty) return longText;
+    if (mediumText.isNotEmpty) return mediumText;
+    if (shortText.isNotEmpty) return shortText;
+    return description;
+  }
+
+  /// Whether this confession has rich content beyond the short text.
+  bool get hasRichContent =>
+      mediumText.isNotEmpty ||
+      longText.isNotEmpty ||
+      scriptures.isNotEmpty ||
+      variants.isNotEmpty;
 
   factory Confession.fromJson(Map<String, dynamic> json) => Confession(
         id: _str(json, 'id'),
         categoryId: _str(json, 'category_id'),
         title: _str(json, 'title'),
         shortText: _str(json, 'short_text'),
+        mediumText: _str(json, 'medium_text'),
+        longText: _str(json, 'long_text'),
         description: _str(json, 'description'),
         intensity: _int(json, 'intensity'),
+        tags: (json['tags'] is List)
+            ? (json['tags'] as List).whereType<String>().toList()
+            : (json['tags'] is String && (json['tags'] as String).isNotEmpty)
+                ? (json['tags'] as String).split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList()
+                : const [],
+        language: _str(json, 'language', 'en'),
+        status: _str(json, 'status'),
+        author: _str(json, 'author'),
+        version: _int(json, 'version'),
+        variants: _list(json['variants']).map(ConfessionVariant.fromJson).toList(),
+        scriptures: _list(json['scriptures']).map(ScriptureRef.fromJson).toList(),
       );
 }
 

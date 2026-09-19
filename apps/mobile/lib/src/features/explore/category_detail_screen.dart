@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:iconfess_api/iconfess_api.dart';
 
 import '../../core/error/error_mapper.dart';
+import '../../core/routing/routes.dart';
 import '../../core/theme/theme.dart';
 import '../../core/theme/tokens.dart';
 import '../../core/widgets/screen.dart';
@@ -68,43 +70,48 @@ class _ConfessionRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final surfaces = AppSurfaces.of(context);
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: surfaces.surfaceRaised,
+    return Material(
+      color: surfaces.surfaceRaised,
+      borderRadius: BorderRadius.circular(IConfess.radiusMd),
+      child: InkWell(
         borderRadius: BorderRadius.circular(IConfess.radiusMd),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(IConfess.space4),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    confession.title.isNotEmpty
-                        ? confession.title
-                        : confession.lead,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style:
-                        IConfess.subheading.copyWith(color: surfaces.textPrimary),
-                  ),
-                  if (confession.title.isNotEmpty &&
-                      confession.lead.isNotEmpty)
+        onTap: () => context.go(AppRoutes.confessionDetail(confession.id)),
+        child: Padding(
+          padding: const EdgeInsets.all(IConfess.space4),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     Text(
-                      confession.lead,
+                      confession.title.isNotEmpty
+                          ? confession.title
+                          : confession.lead,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: IConfess.bodySm
-                          .copyWith(color: surfaces.textSecondary),
+                      style: IConfess.subheading
+                          .copyWith(color: surfaces.textPrimary),
                     ),
-                ],
+                    if (confession.title.isNotEmpty &&
+                        confession.lead.isNotEmpty)
+                      Text(
+                        confession.lead,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: IConfess.bodySm
+                            .copyWith(color: surfaces.textSecondary),
+                      ),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(width: IConfess.space3),
-            _IntensityDots(level: confession.intensity),
-          ],
+              const SizedBox(width: IConfess.space3),
+              _IntensityDots(level: confession.intensity),
+              const SizedBox(width: IConfess.space1),
+              Icon(Icons.chevron_right_rounded,
+                  size: 20, color: surfaces.textSecondary),
+            ],
+          ),
         ),
       ),
     );

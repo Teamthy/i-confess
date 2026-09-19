@@ -1,6 +1,6 @@
 # Project Status
 
-**Last verified:** 2026-09-06, at PHASE 20 (Mobile Home; a signed-in dashboard with greeting, primary action, continue-listening, category carousel and recent activity fed by the real read-only API — 116 app tests, 43 client tests, 28 Go packages, `make verify` clean).
+**Last verified:** 2026-09-19, at PHASE 22 (Mobile Confession Experience; detail screen with full texts, variants, scripture, tags, intensity, favourite toggle and build-session action; confess tab now a real category-selection surface; 121 app tests, 43 client tests, 28 Go packages, `make verify` partial — Go toolchain absent in sandbox but code unchanged).
 
 This file supersedes `MASTER-PROMPT-COMPLETION.md`,
 `CONTENT-DOMAIN-COMPLETION.md`, `AUDIO-PLATFORM-STATUS.md`, `SESSION-NOTES.md`
@@ -82,7 +82,16 @@ PHASE 20 Mobile Home — **PASS WITH CONDITIONS** (signed-in dashboard: greeting
     split by the server's session states, category carousel; rails degrade
     independently and never cache session lists)
 
-Open gaps carried forward: G-2, G-3, G-4, G-5, G-6, G-7, G-9, G-10, G-12, G-13,
+PHASE 21 Mobile Explore — **PASS WITH CONDITIONS** (search, featured rail,
+    category grid, per-category confession list with horizontal emphasis motion
+    that settles under pumpAndSettle)
+
+PHASE 22 Mobile Confession Experience — **PASS WITH CONDITIONS** (confession
+    detail: full texts, variants, scripture anchors, intensity, tags, favourite
+    toggle and build-session action; confess tab now a real category-selection
+    surface; category rows navigate to detail)
+
+Open gaps carried forward: G-2, G-3, G-7, G-9, G-10, G-12, G-13,
 G-14, G-15, G-16, G-17, G-18, G-19, G-20, G-21, G-22, G-23, G-24, G-25, G-26, G-27, G-28,
 G-29, G-33, G-34, G-35, G-36, G-37, G-38, G-39.
 

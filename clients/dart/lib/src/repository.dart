@@ -451,6 +451,58 @@ final class ContentRepository extends Repository {
       return Loadable.failed(e);
     }
   }
+
+  /// One confession with its variants and scriptures.
+  ///
+  /// Cached briefly: confessions are editorial content and change rarely, but a
+  /// stale detail that shows an old title after an edit would read as broken.
+  Future<Loadable<Confession>> confession(String id) => cachedRead(
+        key: 'confession:$id',
+        ttl: CacheTtl.categories,
+        fetch: () => api.getConfessionsById(id),
+        decode: Confession.fromJson,
+      );
+
+  /// Adds a confession to the listener's favourites.
+  ///
+  /// The server stores favourites as (entity_type, entity_id) so the same table
+  /// can hold categories, voices and collections later.
+  Future<WriteResult<void>> addFavoriteConfession(String confessionId) => write(
+        () => api.postMeFavorites({
+          'entity_type': 'confession',
+          'entity_id': confessionId,
+        }),
+        (_) {},
+      );
+
+  /// Removes a confession from favourites.
+  Future<WriteResult<void>> removeFavoriteConfession(String confessionId) => write(
+        () => api.deleteMeFavorites({
+          'entity_type': 'confession',
+          'entity_id': confessionId,
+        }),
+        (_) {},
+      );
+
+  /// Whether a confession is favourited, derived from the favourites list.
+  ///
+  /// Not cached beyond the list call: favouriting is a write that must be
+  /// reflected immediately, and the list is small.
+  Future<Loadable<bool>> isFavorite(String confessionId) async {
+    try {
+      final json = await api.getMeFavorites();
+      final list = json['data'] is List ? json['data'] as List : (json is List ? json : []);
+      final found = list.any((item) {
+        if (item is! Map<String, dynamic>) return false;
+        return item['entity_id'] == confessionId ||
+            item['confession_id'] == confessionId ||
+            item['id'] == confessionId;
+      });
+      return Loadable.loaded(found);
+    } on ApiException catch (e) {
+      return Loadable.failed(e);
+    }
+  }
 }
 
 /// Collections, downloads and schedules.

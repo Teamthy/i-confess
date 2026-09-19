@@ -1,0 +1,12 @@
+{
+  "name": "i-confess",
+  "repository": "https://github.com/Teamthy/i-confess.git",
+  "stack": "go-flutter-dart",
+  "language": "go+d dart",
+  "framework": "go modular monolith + flutter",
+  "package_manager": "go mod + pub",
+  "primary_branch": "main",
+  "current_branch": "arena/01a0b97c-i-confess",
+  "deployment": "k8s + docker",
+  "database": "postgres"
+}
