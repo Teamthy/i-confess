@@ -502,20 +502,44 @@ final class Voice {
   const Voice({
     required this.id,
     required this.name,
+    this.description = '',
     this.premium = false,
     this.language = 'en',
+    this.gender = '',
+    this.status = 'active',
   });
 
   final String id;
   final String name;
+
+  /// One line the voice picker shows under the name, e.g. "Warm, calm
+  /// professional narration voice." Optional server-side.
+  final String description;
   final bool premium;
   final String language;
+
+  /// Male / female / unset, when the catalogue records it. Display only.
+  final String gender;
+
+  /// Catalogue state. The picker must offer only voices that can actually
+  /// speak — a voice that is retired or suspended fails the rights gate at
+  /// generation time, and selecting it would build a session that cannot
+  /// render (§5, "a voice that cannot be licensed must not appear as
+  /// selectable"). `ListVoices` returns every row regardless of status, so
+  /// the filter is the client's responsibility.
+  final String status;
+
+  /// Whether this voice may be offered in the picker.
+  bool get isSelectable => status == 'active';
 
   factory Voice.fromJson(Map<String, dynamic> json) => Voice(
         id: _str(json, 'id'),
         name: _str(json, 'name'),
+        description: _str(json, 'description'),
         premium: _bool(json, 'premium'),
         language: _str(json, 'language', 'en'),
+        gender: _str(json, 'gender'),
+        status: _str(json, 'status', 'active'),
       );
 }
 
@@ -603,6 +627,120 @@ final class ListeningSession {
         voiceDowngradeReason: _str(json, 'voice_downgrade_reason'),
         items: _list(json['items']).map(SessionItem.fromJson).toList(),
       );
+}
+
+/// What the engine *would* build, from `POST /sessions/preview` (§5.3).
+///
+/// The builder shows this before creating anything, so the listener sees the
+/// plan the engine chose — including the gap between the length they asked
+/// for and the length complete confessions actually add up to — rather than
+/// discovering it after the fact. A preview is never persisted server-side,
+/// and its audio links are signed for reading, not for playback.
+final class SessionPreview {
+  const SessionPreview({
+    this.targetSeconds = 0,
+    this.actualSeconds = 0,
+    this.totalItems = 0,
+    this.itemsPreview = const [],
+    this.voiceId = '',
+    this.voiceDowngraded = false,
+    this.strategy = '',
+    this.display = '',
+  });
+
+  /// The length that was requested.
+  final int targetSeconds;
+
+  /// The length the engine could actually fill with complete confessions.
+  /// A gap between the two is normal and expected; the builder shows why.
+  final int actualSeconds;
+
+  /// How many items a real session would carry.
+  final int totalItems;
+
+  /// The first few of those items, for a peek without the full queue.
+  final List<SessionItem> itemsPreview;
+
+  /// The voice the session would use, after any premium fallback.
+  final String voiceId;
+
+  /// The requested voice was not permitted and one was substituted.
+  final bool voiceDowngraded;
+
+  /// The packing strategy the engine applied.
+  final String strategy;
+
+  /// The server's own one-line summary, e.g. `30 MIN • 12 • Voices`.
+  /// Shown as the at-a-glance confirmation; kept verbatim so the server
+  /// remains the single author of what a plan is called.
+  final String display;
+
+  factory SessionPreview.fromJson(Map<String, dynamic> json) =>
+      SessionPreview(
+        targetSeconds: _int(json, 'target_seconds'),
+        actualSeconds: _int(json, 'actual_seconds'),
+        totalItems: _int(json, 'total_items'),
+        itemsPreview:
+            _list(json['items_preview']).map(SessionItem.fromJson).toList(),
+        voiceId: _str(json, 'voice_id'),
+        voiceDowngraded: _bool(json, 'voice_downgraded'),
+        strategy: _str(json, 'strategy'),
+        display: _str(json, 'display'),
+      );
+}
+
+/// A saved custom session configuration (§5.4), from `POST /templates`.
+///
+/// A template records *shape* — categories, voice, ordering — never a queue:
+/// the session is rebuilt from the live catalogue each time it is started,
+/// so a template never replays stale content. The share token is server-minted;
+/// the client renders the deep link it is given rather than assembling its own.
+final class SessionTemplate {
+  const SessionTemplate({
+    required this.id,
+    this.name = '',
+    this.description = '',
+    this.categoryIds = const [],
+    this.voiceId = '',
+    this.isPublic = false,
+    this.shareToken = '',
+    this.shareUrl = '',
+    this.deeplink = '',
+  });
+
+  final String id;
+  final String name;
+  final String description;
+
+  /// What to speak over, in the template's own words.
+  final List<String> categoryIds;
+  final String voiceId;
+  final bool isPublic;
+
+  /// Opaque token for `GET /t/{token}`. The client never parses it.
+  final String shareToken;
+  final String shareUrl;
+  final String deeplink;
+
+  factory SessionTemplate.fromJson(Map<String, dynamic> json) {
+    // The create response wraps the row: {template: {...}, share_url, deeplink}.
+    // The list endpoints return the bare row. Accept both so the client does
+    // not need to know which endpoint answered.
+    final t = json['template'] is Map<String, dynamic>
+        ? json['template'] as Map<String, dynamic>
+        : json;
+    return SessionTemplate(
+      id: _str(t, 'id'),
+      name: _str(t, 'name'),
+      description: _str(t, 'description'),
+      categoryIds: (t['category_ids'] as List?)?.whereType<String>().toList() ?? const [],
+      voiceId: _str(t, 'voice_id'),
+      isPublic: _bool(t, 'is_public'),
+      shareToken: _str(t, 'share_token'),
+      shareUrl: _str(json, 'share_url'),
+      deeplink: _str(json, 'deeplink'),
+    );
+  }
 }
 
 /// A recurring routine (§32). [time] is wall-clock in [timezone]; resolving it

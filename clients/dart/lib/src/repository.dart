@@ -428,6 +428,48 @@ final class ContentRepository extends Repository {
         ListeningSession.fromJson,
       );
 
+  /// Dry-runs the engine without creating anything (§5.3). Not cached, for the
+  /// same reason [createSession] is not: the answer depends on the caller's
+  /// entitlement and favourites at this instant, and a stale "would be 42
+  /// minutes" is worse than no answer.
+  ///
+  /// Returns [WriteResult] rather than [Loadable] because the interesting
+  /// failures are rejections, not outages: a 402 says the plan caps the
+  /// length, a 422 says no complete set of confessions reaches that length.
+  /// The review screen words those differently from "you are offline".
+  Future<WriteResult<SessionPreview>> previewSession({
+    required List<String> categoryIds,
+    required int durationSeconds,
+    String? voiceId,
+    String? strategy,
+  }) =>
+      write(
+        () => api.postSessionsPreview({
+          'category_ids': categoryIds,
+          'duration_seconds': durationSeconds,
+          if (voiceId != null && voiceId.isNotEmpty) 'voice_id': voiceId,
+          if (strategy != null && strategy.isNotEmpty) 'strategy': strategy,
+        }),
+        SessionPreview.fromJson,
+      );
+
+  /// Saves the builder's shape as a reusable template (§5.4).
+  Future<WriteResult<SessionTemplate>> createTemplate({
+    required String name,
+    required List<String> categoryIds,
+    String? voiceId,
+    String description = '',
+  }) =>
+      write(
+        () => api.postTemplates({
+          'name': name,
+          'category_ids': categoryIds,
+          if (voiceId != null && voiceId.isNotEmpty) 'voice_id': voiceId,
+          if (description.isNotEmpty) 'description': description,
+        }),
+        SessionTemplate.fromJson,
+      );
+
   /// Re-reads a session, which mints fresh signed URLs. Call this rather than
   /// replaying a stored session: the previous links will have expired.
   Future<Loadable<ListeningSession>> session(String id) async {
