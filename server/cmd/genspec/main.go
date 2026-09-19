@@ -37,7 +37,7 @@ func main() {
 	if err := os.WriteFile(os.Args[1], append(out, '\n'), 0o644); err != nil {
 		panic(err)
 	}
-	// The spec is already on disk by this line; a failure to print the
-	// summary cannot un-write it.
-	_, _ = fmt.Printf("wrote %s (%d bytes, %d paths)\n", os.Args[1], len(out), len(spec["paths"].(map[string]any)))
+	if _, err := fmt.Printf("wrote %s (%d bytes, %d paths)\n", os.Args[1], len(out), len(spec["paths"].(map[string]any))); err != nil {
+		panic(err)
+	}
 }

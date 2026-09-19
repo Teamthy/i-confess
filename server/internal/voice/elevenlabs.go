@@ -155,8 +155,15 @@ func parseFormat(format string) (bitrateKbps, sampleRateHz int) {
 	if len(parts) != 3 {
 		return 128, 44100
 	}
-	fmt.Sscanf(parts[1], "%d", &sampleRateHz)
-	fmt.Sscanf(parts[2], "%d", &bitrateKbps)
+	// A format that does not parse falls back to the pair of defaults below
+	// rather than half a parse: the two values describe one encoding, and a
+	// coherent default beats a mixed one.
+	if _, err := fmt.Sscanf(parts[1], "%d", &sampleRateHz); err != nil {
+		return 128, 44100
+	}
+	if _, err := fmt.Sscanf(parts[2], "%d", &bitrateKbps); err != nil {
+		return 128, 44100
+	}
 	if sampleRateHz == 0 {
 		sampleRateHz = 44100
 	}

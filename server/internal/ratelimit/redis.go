@@ -129,7 +129,8 @@ func (r *RedisStore) Del(key string) error {
 		return err
 	}
 	if _, err := roundTrip(c, r.Timeout, "DEL", key); err != nil {
-		c.Close()
+		// Broken connection, discarded like the AUTH path's.
+		_ = c.Close()
 		return err
 	}
 	r.put(c)
@@ -141,7 +142,9 @@ func (r *RedisStore) Close() error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for _, c := range r.conns {
-		c.Close()
+		// Pool teardown: every connection is going away regardless, and the
+		// method's contract has no error to carry a close failure to.
+		_ = c.Close()
 	}
 	r.conns = nil
 	return nil
@@ -154,7 +157,8 @@ func (r *RedisStore) Ping() error {
 		return err
 	}
 	if _, err := roundTrip(c, r.Timeout, "PING"); err != nil {
-		c.Close()
+		// Broken connection, discarded like the AUTH path's.
+		_ = c.Close()
 		return err
 	}
 	r.put(c)

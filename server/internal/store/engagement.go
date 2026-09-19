@@ -2,8 +2,8 @@ package store
 
 import (
 	"context"
-	"github.com/Teamthy/i-confess/internal/db"
 
+	"github.com/Teamthy/i-confess/internal/db"
 	"github.com/Teamthy/i-confess/internal/models"
 )
 
