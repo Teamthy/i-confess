@@ -10,6 +10,10 @@ import '../../features/auth/sign_in_screen.dart';
 import '../../features/auth/sign_up_screen.dart';
 import '../../features/auth/verification_screen.dart';
 import '../../features/auth/welcome_screen.dart';
+import '../../features/confess/confess_screen.dart';
+import '../../features/confession/confession_detail_screen.dart';
+import '../../features/explore/category_detail_screen.dart';
+import '../../features/explore/explore_screen.dart';
 import '../../features/home/home_screen.dart';
 import '../../features/onboarding/onboarding_screen.dart';
 import '../../features/shell/app_shell.dart';
@@ -198,8 +202,7 @@ GoRouter createRouter(
             GoRoute(
               path: AppRoutes.confess,
               name: AppRouteNames.confess,
-              builder: (context, state) =>
-                  const PlaceholderScreen(title: 'Create a session', body: 'PHASE 22'),
+              builder: (context, state) => const ConfessScreen(),
             ),
           ]),
           StatefulShellBranch(routes: [
@@ -246,9 +249,8 @@ GoRouter createRouter(
       GoRoute(
         path: '${AppRoutes.confession}/:id',
         name: AppRouteNames.confessionDetail,
-        builder: (context, state) => PlaceholderScreen(
-          title: 'Confession',
-          body: state.pathParameters['id'] ?? '',
+        builder: (context, state) => ConfessionDetailScreen(
+          confessionId: state.pathParameters['id'] ?? '',
         ),
       ),
       GoRoute(
