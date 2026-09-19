@@ -400,7 +400,9 @@ func profileCompletion(p *models.UserProfile, prefs *models.UserPreferences, int
 	}
 	done := 0
 	for _, s := range steps {
-		if s["done"].(bool) {
+		// Comma-ok: a step missing its flag counts as undone, it does not
+		// panic the checklist.
+		if v, ok := s["done"].(bool); ok && v {
 			done++
 		}
 	}
