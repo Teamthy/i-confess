@@ -114,6 +114,43 @@ PHASE 23 Mobile Session Builder — **PASS WITH CONDITIONS** (the builder walk
     constants cannot rot; `contracts/openapi.json` regenerated from the live
     route table after the audit found it 146 paths stale)
 
+PHASE 24 Mobile Player — **PASS** (immersive player above tab bar, queue
+    snapshot G-1, progress sync via POST /sessions/{id}/progress, controls
+    start/pause/resume/skip/complete, locked items show upgrade affordance not
+    silent skip, queue peek horizontal, no real audio engine yet per D-4 but
+    state machine and server sync correct)
+
+PHASE 24 Activity — **PASS** (activity tab: streak card, 3 tabs Continue/History/Schedules,
+    continue from ACTIVE/PAUSED/INTERRUPTED/READY/STARTING, history from COMPLETED,
+    schedules from GET /schedules, empty states with CTA, session tiles with
+    play/check icons)
+
+PHASE 25 Me / Profile — **PASS** (Me shows real bootstrap: avatar, display name,
+    completion progress, entitlements summary, library entry points, edit profile
+    via PATCH /me/profile, interests, premium, settings, sign-out clears cache
+    and token)
+
+PHASE 26 Templates — **PASS** (templates list from GET /templates, detail shows
+    shape and can start via POST /templates/{id}/start, share via GET /t/{token}
+    renders for signed-out per IA, delete/update)
+
+PHASE 27 Library — **PASS** (library with 3 tabs Collections/Favorites/My Confessions,
+    collections from GET /me/collections, favorites from polymorphic table,
+    personal confessions from GET /me/confessions, collection detail)
+
+PHASE 28 Downloads — **PASS** (offline licences from GET /me/downloads,
+    DownloadLibrary with used/limit/offlineHoursAllowed, expiringWithin 3d banner,
+    renew via POST /me/downloads/{id}/refresh, remove via DELETE, empty state)
+
+PHASE 29 Search — **PASS** (full-text search via GET /search with q, type, limit,
+    SearchResult model, SearchRepository, type FilterChips, results navigate to
+    confession/category detail, server SearchStore LIKE-based MVP)
+
+PHASE 30 Premium — **PASS** (paywall with regional pricing NGN/USD/GBP/EUR/PHP
+    from GET /subscriptions/plans, Plan.priceFor, entitlements chips, trial
+    journey from GET /subscriptions/trial, current plan card, server-side
+    verification via POST /subscriptions/verify, no hard-coded prices)
+
 Open gaps carried forward: G-2, G-3, G-7, G-9, G-10, G-12, G-13,
 G-14, G-15, G-16, G-17, G-18, G-19, G-20, G-21, G-22, G-23, G-24, G-25, G-26, G-27, G-28,
 G-29, G-33, G-34, G-35, G-36, G-37, G-38, G-39.

@@ -321,4 +321,109 @@ extension IConfessEndpoints on ApiClient {
   /// Save the builder's current shape as a reusable template (§5.4).
   Future<Map<String, dynamic>> postTemplates([Map<String, dynamic>? body]) =>
       post('/templates', body);
+
+  /// List templates
+  Future<Map<String, dynamic>> getTemplates() => get('/templates');
+
+  /// Read a template
+  Future<Map<String, dynamic>> getTemplatesById(String id) =>
+      get('/templates/$id');
+
+  /// Update a template
+  Future<Map<String, dynamic>> patchTemplatesById(String id,
+          [Map<String, dynamic>? body]) =>
+      patch('/templates/$id', body);
+
+  /// Delete a template
+  Future<Map<String, dynamic>> deleteTemplatesById(String id) =>
+      delete('/templates/$id');
+
+  /// Start a template — builds a session
+  Future<Map<String, dynamic>> postTemplatesByIdStart(String id,
+          [Map<String, dynamic>? body]) =>
+      post('/templates/$id/start', body);
+
+  /// Resolve a shareable template
+  Future<Map<String, dynamic>> getTByToken(String token) => get('/t/$token');
+
+  // ---- search & recommendations ----
+  /// Search confessions, categories, voices, Scripture
+  Future<Map<String, dynamic>> getSearch(
+      {String? q, List<String>? type, int? limit}) {
+    final params = <String>[];
+    if (q != null && q.isNotEmpty) params.add('q=${Uri.encodeComponent(q)}');
+    if (type != null) {
+      for (final t in type) {
+        params.add('type=${Uri.encodeComponent(t)}');
+      }
+    }
+    if (limit != null) params.add('limit=$limit');
+    final qs = params.isEmpty ? '' : '?${params.join('&')}';
+    return get('/search$qs');
+  }
+
+  /// Personalized recommendations (deterministic v1)
+  Future<Map<String, dynamic>> getRecommendations() => get('/recommendations');
+
+  /// Home feed (continue, categories, collections)
+  Future<Map<String, dynamic>> getHome() => get('/home');
+
+  // ---- subscriptions & entitlements ----
+  /// List plans with regional pricing
+  Future<Map<String, dynamic>> getSubscriptionsPlans({String? currency}) {
+    if (currency == null || currency.isEmpty) {
+      return get('/subscriptions/plans');
+    }
+    return get('/subscriptions/plans?currency=${Uri.encodeComponent(currency)}');
+  }
+
+  /// Current plan and entitlements
+  Future<Map<String, dynamic>> getSubscription() => get('/subscription');
+
+  /// Entitlement flags
+  Future<Map<String, dynamic>> getEntitlements() => get('/entitlements');
+
+  /// Trial journey
+  Future<Map<String, dynamic>> getSubscriptionsTrial() =>
+      get('/subscriptions/trial');
+
+  /// Verify receipt (server-side)
+  Future<Map<String, dynamic>> postSubscriptionsVerify(
+          [Map<String, dynamic>? body]) =>
+      post('/subscriptions/verify', body);
+
+  // ---- session queue & progress ----
+  /// Get session queue (snapshot)
+  Future<Map<String, dynamic>> getSessionsByIdQueue(String id) =>
+      get('/sessions/$id/queue');
+
+  /// Start session
+  Future<Map<String, dynamic>> postSessionsByIdStart(String id,
+          [Map<String, dynamic>? body]) =>
+      post('/sessions/$id/start', body);
+
+  /// Pause session
+  Future<Map<String, dynamic>> postSessionsByIdPause(String id,
+          [Map<String, dynamic>? body]) =>
+      post('/sessions/$id/pause', body);
+
+  /// Resume session
+  Future<Map<String, dynamic>> postSessionsByIdResume(String id,
+          [Map<String, dynamic>? body]) =>
+      post('/sessions/$id/resume', body);
+
+  /// Record progress
+  Future<Map<String, dynamic>> postSessionsByIdProgress(String id,
+          [Map<String, dynamic>? body]) =>
+      post('/sessions/$id/progress', body);
+
+  /// Skip item
+  Future<Map<String, dynamic>> postSessionsByIdSkip(String id,
+          [Map<String, dynamic>? body]) =>
+      post('/sessions/$id/skip', body);
+
+  /// Complete session
+  Future<Map<String, dynamic>> postSessionsByIdComplete(String id,
+          [Map<String, dynamic>? body]) =>
+      post('/sessions/$id/complete', body);
 }

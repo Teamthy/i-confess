@@ -91,6 +91,22 @@ final libraryRepositoryProvider = Provider<LibraryRepository>(
   (ref) => LibraryRepository(ref.watch(apiClientProvider), ref.watch(jsonCacheProvider)),
 );
 
+final searchRepositoryProvider = Provider<SearchRepository>(
+  (ref) => SearchRepository(ref.watch(apiClientProvider), ref.watch(jsonCacheProvider)),
+);
+
+final recommendationsRepositoryProvider = Provider<RecommendationsRepository>(
+  (ref) => RecommendationsRepository(ref.watch(apiClientProvider), ref.watch(jsonCacheProvider)),
+);
+
+final templateRepositoryProvider = Provider<TemplateRepository>(
+  (ref) => TemplateRepository(ref.watch(apiClientProvider), ref.watch(jsonCacheProvider)),
+);
+
+final subscriptionRepositoryProvider = Provider<SubscriptionRepository>(
+  (ref) => SubscriptionRepository(ref.watch(apiClientProvider), ref.watch(jsonCacheProvider)),
+);
+
 /// Analytics. Debug builds get the recording implementation; release gets a
 /// no-op until a transport is chosen.
 ///

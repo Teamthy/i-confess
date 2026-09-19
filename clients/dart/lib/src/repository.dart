@@ -645,3 +645,149 @@ final class DownloadTicket {
     );
   }
 }
+
+/// Search across confessions, categories, collections, voices.
+final class SearchRepository extends Repository {
+  SearchRepository(super.api, super.cache);
+
+  Future<Loadable<List<SearchResult>>> search(String query,
+      {List<String>? types, int limit = 20}) async {
+    if (query.trim().isEmpty) {
+      return const Loadable.loaded(<SearchResult>[]);
+    }
+    try {
+      final json = await api.getSearch(q: query, type: types, limit: limit);
+      final results = json['results'] is List
+          ? (json['results'] as List)
+              .whereType<Map<String, dynamic>>()
+              .map(SearchResult.fromJson)
+              .toList()
+          : <SearchResult>[];
+      return Loadable.loaded(results);
+    } on ApiException catch (e) {
+      return Loadable.failed(e);
+    }
+  }
+}
+
+/// Personalized recommendations.
+final class RecommendationsRepository extends Repository {
+  RecommendationsRepository(super.api, super.cache);
+
+  Future<Loadable<Recommendations>> recommendations() => cachedRead(
+        key: 'recommendations',
+        ttl: const Duration(minutes: 10),
+        fetch: () => api.getRecommendations(),
+        decode: Recommendations.fromJson,
+      );
+}
+
+/// Templates: list, read, start, delete, share.
+final class TemplateRepository extends Repository {
+  TemplateRepository(super.api, super.cache);
+
+  Future<Loadable<List<SessionTemplate>>> templates() async {
+    try {
+      final json = await api.getTemplates();
+      return Loadable.loaded(
+          parseList(json['templates'] ?? json['data'] ?? json, SessionTemplate.fromJson));
+    } on ApiException catch (e) {
+      return Loadable.failed(e);
+    }
+  }
+
+  Future<Loadable<SessionTemplate>> template(String id) async {
+    try {
+      return Loadable.loaded(SessionTemplate.fromJson(await api.getTemplatesById(id)));
+    } on ApiException catch (e) {
+      return Loadable.failed(e);
+    }
+  }
+
+  Future<Loadable<SessionTemplate>> sharedTemplate(String token) async {
+    try {
+      return Loadable.loaded(SessionTemplate.fromJson(await api.getTByToken(token)));
+    } on ApiException catch (e) {
+      return Loadable.failed(e);
+    }
+  }
+
+  Future<WriteResult<ListeningSession>> startTemplate(String id) => write(
+        () => api.postTemplatesByIdStart(id),
+        ListeningSession.fromJson,
+      );
+
+  Future<WriteResult<void>> deleteTemplate(String id) =>
+      write(() => api.deleteTemplatesById(id), (_) {});
+
+  Future<WriteResult<SessionTemplate>> updateTemplate(String id,
+          {String? name, String? description, bool? isPublic}) =>
+      write(
+        () => api.patchTemplatesById(id, {
+          if (name != null) 'name': name,
+          if (description != null) 'description': description,
+          if (isPublic != null) 'is_public': isPublic,
+        }),
+        SessionTemplate.fromJson,
+      );
+}
+
+/// Subscription plans, entitlements and trial.
+final class SubscriptionRepository extends Repository {
+  SubscriptionRepository(super.api, super.cache);
+
+  Future<Loadable<List<Plan>>> plans({String? currency}) async {
+    try {
+      final json = await api.getSubscriptionsPlans(currency: currency);
+      final list = json['plans'] is List
+          ? (json['plans'] as List)
+              .whereType<Map<String, dynamic>>()
+              .map(Plan.fromJson)
+              .toList()
+          : <Plan>[];
+      return Loadable.loaded(list);
+    } on ApiException catch (e) {
+      return Loadable.failed(e);
+    }
+  }
+
+  Future<Loadable<Subscription>> subscription() async {
+    try {
+      return Loadable.loaded(Subscription.fromJson(await api.getSubscription()));
+    } on ApiException catch (e) {
+      return Loadable.failed(e);
+    }
+  }
+
+  Future<Loadable<Entitlements>> entitlements() => cachedRead(
+        key: 'entitlements',
+        ttl: const Duration(minutes: 5),
+        fetch: () => api.getEntitlements(),
+        decode: Entitlements.fromJson,
+      );
+
+  Future<Loadable<List<TrialDay>>> trial() async {
+    try {
+      final json = await api.getSubscriptionsTrial();
+      final journey = json['journey'] is List
+          ? (json['journey'] as List)
+              .whereType<Map<String, dynamic>>()
+              .map(TrialDay.fromJson)
+              .toList()
+          : <TrialDay>[];
+      return Loadable.loaded(journey);
+    } on ApiException catch (e) {
+      return Loadable.failed(e);
+    }
+  }
+
+  Future<WriteResult<Subscription>> verifyReceipt(
+          {required String provider, required String receipt}) =>
+      write(
+        () => api.postSubscriptionsVerify({
+          'provider': provider,
+          'receipt': receipt,
+        }),
+        Subscription.fromJson,
+      );
+}
