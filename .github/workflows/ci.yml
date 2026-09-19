@@ -50,6 +50,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          # Full history. Lint fails only on findings introduced by the branch
+          # (`new-from-merge-base: main` in .golangci.yml), which requires the
+          # merge base to be resolvable. The default shallow clone cannot name
+          # it, so golangci-lint silently reports the whole pre-existing debt —
+          # the exact red-for-64-findings outcome the setting exists to avoid.
+          fetch-depth: 0
 
       - name: Set up Go
         uses: actions/setup-go@v7
