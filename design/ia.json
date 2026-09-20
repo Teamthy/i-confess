@@ -247,7 +247,7 @@
       "title": "Community",
       "depth": 1,
       "parents": ["explore", "profile"],
-      "endpoints": ["GET /community/feed", "POST /community/posts", "POST /community/posts/{id}/react"],
+      "endpoints": ["GET /community/feed", "GET /community/confessions", "POST /community/posts", "POST /community/posts/{id}/react"],
       "notes": "Deliberately one level down, not a tab. G-4: there is no PUBLIC visibility state yet, so this surface has nothing to publish to and must not appear in navigation until PHASE 30."
     },
 

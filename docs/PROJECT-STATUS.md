@@ -1,15 +1,6 @@
 # Project Status
 
-**Last verified:** 2026-09-19, at PHASE 31 (Moderation: reporting, the queue,
-submission, review and the QA gate — the last 501 stubs are gone; the phase
-was rebuilt from `main` after the previously-reported delivery commit
-`d19a47aa` proved unrecoverable: absent from every ref on GitHub and from the
-sandbox, with no export on disk. See the reconciliation note in
-`docs/31-MODERATION.md`. Go toolchain 1.27.1 and PostgreSQL 17.10 installed
-from npm/PyPI mirrors; the full `-race` suite passes apart from the one
-pre-existing, environmental `/etc/mime.types` failure in `internal/storage`;
-the Dart/Flutter SDKs remain unreachable from this sandbox, so `dart test` /
-`flutter test` are written and owed to CI — see PHASE 23 condition C-1).
+**Last verified:** 2026-09-20, at PHASE 32 (Community UGC reader — G-40 closed: published public user confessions now have a public anonymous reader in both mobile and web; `GET /community/confessions` filtered in SQL, anonymity tested, 2-tab community screen, 300 routes, 59 Dart symbol assertions; previous phase 31 reconciliation still applies — see `docs/31-MODERATION.md`).
 
 This file supersedes `MASTER-PROMPT-COMPLETION.md`,
 `CONTENT-DOMAIN-COMPLETION.md`, `AUDIO-PLATFORM-STATUS.md`, `SESSION-NOTES.md`
@@ -45,7 +36,7 @@ it.** Every claim below was produced by running something.
 | **Website / admin** | 434 and 168 lines of scaffolding. Being replaced per D-5. |
 | **Payments** | Every store verifier is a stub. Real App Store / Play verification is PHASE 36. |
 | **Trial lifecycle** | The six states in §36 do not exist. |
-| **UGC `PUBLIC` readers** | The pipeline publishes (`visibility=public` + approval → `published`), but no public surface serves published UGC yet (G-40). |
+| **UGC `PUBLIC` readers** | **Done in PHASE 32** — `GET /community/confessions` public, anonymous, newest-first, mobile 2-tab + web both-feeds. Was G-40. |
 | **Soft delete / versioning** | Present on 2 of 64 tables each. Section 25 asks for both generally. |
 | **Cache** | Per-process only; no cross-instance invalidation. |
 | **Design system** | 120 tokens, contrast-verified, but not yet consumed by any real surface. |
@@ -177,9 +168,19 @@ PHASE 31 Moderation — **PASS WITH CONDITIONS** (the last three 501s are real:
     actions, G-42 the seeded demo catalogue fails its own voices_licensed
     gate)
 
+PHASE 32 Community UGC Reader — **PASS** (G-40 closed: `GET /community/confessions`
+    and `/v1/community/confessions` public, anonymous projection `id,title,text,category_id,visibility,status,published_at,created_at`
+    ordered newest-first, filtered in SQL to `visibility=public AND status=published` — shared/private/draft/submitted/approved excluded;
+    typed Dart `getCommunityConfessions` and `CommunityRepository.confessions` returning `List<UserConfession>`;
+    mobile community screen now two tabs Stories (existing `community_posts` feed) + Testimonies (published UGC) with
+    RefreshIndicator, loading/empty/retry, reaction chips preserved;
+    web community page fetches both feeds in parallel, renders Testimonies then Stories, anonymous;
+    `design/ia.json` extended, `design/routes.json` 300 routes, `contracts/openapi.json` regenerated;
+    `scripts/check_dart_symbols.py` now 59 assertions; Go suite api+store+community PASS, vet/build clean)
+
 Open gaps carried forward: G-3, G-7, G-9, G-10, G-12, G-13,
 G-14, G-15, G-16, G-17, G-18, G-19, G-20, G-21, G-22, G-23, G-24, G-25, G-26, G-27, G-28,
-G-29, G-33, G-34, G-35, G-36, G-37, G-38, G-39, G-40, G-41, G-42, G-43, G-44,
+G-29, G-33, G-34, G-35, G-36, G-37, G-38, G-39, G-41, G-42, G-43, G-44,
 G-45.
 (G-2 was removed from this list: it has been closed since PHASE 07 —
 "23/23 status columns constrained" — yet appeared in both lists here, a
@@ -190,7 +191,8 @@ Closed: **G-1** (queues are snapshots), **G-2** (23/23 status columns constraine
 **G-30** (one password policy replaces three inline `len < 8` checks),
 **G-31** (session rotation already links successors; the three dead
 plaintext-token functions were removed),
-**G-32** (all 44 admin routes asserted to reject a non-admin).
+**G-32** (all 44 admin routes asserted to reject a non-admin),
+**G-40** (published public UGC now has a public anonymous reader — `GET /community/confessions` + mobile 2-tab + web both-feeds).
 **G-33** is new: the 24-entry blocklist is a floor, not a breach corpus.
 
 New in PHASE 11: **G-34** (no audio exists for any of the 78 confessions),

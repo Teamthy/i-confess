@@ -962,6 +962,43 @@ final class TemplateRepository extends Repository {
       );
 }
 
+/// Community: moderated public posts and published user confessions (G-40).
+final class CommunityRepository extends Repository {
+  CommunityRepository(super.api, super.cache);
+
+  /// Anonymous, moderation-approved community posts (public).
+  Future<Loadable<List<Map<String, dynamic>>>> feed() async {
+    try {
+      final json = await api.getCommunityFeed();
+      final posts = (json['posts'] as List? ?? const [])
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList(growable: false);
+      return Loadable.loaded(posts);
+    } on ApiException catch (e) {
+      return Loadable.failed(e);
+    }
+  }
+
+  /// Published user confessions that are public (public UGC reader, G-40).
+  /// Anonymous: the server never returns author identity.
+  Future<Loadable<List<UserConfession>>> confessions({int limit = 20}) async {
+    try {
+      final json = await api.getCommunityConfessions(limit: limit);
+      final list = (json['confessions'] as List? ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(UserConfession.fromJson)
+          .toList(growable: false);
+      return Loadable.loaded(list);
+    } on ApiException catch (e) {
+      return Loadable.failed(e);
+    }
+  }
+
+  Future<WriteResult<void>> react(String postId, String reaction) =>
+      write(() => api.postCommunityPostsByIdReact(postId, reaction), (_) {});
+}
+
 /// Subscription plans, entitlements and trial.
 final class SubscriptionRepository extends Repository {
   SubscriptionRepository(super.api, super.cache);

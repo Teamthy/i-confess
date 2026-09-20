@@ -127,6 +127,12 @@ extension IConfessEndpoints on ApiClient {
   /// Anonymous, moderation-approved community posts
   Future<Map<String, dynamic>> getCommunityFeed() => get('/community/feed');
 
+  /// Published user confessions (public UGC reader, anonymous)
+  Future<Map<String, dynamic>> getCommunityConfessions({int? limit}) {
+    final qs = limit == null ? '' : '?limit=$limit';
+    return get('/community/confessions$qs');
+  }
+
   /// Add an idempotent reaction to an approved community post
   Future<Map<String, dynamic>> postCommunityPostsByIdReact(
           String id, String reaction) =>

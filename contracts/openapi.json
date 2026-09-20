@@ -4189,6 +4189,40 @@
         ]
       }
     },
+    "/community/confessions": {
+      "get": {
+        "operationId": "getCommunityConfessions",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Rate limited; honour Retry-After"
+          }
+        },
+        "summary": "Published user confessions (public UGC reader, anonymous)",
+        "tags": [
+          "community"
+        ]
+      }
+    },
     "/community/feed": {
       "get": {
         "operationId": "getCommunityFeed",
@@ -14008,6 +14042,40 @@
         "summary": "Published collections",
         "tags": [
           "content"
+        ]
+      }
+    },
+    "/v1/community/confessions": {
+      "get": {
+        "operationId": "getV1CommunityConfessions",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Rate limited; honour Retry-After"
+          }
+        },
+        "summary": "Published user confessions (public UGC reader, anonymous)",
+        "tags": [
+          "community"
         ]
       }
     },
