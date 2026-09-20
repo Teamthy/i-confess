@@ -1,5 +1,10 @@
 package models
 
+import (
+	"strings"
+	"time"
+)
+
 // Timestamps are stored as RFC3339 strings in SQLite and TIMESTAMPTZ in Postgres.
 type Collection struct {
 	ID          string `json:"id"`
@@ -158,6 +163,21 @@ type User struct {
 	UpdatedAt     string `json:"updated_at,omitempty"`
 }
 
+// Subscription status values (IC-003).
+//
+// These strings are the contract: migration 0002 constrained the column to a
+// closed vocabulary and migration 0010 widened it for the states a real store
+// reports. A status outside this set cannot be written.
+const (
+	SubscriptionActive    = "active"
+	SubscriptionTrial     = "trial"
+	SubscriptionGrace     = "grace"
+	SubscriptionCancelled = "cancelled"
+	SubscriptionExpired   = "expired"
+	SubscriptionRefunded  = "refunded"
+	SubscriptionSuspended = "suspended"
+)
+
 type Subscription struct {
 	ID        string `json:"id"`
 	UserID    string `json:"user_id"`
@@ -166,6 +186,89 @@ type Subscription struct {
 	StartedAt string `json:"started_at,omitempty"`
 	EndsAt    string `json:"ends_at,omitempty"`
 	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at,omitempty"`
+
+	// Store identity. Without these a renewal, a cancellation or a refund can
+	// only be matched to a user by expiry date, which is ambiguous the moment
+	// anyone buys twice.
+	Provider              string `json:"provider,omitempty"`
+	ProviderTransactionID string `json:"provider_transaction_id,omitempty"`
+	OriginalTransactionID string `json:"original_transaction_id,omitempty"`
+	ProductID             string `json:"product_id,omitempty"`
+	StoreEnvironment      string `json:"store_environment,omitempty"`
+	// AutoRenew is nil when the store did not say. Absent is not false: a
+	// prepaid plan has no auto-renewal at all.
+	AutoRenew      *bool  `json:"auto_renew,omitempty"`
+	LastVerifiedAt string `json:"last_verified_at,omitempty"`
+}
+
+// ExpiresAt parses EndsAt, reporting whether the row carries a usable expiry.
+func (s Subscription) ExpiresAt() (time.Time, bool) {
+	if strings.TrimSpace(s.EndsAt) == "" {
+		return time.Time{}, false
+	}
+	t, err := time.Parse(time.RFC3339, s.EndsAt)
+	if err != nil {
+		// An unparsable expiry must not be treated as "no expiry": that would
+		// turn a corrupt row into a permanent subscription. Callers see
+		// "no usable expiry" and the status decides.
+		return time.Time{}, false
+	}
+	return t.UTC(), true
+}
+
+// Entitled reports whether this subscription grants premium at time now.
+//
+// The rule is deliberately (status, clock) and not status alone. The status
+// column records what the store last said, and the store does not call back at
+// the instant a paid period ends — so a row that still reads active can be
+// months out of date. Resolving entitlements from the status string is what
+// made a lapsed subscription keep premium indefinitely.
+//
+// Cancelled is entitled while the paid period runs: cancel means "do not
+// renew", not "revoke what was paid for".
+func (s Subscription) Entitled(now time.Time) bool {
+	expiry, hasExpiry := s.ExpiresAt()
+
+	// A non-empty expiry that will not parse is a corrupt row, not a grant
+	// without a clock. Treating the two the same is how a data error becomes a
+	// permanent subscription: ExpiresAt reports "no usable expiry" for both, so
+	// the caller has to look at the raw column to tell them apart.
+	if !hasExpiry && strings.TrimSpace(s.EndsAt) != "" {
+		return false
+	}
+
+	switch s.Status {
+	case SubscriptionActive, SubscriptionTrial, SubscriptionGrace:
+		// A row with no expiry is a grant without a clock: an administrative
+		// override, or a legacy row written before verification existed.
+		return !hasExpiry || expiry.After(now)
+	case SubscriptionCancelled:
+		// Cancellation with no period end is incoherent, so it does not
+		// entitle anything: there is nothing to say how long it should last.
+		return hasExpiry && expiry.After(now)
+	default:
+		return false
+	}
+}
+
+// EffectiveStatus reports the status to show a client.
+//
+// It differs from Status only once the clock has passed an expiry, where a row
+// that reads active is reported as expired. A client that shows "Premium" over
+// a lapsed subscription generates support requests about a product that is
+// behaving correctly.
+func (s Subscription) EffectiveStatus(now time.Time) string {
+	if expiry, ok := s.ExpiresAt(); ok && !expiry.After(now) {
+		switch s.Status {
+		case SubscriptionActive, SubscriptionTrial, SubscriptionGrace, SubscriptionCancelled:
+			return SubscriptionExpired
+		}
+	}
+	if s.Status == "" {
+		return "none"
+	}
+	return s.Status
 }
 
 type Schedule struct {
