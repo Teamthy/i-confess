@@ -416,6 +416,9 @@ func TestQueuedPayloadCarriesTheSameMessageAsInlineDelivery(t *testing.T) {
 	}
 
 	for i, payload := range q.payload {
+		if payload["collapse_key"] != "sched-"+store.schedules[0].ID {
+			t.Fatalf("payload lost collapse key: %+v", payload)
+		}
 		if payload["token"] == "" || payload["platform"] == "" {
 			t.Fatalf("payload %d has no destination: %+v", i, payload)
 		}

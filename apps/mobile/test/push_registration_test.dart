@@ -1,6 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/material.dart';
+import 'package:iconfess/src/features/auth/auth_controller.dart';
+import 'package:iconfess/src/features/settings/settings_screen.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:iconfess/src/core/persistence/persistence.dart';
 import 'package:iconfess/src/core/push/device_registration.dart';
@@ -77,7 +80,13 @@ class FakeDeviceDetails implements DeviceDetails {
   Future<String?> nativeDeviceId() async => nativeId;
 }
 
+class SignedInAuth extends AuthController {
+  @override
+  AuthState build() => const AuthState.signedIn(userId: 'user-1');
+}
+
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   late InMemoryTokenStore tokens;
   late FakeApiClient api;
   late FakePushTransport transport;
@@ -213,7 +222,56 @@ void main() {
 
     final token = await registrarWith(FakeDeviceDetails()).enable();
 
-    expect(token, 'fcm-token-1', reason: 'the token exists even though the upload failed');
+    expect(token, isNull, reason: 'a failed upload must not report reminders enabled');
+  });
+
+  test('a session restored before push setup registers without another auth event', () async {
+    transport.currentToken = 'apns-current';
+    final container = ProviderContainer(overrides: [
+      authControllerProvider.overrideWith(SignedInAuth.new),
+      pushTransportProvider.overrideWithValue(transport),
+      apiClientProvider.overrideWithValue(api),
+      keyValueStoreProvider.overrideWithValue(store),
+      deviceDetailsProvider.overrideWithValue(FakeDeviceDetails()),
+    ]);
+    addTearDown(container.dispose);
+    container.read(pushRegistrarProvider);
+    await pumpEventQueue();
+    expect(api.callCount('/me/devices'), 1);
+    expect(transport.permissionRequests, 0);
+  });
+
+  test('token rotation after sign-out does not register a device', () async {
+    var signedIn = true;
+    final registrar = PushRegistrar(
+      transport: transport,
+      identities: DeviceIdentities(store: store, details: FakeDeviceDetails()),
+      registration: DevicePushRegistration(api),
+      isSignedIn: () => signedIn,
+    );
+    addTearDown(registrar.dispose);
+    await registrar.start();
+    signedIn = false;
+    transport.rotate('rotated-after-logout');
+    await pumpEventQueue();
+    expect(api.callCount('/me/devices'), 0);
+  });
+
+  testWidgets('reminder tile asks permission, registers and saves the server preference', (tester) async {
+    transport.currentToken = 'apns-current';
+    api.respond('/me/notifications', {});
+    final registrar = registrarWith(FakeDeviceDetails());
+    addTearDown(registrar.dispose);
+    await tester.pumpWidget(ProviderScope(overrides: [
+      pushRegistrarProvider.overrideWithValue(registrar),
+      apiClientProvider.overrideWithValue(api),
+    ], child: const MaterialApp(home: Scaffold(body: EnableDeviceRemindersTile()))));
+    await tester.tap(find.text('This device'));
+    await tester.pumpAndSettle();
+    expect(transport.permissionRequests, 1);
+    expect(api.bodyOf('/me/devices')!['push_token'], 'apns-current');
+    expect(api.bodyOf('/me/notifications')!['scheduled_sessions'], true);
+    expect(find.text('Reminders enabled on this device.'), findsOneWidget);
   });
 
   group('notification deep links', () {
@@ -237,6 +295,10 @@ void main() {
       expect(scheduleIdFromLink(const PushTap(deepLink: 'https://example.com/evil')), isNull);
       expect(scheduleIdFromLink(const PushTap(deepLink: 'iconfess://open/whatever')), isNull);
       expect(scheduleIdFromLink(const PushTap()), isNull);
+      expect(scheduleIdFromLink(const PushTap(deepLink: 'iconfess://schedules/../start')), isNull);
+      expect(scheduleIdFromLink(const PushTap(deepLink: 'iconfess://schedules/a%2Fb/start')), isNull);
+      expect(scheduleIdFromLink(const PushTap(deepLink: 'iconfess://schedules/a/start',
+          data: {'schedule_id': 'other'})), isNull);
     });
 
     // Tapping opens the session the schedule builds. It has to ask the server,

@@ -252,13 +252,15 @@ func (d *Dispatcher) enqueue(ctx context.Context, s Schedule, occurrence string,
 	for _, t := range targets {
 		n := notificationFor(s, t, label, minutes)
 		payload := map[string]any{
-			"token":     n.Token,
-			"platform":  string(n.Platform),
-			"title":     n.Title,
-			"body":      n.Body,
-			"data":      n.Data,
-			"user_id":   s.UserID,
-			"device_id": t.DeviceID,
+			"token":        n.Token,
+			"platform":     string(n.Platform),
+			"title":        n.Title,
+			"body":         n.Body,
+			"data":         n.Data,
+			"user_id":      s.UserID,
+			"device_id":    t.DeviceID,
+			"collapse_key": n.CollapseKey,
+			"sound":        n.Sound,
 		}
 		// One reminder per occurrence per device. The occurrence key is in the
 		// dedupe key because without it tomorrow's 6am would be swallowed as a

@@ -68,11 +68,26 @@ class PurchaseState {
 /// granted entitlement from the store's own "purchased" callback would be
 /// trusting a value it printed itself.
 class PremiumPurchaseController extends Notifier<PurchaseState> {
+  Future<void> _pending = Future<void>.value();
+
   @override
   PurchaseState build() {
     final gateway = ref.watch(purchaseGatewayProvider);
 
-    final purchases = gateway.purchases.listen(_verify);
+    final purchases = gateway.purchases.listen((purchase) {
+      // Store callbacks may contain a batch of restored transactions. Process
+      // each to completion in order, and catch failures on the async listener.
+      _pending = _pending.then((_) async {
+        if (!ref.mounted) return;
+        try {
+          await _verify(purchase);
+        } catch (_) {
+          if (ref.mounted) {
+            state = const PurchaseState(error: 'Your purchase is safe. Please use Restore purchases to retry confirmation.');
+          }
+        }
+      });
+    });
     final errors = gateway.errors.listen((message) {
       state = PurchaseState(error: message);
     });
@@ -81,11 +96,13 @@ class PremiumPurchaseController extends Notifier<PurchaseState> {
       errors.cancel();
     });
 
+    gateway.start();
     return const PurchaseState();
   }
 
   /// Starts a purchase for a catalogue plan.
   Future<void> purchase(String planId) async {
+    if (state.busy) return;
     final gateway = ref.read(purchaseGatewayProvider);
     final productId = storeProductIdFor(planId, apple: gateway.provider == 'apple');
 
@@ -113,10 +130,15 @@ class PremiumPurchaseController extends Notifier<PurchaseState> {
   /// path for a user who reinstalled: without it a paid subscriber sees a
   /// paywall with no way to get their subscription back.
   Future<void> restore() async {
+    if (state.busy) return;
     final gateway = ref.read(purchaseGatewayProvider);
     state = const PurchaseState(busy: true);
     try {
       await gateway.restore();
+      await _pending;
+      if (ref.mounted && state.busy) {
+        state = const PurchaseState(message: 'Restore requested. Any available purchases will be verified by the server.');
+      }
     } catch (e) {
       state = PurchaseState(error: 'Could not restore purchases: $e');
     }
@@ -163,22 +185,39 @@ class PremiumPurchaseController extends Notifier<PurchaseState> {
 
   static bool _worthRetrying(ApiException error) {
     if (error is NetworkException) return true;
-    if (error is ApiError) return error.isServerFault || error.status == 503 || error.status == 429;
-    return false;
+    // Authentication expiry and account conflicts are not proof that a paid
+    // transaction is invalid. Only a definitive invalid-receipt response ends it.
+    return error is! ApiError || error.code != 'RECEIPT_INVALID';
   }
 
   static String _retryMessage(ApiException error) {
     if (error is NetworkException) {
       return 'Your purchase is safe. We could not reach the server to confirm it - '
-          'it will be confirmed automatically when you are back online.';
+          'use Restore purchases when you are back online.';
     }
     return 'Your purchase is safe. The server could not confirm it just now; '
-        'we will try again shortly.';
+        'use Restore purchases to retry confirmation.';
   }
 }
 
 /// The gateway the app runs on. Tests override this with a fake store.
-final purchaseGatewayProvider = Provider<PurchaseGateway>((ref) => InAppPurchaseGateway());
+final purchaseGatewayProvider = Provider<PurchaseGateway>((ref) {
+  final gateway = InAppPurchaseGateway();
+  ref.onDispose(() { gateway.dispose(); });
+  return gateway;
+});
+
+/// Localized prices and availability from the native storefront, not the
+/// illustrative regional catalogue returned by the API.
+final storeProductsProvider = FutureProvider<Map<String, StoreProduct>>((ref) async {
+  final gateway = ref.watch(purchaseGatewayProvider);
+  final ids = <String>{
+    for (final plan in ['monthly', 'annual'])
+      if (storeProductIdFor(plan, apple: gateway.provider == 'apple') case final String id) id,
+  };
+  final products = await gateway.loadProducts(ids);
+  return {for (final product in products) product.id: product};
+});
 
 final premiumPurchaseControllerProvider =
     NotifierProvider<PremiumPurchaseController, PurchaseState>(PremiumPurchaseController.new);

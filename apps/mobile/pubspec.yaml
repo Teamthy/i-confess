@@ -39,7 +39,7 @@ dependencies:
   shared_preferences: ^2.5.5
   flutter_secure_storage: ^11.0.0
   just_audio: ^0.10.5
-  audio_session: ^0.1.25
+  audio_session: ^0.2.2
   iconfess_api:
     path: ../../clients/dart
   characters: ^1.4.1
@@ -60,12 +60,14 @@ dependencies:
   flutter_local_notifications: ^17.0.0
   # The device identity a push token is registered against; see
   # lib/src/core/push/platform_device_details.dart for why it is not a serial.
-  device_info_plus: ^11.0.0
+  device_info_plus: ^13.2.0
 
   # Purchases. The store is where money changes hands; this app never decides
   # entitlement from it - the receipt goes to the server, which is the only
   # authority on what an account owns (see features/premium/purchase_controller.dart).
-  in_app_purchase: ^3.0.0
+  in_app_purchase: ^3.3.1
+  # StoreKit 2 JWS receipts and correct pending/cancelled callbacks.
+  in_app_purchase_storekit: ^0.4.8+1
 
 dev_dependencies:
   flutter_test:

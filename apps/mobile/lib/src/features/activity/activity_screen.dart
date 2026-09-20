@@ -7,6 +7,7 @@ import '../../core/theme/theme.dart';
 import '../../core/theme/tokens.dart';
 import '../../core/widgets/screen.dart';
 import 'activity_providers.dart';
+import '../settings/settings_screen.dart' show EnableDeviceRemindersTile;
 
 /// Activity screen: history, streak, schedules.
 ///
@@ -74,6 +75,7 @@ class ActivityScreen extends ConsumerWidget {
               ],
             ),
             const SizedBox(height: IConfess.space3),
+            const EnableDeviceRemindersTile(),
             Expanded(
               child: TabBarView(
                 children: [

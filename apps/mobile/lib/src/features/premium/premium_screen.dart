@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
+import 'package:iconfess_api/iconfess_api.dart';
 
 import '../../core/theme/theme.dart';
 import '../../core/theme/tokens.dart';
@@ -119,7 +119,8 @@ class PremiumScreen extends ConsumerWidget {
                     Align(
                       alignment: Alignment.centerRight,
                       child: TextButton(
-                        onPressed: () => ref.read(premiumPurchaseControllerProvider.notifier).restore(),
+                        onPressed: ref.watch(premiumPurchaseControllerProvider).busy ? null
+                            : () => ref.read(premiumPurchaseControllerProvider.notifier).restore(),
                         child: const Text('Restore purchases'),
                       ),
                     ),
@@ -175,12 +176,16 @@ class _EntChip extends StatelessWidget {
 
 class _PlanCard extends ConsumerWidget {
   const _PlanCard({required this.plan});
-  final dynamic plan;
+  final Plan plan;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final surfaces = AppSurfaces.of(context);
     final purchase = ref.watch(premiumPurchaseControllerProvider);
+    final gateway = ref.watch(purchaseGatewayProvider);
+    final id = storeProductIdFor(plan.id, apple: gateway.provider == 'apple');
+    final products = ref.watch(storeProductsProvider);
+    final product = products.asData?.value[id];
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(IConfess.space5),
@@ -212,15 +217,9 @@ class _PlanCard extends ConsumerWidget {
           const SizedBox(height: IConfess.space2),
           Text(plan.description, style: IConfess.bodySm.copyWith(color: surfaces.textSecondary)),
           const SizedBox(height: IConfess.space3),
-          // Prices: show NGN, USD, GBP, EUR, PHP if available
-          Wrap(
-            spacing: IConfess.space2,
-            children: [
-              for (final curr in ['NGN', 'USD', 'GBP', 'EUR', 'PHP'])
-                if (plan.priceFor(curr).isNotEmpty)
-                  Chip(label: Text(plan.priceFor(curr))),
-            ],
-          ),
+          Text(product?.price ?? (products.isLoading
+              ? 'Loading store price…' : 'Unavailable in this store'),
+              style: IConfess.subheading.copyWith(color: surfaces.textPrimary)),
           const SizedBox(height: IConfess.space3),
           if (plan.features.isNotEmpty)
             Column(
@@ -243,7 +242,7 @@ class _PlanCard extends ConsumerWidget {
           FilledButton(
             // Disabled while the store is deciding: two taps on a slow
             // connection is how a user ends up buying twice.
-            onPressed: purchase.busy
+            onPressed: purchase.busy || product == null
                 ? null
                 : () => ref.read(premiumPurchaseControllerProvider.notifier).purchase(plan.id),
             child: purchase.busy
@@ -252,7 +251,7 @@ class _PlanCard extends ConsumerWidget {
                     width: 18,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : Text(plan.trialDays > 0 ? 'Start ${plan.trialDays}-day trial' : 'Subscribe'),
+                : const Text('Subscribe'),
           ),
           const SizedBox(height: IConfess.space2),
           Text(

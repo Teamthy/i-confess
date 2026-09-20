@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'src/core/analytics/analytics.dart';
-import 'src/core/di/providers.dart';
 import 'src/core/push/push_registration.dart';
 import 'src/core/routing/router.dart';
 import 'src/core/theme/theme.dart';
@@ -22,7 +21,7 @@ class IConfessApp extends ConsumerWidget {
     // the server's payload and is translated by the push layer before it gets
     // here, so an unrecognised link simply never arrives.
     ref.listen<AsyncValue<String>>(pushDeepLinkProvider, (_, next) {
-      final path = next.valueOrNull;
+      final path = next.asData?.value;
       if (path == null) return;
       router.go(path);
     });

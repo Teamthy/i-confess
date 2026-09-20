@@ -108,7 +108,6 @@ class DurationScreen extends ConsumerWidget {
             data: (result) => switch (result) {
               WriteSuccess<SessionPreview>(:final value) => _PreviewCard(preview: value),
               WriteFailure<SessionPreview>(:final error) => _PreviewFailure(error: error),
-              _ => const SizedBox.shrink(),
             },
           ),
         ],
@@ -155,6 +154,7 @@ class _CustomLengthFieldState extends State<_CustomLengthField> {
 
   @override
   Widget build(BuildContext context) {
+    final surfaces = AppSurfaces.of(context);
     final isCustom = !builderPresets.any((p) => p.seconds == widget.selectedSeconds);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

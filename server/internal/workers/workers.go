@@ -150,6 +150,8 @@ func (s Services) handleNotify(ctx context.Context, p map[string]any) error {
 		return jobs.Permanent(err)
 	}
 	body, _ := p["body"].(string)
+	collapseKey, _ := p["collapse_key"].(string)
+	sound, _ := p["sound"].(string)
 	platform, _ := p["platform"].(string)
 	// Who this delivery belongs to, when the producer said so. The inline
 	// dispatcher path has always known; carrying it in the payload is what
@@ -158,12 +160,17 @@ func (s Services) handleNotify(ctx context.Context, p map[string]any) error {
 	deviceID, _ := p["device_id"].(string)
 
 	n := push.Notification{
-		Token:    token,
-		Platform: push.Platform(platform),
-		Title:    title,
-		Body:     body,
+		Token:       token,
+		Platform:    push.Platform(platform),
+		Title:       title,
+		Body:        body,
+		CollapseKey: collapseKey,
+		Sound:       sound,
 	}
-	if data, ok := p["data"].(map[string]any); ok {
+	switch data := p["data"].(type) {
+	case map[string]string:
+		n.Data = data
+	case map[string]any:
 		n.Data = make(map[string]string, len(data))
 		for k, v := range data {
 			if str, ok := v.(string); ok {

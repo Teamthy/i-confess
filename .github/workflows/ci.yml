@@ -147,7 +147,8 @@ jobs:
           cache: true
 
       - name: Resolve dependencies
-        run: flutter pub get
+        id: dependencies
+        run: ../../scripts/ci-check.sh flutter pub get
 
       # --no-fatal-infos on purpose. Lint infos are style, and this package has
       # never been analyzed in CI; failing on the pre-existing ones would make
@@ -155,10 +156,11 @@ jobs:
       # review. Errors and warnings still fail it, which is where the real
       # findings live - a missing import compiles nowhere.
       - name: Analyze
-        run: flutter analyze --no-fatal-infos
+        run: ../../scripts/ci-check.sh flutter analyze --no-fatal-infos
 
       - name: Test
-        run: flutter test
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        run: ../../scripts/ci-check.sh flutter test
 
   dart-client:
     name: Dart test (clients/dart)
@@ -174,10 +176,12 @@ jobs:
         uses: dart-lang/setup-dart@v1
 
       - name: Resolve dependencies
-        run: dart pub get
+        id: dependencies
+        run: ../../scripts/ci-check.sh dart pub get
 
       - name: Analyze
-        run: dart analyze
+        run: ../../scripts/ci-check.sh dart analyze
 
       - name: Test
-        run: dart test
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        run: ../../scripts/ci-check.sh dart test

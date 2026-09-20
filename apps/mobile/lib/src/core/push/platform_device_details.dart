@@ -34,7 +34,9 @@ class PlatformDeviceDetails implements DeviceDetails {
         return (await info.iosInfo).identifierForVendor;
       }
       if (Platform.isAndroid) {
-        return (await info.androidInfo).id;
+        // AndroidDeviceInfo.id is a build identifier shared by many phones,
+        // not ANDROID_ID. Use the persisted random installation id instead.
+        return null;
       }
     } catch (error) {
       debugPrint('push: could not read the platform device id: $error');
