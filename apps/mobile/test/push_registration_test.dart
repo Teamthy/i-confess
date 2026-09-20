@@ -273,7 +273,8 @@ void main() {
     await tester.pumpWidget(ProviderScope(overrides: [
       pushRegistrarProvider.overrideWithValue(registrar),
       apiClientProvider.overrideWithValue(api),
-    ], child: const MaterialApp(home: Scaffold(body: EnableDeviceRemindersTile()))));
+    ], child: const MaterialApp(home: NotificationsScreen())));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('This device'));
     await tester.pumpAndSettle();
     expect(transport.permissionRequests, 1);
