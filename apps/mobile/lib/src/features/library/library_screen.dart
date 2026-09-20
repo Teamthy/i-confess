@@ -765,11 +765,11 @@ class CollectionDetailScreen extends ConsumerWidget {
       title: 'Collection',
       scrollable: false,
       actions: [
-        if (async.valueOrNull?.valueOrNull != null)
+        if (async.asData?.value.valueOrNull != null)
           PopupMenuButton<String>(
             key: const ValueKey('collection-menu'),
             onSelected: (value) => switch (value) {
-              'rename' => _rename(context, ref, async.value!.valueOrNull!),
+              'rename' => _rename(context, ref, async.asData!.value.valueOrNull!),
               'delete' => _confirmDelete(context, ref),
               _ => null,
             },

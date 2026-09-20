@@ -304,6 +304,80 @@ for symbol, module in [
 
 
 # ---------------------------------------------------------------------------
+# Third-party API surface
+#
+# This script derives its expectations from first-party source, so it is blind
+# to the shape of packages it cannot see. That blindness shipped a real compile
+# error once: `AsyncValue.valueOrNull` does not exist in the pinned Riverpod,
+# and CI caught it only after a full Flutter build. Rather than model Riverpod,
+# hold the codebase to the one spelling it already uses everywhere — a
+# convention check, which is enforceable without the package.
+# ---------------------------------------------------------------------------
+
+feature_dart = sorted((MOBILE / "src/features").rglob("*.dart"))
+assert feature_dart, "no feature sources found; the scan path is wrong"
+offenders = []
+for path in feature_dart:
+    for lineno, line in enumerate(read(path).splitlines(), 1):
+        # `ref.watch(x).valueOrNull` / `async.valueOrNull` unwraps an
+        # AsyncValue directly. The established spelling is `.asData?.value`.
+        # A `.valueOrNull` reached THROUGH `.asData?.value` is the Loadable's
+        # own, and correct.
+        for m in re.finditer(r"(\w+)\.valueOrNull", line):
+            recv = m.group(1)
+            before = line[: m.start()]
+            if recv == "value" and before.rstrip().endswith("asData?."):
+                continue
+            if recv == "value" and "asData!" in before:
+                continue
+            if recv in {"async"} or re.search(r"ref\.watch\([^)]*\)$", before):
+                offenders.append(f"{path.name}:{lineno}")
+
+check(
+    "AsyncValue is unwrapped with .asData?.value, not .valueOrNull",
+    not offenders,
+    f"AsyncValue has no valueOrNull in the pinned Riverpod: {offenders}",
+)
+
+
+# ---------------------------------------------------------------------------
+# autoDispose + ref-after-await
+#
+# A Provider holding an actions object is reached with `ref.read` inside a tap
+# handler. A `read` registers no listener, so an autoDispose provider is
+# disposed immediately and any `ref.invalidate` after an await throws
+# UnmountedRefException. The write has already reached the server by then, so
+# the symptom is the worst kind: saved, and never shown. This shipped once.
+# ---------------------------------------------------------------------------
+
+ref_after_await = []
+for path in feature_dart:
+    src = read(path)
+    # Providers of a plain object (not Future/Stream) that auto-dispose.
+    for m in re.finditer(r"final (\w+) = Provider\.autoDispose<(\w+)>", src):
+        provider, held = m.group(1), m.group(2)
+        cls = re.search(r"class %s\b.*?(?=\nclass |\Z)" % re.escape(held), src, re.S)
+        if not cls:
+            continue
+        body = cls.group(0)
+        # Does any async method touch the ref after an await?
+        for meth in re.finditer(r"async \{(.*?)\n  \}", body, re.S):
+            code = meth.group(1)
+            if "await" in code and re.search(r"_?ref\.(invalidate|read|refresh)", code):
+                after = code.split("await", 1)[1]
+                if re.search(r"_?ref\.(invalidate|read|refresh)", after):
+                    ref_after_await.append(f"{path.name}:{provider}")
+                    break
+
+check(
+    "no autoDispose Provider uses its ref after an await",
+    not ref_after_await,
+    "disposed before the await returns, so the invalidate throws: "
+    f"{sorted(set(ref_after_await))}",
+)
+
+
+# ---------------------------------------------------------------------------
 # Widget test: keys it drives must be keys the screen renders
 # ---------------------------------------------------------------------------
 

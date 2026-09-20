@@ -49,7 +49,15 @@ final collectionDetailProvider = FutureProvider.autoDispose
 /// the user creates a collection, the server accepts it, and the list they are
 /// looking at does not change — the single most common way a CRUD surface
 /// feels broken while being technically correct.
-final libraryActionsProvider = Provider.autoDispose<LibraryActions>((ref) {
+///
+/// Deliberately NOT autoDispose. Widgets reach this through `ref.read` in a
+/// tap handler, and a `read` registers no listener — so an autoDispose
+/// provider is disposed immediately, and the `ref.invalidate` after the await
+/// throws `UnmountedRefException` instead of refreshing anything. The write
+/// had already reached the server by then, so the symptom was the worst kind:
+/// the change was saved and the screen never showed it. This object holds no
+/// state beyond the ref, so keeping it alive costs nothing.
+final libraryActionsProvider = Provider<LibraryActions>((ref) {
   return LibraryActions(ref);
 });
 
