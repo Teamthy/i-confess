@@ -94,12 +94,12 @@ func NewGoogleNotificationVerifier(cfg GoogleNotificationConfig) (*GoogleNotific
 	// The Play verifier owns the package check and the product map. Building
 	// one here means a notification and a receipt cannot disagree about which
 	// package or which products this deployment sells.
-	verifier, err := NewGooglePlayVerifier(GooglePlayConfig{
-		PackageName: cfg.PackageName,
-		Plans:       cfg.Plans,
-		Purchases:   cfg.Purchases,
-		Now:         cfg.Now,
-	})
+	// The conversion is load-bearing, not a shortcut: Go only permits it while
+	// the two configurations have identical fields in the same order, so a
+	// setting added to one and forgotten in the other stops compiling instead
+	// of silently becoming a notification path that verifies against a
+	// different product map than the receipt path.
+	verifier, err := NewGooglePlayVerifier(GooglePlayConfig(cfg))
 	if err != nil {
 		return nil, err
 	}

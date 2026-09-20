@@ -1,7 +1,9 @@
 package billing
 
 import (
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"strings"
 	"testing"
@@ -382,7 +384,19 @@ func TestAppleNotificationFromEnvUsesTheReceiptConfiguration(t *testing.T) {
 	if verifier.cfg.BundleID != testBundleID {
 		t.Errorf("bundle id = %q", verifier.cfg.BundleID)
 	}
-	if len(verifier.cfg.Roots.Subjects()) == 0 {
-		t.Error("verifier has no trust anchors")
+	// The pinned root must actually verify against the pool the notification
+	// path will use. Counting certificates would be satisfied by a pool of
+	// anything; this asserts the anchor that the receipt path trusts is the
+	// anchor the notification path trusts.
+	block, _ := pem.Decode([]byte(appleRootCAG3PEM))
+	if block == nil {
+		t.Fatal("the embedded Apple root is not valid PEM")
+	}
+	root, rerr := x509.ParseCertificate(block.Bytes)
+	if rerr != nil {
+		t.Fatalf("parse embedded Apple root: %v", rerr)
+	}
+	if _, verr := root.Verify(x509.VerifyOptions{Roots: verifier.cfg.Roots}); verr != nil {
+		t.Errorf("the notification verifier does not trust the pinned Apple root: %v", verr)
 	}
 }

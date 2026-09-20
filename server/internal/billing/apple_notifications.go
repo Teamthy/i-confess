@@ -123,13 +123,12 @@ func NewAppleNotificationVerifier(cfg AppleNotificationConfig) (*AppleNotificati
 	// The receipt verifier already validates the configuration and owns the
 	// product map. Building one here rather than duplicating the checks means
 	// the two paths cannot disagree about what a valid configuration is.
-	receipt, err := NewAppleVerifier(AppleConfig{
-		BundleID:     cfg.BundleID,
-		Environment:  cfg.Environment,
-		ProductPlans: cfg.ProductPlans,
-		Roots:        cfg.Roots,
-		Now:          cfg.Now,
-	})
+	// The conversion is load-bearing, not a shortcut: Go only permits it while
+	// the two configurations have identical fields in the same order, so a
+	// setting added to one and forgotten in the other stops compiling rather
+	// than silently becoming a notification path that trusts a different root
+	// or a different product map than the receipt path (CWE-1188).
+	receipt, err := NewAppleVerifier(AppleConfig(cfg))
 	if err != nil {
 		return nil, err
 	}
