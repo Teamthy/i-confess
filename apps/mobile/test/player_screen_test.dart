@@ -89,8 +89,12 @@ void main() {
     await pumpPlayer(tester);
 
     expect(find.text('1 / 2'), findsOneWidget);
-    expect(find.text('Divine Healing'), findsOneWidget);
-    expect(find.text('By His stripes I was healed.'), findsOneWidget);
+    // Title appears in both the now-playing card and the queue rail, so scope
+    // the finder to the card that contains the full confession text.
+    final textFinder = find.text('By His stripes I was healed.');
+    final cardFinder = find.ancestor(of: textFinder, matching: find.byType(Container));
+    expect(find.descendant(of: cardFinder, matching: find.text('Divine Healing')), findsOneWidget);
+    expect(textFinder, findsOneWidget);
     expect(find.byType(Slider), findsOneWidget);
     expect(find.byIcon(Icons.play_arrow_rounded), findsOneWidget);
   });
@@ -120,8 +124,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('2 / 2'), findsOneWidget);
-    expect(find.text('Endless Peace'), findsOneWidget);
-    expect(find.text('Peace that surpasses all understanding.'), findsOneWidget);
+    // After skip, the new title is in both the now-playing card and the queue.
+    final nextTextFinder = find.text('Peace that surpasses all understanding.');
+    final nextCardFinder = find.ancestor(of: nextTextFinder, matching: find.byType(Container));
+    expect(find.descendant(of: nextCardFinder, matching: find.text('Endless Peace')), findsOneWidget);
+    expect(nextTextFinder, findsOneWidget);
   });
 
   testWidgets('shows locked banner and upgrade button when item is locked', (tester) async {
