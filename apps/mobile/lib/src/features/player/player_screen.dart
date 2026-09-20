@@ -2,19 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/routing/routes.dart';
 import '../../core/theme/theme.dart';
 import '../../core/theme/tokens.dart';
 import '../../core/widgets/screen.dart';
 import 'player_providers.dart';
 
-/// The immersive player (PHASE 24).
+/// The immersive production player (PHASES 24–26).
 ///
-/// Full-screen, above the tab bar. Shows the queue as a snapshot (G-1: queue
-/// must not change mid-session), current item, progress, controls, and handles
-/// locked items by showing upgrade affordance rather than silent skip.
-///
-/// No real audio engine yet (just_audio commented per D-4); controls drive the
-/// state machine and server sync, which is what matters for the lifecycle.
+/// Full-screen, above the tab bar. The Session Engine owns the business lifecycle
+/// state. Shows the queue as a snapshot (G-1), current item, progress, controls,
+/// and handles locked items with an actionable upgrade affordance.
 class PlayerScreen extends ConsumerWidget {
   const PlayerScreen({required this.sessionId, super.key});
 
@@ -22,46 +20,151 @@ class PlayerScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final sessionAsync = ref.watch(playerSessionProvider(sessionId));
-    final playerState = ref.watch(playerControllerProvider);
+    final engine = ref.read(sessionEngineProvider(sessionId).notifier);
+    final state = ref.watch(sessionEngineProvider(sessionId));
     final surfaces = AppSurfaces.of(context);
 
     return AppScaffold(
       immersive: true,
-      body: sessionAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text('Could not load session',
-                  style: IConfess.subheading.copyWith(color: surfaces.textPrimary)),
-              const SizedBox(height: IConfess.space2),
-              Text(e.toString(),
-                  style: IConfess.bodySm.copyWith(color: surfaces.textSecondary)),
-              const SizedBox(height: IConfess.space4),
-              FilledButton(
-                onPressed: () => ref.invalidate(playerSessionProvider(sessionId)),
-                child: const Text('Retry'),
-              ),
-            ],
-          ),
-        ),
-        data: (loadable) {
-          final session = loadable.valueOrNull;
-          if (session == null) {
+      scrollable: false,
+      body: Builder(
+        builder: (context) {
+          // 1. Loading state
+          if (state.isLoading) {
             return Center(
-              child: Text('Session not found',
-                  style: IConfess.body.copyWith(color: surfaces.textPrimary)),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const CircularProgressIndicator(),
+                  const SizedBox(height: IConfess.space4),
+                  Text(
+                    'Preparing your confession...',
+                    style: IConfess.body.copyWith(color: surfaces.textSecondary),
+                  ),
+                ],
+              ),
             );
           }
-          final items = session.items;
-          final currentIndex = playerState.currentIndex.clamp(0, items.length - 1);
-          final currentItem = items.isNotEmpty ? items[currentIndex] : null;
+
+          // 2. Actionable error state
+          if (state.isError && state.items.isEmpty) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(IConfess.space6),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.error_outline_rounded, size: 48, color: Colors.redAccent),
+                    const SizedBox(height: IConfess.space3),
+                    Text(
+                      'Could not load session',
+                      style: IConfess.subheading.copyWith(color: surfaces.textPrimary),
+                    ),
+                    const SizedBox(height: IConfess.space2),
+                    Text(
+                      state.errorMessage.isNotEmpty
+                          ? state.errorMessage
+                          : 'A network or audio error occurred.',
+                      textAlign: TextAlign.center,
+                      style: IConfess.bodySm.copyWith(color: surfaces.textSecondary),
+                    ),
+                    const SizedBox(height: IConfess.space5),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        OutlinedButton(
+                          onPressed: () => context.pop(),
+                          child: const Text('Back'),
+                        ),
+                        const SizedBox(width: IConfess.space3),
+                        FilledButton(
+                          onPressed: engine.retry,
+                          child: const Text('Retry'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
+
+          // 3. Empty state
+          if (state.items.isEmpty) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(IConfess.space6),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      'Session is empty',
+                      style: IConfess.subheading.copyWith(color: surfaces.textPrimary),
+                    ),
+                    const SizedBox(height: IConfess.space3),
+                    Text(
+                      'No confessions were found in this session.',
+                      textAlign: TextAlign.center,
+                      style: IConfess.bodySm.copyWith(color: surfaces.textSecondary),
+                    ),
+                    const SizedBox(height: IConfess.space5),
+                    FilledButton(
+                      onPressed: () => context.go(AppRoutes.explore),
+                      child: const Text('Explore Confessions'),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
+
+          // 4. Completed state
+          if (state.isCompleted) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(IConfess.space6),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.check_circle_rounded, size: 64, color: IConfess.colorBrand500),
+                    const SizedBox(height: IConfess.space4),
+                    Text(
+                      'Session Complete',
+                      style: IConfess.heading.copyWith(color: surfaces.textPrimary),
+                    ),
+                    const SizedBox(height: IConfess.space2),
+                    Text(
+                      'You have completed speaking God\'s Word over your life today.',
+                      textAlign: TextAlign.center,
+                      style: IConfess.body.copyWith(color: surfaces.textSecondary),
+                    ),
+                    const SizedBox(height: IConfess.space3),
+                    Text(
+                      '${state.completedItemIds.length} of ${state.items.length} confessions spoken',
+                      style: IConfess.caption.copyWith(color: IConfess.colorBrand500),
+                    ),
+                    const SizedBox(height: IConfess.space6),
+                    FilledButton(
+                      onPressed: () => context.pop(),
+                      child: const Text('Done'),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
+
+          // 5. Active playback layout
+          final items = state.items;
+          final currentIndex = state.currentIndex.clamp(0, items.length - 1);
+          final currentItem = state.currentItem;
+          final durationSec = currentItem?.durationSeconds ?? 0;
+          final maxMs = durationSec > 0 ? durationSec * 1000 : 1000;
 
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Top bar: close and queue counter
               Row(
                 children: [
                   IconButton(
@@ -75,7 +178,41 @@ class PlayerScreen extends ConsumerWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: IConfess.space6),
+              const SizedBox(height: IConfess.space4),
+
+              // Active error banner (if transient error)
+              if (state.errorMessage.isNotEmpty) ...[
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: IConfess.space4,
+                    vertical: IConfess.space2,
+                  ),
+                  margin: const EdgeInsets.only(bottom: IConfess.space3),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(IConfess.radiusMd),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.info_outline_rounded, size: 16, color: Colors.amber),
+                      const SizedBox(width: IConfess.space2),
+                      Expanded(
+                        child: Text(
+                          state.errorMessage,
+                          style: IConfess.caption.copyWith(color: surfaces.textPrimary),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: engine.retry,
+                        child: const Text('Retry'),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+
+              // Current confession card
               if (currentItem != null) ...[
                 Container(
                   width: double.infinity,
@@ -108,16 +245,29 @@ class PlayerScreen extends ConsumerWidget {
                             color: IConfess.colorAccentGold.withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(IConfess.radiusMd),
                           ),
-                          child: Row(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Icon(Icons.lock_rounded, size: 18),
-                              const SizedBox(width: IConfess.space2),
-                              Expanded(
-                                child: Text(
-                                  currentItem.lockReason.isNotEmpty
-                                      ? currentItem.lockReason
-                                      : 'Premium voice requires subscription',
-                                  style: IConfess.bodySm.copyWith(color: surfaces.textPrimary),
+                              Row(
+                                children: [
+                                  const Icon(Icons.lock_rounded, size: 18),
+                                  const SizedBox(width: IConfess.space2),
+                                  Expanded(
+                                    child: Text(
+                                      currentItem.lockReason.isNotEmpty
+                                          ? currentItem.lockReason
+                                          : 'Premium subscription required',
+                                      style: IConfess.bodySm.copyWith(color: surfaces.textPrimary),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: IConfess.space2),
+                              Align(
+                                alignment: Alignment.centerRight,
+                                child: TextButton(
+                                  onPressed: () => context.push(AppRoutes.premium),
+                                  child: const Text('Upgrade to Premium'),
                                 ),
                               ),
                             ],
@@ -128,17 +278,17 @@ class PlayerScreen extends ConsumerWidget {
                   ),
                 ),
               ],
+
               const Spacer(),
-              // Progress
+
+              // Progress slider
               Column(
                 children: [
                   Slider(
-                    value: playerState.positionMs.toDouble().clamp(
-                        0, (currentItem?.durationSeconds ?? 1) * 1000.toDouble()),
+                    value: state.positionMs.toDouble().clamp(0, maxMs.toDouble()),
                     min: 0,
-                    max: (currentItem?.durationSeconds ?? 1) * 1000.toDouble(),
-                    onChanged: (v) =>
-                        ref.read(playerControllerProvider.notifier).seek(v.toInt()),
+                    max: maxMs.toDouble(),
+                    onChanged: (v) => engine.seek(v.toInt()),
                   ),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: IConfess.space4),
@@ -146,11 +296,11 @@ class PlayerScreen extends ConsumerWidget {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          _formatMs(playerState.positionMs),
+                          _formatMs(state.positionMs),
                           style: IConfess.caption.copyWith(color: surfaces.textSecondary),
                         ),
                         Text(
-                          _formatMs((currentItem?.durationSeconds ?? 0) * 1000),
+                          _formatMs(maxMs),
                           style: IConfess.caption.copyWith(color: surfaces.textSecondary),
                         ),
                       ],
@@ -158,25 +308,26 @@ class PlayerScreen extends ConsumerWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: IConfess.space4),
-              // Controls
+
+              const SizedBox(height: IConfess.space3),
+
+              // Control buttons: Previous, Play/Pause, Next/Skip
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
                   IconButton(
                     icon: const Icon(Icons.skip_previous_rounded),
                     iconSize: 36,
-                    onPressed: currentIndex > 0
-                        ? () => ref.read(playerControllerProvider.notifier).previous()
+                    onPressed: currentIndex > 0 || state.positionMs > 3000
+                        ? engine.previous
                         : null,
                   ),
                   FilledButton(
                     onPressed: () {
-                      final ctrl = ref.read(playerControllerProvider.notifier);
-                      if (playerState.status == PlayerStatus.playing) {
-                        ctrl.pause(sessionId);
+                      if (state.isPlaying) {
+                        engine.pause();
                       } else {
-                        ctrl.resume(sessionId);
+                        engine.play();
                       }
                     },
                     style: FilledButton.styleFrom(
@@ -184,9 +335,7 @@ class PlayerScreen extends ConsumerWidget {
                       padding: const EdgeInsets.all(IConfess.space5),
                     ),
                     child: Icon(
-                      playerState.status == PlayerStatus.playing
-                          ? Icons.pause_rounded
-                          : Icons.play_arrow_rounded,
+                      state.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
                       size: 36,
                     ),
                   ),
@@ -194,13 +343,15 @@ class PlayerScreen extends ConsumerWidget {
                     icon: const Icon(Icons.skip_next_rounded),
                     iconSize: 36,
                     onPressed: currentIndex < items.length - 1
-                        ? () => ref.read(playerControllerProvider.notifier).skip(sessionId)
-                        : () => ref.read(playerControllerProvider.notifier).complete(sessionId),
+                        ? engine.skip
+                        : engine.complete,
                   ),
                 ],
               ),
-              const SizedBox(height: IConfess.space6),
-              // Queue peek
+
+              const SizedBox(height: IConfess.space5),
+
+              // Queue peek (horizontal rail)
               if (items.length > 1)
                 SizedBox(
                   height: 80,
@@ -211,47 +362,70 @@ class PlayerScreen extends ConsumerWidget {
                     itemBuilder: (context, idx) {
                       final item = items[idx];
                       final isCurrent = idx == currentIndex;
-                      return Container(
-                        width: 160,
-                        padding: const EdgeInsets.all(IConfess.space3),
-                        decoration: BoxDecoration(
-                          color: isCurrent ? IConfess.colorBrand500 : surfaces.surfaceRaised,
-                          borderRadius: BorderRadius.circular(IConfess.radiusMd),
-                          border: isCurrent
-                              ? Border.all(color: IConfess.colorBrand700, width: 2)
-                              : null,
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              item.title.isNotEmpty ? item.title : 'Item ${idx + 1}',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: IConfess.bodySm.copyWith(
-                                color: isCurrent ? Colors.white : surfaces.textPrimary,
-                                fontWeight: isCurrent ? FontWeight.w600 : FontWeight.w400,
+                      final isCompleted = state.completedItemIds.contains(item.id);
+                      final isSkipped = state.skippedItemIds.contains(item.id);
+
+                      return InkWell(
+                        onTap: () => engine.selectQueueItem(idx),
+                        borderRadius: BorderRadius.circular(IConfess.radiusMd),
+                        child: Container(
+                          width: 160,
+                          padding: const EdgeInsets.all(IConfess.space3),
+                          decoration: BoxDecoration(
+                            color: isCurrent ? IConfess.colorBrand500 : surfaces.surfaceRaised,
+                            borderRadius: BorderRadius.circular(IConfess.radiusMd),
+                            border: isCurrent
+                                ? Border.all(color: IConfess.colorBrand700, width: 2)
+                                : null,
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      item.title.isNotEmpty ? item.title : 'Item ${idx + 1}',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: IConfess.bodySm.copyWith(
+                                        color: isCurrent ? Colors.white : surfaces.textPrimary,
+                                        fontWeight:
+                                            isCurrent ? FontWeight.w600 : FontWeight.w400,
+                                      ),
+                                    ),
+                                  ),
+                                  if (isCompleted)
+                                    Icon(
+                                      Icons.check_circle_rounded,
+                                      size: 14,
+                                      color: isCurrent ? Colors.white : IConfess.colorBrand500,
+                                    )
+                                  else if (isSkipped)
+                                    Icon(
+                                      Icons.skip_next_rounded,
+                                      size: 14,
+                                      color: isCurrent ? Colors.white70 : surfaces.textSecondary,
+                                    )
+                                  else if (item.locked)
+                                    Icon(
+                                      Icons.lock_rounded,
+                                      size: 14,
+                                      color: isCurrent ? Colors.white : surfaces.textSecondary,
+                                    ),
+                                ],
                               ),
-                            ),
-                            const SizedBox(height: IConfess.space1),
-                            Text(
-                              '${item.durationSeconds ~/ 60}:${(item.durationSeconds % 60).toString().padLeft(2, '0')}',
-                              style: IConfess.caption.copyWith(
-                                color: isCurrent
-                                    ? Colors.white.withValues(alpha: 0.85)
-                                    : surfaces.textSecondary,
-                              ),
-                            ),
-                            if (item.locked)
-                              Padding(
-                                padding: const EdgeInsets.only(top: IConfess.space1),
-                                child: Icon(
-                                  Icons.lock_rounded,
-                                  size: 12,
-                                  color: isCurrent ? Colors.white : surfaces.textSecondary,
+                              const SizedBox(height: IConfess.space1),
+                              Text(
+                                '${item.durationSeconds ~/ 60}:${(item.durationSeconds % 60).toString().padLeft(2, '0')}',
+                                style: IConfess.caption.copyWith(
+                                  color: isCurrent
+                                      ? Colors.white.withValues(alpha: 0.85)
+                                      : surfaces.textSecondary,
                                 ),
                               ),
-                          ],
+                            ],
+                          ),
                         ),
                       );
                     },

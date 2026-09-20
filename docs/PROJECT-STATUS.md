@@ -49,7 +49,7 @@ it.** Every claim below was produced by running something.
 | **Soft delete / versioning** | Present on 2 of 64 tables each. Section 25 asks for both generally. |
 | **Cache** | Per-process only; no cross-instance invalidation. |
 | **Design system** | 120 tokens, contrast-verified, but not yet consumed by any real surface. |
-| **Navigation** | 37 screens specified and validated; mobile has the shell plus real home, explore, category, confession and builder surfaces; activity, me, player and the rest are still placeholders (PHASE 24–30). |
+| **Navigation** | 37 screens specified and validated; mobile has the shell plus real home, explore, category, confession, builder, activity, and production player surfaces; me and remaining secondary surfaces continue in subsequent phases. |
 | **Observability** | No cache hit-rate metric; runtime dependency failure untested. |
 
 ## Phase progress
@@ -113,10 +113,12 @@ PHASE 23 Mobile Session Builder — **PASS WITH CONDITIONS** (the builder walk
     route table after the audit found it 146 paths stale)
 
 PHASE 24 Mobile Player — **PASS** (immersive player above tab bar, queue
-    snapshot G-1, progress sync via POST /sessions/{id}/progress, controls
-    start/pause/resume/skip/complete, locked items show upgrade affordance not
-    silent skip, queue peek horizontal, no real audio engine yet per D-4 but
-    state machine and server sync correct)
+    snapshot G-1, real signed audio URLs via AudioSigner, Session Engine
+    lifecycle ownership, progress sync via POST /sessions/{id}/progress,
+    transparent URL refresh preserving position, deterministic local/cloud
+    conflict resolution, audio focus and route change interruption handling,
+    server-authoritative completion validation, locked items show upgrade
+    affordance, 100% test pass on Go + race and Flutter suites)
 
 PHASE 24 Activity — **PASS** (activity tab: streak card, 3 tabs Continue/History/Schedules,
     continue from ACTIVE/PAUSED/INTERRUPTED/READY/STARTING, history from COMPLETED,

@@ -422,6 +422,11 @@ extension IConfessEndpoints on ApiClient {
           [Map<String, dynamic>? body]) =>
       post('/sessions/$id/resume', body);
 
+  /// Interrupt session
+  Future<Map<String, dynamic>> postSessionsByIdInterrupt(String id,
+          [Map<String, dynamic>? body]) =>
+      post('/sessions/$id/interrupt', body);
+
   /// Record progress
   Future<Map<String, dynamic>> postSessionsByIdProgress(String id,
           [Map<String, dynamic>? body]) =>

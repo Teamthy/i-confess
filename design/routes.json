@@ -897,6 +897,13 @@
   },
   {
     "method": "POST",
+    "path": "/sessions/{id}/interrupt",
+    "auth": "user",
+    "summary": "Interrupt a session",
+    "tag": "sessions"
+  },
+  {
+    "method": "POST",
     "path": "/sessions/{id}/pause",
     "auth": "user",
     "summary": "Pause a session",
@@ -1922,6 +1929,13 @@
     "path": "/v1/sessions/{id}/complete",
     "auth": "user",
     "summary": "Complete a session",
+    "tag": "sessions"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/sessions/{id}/interrupt",
+    "auth": "user",
+    "summary": "Interrupt a session",
     "tag": "sessions"
   },
   {

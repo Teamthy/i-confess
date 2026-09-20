@@ -200,7 +200,7 @@ class _ContinueRail extends StatelessWidget {
             subtitle: session.status == 'PAUSED' ? 'Paused' : 'In progress',
             color: surfaces.surfaceRaised,
             textColor: surfaces.textPrimary,
-            onTap: () => context.go(AppRoutes.player),
+            onTap: () => context.go(session.id.isNotEmpty ? AppRoutes.playerWithId(session.id) : AppRoutes.player),
           );
         },
       ),

@@ -262,6 +262,7 @@ func (h *Handler) Routes() http.Handler {
 	})
 	h.route(mux, "POST /sessions/{id}/pause", "user", "sessions", "Pause a session", authed, h.pauseSession)
 	h.route(mux, "POST /sessions/{id}/resume", "user", "sessions", "Resume a paused session", authed, h.resumeSession)
+	h.route(mux, "POST /sessions/{id}/interrupt", "user", "sessions", "Interrupt a session", authed, h.interruptSession)
 	h.route(mux, "POST /sessions/{id}/complete", "user", "sessions", "Complete a session", authed, func(w http.ResponseWriter, r *http.Request) {
 		idempotent(http.HandlerFunc(h.completeSession)).ServeHTTP(w, r)
 	})
@@ -385,6 +386,7 @@ func (h *Handler) Routes() http.Handler {
 	})
 	h.route(mux, "POST /v1/sessions/{id}/pause", "user", "sessions", "Pause a session", authed, h.pauseSession)
 	h.route(mux, "POST /v1/sessions/{id}/resume", "user", "sessions", "Resume a paused session", authed, h.resumeSession)
+	h.route(mux, "POST /v1/sessions/{id}/interrupt", "user", "sessions", "Interrupt a session", authed, h.interruptSession)
 	h.route(mux, "POST /v1/sessions/{id}/complete", "user", "sessions", "Complete a session", authed, func(w http.ResponseWriter, r *http.Request) {
 		idempotent(http.HandlerFunc(h.completeSession)).ServeHTTP(w, r)
 	})

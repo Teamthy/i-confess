@@ -225,7 +225,7 @@ class _SessionTile extends StatelessWidget {
       borderRadius: BorderRadius.circular(IConfess.radiusMd),
       child: InkWell(
         borderRadius: BorderRadius.circular(IConfess.radiusMd),
-        onTap: () => context.go(AppRoutes.player),
+        onTap: () => context.go(session.id.isNotEmpty ? AppRoutes.playerWithId(session.id) : AppRoutes.player),
         child: Padding(
           padding: const EdgeInsets.all(IConfess.space4),
           child: Row(

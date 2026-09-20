@@ -1440,6 +1440,33 @@ func (h *Handler) recordPlayback(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
+
+	// Prevent forged playback records:
+	// A client request alone must not prove that audio played or completed.
+	if req.SessionID != "" {
+		sess, err := h.sess.ByID(r.Context(), req.SessionID)
+		if errors.Is(err, store.ErrNotFound) {
+			httpx.WriteError(w, http.StatusNotFound, "session not found")
+			return
+		}
+		if err != nil {
+			httpx.WriteError(w, http.StatusInternalServerError, "failed to load session")
+			return
+		}
+		if sess.UserID != h.userID(r) {
+			httpx.WriteError(w, http.StatusForbidden, "not your session")
+			return
+		}
+		// Refuse forged completion of a session that has never started playback and has no listened duration
+		if req.Completed && req.DurationSeconds <= 0 && sess.StartedAt == "" && sess.Status != string(sessions.Completed) && sess.Status != string(sessions.Active) && sess.Status != string(sessions.Paused) && sess.Status != string(sessions.Interrupted) {
+			httpx.WriteJSON(w, http.StatusConflict, map[string]any{
+				"error": "a session can only be completed after playback has started",
+				"code":  "INVALID_TRANSITION",
+			})
+			return
+		}
+	}
+
 	rec := &models.PlaybackRecord{
 		UserID:          h.userID(r),
 		SessionID:       req.SessionID,

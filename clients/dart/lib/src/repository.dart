@@ -480,6 +480,70 @@ final class ContentRepository extends Repository {
     }
   }
 
+  /// Fetches the session queue snapshot with freshly signed URLs and current progress.
+  Future<Loadable<SessionQueueResponse>> sessionQueue(String id) async {
+    try {
+      final json = await api.getSessionsByIdQueue(id);
+      return Loadable.loaded(SessionQueueResponse.fromJson(json));
+    } on ApiException catch (e) {
+      return Loadable.failed(e);
+    }
+  }
+
+  /// Starts playback for a session.
+  Future<WriteResult<ListeningSession>> startSession(String id) =>
+      write(() => api.postSessionsByIdStart(id), ListeningSession.fromJson);
+
+  /// Pauses a live session.
+  Future<WriteResult<ListeningSession>> pauseSession(String id) =>
+      write(() => api.postSessionsByIdPause(id), ListeningSession.fromJson);
+
+  /// Resumes a paused or interrupted session.
+  Future<WriteResult<ListeningSession>> resumeSession(String id) =>
+      write(() => api.postSessionsByIdResume(id), ListeningSession.fromJson);
+
+  /// Interrupts an active session.
+  Future<WriteResult<ListeningSession>> interruptSession(String id) =>
+      write(() => api.postSessionsByIdInterrupt(id), ListeningSession.fromJson);
+
+  /// Records playback progress with deterministic conflict resolution.
+  Future<WriteResult<SyncProgressResponse>> syncProgress(
+    String id, {
+    required int positionMs,
+    String? queueItemId,
+    String? itemStatus,
+    String? deviceId,
+    String? lastUpdatedAt,
+  }) =>
+      write(
+        () => api.postSessionsByIdProgress(id, {
+          'position_ms': positionMs,
+          if (queueItemId != null && queueItemId.isNotEmpty)
+            'queue_item_id': queueItemId,
+          if (itemStatus != null && itemStatus.isNotEmpty)
+            'item_status': itemStatus,
+          if (deviceId != null && deviceId.isNotEmpty) 'device_id': deviceId,
+          if (lastUpdatedAt != null && lastUpdatedAt.isNotEmpty)
+            'last_updated_at': lastUpdatedAt,
+        }),
+        SyncProgressResponse.fromJson,
+      );
+
+  /// Skips an item in the queue.
+  Future<WriteResult<Map<String, dynamic>>> skipSessionItem(
+          String id, String itemId) =>
+      write(
+        () => api.postSessionsByIdSkip(id, {'item_id': itemId}),
+        (json) => json,
+      );
+
+  /// Completes the session.
+  Future<WriteResult<Map<String, dynamic>>> completeSession(String id) =>
+      write(
+        () => api.postSessionsByIdComplete(id),
+        (json) => json,
+      );
+
   /// The listener's sessions, newest first, for continue-listening and history.
   ///
   /// Not cached, like [createSession]: a session's status changes as it is
