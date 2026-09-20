@@ -213,7 +213,7 @@ void main() {
 
     final token = await registrarWith(FakeDeviceDetails()).enable();
 
-    expect(token, 'fcm-token-1', reason: 'the token exists even though the upload failed');
+    expect(token, isNull, reason: 'a failed upload must not report reminders enabled');
   });
 
   group('notification deep links', () {

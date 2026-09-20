@@ -1,6 +1,8 @@
+import 'dart:async' hide unawaited;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:iconfess_api/iconfess_api.dart';
+import 'package:flutter/widgets.dart';
 
 import '../../features/auth/auth_controller.dart';
 import '../di/providers.dart';
@@ -64,13 +66,18 @@ class PushRegistrar {
     required PushTransport transport,
     required DeviceIdentities identities,
     required DevicePushRegistration registration,
+    bool Function()? isSignedIn,
   })  : _transport = transport,
         _identities = identities,
-        _registration = registration;
+        _registration = registration,
+        _isSignedIn = isSignedIn ?? (() => true);
 
   final PushTransport _transport;
   final DeviceIdentities _identities;
   final DevicePushRegistration _registration;
+  final bool Function() _isSignedIn;
+  Future<void>? _starting;
+  StreamSubscription<String>? _refreshSubscription;
 
   bool _available = false;
   String? _token;
@@ -82,18 +89,19 @@ class PushRegistrar {
   String? get lastToken => _token;
 
   /// Initialises the transport. Safe to call once per process.
-  Future<void> start() async {
+  Future<void> start() => _starting ??= _start();
+
+  Future<void> _start() async {
     _available = await _transport.initialize();
     if (!_available) {
       debugPrint('push: unavailable on this device - reminders will not arrive');
       return;
     }
-    _transport.tokenRefresh.listen((token) {
+    _refreshSubscription = _transport.tokenRefresh.listen((token) {
       if (token.isEmpty) return;
       // A rotated token is a device the old token no longer reaches: the
       // server has to hear about it in the same session that learns it.
-      _token = token;
-      unawaited(_register(token));
+      unawaited(_register(token).then((_) {}));
     });
   }
 
@@ -103,6 +111,8 @@ class PushRegistrar {
   /// refused or push is unavailable. Refusal is not an error: the user said no,
   /// and the app keeps working without reminders.
   Future<String?> enable() async {
+    await start();
+    if (!_isSignedIn()) return null;
     if (!_available) return null;
     if (!await _transport.requestPermission()) {
       debugPrint('push: permission refused - not registering a token');
@@ -113,28 +123,35 @@ class PushRegistrar {
       debugPrint('push: permission granted but the device has no token yet');
       return null;
     }
-    _token = token;
-    await _register(token);
-    return token;
+    return await _register(token) ? token : null;
   }
 
   /// Registers the current token without prompting, for a session that already
   /// granted permission.
   Future<void> registerIfPermitted() async {
+    await start();
+    if (!_isSignedIn()) return;
     if (!_available) return;
     final token = await _transport.token();
     if (token == null || token.isEmpty) return;
-    _token = token;
     await _register(token);
   }
 
-  Future<void> _register(String token) async {
+  Future<bool> _register(String token) async {
+    if (!_isSignedIn()) return false;
     final identity = await _identities.current();
-    await _registration.registerDevice(
+    if (!_isSignedIn()) return false;
+    final registered = await _registration.registerDevice(
       deviceId: identity.deviceId,
       platform: identity.platform,
       pushToken: token,
     );
+    if (registered) _token = token;
+    return registered;
+  }
+
+  Future<void> dispose() async {
+    await _refreshSubscription?.cancel();
   }
 }
 
@@ -149,20 +166,22 @@ final pushRegistrarProvider = Provider<PushRegistrar>((ref) {
     transport: ref.watch(pushTransportProvider),
     identities: ref.watch(deviceIdentitiesProvider),
     registration: DevicePushRegistration(ref.watch(apiClientProvider)),
+    isSignedIn: () => ref.read(authControllerProvider).isSignedIn,
   );
 
-  var started = false;
   ref.listen<AuthState>(authControllerProvider, (previous, next) {
-    if (next.status != AuthStatus.signedIn) return;
-    () async {
-      if (!started) {
-        started = true;
-        await registrar.start();
-      }
-      // Every sign-in re-registers. A token registered by a previous session
-      // may belong to a different account on the same handset.
-      await registrar.registerIfPermitted();
-    }();
+    if (next.status == AuthStatus.signedIn) {
+      unawaited(registrar.registerIfPermitted());
+    }
+  }, fireImmediately: true);
+  // Re-read APNs on resume too: FCM refresh callbacks are not an APNs-token
+  // lifecycle API, and a permission change in Settings must take effect here.
+  final lifecycle = AppLifecycleListener(
+    onResume: () => unawaited(registrar.registerIfPermitted()),
+  );
+  ref.onDispose(() {
+    lifecycle.dispose();
+    unawaited(registrar.dispose());
   });
 
   return registrar;
@@ -178,12 +197,14 @@ final pushRegistrarProvider = Provider<PushRegistrar>((ref) {
 String? scheduleIdFromLink(PushTap tap) {
   final link = tap.deepLink ?? tap.data['deeplink'];
   if (link == null || link.isEmpty) return null;
-  const scheme = 'iconfess://';
-  if (!link.startsWith(scheme)) return null;
-  final rest = link.substring(scheme.length);
-  if (!rest.startsWith('schedules/') || !rest.endsWith('/start')) return null;
-  final id = tap.data['schedule_id'] ?? rest.substring('schedules/'.length, rest.length - '/start'.length);
-  return id.isEmpty ? null : id;
+  final uri = Uri.tryParse(link);
+  if (uri == null || uri.scheme != 'iconfess' || uri.host != 'schedules' ||
+      uri.hasQuery || uri.hasFragment || uri.pathSegments.length != 2 ||
+      uri.pathSegments.last != 'start') return null;
+  final id = uri.pathSegments.first;
+  if (!RegExp(r'^[A-Za-z0-9_-]+$').hasMatch(id)) return null;
+  if (tap.data['schedule_id'] != null && tap.data['schedule_id'] != id) return null;
+  return id;
 }
 
 /// Deep links from tapped notifications, as router paths.
@@ -206,7 +227,8 @@ final pushDeepLinkProvider = StreamProvider<String>((ref) async* {
     }
     try {
       final session = await api.post('/schedules/$scheduleId/start');
-      final sessionId = (session['session_id'] ?? session['id'])?.toString();
+      final data = session['data'] is Map ? session['data'] as Map : session;
+      final sessionId = (data['session_id'] ?? data['id'])?.toString();
       if (sessionId == null || sessionId.isEmpty) {
         debugPrint('push: the schedule produced no session to open');
         continue;

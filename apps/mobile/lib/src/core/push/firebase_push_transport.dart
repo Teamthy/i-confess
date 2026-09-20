@@ -45,7 +45,8 @@ class FirebasePushTransport implements PushTransport {
     if (_initialized) return _messaging != null;
     _initialized = true;
 
-    if (kIsWeb) {
+    if (kIsWeb || (defaultTargetPlatform != TargetPlatform.iOS &&
+        defaultTargetPlatform != TargetPlatform.android)) {
       // The web build would need a Firebase web app plus a service worker, and
       // neither is configured. Claiming availability would produce a tokenless
       // registration on every page load.
@@ -64,11 +65,14 @@ class FirebasePushTransport implements PushTransport {
     final messaging = _messaging ??= FirebaseMessaging.instance;
     await _initLocalNotifications();
 
-    _subscriptions.add(messaging.onTokenRefresh.listen((token) {
-      if (!token.isEmpty) _tokens.add(token);
+    _subscriptions.add(messaging.onTokenRefresh.listen((_) async {
+      // An iOS device is routed to APNs by the backend. Never register its FCM
+      // token as an APNs token, including on refresh.
+      final current = await token();
+      if (current != null && current.isNotEmpty) _tokens.add(current);
     }));
-    _subscriptions.add(messaging.onMessage.listen(_showForeground));
-    _subscriptions.add(messaging.onMessageOpenedApp.listen((m) => _opened.add(_tapOf(m))));
+    _subscriptions.add(FirebaseMessaging.onMessage.listen(_showForeground));
+    _subscriptions.add(FirebaseMessaging.onMessageOpenedApp.listen((m) => _opened.add(_tapOf(m))));
 
     // The notification that launched the app from a terminated state. Reading
     // it here rather than in a widget means the deep link is available before
@@ -95,7 +99,14 @@ class FirebasePushTransport implements PushTransport {
   @override
   Future<String?> token() async {
     try {
-      return await _messaging?.getToken();
+      final messaging = _messaging;
+      if (messaging == null) return null;
+      final settings = await messaging.getNotificationSettings();
+      if (settings.authorizationStatus != AuthorizationStatus.authorized &&
+          settings.authorizationStatus != AuthorizationStatus.provisional) return null;
+      return defaultTargetPlatform == TargetPlatform.iOS
+          ? await messaging.getAPNSToken()
+          : await messaging.getToken();
     } catch (error) {
       // APNs registration failing on a simulator or an unprovisioned build is
       // expected; there is simply no token yet.
@@ -116,8 +127,8 @@ class FirebasePushTransport implements PushTransport {
   /// handling, so without this a reminder that fires with the app open would be
   /// visible only in the log.
   Future<void> _showForeground(RemoteMessage message) async {
-    final title = message.notification?.title ?? message.data['title'];
-    final body = message.notification?.body ?? message.data['body'];
+    final title = message.notification?.title ?? message.data['title']?.toString();
+    final body = message.notification?.body ?? message.data['body']?.toString();
     if (title == null && body == null) return;
 
     await _local.show(
@@ -171,8 +182,13 @@ class FirebasePushTransport implements PushTransport {
     return PushTap(deepLink: data['deeplink'], data: data);
   }
 
-  static Map<String, String> _dataOf(RemoteMessage message) =>
-      message.data.map((key, value) => MapEntry(key, value?.toString() ?? ''));
+  static Map<String, String> _dataOf(RemoteMessage message) {
+    // Direct APNs payloads contain the server's custom fields under `data`;
+    // FCM Android exposes the same fields directly in RemoteMessage.data.
+    final nested = message.data['data'];
+    final data = nested is Map ? nested : message.data;
+    return data.map((key, value) => MapEntry(key.toString(), value?.toString() ?? ''));
+  }
 
   /// Releases the listeners. The transport lives for the life of the process,
   /// so this exists for tests and for a future hot-restart path rather than for
@@ -188,4 +204,8 @@ class FirebasePushTransport implements PushTransport {
 }
 
 /// The transport used by the running app. Tests override this.
-final pushTransportProvider = Provider<PushTransport>((ref) => FirebasePushTransport());
+final pushTransportProvider = Provider<PushTransport>((ref) {
+  final transport = FirebasePushTransport();
+  ref.onDispose(() { transport.dispose(); });
+  return transport;
+});
