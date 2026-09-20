@@ -92,15 +92,68 @@ func (s *UserStore) SetAdminRole(ctx context.Context, userID, role string) error
 	return err
 }
 
+// Subscription returns the plan a user is entitled to right now (IC-003).
+//
+// Entitlement is decided by the row's status *and* its clock: a subscription
+// whose paid period has ended grants nothing even though the status column may
+// still read active. The previous implementation filtered on status alone and
+// therefore kept a lapsed subscriber premium indefinitely, because nothing
+// rewrites the row at the instant a period ends.
 func (s *UserStore) Subscription(ctx context.Context, userID string) (string, error) {
-	var plan string
-	err := s.db.QueryRowContext(ctx,
-		`SELECT plan FROM subscriptions WHERE user_id = ? AND status = 'active' ORDER BY created_at DESC LIMIT 1`,
-		userID).Scan(&plan)
-	if errors.Is(err, sql.ErrNoRows) {
+	sub, err := s.SubscriptionRecord(ctx, userID)
+	if err != nil {
+		return "", err
+	}
+	if sub == nil || !sub.Entitled(time.Now().UTC()) {
 		return "free", nil
 	}
-	return plan, err
+	return sub.Plan, nil
+}
+
+// SubscriptionRecord returns the user's current subscription row, or nil when
+// the user has none.
+func (s *UserStore) SubscriptionRecord(ctx context.Context, userID string) (*models.Subscription, error) {
+	var (
+		sub        models.Subscription
+		startedAt  sql.NullString
+		endsAt     sql.NullString
+		updatedAt  sql.NullString
+		provider   sql.NullString
+		providerTX sql.NullString
+		originalTX sql.NullString
+		productID  sql.NullString
+		storeEnv   sql.NullString
+		autoRenew  sql.NullBool
+		verifiedAt sql.NullString
+	)
+	err := s.db.QueryRowContext(ctx,
+		`SELECT id, user_id, plan, status, started_at, ends_at, created_at, updated_at,
+		        provider, provider_transaction_id, original_transaction_id, product_id,
+		        store_environment, auto_renew, last_verified_at
+		   FROM subscriptions WHERE user_id = ? ORDER BY created_at DESC LIMIT 1`,
+		userID).Scan(
+		&sub.ID, &sub.UserID, &sub.Plan, &sub.Status, &startedAt, &endsAt, &sub.CreatedAt, &updatedAt,
+		&provider, &providerTX, &originalTX, &productID, &storeEnv, &autoRenew, &verifiedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	sub.StartedAt = startedAt.String
+	sub.EndsAt = endsAt.String
+	sub.UpdatedAt = updatedAt.String
+	sub.Provider = provider.String
+	sub.ProviderTransactionID = providerTX.String
+	sub.OriginalTransactionID = originalTX.String
+	sub.ProductID = productID.String
+	sub.StoreEnvironment = storeEnv.String
+	sub.LastVerifiedAt = verifiedAt.String
+	if autoRenew.Valid {
+		value := autoRenew.Bool
+		sub.AutoRenew = &value
+	}
+	return &sub, nil
 }
 
 // SubscriptionState returns the user's active plan and its status.
@@ -110,32 +163,123 @@ func (s *UserStore) Subscription(ctx context.Context, userID string) (string, er
 // live. Showing "Premium" over an expired row is worse than showing nothing,
 // because the user then reports the app as broken rather than lapsed.
 func (s *UserStore) SubscriptionState(ctx context.Context, userID string) (plan, status string, err error) {
-	err = s.db.QueryRowContext(ctx,
-		`SELECT plan, status FROM subscriptions WHERE user_id = ? ORDER BY created_at DESC LIMIT 1`,
-		userID).Scan(&plan, &status)
-	if errors.Is(err, sql.ErrNoRows) {
-		return "free", "none", nil
-	}
+	sub, err := s.SubscriptionRecord(ctx, userID)
 	if err != nil {
 		return "", "", err
 	}
-	return plan, status, nil
+	if sub == nil {
+		return "free", "none", nil
+	}
+	// The effective status, not the stored one: a row whose period has ended is
+	// reported as expired even while the column still reads active, because the
+	// status column is what the store last said and nothing rewrites it when a
+	// period lapses.
+	return sub.Plan, sub.EffectiveStatus(time.Now().UTC()), nil
 }
 
+// SetSubscription is the administrative override: an operator decides an
+// account is premium, and it stays that way until someone decides otherwise.
+//
+// It clears ends_at deliberately. A store-verified expiry left in place would
+// silently re-expire the plan the operator just granted, which is the kind of
+// bug that gets diagnosed as "the admin panel does not work".
 func (s *UserStore) SetSubscription(ctx context.Context, userID, plan, status string) error {
-	res, err := s.db.ExecContext(ctx,
-		`UPDATE subscriptions SET plan = ?, status = ? WHERE user_id = ?`, plan, status, userID)
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO subscriptions (id, user_id, plan, status, created_at, updated_at)
+		 VALUES (?,?,?,?,?,?)
+		 ON CONFLICT (user_id) DO UPDATE SET
+		     plan = excluded.plan,
+		     status = excluded.status,
+		     ends_at = NULL,
+		     updated_at = excluded.updated_at`,
+		newID(), userID, plan, status, now(), now())
+	return err
+}
+
+// VerifiedSubscription is what a store told us about a user's subscription.
+//
+// It mirrors the fields of a verified receipt rather than anything the client
+// supplied: the handler that calls SaveVerifiedSubscription has already checked
+// a signature or asked the store's API.
+type VerifiedSubscription struct {
+	Plan                  string
+	Status                string
+	ExpiresAt             string // RFC3339, empty when the store gave none
+	Provider              string
+	ProviderTransactionID string
+	OriginalTransactionID string
+	ProductID             string
+	StoreEnvironment      string
+	AutoRenew             *bool
+}
+
+// SaveVerifiedSubscription writes the result of a verified purchase.
+//
+// Upsert on user_id, which the unique index from migration 0010 makes
+// well-defined. started_at is preserved on conflict so it records when the
+// subscription first began rather than when it was last refreshed: a renewal
+// must not reset the anniversary.
+func (s *UserStore) SaveVerifiedSubscription(ctx context.Context, userID string, in VerifiedSubscription) error {
+	ts := now()
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO subscriptions
+		     (id, user_id, plan, status, started_at, ends_at, created_at, updated_at,
+		      provider, provider_transaction_id, original_transaction_id, product_id,
+		      store_environment, auto_renew, last_verified_at)
+		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		 ON CONFLICT (user_id) DO UPDATE SET
+		     plan = excluded.plan,
+		     status = excluded.status,
+		     ends_at = excluded.ends_at,
+		     updated_at = excluded.updated_at,
+		     provider = excluded.provider,
+		     provider_transaction_id = excluded.provider_transaction_id,
+		     original_transaction_id = excluded.original_transaction_id,
+		     product_id = excluded.product_id,
+		     store_environment = excluded.store_environment,
+		     auto_renew = excluded.auto_renew,
+		     last_verified_at = excluded.last_verified_at,
+		     started_at = COALESCE(subscriptions.started_at, excluded.started_at)`,
+		newID(), userID, in.Plan, in.Status, ts, nullableString(in.ExpiresAt), ts, ts,
+		nullableString(in.Provider), nullableString(in.ProviderTransactionID),
+		nullableString(in.OriginalTransactionID), nullableString(in.ProductID),
+		nullableString(in.StoreEnvironment), in.AutoRenew, ts)
+	return err
+}
+
+// SubscriptionOwner returns the user id a store purchase is already bound to.
+//
+// A receipt is a bearer token: presenting it proves the purchase happened, not
+// that the presenter made it. Binding the store's original transaction id to
+// one account is what stops the same genuine purchase from being redeemed by
+// every account that obtains a copy of the string.
+func (s *UserStore) SubscriptionOwner(ctx context.Context, provider, originalTransactionID string) (string, bool, error) {
+	if provider == "" || originalTransactionID == "" {
+		return "", false, nil
+	}
+	var userID string
+	err := s.db.QueryRowContext(ctx,
+		`SELECT user_id FROM subscriptions WHERE provider = ? AND original_transaction_id = ?`,
+		provider, originalTransactionID).Scan(&userID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false, nil
+	}
 	if err != nil {
-		return err
+		return "", false, err
 	}
-	n, _ := res.RowsAffected()
-	if n == 0 {
-		_, err = s.db.ExecContext(ctx,
-			`INSERT INTO subscriptions (id, user_id, plan, status, created_at) VALUES (?,?,?,?,?)`,
-			newID(), userID, plan, status, now())
-		return err
+	return userID, true, nil
+}
+
+// nullableString maps an empty string to SQL NULL.
+//
+// The distinction is load-bearing for ends_at: NULL means "no clock", and the
+// empty string would parse as an unparsable timestamp, which readers would have
+// to special-case.
+func nullableString(s string) any {
+	if strings.TrimSpace(s) == "" {
+		return nil
 	}
-	return nil
+	return s
 }
 
 // UpdatePassword updates a user's password hash.
