@@ -216,6 +216,12 @@ void main() {
   // A registration that did not reach the server costs reminders until the next
   // attempt and nothing else: nothing in the app awaits it, so throwing would
   // turn a dropped connection into a crash.
+  test('concurrent identity reads share one installation id', () async {
+    final identities = DeviceIdentities(store: store, details: FakeDeviceDetails(nativeId: null));
+    final values = await Future.wait([identities.current(), identities.current()]);
+    expect(values.first.deviceId, values.last.deviceId);
+  });
+
   test('a failed registration is reported, not thrown', () async {
     transport.currentToken = 'fcm-token-1';
     api.respondWith('/me/devices', const ApiError(status: 500, code: 'INTERNAL', message: 'boom'));
@@ -317,6 +323,7 @@ void main() {
       final first = container.listen(pushDeepLinkProvider, (_, _) {});
       addTearDown(first.close);
 
+      await pumpEventQueue();
       transport.tap(const PushTap(
         deepLink: 'iconfess://schedules/sch-7/start',
         data: {'schedule_id': 'sch-7'},
@@ -343,6 +350,7 @@ void main() {
       final first = container.listen(pushDeepLinkProvider, (_, _) {});
       addTearDown(first.close);
 
+      await pumpEventQueue();
       transport.tap(const PushTap(deepLink: 'iconfess://schedules/sch-7/start'));
 
       expect(await container.read(pushDeepLinkProvider.future), '/activity');
