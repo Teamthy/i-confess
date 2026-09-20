@@ -179,14 +179,12 @@ func (c *Client) Subscription(ctx context.Context, purchaseToken string) (*Subsc
 
 	body, _ := io.ReadAll(io.LimitReader(res.Body, 64<<10))
 
-	switch {
-	case res.StatusCode == http.StatusOK:
-	case res.StatusCode == http.StatusBadRequest,
-		res.StatusCode == http.StatusNotFound,
-		res.StatusCode == http.StatusGone:
+	switch res.StatusCode {
+	case http.StatusOK:
+	case http.StatusBadRequest, http.StatusNotFound, http.StatusGone:
 		return nil, fmt.Errorf("%w: Play Developer API rejected the token (%d): %s",
 			ErrTokenInvalid, res.StatusCode, snippet(body))
-	case res.StatusCode == http.StatusUnauthorized, res.StatusCode == http.StatusForbidden:
+	case http.StatusUnauthorized, http.StatusForbidden:
 		return nil, fmt.Errorf("%w: Play Developer API returned %d: %s",
 			ErrUnauthorized, res.StatusCode, snippet(body))
 	default:

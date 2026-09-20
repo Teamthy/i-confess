@@ -103,7 +103,10 @@ func (h *Handler) verifySubscriptionV2(w http.ResponseWriter, r *http.Request) {
 	verifier := billing.VerifierFromEnv()
 	ver, err := verifier.Verify(r.Context(), req.Provider, req.Receipt)
 	if err != nil {
-		status, code := http.StatusBadRequest, "RECEIPT_INVALID"
+		var (
+			status int
+			code   string
+		)
 		switch {
 		case errors.Is(err, billing.ErrUnconfigured):
 			// Nothing can be verified, so nothing is granted - and the operator
