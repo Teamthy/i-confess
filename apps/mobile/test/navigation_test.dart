@@ -170,7 +170,9 @@ void main() {
 
       await tester.tap(find.text('Activity').first);
       await tester.pumpAndSettle();
-      expect(find.text('PHASE 24'), findsWidgets);
+      expect(find.text('Schedules'), findsOneWidget);
+      expect(find.text('History'), findsOneWidget);
+      expect(find.text('This device'), findsOneWidget);
     });
   });
 }

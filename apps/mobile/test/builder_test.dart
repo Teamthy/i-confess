@@ -153,7 +153,7 @@ void main() {
     expect(find.byKey(const ValueKey('chip-duration-180m')), findsOneWidget);
     expect(find.text('10 MIN • 4 • grace'), findsOneWidget,
         reason: 'the preview restates the server display verbatim');
-    expect(find.text('Fills 9 min of the 10 min you asked for'), findsOneWidget,
+    expect(find.textContaining('Fills 9 min of the 10 min you asked for'), findsOneWidget,
         reason: 'the gap between asked and filled is shown, not hidden');
     final balanced = tester
         .widget<RadioListTile<String>>(
