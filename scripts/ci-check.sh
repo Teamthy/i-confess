@@ -12,9 +12,11 @@ import sys
 lines = open(sys.argv[1]).read().splitlines()
 # Analyzer diagnostics are more useful than its final count of lint infos.
 errors = [line for line in lines if 'error' in line.lower() or 'warning' in line.lower()]
-for line in (errors or lines[-35:])[:80]:
-    line = line.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
-    print(f'::error title=Check failure::{line}')
+# A step keeps at most ten error annotations. One grouped diagnostic preserves
+# all findings rather than silently dropping everything after the tenth.
+text = '\n'.join((errors or lines[-60:])[:150])
+text = text.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+print(f'::error title=Check failure::{text}')
 PY
 fi
 exit "$status"

@@ -78,7 +78,7 @@ class ConfessScreen extends ConsumerWidget {
             style: IConfess.bodySm.copyWith(color: surfaces.textSecondary),
           ),
           const SizedBox(height: IConfess.space6),
-          if (incomingId != null)
+          if (incoming != null)
             incoming.when(
               loading: () => const ListSkeleton(rows: 1),
               error: (error, _) => _HandoffBanner(
