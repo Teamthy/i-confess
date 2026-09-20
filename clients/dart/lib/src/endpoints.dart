@@ -206,7 +206,8 @@ extension IConfessEndpoints on ApiClient {
       post('/me/confessions', body);
 
   /// Remove a favourite
-  Future<Map<String, dynamic>> deleteMeFavorites() => delete('/me/favorites');
+  Future<Map<String, dynamic>> deleteMeFavorites([Map<String, dynamic>? body]) =>
+      delete('/me/favorites', body);
 
   /// List favourites
   Future<Map<String, dynamic>> getMeFavorites() => get('/me/favorites');

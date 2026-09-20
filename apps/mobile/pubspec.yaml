@@ -39,7 +39,7 @@ dependencies:
   shared_preferences: ^2.5.5
   flutter_secure_storage: ^11.0.0
   just_audio: ^0.10.5
-  audio_session: ^0.1.25
+  audio_session: ^0.2.2
   iconfess_api:
     path: ../../clients/dart
   characters: ^1.4.1

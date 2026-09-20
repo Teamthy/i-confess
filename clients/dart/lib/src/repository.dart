@@ -533,7 +533,7 @@ final class ContentRepository extends Repository {
   Future<Loadable<bool>> isFavorite(String confessionId) async {
     try {
       final json = await api.getMeFavorites();
-      final list = json['data'] is List ? json['data'] as List : (json is List ? json : []);
+      final list = json['data'] is List ? json['data'] as List<dynamic> : <dynamic>[];
       final found = list.any((item) {
         if (item is! Map<String, dynamic>) return false;
         return item['entity_id'] == confessionId ||
