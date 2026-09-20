@@ -32,6 +32,11 @@ type Verification struct {
 	TransactionID         string `json:"transaction_id,omitempty"`
 	OriginalTransactionID string `json:"original_transaction_id,omitempty"`
 	ProductID             string `json:"product_id,omitempty"`
+	// PurchaseToken is Play's identifier for the subscription itself. It is
+	// not the same value as the order id or the linked token, and it is the
+	// only key a Play developer notification carries, so without it a
+	// notification cannot be matched to the account that redeemed the purchase.
+	PurchaseToken string `json:"purchase_token,omitempty"`
 	// Environment is the store environment that issued the receipt: Sandbox or
 	// Production for Apple, Production or Test for Play.
 	Environment string `json:"environment,omitempty"`

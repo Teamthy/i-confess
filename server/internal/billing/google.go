@@ -93,6 +93,24 @@ func (v *GooglePlayVerifier) Verify(ctx context.Context, provider, receipt strin
 	if err != nil {
 		return Verification{}, translatePlayError(err)
 	}
+	ver, err := v.evaluate(purchase)
+	if err != nil {
+		return Verification{}, err
+	}
+	// Carry the token through. A later renewal, cancellation or refund is
+	// announced by the store with this token and no other identifier, so a row
+	// that does not record it cannot be found by the notification that matters.
+	ver.PurchaseToken = token
+	return ver, nil
+}
+
+// Evaluate applies this server's rules to a purchase Google returned.
+//
+// It is exported because the notification path receives Play's answer from the
+// same API and must reach the same verdict: two decision paths for one
+// subscription is how a webhook and a receipt end up disagreeing about whether
+// a customer is entitled.
+func (v *GooglePlayVerifier) Evaluate(purchase *playapi.Subscription) (Verification, error) {
 	return v.evaluate(purchase)
 }
 

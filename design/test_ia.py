@@ -110,10 +110,15 @@ check("every screen declares its endpoints", not no_api,
 # screen. Worth knowing which, so this reports rather than silently passing.
 used = {e for s in screens for e in s.get("endpoints", [])}
 unused = sorted(live - used)
+# Endpoints no screen can call. /webhooks/ is in this list because a store
+# notification is delivered by Apple or Google, not by the app: there is no
+# screen that posts to it, and requiring one would mean inventing a screen to
+# satisfy the check rather than describing the product.
 non_ui = [u for u in unused
           if not any(k in u for k in
                      ("/health", "/healthz", "/admin/", "/auth/logout",
-                      "/auth/refresh", "/me/history", "/v1/", "/metrics", "/openapi.json"))]
+                      "/auth/refresh", "/me/history", "/v1/", "/metrics", "/openapi.json",
+                      "/webhooks/"))]
 check("every user-facing endpoint has a screen", not non_ui,
       f"{len(non_ui)} unreferenced: {non_ui}")
 

@@ -88,8 +88,14 @@ func replaceDatabaseName(url, name string) string {
 	return url + " dbname=" + name
 }
 
-// TestPostgresSchemaLoads is the phase gate for the canonical schema: 61
-// tables, every foreign key resolvable, seed rows applied.
+// TestPostgresSchemaLoads is the phase gate for the canonical schema: every
+// table present, every foreign key resolvable, seed rows applied.
+//
+// The count is asserted rather than merely logged so that a migration which
+// silently fails to apply is caught here instead of by whatever query reaches
+// the missing table first. It moves by one with each new table - 0011 added
+// store_notifications, the ledger of store notifications applied to
+// subscriptions (IC-003, PR B).
 func TestPostgresSchemaLoads(t *testing.T) {
 	ctx := context.Background()
 	d := newTestDB(t)
@@ -99,8 +105,8 @@ func TestPostgresSchemaLoads(t *testing.T) {
 		`SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public'`).Scan(&tables); err != nil {
 		t.Fatalf("count tables: %v", err)
 	}
-	if tables != 64 {
-		t.Errorf("expected 64 tables, got %d", tables)
+	if tables != 65 {
+		t.Errorf("expected 65 tables, got %d", tables)
 	}
 
 	var fks int
