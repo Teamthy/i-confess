@@ -60,6 +60,9 @@ abstract interface class PurchaseGateway {
   /// selects which store's product ids this build sells.
   String get provider;
 
+  /// Attach to unfinished purchases at app startup, before any purchase UI.
+  void start();
+
   /// Products the store knows about, for the ids asked for. Unknown ids are
   /// omitted rather than invented.
   Future<List<StoreProduct>> loadProducts(Set<String> ids);
@@ -114,7 +117,8 @@ class InAppPurchaseGateway implements PurchaseGateway {
     return 'google';
   }
 
-  void _listen() {
+  @override
+  void start() {
     _subscription ??= _store.purchaseStream.listen(
       _onPurchases,
       onError: (Object error) => _errors.add(error.toString()),
@@ -123,9 +127,10 @@ class InAppPurchaseGateway implements PurchaseGateway {
 
   @override
   Future<List<StoreProduct>> loadProducts(Set<String> ids) async {
-    _listen();
+    start();
     if (ids.isEmpty || !await _store.isAvailable()) return const [];
     final response = await _store.queryProductDetails(ids);
+    if (response.error != null) throw PurchaseException(response.error!.message);
     return response.productDetails
         .map((d) => StoreProduct(id: d.id, title: d.title, price: d.price))
         .toList(growable: false);
@@ -133,7 +138,7 @@ class InAppPurchaseGateway implements PurchaseGateway {
 
   @override
   Future<void> buy(String productId) async {
-    _listen();
+    start();
     if (!await _store.isAvailable()) {
       throw const PurchaseException('The store is not available on this device.');
     }
@@ -148,21 +153,23 @@ class InAppPurchaseGateway implements PurchaseGateway {
             : 'The store does not sell ${response.notFoundIDs.join(', ')}.',
       );
     }
-    await _store.buyNonConsumable(
+    final started = await _store.buyNonConsumable(
       purchaseParam: PurchaseParam(productDetails: response.productDetails.first),
     );
+    if (!started) throw const PurchaseException('The store did not start the purchase. Please try again.');
   }
 
   @override
   Future<void> complete(String purchaseId) async {
-    final details = _outstanding.remove(purchaseId);
+    final details = _outstanding[purchaseId];
     if (details == null || !details.pendingCompletePurchase) return;
     await _store.completePurchase(details);
+    _outstanding.remove(purchaseId);
   }
 
   @override
   Future<void> restore() async {
-    _listen();
+    start();
     await _store.restorePurchases();
   }
 
@@ -174,6 +181,7 @@ class InAppPurchaseGateway implements PurchaseGateway {
         continue;
       }
       if (purchase.status == PurchaseStatus.canceled) {
+        _errors.add('Purchase cancelled. You have not been charged.');
         continue;
       }
       if (purchase.status == PurchaseStatus.pending) {

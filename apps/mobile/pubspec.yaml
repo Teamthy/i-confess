@@ -65,7 +65,9 @@ dependencies:
   # Purchases. The store is where money changes hands; this app never decides
   # entitlement from it - the receipt goes to the server, which is the only
   # authority on what an account owns (see features/premium/purchase_controller.dart).
-  in_app_purchase: ^3.0.0
+  in_app_purchase: ^3.3.1
+  # StoreKit 2 JWS receipts and correct pending/cancelled callbacks.
+  in_app_purchase_storekit: ^0.4.8+1
 
 dev_dependencies:
   flutter_test:

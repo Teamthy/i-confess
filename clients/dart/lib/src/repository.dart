@@ -788,6 +788,6 @@ final class SubscriptionRepository extends Repository {
           'provider': provider,
           'receipt': receipt,
         }),
-        Subscription.fromJson,
+        Subscription.fromVerification,
       );
 }

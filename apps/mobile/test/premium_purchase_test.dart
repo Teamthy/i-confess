@@ -28,6 +28,9 @@ class FakeStoreFront implements PurchaseGateway {
   PurchaseException? buyFailure;
 
   @override
+  void start() {}
+
+  @override
   String get provider => 'apple';
 
   @override
@@ -86,6 +89,7 @@ void main() {
     await controller().purchase('monthly');
     expect(store.bought, ['app.iconfess.monthly']);
 
+    controller().clear();
     await controller().purchase('annual');
     expect(store.bought, ['app.iconfess.monthly', 'app.iconfess.annual']);
   });
@@ -99,9 +103,9 @@ void main() {
   test('a verified purchase is completed and reports Premium', () async {
     api.respond('/subscriptions/verify', {
       'verified': true,
-      'plan': 'premium',
-      'active': true,
-      'status': 'active',
+      'plan': 'monthly',
+      'state': 'active',
+      'entitlements': {'Plan': 'premium'},
     });
 
     controller().purchase('monthly');
@@ -181,6 +185,27 @@ void main() {
 
     expect(store.completed, isEmpty);
     expect(state().error, contains('safe'));
+  });
+
+  test('expired authentication does not finish a paid transaction', () async {
+    api.respondWith('/subscriptions/verify',
+        const ApiError(status: 401, code: 'UNAUTHORIZED', message: 'sign in again'));
+    store.deliver(const StorePurchase(id: 'tx-auth', productId: 'app.iconfess.monthly',
+        provider: 'apple', receipt: 'signed-receipt'));
+    await pumpEventQueue();
+    expect(store.completed, isEmpty);
+    expect(state().busy, isFalse);
+  });
+
+  test('a second tap while buying does not make a second purchase', () async {
+    await controller().purchase('monthly');
+    await controller().purchase('monthly');
+    expect(store.bought, ['app.iconfess.monthly']);
+  });
+
+  test('restore with no transactions stops showing a spinner', () async {
+    await controller().restore();
+    expect(state().busy, isFalse);
   });
 
   test('restore asks the store to replay what the account owns', () async {

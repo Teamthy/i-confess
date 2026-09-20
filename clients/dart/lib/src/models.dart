@@ -1020,6 +1020,20 @@ final class Subscription {
 
   bool get isPremium => plan == 'premium' && active;
 
+  /// POST /subscriptions/verify returns a store plan and a server-resolved
+  /// entitlement object, not the GET /subscription shape. The store plan alone
+  /// must never be used to infer Premium (it can describe an expired purchase).
+  factory Subscription.fromVerification(Map<String, dynamic> json) {
+    final entitlements = json['entitlements'];
+    final premium = json['verified'] == true && entitlements is Map &&
+        (entitlements['Plan'] ?? entitlements['plan']) == 'premium';
+    return Subscription(
+      plan: premium ? 'premium' : 'free',
+      status: _str(json, 'state', 'unknown'),
+      active: premium,
+    );
+  }
+
   factory Subscription.fromJson(Map<String, dynamic> json) => Subscription(
         plan: _str(json, 'plan', 'free'),
         status: _str(json, 'status', 'active'),
