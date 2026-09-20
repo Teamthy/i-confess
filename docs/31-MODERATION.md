@@ -361,6 +361,15 @@ development boot re-seeds from scratch.
   reconciliation recorded (see OBJECTIVE).
 - `contracts/openapi.json` and `design/routes.json`: regenerated from the live
   route table (286 routes, diff purely additive: the six new endpoints).
+- `design/ia.json` (CI follow-up): the regenerated `routes.json` made the IA
+  checker's reverse check — every *user-facing* endpoint must be referenced by
+  a screen — see three endpoints for the first time: the two new public ones
+  and `DELETE /sessions/{id}`, a PHASE-17 orphan the stale `routes.json` had
+  been hiding. `POST /reports` and `POST /me/confessions/{id}/submit` are now
+  mapped to `confess/confession`; `DELETE /sessions/{id}` to
+  `activity/session`. `python3 design/test_ia.py` →
+  `IA CHECK PASSED: 37 screens, 8 entry points, 102 endpoints wired`
+  (was 99).
 - Inline: `internal/api/moderation.go`, `internal/moderation/*`,
   `internal/store/moderation.go` carry the why, not just the what.
 
