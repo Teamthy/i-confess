@@ -60,7 +60,7 @@ dependencies:
   flutter_local_notifications: ^17.0.0
   # The device identity a push token is registered against; see
   # lib/src/core/push/platform_device_details.dart for why it is not a serial.
-  device_info_plus: ^11.0.0
+  device_info_plus: ^13.2.0
 
   # Purchases. The store is where money changes hands; this app never decides
   # entitlement from it - the receipt goes to the server, which is the only
