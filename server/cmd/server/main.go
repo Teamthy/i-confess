@@ -61,9 +61,9 @@ func main() {
 		log.Fatalf("storage: %v", err)
 	}
 
-	// Seed demo content (development only). This is what creates placeholder
+	// Seed demo content (development and test only). This is what creates placeholder
 	// audio and the demo accounts, and neither of those belongs in production.
-	if cfg.Env == "development" || os.Getenv("SEED") == "1" {
+	if (cfg.Env == "development" || cfg.Env == "test") && (cfg.Env == "development" || os.Getenv("SEED") == "1") {
 		if err := seed.Seed(conn, objStore); err != nil {
 			log.Printf("seed: %v", err)
 		}
@@ -88,6 +88,7 @@ func main() {
 	}
 
 	h := api.NewHandler(api.Config{JWTSecret: cfg.JWTSecret, TokenTTL: cfg.TokenTTL}, conn)
+	h.SetProduction(cfg.IsProduction())
 	h.BuildEngine()
 	h.SetSigner(objStore)
 
@@ -267,10 +268,33 @@ func main() {
 		}
 	}()
 
+	// Periodically purge expired idempotency records and cleanup old data (IC-023).
+	idemCtx, stopIdem := context.WithCancel(context.Background())
+	defer stopIdem()
+	go func() {
+		t := time.NewTicker(30 * time.Minute)
+		defer t.Stop()
+		for {
+			select {
+			case <-idemCtx.Done():
+				return
+			case <-t.C:
+				if n, err := h.RunIdempotencySweep(idemCtx); err != nil {
+					log.Printf("idempotency: sweep failed: %v", err)
+				} else if n > 0 {
+					log.Printf("idempotency: purged %d expired keys", n)
+				}
+			}
+		}
+	}()
+
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
 		Handler:           h.Routes(),
 		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 
 	// Graceful shutdown handling.

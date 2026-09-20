@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"time"
@@ -19,6 +20,21 @@ import (
 // A one-step "enable" would let someone lock themselves out with a mis-scanned
 // QR code, which turns a security feature into a support burden.
 
+// getMFAEnrolment loads and decrypts the user's second-factor state.
+func (h *Handler) getMFAEnrolment(ctx context.Context, userID string) (*store.MFAEnrolment, error) {
+	e, err := h.users.MFAEnrolmentFor(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if e.Secret != "" {
+		decrypted, decErr := mfa.DecryptSecret(e.Secret, h.cfg.JWTSecret)
+		if decErr == nil {
+			e.Secret = decrypted
+		}
+	}
+	return e, nil
+}
+
 // beginMFAEnrolment issues a new secret and its provisioning URI.
 //
 // The secret is generated server-side. The previous implementation accepted a
@@ -29,7 +45,7 @@ func (h *Handler) beginMFAEnrolment(w http.ResponseWriter, r *http.Request) {
 
 	// Re-enrolling while enabled would silently invalidate the working factor
 	// if the new one is never confirmed.
-	if e, err := h.users.MFAEnrolmentFor(r.Context(), userID); err == nil && e.Enabled {
+	if e, err := h.getMFAEnrolment(r.Context(), userID); err == nil && e.Enabled {
 		writeCode(w, http.StatusConflict, "MFA_ALREADY_ENABLED",
 			"two-factor authentication is already on; turn it off first to re-enrol")
 		return
@@ -40,7 +56,12 @@ func (h *Handler) beginMFAEnrolment(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to start enrolment")
 		return
 	}
-	if err := h.users.BeginMFAEnrolment(r.Context(), userID, secret); err != nil {
+	encSecret, err := mfa.EncryptSecret(secret, h.cfg.JWTSecret)
+	if err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, "failed to secure enrolment secret")
+		return
+	}
+	if err := h.users.BeginMFAEnrolment(r.Context(), userID, encSecret); err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to start enrolment")
 		return
 	}
@@ -71,7 +92,7 @@ func (h *Handler) confirmMFAEnrolment(w http.ResponseWriter, r *http.Request) {
 	}
 	userID := h.userID(r)
 
-	enrolment, err := h.users.MFAEnrolmentFor(r.Context(), userID)
+	enrolment, err := h.getMFAEnrolment(r.Context(), userID)
 	if errors.Is(err, store.ErrNotFound) {
 		writeCode(w, http.StatusConflict, "MFA_NOT_STARTED", "start enrolment first")
 		return
@@ -152,7 +173,7 @@ func (h *Handler) disableMFA(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	enrolment, err := h.users.MFAEnrolmentFor(r.Context(), userID)
+	enrolment, err := h.getMFAEnrolment(r.Context(), userID)
 	if errors.Is(err, store.ErrNotFound) || (err == nil && !enrolment.Enabled) {
 		writeCode(w, http.StatusConflict, "MFA_NOT_ENABLED", "two-factor authentication is not on")
 		return
@@ -183,7 +204,7 @@ func (h *Handler) disableMFA(w http.ResponseWriter, r *http.Request) {
 
 // mfaStatus reports whether the factor is on and how many recovery codes remain.
 func (h *Handler) mfaStatus(w http.ResponseWriter, r *http.Request) {
-	e, err := h.users.MFAEnrolmentFor(r.Context(), h.userID(r))
+	e, err := h.getMFAEnrolment(r.Context(), h.userID(r))
 	if errors.Is(err, store.ErrNotFound) {
 		httpx.WriteJSON(w, http.StatusOK, map[string]any{"enabled": false, "pending": false})
 		return

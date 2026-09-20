@@ -14,6 +14,13 @@ import (
 func (h *Handler) Routes() http.Handler {
 	mux := http.NewServeMux()
 
+	// Every authenticated route validates the session server-side, so logout,
+	// suspension and password changes take effect immediately rather than when
+	// the token happens to expire (PRD S3, S54).
+	sv := sessionValidator{h: h}
+	authed := auth.MiddlewareWithSessions(h.cfg.JWTSecret, sv)
+	admin := auth.RequireRoleWithSessions(h.cfg.JWTSecret, sv)
+
 	// Authentication endpoints are the highest-value attack surface, so they
 	// are throttled by client address before any database work happens (S20).
 	perIP := func(rule ratelimit.Rule, name string) func(http.Handler) http.Handler {
@@ -31,8 +38,8 @@ func (h *Handler) Routes() http.Handler {
 	h.route(mux, "GET /health/ready", "public", "ops", "Readiness with subsystem detail", nil, h.readyz)
 
 	// Machine-readable API description, generated from the route table above.
-	mux.HandleFunc("GET /metrics", h.promMetrics)
-	mux.HandleFunc("GET /openapi.json", h.serveOpenAPI)
+	h.route(mux, "GET /metrics", "admin", "admin-ops", "Prometheus metrics", admin, h.promMetrics)
+	h.route(mux, "GET /openapi.json", "public", "ops", "OpenAPI JSON specification", nil, h.serveOpenAPI)
 
 	// Listener web application (SPA), served at the site root.
 	mux.Handle("GET /", webapp.Handler())
@@ -69,9 +76,6 @@ func (h *Handler) Routes() http.Handler {
 	// Every authenticated route validates the session server-side, so logout,
 	// suspension and password changes take effect immediately rather than when
 	// the token happens to expire (PRD S3, S54).
-	sv := sessionValidator{h: h}
-
-	authed := auth.MiddlewareWithSessions(h.cfg.JWTSecret, sv)
 	h.route(mux, "GET /me", "user", "profile", "Account summary", authed, h.me)
 	h.route(mux, "GET /home", "user", "home", "Home sections", authed, h.home)
 
@@ -181,7 +185,6 @@ func (h *Handler) Routes() http.Handler {
 	h.route(mux, "GET /me/confessions", "user", "library", "List personal confessions", authed, h.listUserConfessions)
 
 	// Admin routes
-	admin := auth.RequireRoleWithSessions(h.cfg.JWTSecret, sv)
 	h.route(mux, "GET /admin/stats", "admin", "admin-ops", "Platform totals", admin, h.adminStats)
 
 	h.route(mux, "POST /admin/categories", "admin", "admin-content", "Create a category", admin, h.adminCreateCategory)
@@ -227,7 +230,7 @@ func (h *Handler) Routes() http.Handler {
 	// roles may run it.
 	// Immediate erasure is SUPER_ADMIN only: RequireRoleWithSessions admits
 	// super admins everywhere, and naming no other role keeps it to them.
-	mux.Handle("POST /admin/users/{id}/erase", auth.RequireRoleWithSessions(h.cfg.JWTSecret, sv)(http.HandlerFunc(h.adminEraseUser)))
+	h.route(mux, "POST /admin/users/{id}/erase", "admin", "admin-users", "Immediate account erasure (super-admin only)", admin, h.adminEraseUser)
 
 	audioMgr := auth.RequireRoleWithSessions(h.cfg.JWTSecret, sv, auth.RoleAudioProducer, auth.RoleVoiceManager)
 	h.route(mux, "POST /admin/audio/generate", "audio_producer,voice_manager", "admin-audio", "Generate audio; refused 451 when voice rights disallow it", audioMgr, h.adminGenerateAudio)
@@ -278,12 +281,12 @@ func (h *Handler) Routes() http.Handler {
 	h.route(mux, "POST /subscriptions/verify", "user", "subscription", "Verify store receipt (server-side, billing.Verifier)", authed, func(w http.ResponseWriter, r *http.Request) {
 		idempotent(http.HandlerFunc(h.verifySubscriptionV2)).ServeHTTP(w, r)
 	})
-	h.route(mux, "POST /community/posts", "user", "community", "Create community post (moderated, never auto-publish)", nil, h.createCommunityPost)
+	h.route(mux, "POST /community/posts", "user", "community", "Create community post (moderated, never auto-publish)", authed, h.createCommunityPost)
 	h.route(mux, "GET /community/feed", "public", "community", "Approved community feed", nil, h.feedCommunity)
-	h.route(mux, "POST /community/posts/{id}/react", "user", "community", "React amen/heart/pray", nil, h.reactCommunity)
-	h.route(mux, "POST /ai/parse", "user", "ai", "AI NLU → categories/duration (never invents theology)", nil, h.aiParse)
-	h.route(mux, "POST /analytics/batch", "user", "analytics", "Batch analytics events (no PII)", nil, h.analyticsBatch)
-	h.route(mux, "GET /search", "public", "content", "Search confessions, categories, voices, Scripture", nil, h.searchAll)
+	h.route(mux, "POST /community/posts/{id}/react", "user", "community", "React amen/heart/pray", authed, h.reactCommunity)
+	h.route(mux, "POST /ai/parse", "user", "ai", "AI NLU → categories/duration (never invents theology)", authed, h.aiParse)
+	h.route(mux, "POST /analytics/batch", "user", "analytics", "Batch analytics events (no PII)", authed, h.analyticsBatch)
+	h.route(mux, "GET /search", "public", "content", "Search confessions, categories, voices, Scripture", registerLimit, h.searchAll)
 	h.route(mux, "GET /admin/plans", "admin", "admin-content", "List pricing plans (admin-editable)", admin, h.adminListPlans)
 	h.route(mux, "PUT /admin/plans", "admin", "admin-content", "Create or update a pricing plan", admin, h.adminUpsertPlan)
 	// Versioned aliases — §46, §110-§112.
@@ -308,7 +311,8 @@ func (h *Handler) Routes() http.Handler {
 	h.route(mux, "GET /v1/healthz", "public", "ops", "Liveness", nil, h.livez)
 	h.route(mux, "GET /v1/health/live", "public", "ops", "Liveness", nil, h.livez)
 	h.route(mux, "GET /v1/health/ready", "public", "ops", "Readiness with subsystem detail", nil, h.readyz)
-	mux.HandleFunc("GET /v1/openapi.json", h.serveOpenAPI)
+	h.route(mux, "GET /v1/metrics", "admin", "admin-ops", "Prometheus metrics", admin, h.promMetrics)
+	h.route(mux, "GET /v1/openapi.json", "public", "ops", "OpenAPI JSON specification", nil, h.serveOpenAPI)
 	// Authenticated user (v1) — all with server-side session validation
 	h.route(mux, "GET /v1/me", "user", "profile", "Account summary", authed, h.me)
 	h.route(mux, "GET /v1/me/bootstrap", "user", "profile", "Everything needed to start the app", authed, h.bootstrap)
@@ -416,14 +420,15 @@ func (h *Handler) Routes() http.Handler {
 		idempotent(http.HandlerFunc(h.verifySubscriptionV2)).ServeHTTP(w, r)
 	})
 	// Search (§41)
-	h.route(mux, "POST /v1/community/posts", "user", "community", "Create community post (moderated, never auto-publish)", nil, h.createCommunityPost)
+	h.route(mux, "POST /v1/community/posts", "user", "community", "Create community post (moderated, never auto-publish)", authed, h.createCommunityPost)
 	h.route(mux, "GET /v1/community/feed", "public", "community", "Approved community feed", nil, h.feedCommunity)
-	h.route(mux, "POST /v1/community/posts/{id}/react", "user", "community", "React amen/heart/pray", nil, h.reactCommunity)
-	h.route(mux, "POST /v1/ai/parse", "user", "ai", "AI NLU → categories/duration (never invents theology)", nil, h.aiParse)
-	h.route(mux, "POST /v1/analytics/batch", "user", "analytics", "Batch analytics events (no PII)", nil, h.analyticsBatch)
-	h.route(mux, "GET /v1/search", "public", "content", "Search confessions, categories, voices, Scripture", nil, h.searchAll)
+	h.route(mux, "POST /v1/community/posts/{id}/react", "user", "community", "React amen/heart/pray", authed, h.reactCommunity)
+	h.route(mux, "POST /v1/ai/parse", "user", "ai", "AI NLU → categories/duration (never invents theology)", authed, h.aiParse)
+	h.route(mux, "POST /v1/analytics/batch", "user", "analytics", "Batch analytics events (no PII)", authed, h.analyticsBatch)
+	h.route(mux, "GET /v1/search", "public", "content", "Search confessions, categories, voices, Scripture", registerLimit, h.searchAll)
 	// Admin (v1)
 	h.route(mux, "GET /v1/admin/stats", "admin", "admin-ops", "Platform totals", admin, h.adminStats)
+	h.route(mux, "POST /v1/admin/users/{id}/erase", "admin", "admin-users", "Immediate account erasure (super-admin only)", admin, h.adminEraseUser)
 	h.route(mux, "POST /v1/admin/categories", "admin", "admin-content", "Create a category", admin, h.adminCreateCategory)
 	h.route(mux, "GET /v1/admin/categories", "admin", "admin-content", "List all categories including drafts", admin, h.adminListCategories)
 	h.route(mux, "POST /v1/admin/confessions", "admin", "admin-content", "Create a confession", admin, h.adminCreateConfession)
@@ -460,5 +465,5 @@ func (h *Handler) Routes() http.Handler {
 	h.route(mux, "POST /v1/admin/audio/{id}/publish", "audio_producer,voice_manager", "admin-audio", "Surface an approved render in discovery", audioMgr, h.adminPublishAudio)
 	h.route(mux, "POST /v1/admin/audio/{id}/archive", "audio_producer,voice_manager", "admin-audio", "Withdraw a render, including from existing sessions", audioMgr, h.adminArchiveAudio)
 
-	return RequestIDMiddleware(tracing.Middleware(logRequests(mux)))
+	return RequestIDMiddleware(tracing.Middleware(SecurityHeadersMiddleware(logRequests(mux), h.isProd)))
 }

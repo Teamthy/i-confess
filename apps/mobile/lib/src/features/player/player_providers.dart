@@ -4,18 +4,12 @@ import 'package:iconfess_api/iconfess_api.dart';
 import '../../core/di/providers.dart';
 
 /// The session currently being played, re-fetched to mint fresh signed URLs.
-///
-/// Audio URLs are short-lived; replaying a cached session would hand back links
-/// that have expired. This provider always hits the network first.
 final playerSessionProvider =
     FutureProvider.family<Loadable<ListeningSession>, String>((ref, id) async {
   return ref.watch(contentRepositoryProvider).session(id);
 });
 
 /// The current playback position in milliseconds.
-///
-/// Held locally, synced to server via progress endpoint. The server is the
-/// source of truth for resume, but the UI needs immediate feedback.
 final playerPositionProvider = StateProvider<int>((ref) => 0);
 
 /// Whether the player is playing, paused, or completed.
@@ -26,12 +20,7 @@ final playerStatusProvider = StateProvider<PlayerStatus>((ref) => PlayerStatus.i
 /// Current item index in the session queue.
 final playerCurrentIndexProvider = StateProvider<int>((ref) => 0);
 
-/// Player controller: orchestrates start, pause, resume, skip, complete.
-///
-/// No real audio engine here (just_audio is commented out per D-4); this is the
-/// state machine and server sync layer that the audio layer will plug into in
-/// PHASE 24. It already handles the lifecycle correctly: progress is reported,
-/// completion is recorded, and locked items are skipped.
+/// Player controller: orchestrates start, pause, resume, skip, complete with rollback and error surfacing (IC-002, IC-021).
 final playerControllerProvider =
     StateNotifierProvider<PlayerController, PlayerState>((ref) {
   return PlayerController(ref);
@@ -42,24 +31,28 @@ class PlayerState {
     this.status = PlayerStatus.idle,
     this.positionMs = 0,
     this.currentIndex = 0,
+    this.currentQueueItemId = '',
     this.error = '',
   });
 
   final PlayerStatus status;
   final int positionMs;
   final int currentIndex;
+  final String currentQueueItemId;
   final String error;
 
   PlayerState copyWith({
     PlayerStatus? status,
     int? positionMs,
     int? currentIndex,
+    String? currentQueueItemId,
     String? error,
   }) =>
       PlayerState(
         status: status ?? this.status,
         positionMs: positionMs ?? this.positionMs,
         currentIndex: currentIndex ?? this.currentIndex,
+        currentQueueItemId: currentQueueItemId ?? this.currentQueueItemId,
         error: error ?? this.error,
       );
 }
@@ -70,38 +63,54 @@ class PlayerController extends StateNotifier<PlayerState> {
   final Ref ref;
 
   Future<void> start(String sessionId) async {
-    state = state.copyWith(status: PlayerStatus.playing);
+    final prev = state;
+    state = state.copyWith(status: PlayerStatus.playing, error: '');
     try {
-      await ref.read(contentRepositoryProvider).session(sessionId);
-      // In real implementation, call POST /sessions/{id}/start
+      final sessLoadable = await ref.read(contentRepositoryProvider).session(sessionId);
+      final session = sessLoadable.valueOrNull;
+      var queueItemId = '';
+      if (session != null && session.items.isNotEmpty) {
+        queueItemId = session.items[0].id;
+      }
       await ref.read(apiClientProvider).postSessionsByIdStart(sessionId);
+      state = state.copyWith(currentQueueItemId: queueItemId);
     } catch (e) {
-      state = state.copyWith(status: PlayerStatus.error, error: e.toString());
+      state = prev.copyWith(status: PlayerStatus.error, error: e.toString());
     }
   }
 
   Future<void> pause(String sessionId) async {
+    final prev = state;
     state = state.copyWith(status: PlayerStatus.paused);
     try {
       await ref.read(apiClientProvider).postSessionsByIdPause(sessionId);
-    } catch (_) {}
+    } catch (e) {
+      state = prev.copyWith(error: e.toString());
+    }
   }
 
   Future<void> resume(String sessionId) async {
+    final prev = state;
     state = state.copyWith(status: PlayerStatus.playing);
     try {
       await ref.read(apiClientProvider).postSessionsByIdResume(sessionId);
-    } catch (_) {}
+    } catch (e) {
+      state = prev.copyWith(error: e.toString());
+    }
   }
 
-  Future<void> skip(String sessionId) async {
+  Future<void> skip(String sessionId, [String? queueItemId]) async {
+    final prev = state;
     try {
       await ref.read(apiClientProvider).postSessionsByIdSkip(sessionId);
-      state = state.copyWith(currentIndex: state.currentIndex + 1, positionMs: 0);
-    } catch (_) {}
+      state = state.copyWith(currentIndex: state.currentIndex + 1, positionMs: 0, error: '');
+    } catch (e) {
+      state = prev.copyWith(error: e.toString());
+    }
   }
 
   Future<void> complete(String sessionId) async {
+    final prev = state;
     state = state.copyWith(status: PlayerStatus.completed);
     try {
       await ref.read(apiClientProvider).postSessionsByIdComplete(sessionId);
@@ -109,19 +118,24 @@ class PlayerController extends StateNotifier<PlayerState> {
         'session_id': sessionId,
         'completed': true,
       });
-    } catch (_) {}
+    } catch (e) {
+      state = prev.copyWith(status: PlayerStatus.error, error: e.toString());
+    }
   }
 
   void seek(int ms) {
     state = state.copyWith(positionMs: ms);
   }
 
-  Future<void> reportProgress(String sessionId, int positionMs) async {
+  Future<void> reportProgress(String sessionId, int positionMs, [String? queueItemId]) async {
+    final qId = queueItemId ?? state.currentQueueItemId;
     try {
       await ref.read(apiClientProvider).postSessionsByIdProgress(sessionId, {
         'position_ms': positionMs,
-        'queue_item_id': '',
+        'queue_item_id': qId,
       });
-    } catch (_) {}
+    } catch (e) {
+      state = state.copyWith(error: e.toString());
+    }
   }
 }

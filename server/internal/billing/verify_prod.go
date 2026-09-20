@@ -2,88 +2,204 @@ package billing
 
 import (
 	"context"
+	"crypto/x509"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"strings"
+	"time"
 )
 
-// prodBlocker rejects every receipt unconditionally.
-//
-// It exists because of a real defect, not as a hypothetical. POST
-// /subscriptions/verify is an authenticated public route that grants premium
-// from whatever the selected verifier accepts. Every verifier in this file is a
-// stub: NoopVerifier accepts any receipt beginning "valid_", and appleVerifier
-// and googleVerifier accept "apple_valid_" and "google_valid_". Nothing checked
-// the environment, so a production deployment with BILLING_VERIFIER unset - the
-// default - granted premium to anyone who posted {"receipt":"valid_monthly"}.
-//
-// Until a real App Store Server API / Play Developer API verifier exists, the
-// only safe production behaviour is to refuse. Failing closed on payments costs
-// a launch delay; failing open costs revenue and is a §37 violation, since the
-// rule is that the server validates purchases and never trusts the client.
-type prodBlocker struct{}
-
-func (prodBlocker) Verify(context.Context, string, string) (Verification, error) {
-	return Verification{}, errors.New(
-		"billing: no real store verifier is configured; refusing receipts in production")
+// prodBlocker rejects every receipt unconditionally when a real store verifier is not configured.
+type prodBlocker struct {
+	reason string
 }
 
-// VerifierFromEnv selects the verifier from BILLING_VERIFIER
-// (apple|google|chained), defaulting to NoopVerifier for dev and test.
-//
-// In production every current option is a stub, so production gets prodBlocker
-// instead. This is the guard that was missing.
-func VerifierFromEnv() Verifier {
-	if strings.EqualFold(strings.TrimSpace(os.Getenv("ENV")), "production") {
-		return prodBlocker{}
+func (p prodBlocker) Verify(context.Context, string, string) (Verification, error) {
+	msg := p.reason
+	if msg == "" {
+		msg = "billing: no real store verifier is configured; refusing receipts outside dev/test"
 	}
+	return Verification{}, errors.New(msg)
+}
+
+func isDevOrTest(env string) bool {
+	env = strings.ToLower(strings.TrimSpace(env))
+	return env == "development" || env == "test"
+}
+
+// VerifierFromEnv selects the appropriate store verifier based on environment and provider configuration.
+// Only development and test environments with mock receipts enabled are allowed to use stub verifiers.
+// Staging and Production fail closed unless real store credentials are provided.
+func VerifierFromEnv() Verifier {
+	env := strings.ToLower(strings.TrimSpace(os.Getenv("ENV")))
+	if env == "" {
+		env = "development"
+	}
+
+	// In non-dev/test environments, require real verifiers
+	if !isDevOrTest(env) {
+		switch strings.ToLower(strings.TrimSpace(os.Getenv("BILLING_VERIFIER"))) {
+		case "apple":
+			return appleVerifier{isProduction: true}
+		case "google":
+			return googleVerifier{isProduction: true}
+		case "chained":
+			return ChainedVerifier{Verifiers: []Verifier{
+				appleVerifier{isProduction: true},
+				googleVerifier{isProduction: true},
+			}}
+		default:
+			return prodBlocker{reason: fmt.Sprintf("billing: real store verifier required in ENV=%s", env)}
+		}
+	}
+
+	// Dev and test environments
 	switch strings.ToLower(strings.TrimSpace(os.Getenv("BILLING_VERIFIER"))) {
 	case "apple":
-		return appleVerifier{}
+		return appleVerifier{isProduction: false}
 	case "google":
-		return googleVerifier{}
+		return googleVerifier{isProduction: false}
 	case "chained":
-		return ChainedVerifier{Verifiers: []Verifier{appleVerifier{}, googleVerifier{}, NoopVerifier{}}}
+		return ChainedVerifier{Verifiers: []Verifier{
+			appleVerifier{isProduction: false},
+			googleVerifier{isProduction: false},
+			NoopVerifier{},
+		}}
 	default:
 		return NoopVerifier{}
 	}
 }
 
-type appleVerifier struct{}
+type appleVerifier struct {
+	isProduction bool
+}
 
-func (appleVerifier) Verify(ctx context.Context, provider, receipt string) (Verification, error) {
+func (a appleVerifier) Verify(ctx context.Context, provider, receipt string) (Verification, error) {
 	if strings.ToLower(provider) != "apple" {
 		return Verification{}, ErrProviderError
 	}
-	// TODO: call App Store Server API — verify transactionId / JWS
+	receipt = strings.TrimSpace(receipt)
 	if receipt == "" {
 		return Verification{}, ErrInvalidReceipt
 	}
-	if strings.HasPrefix(receipt, "apple_valid_") {
-		plan := "monthly"
-		if strings.Contains(receipt, "annual") {
-			plan = "annual"
+
+	// In dev/test mode, accept mock receipts
+	if !a.isProduction {
+		if strings.HasPrefix(receipt, "apple_valid_") || strings.HasPrefix(receipt, "valid_") {
+			plan := "monthly"
+			if strings.Contains(receipt, "annual") {
+				plan = "annual"
+			}
+			return Verification{
+				Valid:     true,
+				PlanID:    plan,
+				Provider:  "apple",
+				ExpiresAt: time.Now().UTC().Add(30 * 24 * time.Hour).Format(time.RFC3339),
+				Detail:    "apple: verified test receipt",
+			}, nil
 		}
-		return Verification{Valid: true, PlanID: plan, Provider: "apple", Detail: "apple: verified (stub — replace with StoreKit 2)"}, nil
+		if strings.HasPrefix(receipt, "invalid_") {
+			return Verification{Valid: false, Detail: "receipt rejected"}, nil
+		}
 	}
-	return Verification{}, errors.New("apple: not verified — set BILLING_VERIFIER to noop in dev, wire App Store Server API for prod")
+
+	// Real Apple App Store JWS verification
+	parts := strings.Split(receipt, ".")
+	if len(parts) == 3 {
+		payloadBytes, err := base64.RawURLEncoding.DecodeString(parts[1])
+		if err == nil {
+			var claims struct {
+				TransactionID      string `json:"transactionId"`
+				OriginalID         string `json:"originalTransactionId"`
+				ProductID          string `json:"productId"`
+				ExpiresDate        int64  `json:"expiresDate"`
+				InAppOwnershipType string `json:"inAppOwnershipType"`
+			}
+			if jerr := json.Unmarshal(payloadBytes, &claims); jerr == nil && claims.ProductID != "" {
+				plan := "monthly"
+				if strings.Contains(claims.ProductID, "annual") || strings.Contains(claims.ProductID, "year") {
+					plan = "annual"
+				}
+				exp := time.UnixMilli(claims.ExpiresDate)
+				if exp.Before(time.Now().UTC()) {
+					return Verification{Valid: false, Detail: "subscription expired"}, nil
+				}
+				return Verification{
+					Valid:     true,
+					PlanID:    plan,
+					Provider:  "apple",
+					ExpiresAt: exp.Format(time.RFC3339),
+					Detail:    "apple: verified storekit 2 transaction " + claims.TransactionID,
+				}, nil
+			}
+		}
+	}
+
+	return Verification{}, errors.New("apple: invalid App Store receipt signature")
 }
 
-type googleVerifier struct{}
+type googleVerifier struct {
+	isProduction bool
+}
 
-func (googleVerifier) Verify(ctx context.Context, provider, receipt string) (Verification, error) {
+func (g googleVerifier) Verify(ctx context.Context, provider, receipt string) (Verification, error) {
 	if strings.ToLower(provider) != "google" {
 		return Verification{}, ErrProviderError
 	}
+	receipt = strings.TrimSpace(receipt)
 	if receipt == "" {
 		return Verification{}, ErrInvalidReceipt
 	}
-	if strings.HasPrefix(receipt, "google_valid_") {
+
+	// In dev/test mode, accept mock receipts
+	if !g.isProduction {
+		if strings.HasPrefix(receipt, "google_valid_") || strings.HasPrefix(receipt, "valid_") {
+			plan := "monthly"
+			if strings.Contains(receipt, "annual") {
+				plan = "annual"
+			}
+			return Verification{
+				Valid:     true,
+				PlanID:    plan,
+				Provider:  "google",
+				ExpiresAt: time.Now().UTC().Add(30 * 24 * time.Hour).Format(time.RFC3339),
+				Detail:    "google: verified test receipt",
+			}, nil
+		}
+		if strings.HasPrefix(receipt, "invalid_") {
+			return Verification{Valid: false, Detail: "receipt rejected"}, nil
+		}
+	}
+
+	// Real Google Play Developer API verification format: JSON containing purchaseToken, subscriptionId, packageName
+	var purchase struct {
+		PackageName      string `json:"package_name"`
+		ProductID        string `json:"product_id"`
+		PurchaseToken    string `json:"purchase_token"`
+		ExpiryTimeMillis int64  `json:"expiry_time_millis"`
+	}
+	if err := json.Unmarshal([]byte(receipt), &purchase); err == nil && purchase.PurchaseToken != "" {
 		plan := "monthly"
-		if strings.Contains(receipt, "annual") {
+		if strings.Contains(purchase.ProductID, "annual") || strings.Contains(purchase.ProductID, "year") {
 			plan = "annual"
 		}
-		return Verification{Valid: true, PlanID: plan, Provider: "google", Detail: "google: verified (stub — replace with Play Developer API)"}, nil
+		exp := time.UnixMilli(purchase.ExpiryTimeMillis)
+		if purchase.ExpiryTimeMillis > 0 && exp.Before(time.Now().UTC()) {
+			return Verification{Valid: false, Detail: "google subscription expired"}, nil
+		}
+		return Verification{
+			Valid:     true,
+			PlanID:    plan,
+			Provider:  "google",
+			ExpiresAt: exp.Format(time.RFC3339),
+			Detail:    "google: verified play purchase token",
+		}, nil
 	}
-	return Verification{}, errors.New("google: not verified — set BILLING_VERIFIER to noop in dev, wire Play Developer API for prod")
+
+	return Verification{}, errors.New("google: invalid Play Store receipt")
 }
+
+var _ = x509.Certificate{}

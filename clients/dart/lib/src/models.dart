@@ -595,6 +595,7 @@ final class ListeningSession {
     this.voiceDowngraded = false,
     this.voiceDowngradeReason = '',
     this.items = const [],
+    this.createdAt,
   });
 
   final String id;
@@ -609,6 +610,7 @@ final class ListeningSession {
   final String voiceDowngradeReason;
 
   final List<SessionItem> items;
+  final DateTime? createdAt;
 
   /// Items that can actually be played, in order.
   List<SessionItem> get playable =>
@@ -626,6 +628,7 @@ final class ListeningSession {
         voiceDowngraded: _bool(json, 'voice_downgraded'),
         voiceDowngradeReason: _str(json, 'voice_downgrade_reason'),
         items: _list(json['items']).map(SessionItem.fromJson).toList(),
+        createdAt: _time(json, 'created_at'),
       );
 }
 

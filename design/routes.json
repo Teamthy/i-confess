@@ -210,6 +210,13 @@
     "tag": "admin-users"
   },
   {
+    "method": "POST",
+    "path": "/admin/users/{id}/erase",
+    "auth": "admin",
+    "summary": "Immediate account erasure (super-admin only)",
+    "tag": "admin-users"
+  },
+  {
     "method": "GET",
     "path": "/admin/voices",
     "auth": "admin",
@@ -771,6 +778,20 @@
   },
   {
     "method": "GET",
+    "path": "/metrics",
+    "auth": "admin",
+    "summary": "Prometheus metrics",
+    "tag": "admin-ops"
+  },
+  {
+    "method": "GET",
+    "path": "/openapi.json",
+    "auth": "public",
+    "summary": "OpenAPI JSON specification",
+    "tag": "ops"
+  },
+  {
+    "method": "GET",
     "path": "/recommendations",
     "auth": "user",
     "summary": "Personalized recommendations",
@@ -1201,6 +1222,13 @@
     "path": "/v1/admin/users/subscription",
     "auth": "admin",
     "summary": "Set a subscription plan",
+    "tag": "admin-users"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/admin/users/{id}/erase",
+    "auth": "admin",
+    "summary": "Immediate account erasure (super-admin only)",
     "tag": "admin-users"
   },
   {
@@ -1762,6 +1790,20 @@
     "auth": "user",
     "summary": "Update profile",
     "tag": "profile"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/metrics",
+    "auth": "admin",
+    "summary": "Prometheus metrics",
+    "tag": "admin-ops"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/openapi.json",
+    "auth": "public",
+    "summary": "OpenAPI JSON specification",
+    "tag": "ops"
   },
   {
     "method": "GET",

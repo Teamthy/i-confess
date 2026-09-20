@@ -9,8 +9,15 @@ import (
 )
 
 // analyticsBatch ingests batch events from mobile/web.
+// Authenticated only: UserID is strictly stamped from the validated session claims.
 // No PII: body/email/Scripture never accepted; only actor+entity IDs.
 func (h *Handler) analyticsBatch(w http.ResponseWriter, r *http.Request) {
+	userID := h.userID(r)
+	if userID == "" {
+		httpx.WriteError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
 	var req struct {
 		Events []analytics.Event `json:"events"`
 	}
@@ -38,9 +45,8 @@ func (h *Handler) analyticsBatch(w http.ResponseWriter, r *http.Request) {
 			httpx.WriteError(w, http.StatusBadRequest, "unknown event: "+req.Events[i].Name)
 			return
 		}
-		if req.Events[i].UserID == "" {
-			req.Events[i].UserID = h.userID(r)
-		}
+		// Always stamp authenticated caller's user id
+		req.Events[i].UserID = userID
 		if req.Events[i].Timestamp == "" {
 			req.Events[i].Timestamp = time.Now().UTC().Format(time.RFC3339)
 		}

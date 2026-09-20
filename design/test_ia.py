@@ -113,7 +113,7 @@ unused = sorted(live - used)
 non_ui = [u for u in unused
           if not any(k in u for k in
                      ("/health", "/healthz", "/admin/", "/auth/logout",
-                      "/auth/refresh", "/me/history", "/v1/"))]
+                      "/auth/refresh", "/me/history", "/v1/", "/metrics", "/openapi.json"))]
 check("every user-facing endpoint has a screen", not non_ui,
       f"{len(non_ui)} unreferenced: {non_ui}")
 

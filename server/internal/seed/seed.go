@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/Teamthy/i-confess/internal/db"
 
@@ -24,6 +25,11 @@ const mediaDir = "data/media"
 // Seed populates a fresh database. The signer receives placeholder audio so the
 // dev environment exercises the same keyed, signed delivery path as production.
 func Seed(db *db.DB, signer storage.ObjectStorage) error {
+	env := strings.ToLower(strings.TrimSpace(os.Getenv("ENV")))
+	if env != "" && env != "development" && env != "test" {
+		return fmt.Errorf("seed: demo seed is refused in ENV=%q (production/staging)", env)
+	}
+
 	bg := context.Background()
 	content := store.NewContentStore(db)
 	cats, err := content.ListCategories(bg, true)
