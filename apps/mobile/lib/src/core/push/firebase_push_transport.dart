@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -62,6 +63,14 @@ class FirebasePushTransport implements PushTransport {
       return false;
     }
 
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      _subscriptions.add(const EventChannel('app.iconfess/push_taps')
+          .receiveBroadcastStream().listen((event) {
+        if (event is! Map) return;
+        final data = event.map((key, value) => MapEntry(key.toString(), value.toString()));
+        _opened.add(PushTap(deepLink: data['deeplink'], data: data));
+      }, onError: (Object error) { debugPrint('push: APNs tap bridge: $error'); }));
+    }
     final messaging = _messaging ??= FirebaseMessaging.instance;
     await _initLocalNotifications();
 
@@ -167,6 +176,10 @@ class FirebasePushTransport implements PushTransport {
         _opened.add(PushTap(deepLink: response.payload));
       },
     );
+    final launch = await _local.getNotificationAppLaunchDetails();
+    if (launch?.didNotificationLaunchApp == true) {
+      _opened.add(PushTap(deepLink: launch!.notificationResponse?.payload));
+    }
     await _local
         .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
         ?.createNotificationChannel(const AndroidNotificationChannel(

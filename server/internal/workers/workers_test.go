@@ -279,13 +279,18 @@ func TestNotifyBuildsTheNotification(t *testing.T) {
 	h := handler(t, Services{Notify: s}, TypeNotificationSend)
 	if err := h(context.Background(), map[string]any{
 		"token": "tk-1", "title": "Time to pray", "body": "Your 7am session",
-		"platform": "ios",
-		"data":     map[string]any{"session_id": "s-9", "n": 3},
+		"platform":     "ios",
+		"collapse_key": "sched-1",
+		"sound":        "default",
+		"data":         map[string]any{"session_id": "s-9", "n": 3},
 	}); err != nil {
 		t.Fatal(err)
 	}
 	if s.got.Token != "tk-1" || s.got.Title != "Time to pray" || s.got.Body != "Your 7am session" {
 		t.Errorf("notification = %+v", s.got)
+	}
+	if s.got.CollapseKey != "sched-1" || s.got.Sound != "default" {
+		t.Errorf("notification options lost: %+v", s.got)
 	}
 	if s.got.Platform != push.Platform("ios") {
 		t.Errorf("platform = %q", s.got.Platform)
