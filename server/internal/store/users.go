@@ -211,6 +211,10 @@ type VerifiedSubscription struct {
 	ProductID             string
 	StoreEnvironment      string
 	AutoRenew             *bool
+	// PurchaseToken is Play's identifier for the subscription. Stored because
+	// every later notification about this purchase carries the token and
+	// nothing else that names the purchase.
+	PurchaseToken string
 }
 
 // SaveVerifiedSubscription writes the result of a verified purchase.
@@ -225,8 +229,8 @@ func (s *UserStore) SaveVerifiedSubscription(ctx context.Context, userID string,
 		`INSERT INTO subscriptions
 		     (id, user_id, plan, status, started_at, ends_at, created_at, updated_at,
 		      provider, provider_transaction_id, original_transaction_id, product_id,
-		      store_environment, auto_renew, last_verified_at)
-		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		      store_environment, auto_renew, last_verified_at, purchase_token)
+		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		 ON CONFLICT (user_id) DO UPDATE SET
 		     plan = excluded.plan,
 		     status = excluded.status,
@@ -239,11 +243,12 @@ func (s *UserStore) SaveVerifiedSubscription(ctx context.Context, userID string,
 		     store_environment = excluded.store_environment,
 		     auto_renew = excluded.auto_renew,
 		     last_verified_at = excluded.last_verified_at,
+		     purchase_token = COALESCE(excluded.purchase_token, subscriptions.purchase_token),
 		     started_at = COALESCE(subscriptions.started_at, excluded.started_at)`,
 		newID(), userID, in.Plan, in.Status, ts, nullableString(in.ExpiresAt), ts, ts,
 		nullableString(in.Provider), nullableString(in.ProviderTransactionID),
 		nullableString(in.OriginalTransactionID), nullableString(in.ProductID),
-		nullableString(in.StoreEnvironment), in.AutoRenew, ts)
+		nullableString(in.StoreEnvironment), in.AutoRenew, ts, nullableString(in.PurchaseToken))
 	return err
 }
 
@@ -254,13 +259,32 @@ func (s *UserStore) SaveVerifiedSubscription(ctx context.Context, userID string,
 // one account is what stops the same genuine purchase from being redeemed by
 // every account that obtains a copy of the string.
 func (s *UserStore) SubscriptionOwner(ctx context.Context, provider, originalTransactionID string) (string, bool, error) {
-	if provider == "" || originalTransactionID == "" {
+	return s.SubscriptionOwnerFor(ctx, provider, originalTransactionID, "")
+}
+
+// SubscriptionOwnerFor is SubscriptionOwner with the provider's own purchase
+// identifier as well.
+//
+// Play needs the second identifier: a first-time Play purchase has no linked
+// purchase token, so the Apple-shaped check (original transaction id alone)
+// finds nothing and would let a shared Play receipt be redeemed twice. The
+// purchase token is the value Google repeats on every later notification, and
+// it is unique per purchase.
+func (s *UserStore) SubscriptionOwnerFor(ctx context.Context, provider, originalTransactionID, purchaseToken string) (string, bool, error) {
+	if provider == "" {
+		return "", false, nil
+	}
+	if originalTransactionID == "" && purchaseToken == "" {
 		return "", false, nil
 	}
 	var userID string
 	err := s.db.QueryRowContext(ctx,
-		`SELECT user_id FROM subscriptions WHERE provider = ? AND original_transaction_id = ?`,
-		provider, originalTransactionID).Scan(&userID)
+		`SELECT user_id FROM subscriptions
+		  WHERE provider = ?
+		    AND ((? <> '' AND original_transaction_id = ?)
+		      OR (? <> '' AND purchase_token = ?))`,
+		provider, originalTransactionID, originalTransactionID,
+		purchaseToken, purchaseToken).Scan(&userID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", false, nil
 	}

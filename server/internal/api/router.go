@@ -281,6 +281,15 @@ func (h *Handler) Routes() http.Handler {
 	h.route(mux, "POST /subscriptions/verify", "user", "subscription", "Verify store receipt (server-side, billing.Verifier)", authed, func(w http.ResponseWriter, r *http.Request) {
 		idempotent(http.HandlerFunc(h.verifySubscriptionV2)).ServeHTTP(w, r)
 	})
+	// Store notification webhooks (IC-003, PR B). Public by construction:
+	// the caller is a store, not a user, and the authentication is the
+	// signature on the payload - Apple's certificate chain, and Google's OIDC
+	// token plus a signed API call. Neither endpoint reads anything from the
+	// request that a client could assert.
+	h.route(mux, "POST /subscriptions/webhooks/apple", "public", "subscription",
+		"App Store Server Notifications V2 (JWS verified against the pinned Apple root)", nil, h.appleStoreWebhook)
+	h.route(mux, "POST /subscriptions/webhooks/google", "public", "subscription",
+		"Play real-time developer notification via Pub/Sub push (OIDC verified)", nil, h.googleStoreWebhook)
 	h.route(mux, "POST /community/posts", "user", "community", "Create community post (moderated, never auto-publish)", authed, h.createCommunityPost)
 	h.route(mux, "GET /community/feed", "public", "community", "Approved community feed", nil, h.feedCommunity)
 	h.route(mux, "POST /community/posts/{id}/react", "user", "community", "React amen/heart/pray", authed, h.reactCommunity)
@@ -420,6 +429,10 @@ func (h *Handler) Routes() http.Handler {
 		idempotent(http.HandlerFunc(h.verifySubscriptionV2)).ServeHTTP(w, r)
 	})
 	// Search (§41)
+	h.route(mux, "POST /v1/subscriptions/webhooks/apple", "public", "subscription",
+		"App Store Server Notifications V2 (JWS verified against the pinned Apple root)", nil, h.appleStoreWebhook)
+	h.route(mux, "POST /v1/subscriptions/webhooks/google", "public", "subscription",
+		"Play real-time developer notification via Pub/Sub push (OIDC verified)", nil, h.googleStoreWebhook)
 	h.route(mux, "POST /v1/community/posts", "user", "community", "Create community post (moderated, never auto-publish)", authed, h.createCommunityPost)
 	h.route(mux, "GET /v1/community/feed", "public", "community", "Approved community feed", nil, h.feedCommunity)
 	h.route(mux, "POST /v1/community/posts/{id}/react", "user", "community", "React amen/heart/pray", authed, h.reactCommunity)

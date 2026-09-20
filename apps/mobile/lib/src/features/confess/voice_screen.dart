@@ -8,6 +8,8 @@ import '../../core/theme/tokens.dart';
 import '../../core/widgets/screen.dart';
 import '../../core/widgets/states.dart';
 import 'builder_providers.dart';
+import '../../core/error/error_mapper.dart';
+import '../../core/routing/routes.dart';
 
 /// The builder's third step: which voice (§12, confess/voice).
 ///

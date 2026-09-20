@@ -217,6 +217,13 @@ func main() {
 		h.SetPushSender(push.LogSender{})
 	}
 
+	// Reminders go through the durable queue now that there is one, so a
+	// provider that is slow or briefly unreachable costs a retry rather than
+	// the delivery, and the sweep stays as short as the work it does.
+	if h.SetPushQueue() {
+		log.Printf("push: scheduled reminders are queued through the durable job queue")
+	}
+
 	// Register the job handlers and start the worker pool.
 	//
 	// Only types with a real collaborator are registered; anything else is left
@@ -227,6 +234,7 @@ func main() {
 	installed := workers.Register(queue, workers.Services{
 		Generate: h,
 		Notify:   pushSender,
+		Devices:  h,
 	})
 	worker := jobs.NewWorker(queue, cfg.QueueWorkers)
 	worker.Start(context.Background())

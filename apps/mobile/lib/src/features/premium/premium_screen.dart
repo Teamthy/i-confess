@@ -6,6 +6,7 @@ import '../../core/theme/theme.dart';
 import '../../core/theme/tokens.dart';
 import '../../core/widgets/screen.dart';
 import 'premium_providers.dart';
+import 'purchase_controller.dart';
 
 /// Premium paywall: plans with regional pricing (NGN/USD/GBP/EUR/PHP), trial journey, entitlements.
 ///
@@ -20,6 +21,16 @@ class PremiumScreen extends ConsumerWidget {
     final entAsync = ref.watch(entitlementsProvider);
     final trialAsync = ref.watch(trialProvider);
     final surfaces = AppSurfaces.of(context);
+
+    // Purchase outcomes arrive on their own stream, minutes after the tap when
+    // a bank confirmation is involved, so they are surfaced as they happen
+    // rather than returned from the button press.
+    ref.listen<PurchaseState>(premiumPurchaseControllerProvider, (_, next) {
+      final message = next.error ?? next.message;
+      if (message == null) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      ref.read(premiumPurchaseControllerProvider.notifier).clear();
+    });
 
     return AppScaffold(
       title: 'Premium',
@@ -101,6 +112,17 @@ class PremiumScreen extends ConsumerWidget {
                         padding: const EdgeInsets.only(bottom: IConfess.space3),
                         child: _PlanCard(plan: plan),
                       ),
+                    // Required by App Store review for a non-consumable, and
+                    // the only way back for someone who reinstalled: without
+                    // it a paying subscriber sees a paywall and no route to
+                    // the subscription they already own.
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton(
+                        onPressed: () => ref.read(premiumPurchaseControllerProvider.notifier).restore(),
+                        child: const Text('Restore purchases'),
+                      ),
+                    ),
                   ],
                 );
               },
@@ -151,13 +173,14 @@ class _EntChip extends StatelessWidget {
   }
 }
 
-class _PlanCard extends StatelessWidget {
+class _PlanCard extends ConsumerWidget {
   const _PlanCard({required this.plan});
   final dynamic plan;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final surfaces = AppSurfaces.of(context);
+    final purchase = ref.watch(premiumPurchaseControllerProvider);
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(IConfess.space5),
@@ -218,17 +241,27 @@ class _PlanCard extends StatelessWidget {
             ),
           const SizedBox(height: IConfess.space4),
           FilledButton(
-            onPressed: () => _purchasePlan(context, ref, plan),
-            child: Text(plan.trialDays > 0 ? 'Start ${plan.trialDays}-day trial' : 'Subscribe'),
+            // Disabled while the store is deciding: two taps on a slow
+            // connection is how a user ends up buying twice.
+            onPressed: purchase.busy
+                ? null
+                : () => ref.read(premiumPurchaseControllerProvider.notifier).purchase(plan.id),
+            child: purchase.busy
+                ? const SizedBox(
+                    height: 18,
+                    width: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Text(plan.trialDays > 0 ? 'Start ${plan.trialDays}-day trial' : 'Subscribe'),
+          ),
+          const SizedBox(height: IConfess.space2),
+          Text(
+            'Payment is taken by the App Store or Google Play. Premium is activated '
+            'by our server once the store confirms the purchase.',
+            style: IConfess.caption.copyWith(color: surfaces.textSecondary),
           ),
         ],
       ),
-    );
-  }
-
-  void _purchasePlan(BuildContext context, WidgetRef ref, dynamic plan) async {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Starting checkout for ${plan.name}…')),
     );
   }
 }

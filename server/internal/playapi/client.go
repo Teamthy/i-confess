@@ -12,6 +12,7 @@
 package playapi
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -221,6 +222,72 @@ func (c *Client) Subscription(ctx context.Context, purchaseToken string) (*Subsc
 		out.LineItems = append(out.LineItems, line)
 	}
 	return out, nil
+}
+
+// Acknowledge tells Google this server has accepted a purchase.
+//
+// Play refunds an unacknowledged purchase after three days. That is not a
+// billing edge case: it is the difference between a subscription that pays and
+// one that is silently refunded three days after it is bought, every time,
+// because nothing in this server ever called this endpoint.
+//
+// It is idempotent on Google's side. A purchase that is already acknowledged
+// answers 400 with a body saying so, which is treated as success: the
+// customer's entitlement is exactly what it would be either way, and failing
+// the request would make a retry look like an outage.
+func (c *Client) Acknowledge(ctx context.Context, productID, purchaseToken string) error {
+	productID = strings.TrimSpace(productID)
+	purchaseToken = strings.TrimSpace(purchaseToken)
+	if productID == "" || purchaseToken == "" {
+		return fmt.Errorf("%w: acknowledgement needs a product id and a purchase token", ErrTokenInvalid)
+	}
+	if c.TokenSource == nil {
+		return fmt.Errorf("%w: no token source configured", ErrUnauthorized)
+	}
+	accessToken, err := c.TokenSource(ctx)
+	if err != nil {
+		return fmt.Errorf("%w: obtain credentials: %v", ErrUnauthorized, err)
+	}
+
+	endpoint := fmt.Sprintf("%s/androidpublisher/v3/applications/%s/purchases/subscriptions/%s/tokens/%s:acknowledge",
+		c.baseURL(), url.PathEscape(c.PackageName), url.PathEscape(productID), url.PathEscape(purchaseToken))
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader([]byte("{}")))
+	if err != nil {
+		return fmt.Errorf("play: build acknowledge request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	res, err := c.httpClient().Do(req)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrUnavailable, err)
+	}
+	defer func() { _ = res.Body.Close() }()
+	body, _ := io.ReadAll(io.LimitReader(res.Body, 64<<10))
+
+	switch res.StatusCode {
+	case http.StatusOK, http.StatusNoContent, http.StatusCreated:
+		return nil
+	case http.StatusBadRequest:
+		// Already acknowledged, or a token Google will never accept. Only the
+		// first is benign, and Google distinguishes them in the body - which
+		// says "The purchase has already been acknowledged." in some API
+		// versions and "Purchase already acknowledged" in others, so both words
+		// are matched rather than one exact sentence.
+		lower := strings.ToLower(string(body))
+		if strings.Contains(lower, "already") && strings.Contains(lower, "acknowledg") {
+			return nil
+		}
+		return fmt.Errorf("%w: acknowledge rejected (%d): %s", ErrTokenInvalid, res.StatusCode, snippet(body))
+	case http.StatusNotFound, http.StatusGone:
+		return fmt.Errorf("%w: acknowledge rejected (%d): %s", ErrTokenInvalid, res.StatusCode, snippet(body))
+	case http.StatusUnauthorized, http.StatusForbidden:
+		return fmt.Errorf("%w: acknowledge returned %d: %s", ErrUnauthorized, res.StatusCode, snippet(body))
+	default:
+		return fmt.Errorf("%w: acknowledge returned %d: %s", ErrUnavailable, res.StatusCode, snippet(body))
+	}
 }
 
 // snippet trims an upstream error body for a log line or an error message.

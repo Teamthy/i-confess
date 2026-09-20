@@ -44,6 +44,29 @@ dependencies:
     path: ../../clients/dart
   characters: ^1.4.1
 
+  # Push notifications (IC-012). firebase_messaging carries both platforms:
+  # FCM on Android and, through the Firebase iOS SDK, APNs registration on iOS.
+  # The backend delivers to APNs directly for iOS devices, so these packages are
+  # only about obtaining and refreshing a token.
+  #
+  # Both need per-project configuration that is not in this repository -
+  # google-services.json and GoogleService-Info.plist carry project credentials.
+  # Run `flutterfire configure` before building a real app; without it the app
+  # starts, warns, and runs without reminders rather than failing to launch.
+  firebase_core: ^3.0.0
+  firebase_messaging: ^15.0.0
+  # Foreground display on Android, where FCM does not raise a notification for a
+  # message the app is already handling.
+  flutter_local_notifications: ^17.0.0
+  # The device identity a push token is registered against; see
+  # lib/src/core/push/platform_device_details.dart for why it is not a serial.
+  device_info_plus: ^11.0.0
+
+  # Purchases. The store is where money changes hands; this app never decides
+  # entitlement from it - the receipt goes to the server, which is the only
+  # authority on what an account owns (see features/premium/purchase_controller.dart).
+  in_app_purchase: ^3.0.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

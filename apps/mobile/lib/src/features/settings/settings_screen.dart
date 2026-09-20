@@ -7,6 +7,8 @@ import '../../core/theme/theme.dart';
 import '../../core/theme/tokens.dart';
 import '../../core/widgets/screen.dart';
 import 'settings_providers.dart';
+import '../../core/di/providers.dart';
+import '../../core/push/push_registration.dart';
 
 /// Settings: preferences, notifications, devices, export, deletion, interests.
 class SettingsScreen extends ConsumerWidget {
