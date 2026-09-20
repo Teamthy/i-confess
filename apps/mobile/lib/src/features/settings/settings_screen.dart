@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:iconfess_api/iconfess_api.dart';
 
 import '../../core/routing/routes.dart';
 import '../../core/theme/theme.dart';
@@ -16,7 +17,6 @@ class SettingsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final surfaces = AppSurfaces.of(context);
     return AppScaffold(
       title: 'Settings',
       body: ListView(

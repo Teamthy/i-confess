@@ -124,6 +124,11 @@ class PlayerController extends StateNotifier<PlayerState> {
     }
   }
 
+  void previous() {
+    if (state.currentIndex == 0) return;
+    state = state.copyWith(currentIndex: state.currentIndex - 1, positionMs: 0);
+  }
+
   void seek(int ms) {
     state = state.copyWith(positionMs: ms);
   }

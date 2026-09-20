@@ -12,11 +12,12 @@ import sys
 lines = open(sys.argv[1]).read().splitlines()
 # Analyzer diagnostics are more useful than its final count of lint infos.
 errors = [line for line in lines if 'error' in line.lower() or 'warning' in line.lower()]
-# A step keeps at most ten error annotations. One grouped diagnostic preserves
-# all findings rather than silently dropping everything after the tenth.
-text = '\n'.join((errors or lines[-60:])[:150])
-text = text.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
-print(f'::error title=Check failure::{text}')
+# GitHub caps each annotation near 4 KiB and keeps ten per step.
+text = '\n'.join((errors or lines[-120:])[:150])
+for offset in range(0, min(len(text), 30000), 3000):
+    chunk = text[offset:offset + 3000]
+    chunk = chunk.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+    print(f'::error title=Check failure::{chunk}')
 PY
 fi
 exit "$status"

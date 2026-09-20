@@ -26,11 +26,11 @@ class DownloadController {
 
   Future<void> takeOffline(String confessionId, {String? voiceId}) async {
     try {
-      final res = await ref.read(apiClientProvider).postMeDownloads({
+      await ref.read(apiClientProvider).postMeDownloads({
         'confession_id': confessionId,
         if (voiceId != null) 'voice_id': voiceId,
       });
-      debugPrint('offline: licence created for $confessionId: ${res.data}');
+      debugPrint('offline: licence created for $confessionId');
       ref.invalidate(downloadsProvider);
     } catch (e) {
       debugPrint('offline: take offline failed: $e');
