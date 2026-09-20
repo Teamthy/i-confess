@@ -24,6 +24,7 @@ class ActivityScreen extends ConsumerWidget {
 
     return AppScaffold(
       title: 'Activity',
+      scrollable: false,
       body: DefaultTabController(
         length: 3,
         child: Column(

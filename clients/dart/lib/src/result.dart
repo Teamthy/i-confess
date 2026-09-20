@@ -83,6 +83,12 @@ sealed class WriteResult<T> {
   const factory WriteResult.failure(ApiException error) = WriteFailure<T>;
 
   bool get succeeded => this is WriteSuccess<T>;
+
+  R when<R>({required R Function(T value) success,
+      required R Function(ApiException error) failure}) => switch (this) {
+    WriteSuccess<T>(:final value) => success(value),
+    WriteFailure<T>(:final error) => failure(error),
+  };
 }
 
 final class WriteSuccess<T> extends WriteResult<T> {

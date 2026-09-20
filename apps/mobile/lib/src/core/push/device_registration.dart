@@ -73,8 +73,12 @@ class DeviceIdentities {
   static const _deviceIdKey = StoreKeys.pushDeviceId;
 
   DeviceIdentity? _cached;
+  Future<DeviceIdentity>? _loading;
 
-  Future<DeviceIdentity> current() async {
+  Future<DeviceIdentity> current() =>
+      _loading ??= _resolve().whenComplete(() { _loading = null; });
+
+  Future<DeviceIdentity> _resolve() async {
     final cached = _cached;
     if (cached != null) return cached;
 

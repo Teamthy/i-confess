@@ -32,7 +32,21 @@ class FirebasePushTransport implements PushTransport {
   FirebaseMessaging? _messaging;
 
   final _tokens = StreamController<String>.broadcast();
-  final _opened = StreamController<PushTap>.broadcast();
+  final _pendingTaps = <PushTap>[];
+  late final StreamController<PushTap> _opened = StreamController<PushTap>.broadcast(onListen: () {
+    for (final tap in _pendingTaps) { _opened.add(tap); }
+    _pendingTaps.clear();
+  });
+
+  void _publishTap(PushTap tap) {
+    if (_opened.hasListener) {
+      _opened.add(tap);
+    } else {
+      // Native callbacks can arrive before the first frame subscribes.
+      if (_pendingTaps.length == 10) _pendingTaps.removeAt(0);
+      _pendingTaps.add(tap);
+    }
+  }
   final _subscriptions = <StreamSubscription<Object?>>[];
 
   static const _channelId = 'iconfess_schedules';
@@ -68,7 +82,7 @@ class FirebasePushTransport implements PushTransport {
           .receiveBroadcastStream().listen((event) {
         if (event is! Map) return;
         final data = event.map((key, value) => MapEntry(key.toString(), value.toString()));
-        _opened.add(PushTap(deepLink: data['deeplink'], data: data));
+        _publishTap(PushTap(deepLink: data['deeplink'], data: data));
       }, onError: (Object error) { debugPrint('push: APNs tap bridge: $error'); }));
     }
     final messaging = _messaging ??= FirebaseMessaging.instance;
@@ -81,14 +95,14 @@ class FirebasePushTransport implements PushTransport {
       if (current != null && current.isNotEmpty) _tokens.add(current);
     }));
     _subscriptions.add(FirebaseMessaging.onMessage.listen(_showForeground));
-    _subscriptions.add(FirebaseMessaging.onMessageOpenedApp.listen((m) => _opened.add(_tapOf(m))));
+    _subscriptions.add(FirebaseMessaging.onMessageOpenedApp.listen((m) => _publishTap(_tapOf(m))));
 
     // The notification that launched the app from a terminated state. Reading
     // it here rather than in a widget means the deep link is available before
     // the first frame is routed.
     final launched = await messaging.getInitialMessage();
     if (launched != null) {
-      _opened.add(_tapOf(launched));
+      _publishTap(_tapOf(launched));
     }
     return true;
   }
@@ -173,12 +187,12 @@ class FirebasePushTransport implements PushTransport {
     await _local.initialize(
       initialization,
       onDidReceiveNotificationResponse: (response) {
-        _opened.add(PushTap(deepLink: response.payload));
+        _publishTap(PushTap(deepLink: response.payload));
       },
     );
     final launch = await _local.getNotificationAppLaunchDetails();
     if (launch?.didNotificationLaunchApp == true) {
-      _opened.add(PushTap(deepLink: launch!.notificationResponse?.payload));
+      _publishTap(PushTap(deepLink: launch!.notificationResponse?.payload));
     }
     await _local
         .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()

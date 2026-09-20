@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:iconfess_api/iconfess_api.dart';
 
 import '../../core/routing/routes.dart';
 import '../../core/theme/theme.dart';
@@ -16,9 +17,9 @@ class SettingsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final surfaces = AppSurfaces.of(context);
     return AppScaffold(
       title: 'Settings',
+      scrollable: false,
       body: ListView(
         children: [
           _Section(label: 'Preferences'),
@@ -173,6 +174,7 @@ class _InterestsScreenState extends ConsumerState<InterestsScreen> {
     final categoriesAsync = ref.watch(contentRepositoryProvider).categories();
     return AppScaffold(
       title: 'Interests',
+      scrollable: false,
       body: FutureBuilder(
         future: categoriesAsync,
         builder: (context, snapshot) {
@@ -233,6 +235,7 @@ class NotificationsScreen extends ConsumerWidget {
     final async = ref.watch(notificationPrefsProvider);
     return AppScaffold(
       title: 'Notifications',
+      scrollable: false,
       body: async.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('Failed: $e')),
@@ -290,6 +293,7 @@ class DevicesScreen extends ConsumerWidget {
     final async = ref.watch(devicesProvider);
     return AppScaffold(
       title: 'Devices',
+      scrollable: false,
       body: async.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('Failed: $e')),

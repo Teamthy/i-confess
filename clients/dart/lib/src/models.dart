@@ -551,6 +551,7 @@ final class Voice {
 /// silently skipping (§26).
 final class SessionItem {
   const SessionItem({
+    this.id = '',
     required this.confessionId,
     this.title = '',
     this.text = '',
@@ -561,6 +562,7 @@ final class SessionItem {
     this.lockReason = '',
   });
 
+  final String id;
   final String confessionId;
   final String title;
   final String text;
@@ -574,6 +576,7 @@ final class SessionItem {
   bool get isPlayable => !locked && audioUrl.isNotEmpty;
 
   factory SessionItem.fromJson(Map<String, dynamic> json) => SessionItem(
+        id: _str(json, 'id'),
         confessionId: _str(json, 'confession_id'),
         title: _str(json, 'title'),
         text: _str(json, 'text'),

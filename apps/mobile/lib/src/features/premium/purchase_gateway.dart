@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
@@ -92,9 +91,12 @@ abstract interface class PurchaseGateway {
 
 /// [PurchaseGateway] backed by `in_app_purchase`.
 class InAppPurchaseGateway implements PurchaseGateway {
-  InAppPurchaseGateway({InAppPurchase? store}) : _store = store ?? InAppPurchase.instance;
+  InAppPurchaseGateway({InAppPurchase? store}) : _suppliedStore = store;
 
-  final InAppPurchase _store;
+  final InAppPurchase? _suppliedStore;
+  late final InAppPurchase _store = _suppliedStore ?? InAppPurchase.instance;
+  bool get _supported => !kIsWeb && (defaultTargetPlatform == TargetPlatform.iOS ||
+      defaultTargetPlatform == TargetPlatform.android);
   final _purchases = StreamController<StorePurchase>.broadcast();
   final _errors = StreamController<String>.broadcast();
   final _outstanding = <String, PurchaseDetails>{};
@@ -110,7 +112,7 @@ class InAppPurchaseGateway implements PurchaseGateway {
   /// The provider name the server expects for this platform.
   @override
   String get provider {
-    if (Platform.isIOS || Platform.isMacOS) return 'apple';
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) return 'apple';
     // Play is the only store this app is published to on Android. A build that
     // adds another (Huawei AppGallery, for instance) needs its own gateway
     // rather than a guess here.
@@ -119,6 +121,7 @@ class InAppPurchaseGateway implements PurchaseGateway {
 
   @override
   void start() {
+    if (!_supported) return;
     _subscription ??= _store.purchaseStream.listen(
       _onPurchases,
       onError: (Object error) => _errors.add(error.toString()),
@@ -128,7 +131,7 @@ class InAppPurchaseGateway implements PurchaseGateway {
   @override
   Future<List<StoreProduct>> loadProducts(Set<String> ids) async {
     start();
-    if (ids.isEmpty || !await _store.isAvailable()) return const [];
+    if (!_supported || ids.isEmpty || !await _store.isAvailable()) return const [];
     final response = await _store.queryProductDetails(ids);
     if (response.error != null) throw PurchaseException(response.error!.message);
     return response.productDetails
@@ -139,7 +142,7 @@ class InAppPurchaseGateway implements PurchaseGateway {
   @override
   Future<void> buy(String productId) async {
     start();
-    if (!await _store.isAvailable()) {
+    if (!_supported || !await _store.isAvailable()) {
       throw const PurchaseException('The store is not available on this device.');
     }
     final response = await _store.queryProductDetails({productId});
@@ -170,12 +173,16 @@ class InAppPurchaseGateway implements PurchaseGateway {
   @override
   Future<void> restore() async {
     start();
+    if (!_supported) throw const PurchaseException('The store is not available on this device.');
     await _store.restorePurchases();
   }
 
   void _onPurchases(List<PurchaseDetails> purchases) {
     for (final purchase in purchases) {
-      final id = purchase.purchaseID;
+      // This key only correlates completion in memory; the server verifies the
+      // receipt independently. Some platform errors omit a purchaseID.
+      final id = purchase.purchaseID ??
+          '${purchase.productID}:${purchase.transactionDate}:${purchase.verificationData.serverVerificationData.hashCode}';
       if (purchase.status == PurchaseStatus.error) {
         _errors.add(purchase.error?.message ?? 'The purchase failed.');
         continue;
@@ -193,16 +200,9 @@ class InAppPurchaseGateway implements PurchaseGateway {
           purchase.status != PurchaseStatus.restored) {
         continue;
       }
-      if (id == null) {
-        // Without an id there is nothing to complete later, so the transaction
-        // would be re-delivered forever. The receipt is still handed to the
-        // server, which is what decides entitlement.
-        debugPrint('push: purchase without an id: ${purchase.productID}');
-      } else {
-        _outstanding[id] = purchase;
-      }
+      _outstanding[id] = purchase;
       _purchases.add(StorePurchase(
-        id: id ?? '',
+        id: id,
         productId: purchase.productID,
         provider: provider,
         receipt: purchase.verificationData.serverVerificationData,

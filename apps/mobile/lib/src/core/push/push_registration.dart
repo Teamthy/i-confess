@@ -80,6 +80,7 @@ class PushRegistrar {
   StreamSubscription<String>? _refreshSubscription;
 
   bool _available = false;
+  bool _disposed = false;
   String? _token;
 
   /// Whether this device can receive push at all.
@@ -93,6 +94,7 @@ class PushRegistrar {
 
   Future<void> _start() async {
     _available = await _transport.initialize();
+    if (_disposed) return;
     if (!_available) {
       debugPrint('push: unavailable on this device - reminders will not arrive');
       return;
@@ -112,7 +114,7 @@ class PushRegistrar {
   /// and the app keeps working without reminders.
   Future<String?> enable() async {
     await start();
-    if (!_isSignedIn()) return null;
+    if (_disposed || !_isSignedIn()) return null;
     if (!_available) return null;
     if (!await _transport.requestPermission()) {
       debugPrint('push: permission refused - not registering a token');
@@ -130,7 +132,7 @@ class PushRegistrar {
   /// granted permission.
   Future<void> registerIfPermitted() async {
     await start();
-    if (!_isSignedIn()) return;
+    if (_disposed || !_isSignedIn()) return;
     if (!_available) return;
     final token = await _transport.token();
     if (token == null || token.isEmpty) return;
@@ -138,9 +140,9 @@ class PushRegistrar {
   }
 
   Future<bool> _register(String token) async {
-    if (!_isSignedIn()) return false;
+    if (_disposed || !_isSignedIn()) return false;
     final identity = await _identities.current();
-    if (!_isSignedIn()) return false;
+    if (_disposed || !_isSignedIn()) return false;
     final registered = await _registration.registerDevice(
       deviceId: identity.deviceId,
       platform: identity.platform,
@@ -151,6 +153,7 @@ class PushRegistrar {
   }
 
   Future<void> dispose() async {
+    _disposed = true;
     await _refreshSubscription?.cancel();
   }
 }
@@ -166,7 +169,7 @@ final pushRegistrarProvider = Provider<PushRegistrar>((ref) {
     transport: ref.watch(pushTransportProvider),
     identities: ref.watch(deviceIdentitiesProvider),
     registration: DevicePushRegistration(ref.watch(apiClientProvider)),
-    isSignedIn: () => ref.read(authControllerProvider).isSignedIn,
+    isSignedIn: () => ref.mounted && ref.read(authControllerProvider).isSignedIn,
   );
 
   ref.listen<AuthState>(authControllerProvider, (previous, next) {

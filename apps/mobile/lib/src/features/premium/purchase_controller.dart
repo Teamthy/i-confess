@@ -36,7 +36,6 @@ const _googleProductIds = <String, String>{
 /// Null is a real answer: the annual plan can be absent from a listing, and a
 /// Subscribe button that buys the monthly plan because the annual id was missing
 /// would charge the wrong price.
-@visibleForTesting
 String? storeProductIdFor(String planId, {required bool apple}) {
   final ids = apple ? _appleProductIds : _googleProductIds;
   final id = ids[planId];

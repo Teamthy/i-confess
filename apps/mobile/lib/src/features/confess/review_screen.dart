@@ -127,7 +127,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
     final surfaces = AppSurfaces.of(context);
     final created = ref.watch(createdSessionProvider);
     final categoryIds = ref.watch(selectedCategoriesProvider);
-    final categoryNames = ref.watch(confessCategoriesProvider).asData?.value ??
+    final categoryNames = ref.watch(confessCategoriesProvider).asData?.value.valueOrNull ??
         const <Category>[];
     final duration = ref.watch(builderDurationSecondsProvider);
     final strategyName = ref.watch(builderStrategyProvider);
@@ -446,7 +446,7 @@ class _CreateFailure extends StatelessWidget {
           Text(
             planCapped
                 ? 'That length is more than your plan allows.'
-                : api?.isRetryable ?? true
+                : (api == null || api.isServerFault || api.isRateLimited)
                     ? 'The session did not save. Check your connection and try again.'
                     : 'The session did not save.',
             style: IConfess.body.copyWith(color: surfaces.textPrimary),

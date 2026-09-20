@@ -207,7 +207,6 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
   @override
   Widget build(BuildContext context) {
     final profileAsync = ref.watch(profileProvider);
-    final surfaces = AppSurfaces.of(context);
 
     return AppScaffold(
       title: 'Edit profile',

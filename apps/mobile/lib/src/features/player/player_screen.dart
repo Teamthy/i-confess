@@ -95,7 +95,7 @@ class PlayerScreen extends ConsumerWidget {
                       Text(
                         currentItem.text,
                         style: IConfess.body.copyWith(
-                          fontFamily: IConfess.fontSerif,
+                          fontFamily: IConfess.body.fontFamily,
                           color: surfaces.textPrimary,
                           height: 1.6,
                         ),
@@ -167,8 +167,7 @@ class PlayerScreen extends ConsumerWidget {
                     icon: const Icon(Icons.skip_previous_rounded),
                     iconSize: 36,
                     onPressed: currentIndex > 0
-                        ? () => ref.read(playerControllerProvider.notifier).state =
-                            playerState.copyWith(currentIndex: currentIndex - 1, positionMs: 0)
+                        ? () => ref.read(playerControllerProvider.notifier).previous()
                         : null,
                   ),
                   FilledButton(
