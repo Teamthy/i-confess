@@ -147,6 +147,7 @@ jobs:
           cache: true
 
       - name: Resolve dependencies
+        id: dependencies
         run: ../../scripts/ci-check.sh flutter pub get
 
       # --no-fatal-infos on purpose. Lint infos are style, and this package has
@@ -158,6 +159,7 @@ jobs:
         run: ../../scripts/ci-check.sh flutter analyze --no-fatal-infos
 
       - name: Test
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
         run: ../../scripts/ci-check.sh flutter test
 
   dart-client:
@@ -174,10 +176,12 @@ jobs:
         uses: dart-lang/setup-dart@v1
 
       - name: Resolve dependencies
+        id: dependencies
         run: ../../scripts/ci-check.sh dart pub get
 
       - name: Analyze
         run: ../../scripts/ci-check.sh dart analyze
 
       - name: Test
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
         run: ../../scripts/ci-check.sh dart test
