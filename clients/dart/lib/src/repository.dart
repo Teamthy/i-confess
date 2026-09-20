@@ -573,38 +573,51 @@ final class ContentRepository extends Repository {
   ///
   /// The server stores favourites as (entity_type, entity_id) so the same table
   /// can hold categories, voices and collections later.
-  Future<WriteResult<void>> addFavoriteConfession(String confessionId) => write(
-        () => api.postMeFavorites({
-          'entity_type': 'confession',
-          'entity_id': confessionId,
-        }),
-        (_) {},
-      );
+  Future<WriteResult<void>> addFavoriteConfession(String confessionId) =>
+      _favoriteWrite(() => api.postMeFavorites({
+            'entity_type': 'confession',
+            'entity_id': confessionId,
+          }));
 
   /// Removes a confession from favourites.
-  Future<WriteResult<void>> removeFavoriteConfession(String confessionId) => write(
-        () => api.deleteMeFavorites({
-          'entity_type': 'confession',
-          'entity_id': confessionId,
-        }),
-        (_) {},
-      );
+  Future<WriteResult<void>> removeFavoriteConfession(String confessionId) =>
+      _favoriteWrite(() => api.deleteMeFavorites({
+            'entity_type': 'confession',
+            'entity_id': confessionId,
+          }));
 
-  /// Whether a confession is favourited, derived from the favourites list.
+  /// Toggling a favourite invalidates the library's cached favourites list.
   ///
-  /// Not cached beyond the list call: favouriting is a write that must be
-  /// reflected immediately, and the list is small.
+  /// The heart lives on the confession screen and the list it changes is a tab
+  /// in the library, so without this a user favourites something, opens the
+  /// library and does not find it — for up to the cache TTL.
+  Future<WriteResult<void>> _favoriteWrite(
+      Future<Map<String, dynamic>> Function() action) async {
+    final result = await write(action, (_) {});
+    if (result.succeeded) {
+      await cache.delete(CacheKeys.favorites);
+      await cache.delete('${CacheKeys.favorites}:confession');
+    }
+    return result;
+  }
+
+  /// Whether a confession is favourited.
+  ///
+  /// Matched on (entity_type, entity_id) — the favourite's own row id is
+  /// deliberately not consulted. Comparing it against a confession id, which
+  /// this did before PHASE 27, is a false positive waiting to happen: both are
+  /// UUIDs from the same generator, and the match would silently light up the
+  /// heart on the wrong confession.
+  ///
+  /// Not cached: favouriting is a write that must be reflected immediately,
+  /// and the server narrows the list for us.
   Future<Loadable<bool>> isFavorite(String confessionId) async {
     try {
-      final json = await api.getMeFavorites();
-      final list = json['data'] is List ? json['data'] as List<dynamic> : <dynamic>[];
-      final found = list.any((item) {
-        if (item is! Map<String, dynamic>) return false;
-        return item['entity_id'] == confessionId ||
-            item['confession_id'] == confessionId ||
-            item['id'] == confessionId;
-      });
-      return Loadable.loaded(found);
+      final json = await api.getMeFavorites(type: 'confession');
+      final favorites = parseList(json['data'], Favorite.fromJson);
+      return Loadable.loaded(
+        favorites.any((f) => f.entityType == 'confession' && f.entityId == confessionId),
+      );
     } on ApiException catch (e) {
       return Loadable.failed(e);
     }
@@ -615,6 +628,10 @@ final class ContentRepository extends Repository {
 final class LibraryRepository extends Repository {
   LibraryRepository(super.api, super.cache);
 
+  /// The listener's own collections, with item counts.
+  ///
+  /// Cached under a key distinct from the editorial `published_collections`:
+  /// same word, different data.
   Future<Loadable<List<UserCollection>>> collections() => cachedRead(
         key: CacheKeys.collections,
         ttl: CacheTtl.library,
@@ -622,10 +639,159 @@ final class LibraryRepository extends Repository {
         decode: (json) => parseList(json['data'], UserCollection.fromJson),
       );
 
-  Future<WriteResult<UserCollection>> createCollection(String name) => write(
-        () => api.postMeCollections({'name': name}),
+  /// One collection with its items.
+  ///
+  /// Deliberately uncached. The list is cached because it is what the library
+  /// opens on and it survives being a few minutes old; a detail view is opened
+  /// to act on — add, remove, reorder — and showing a stale item list there
+  /// means the user reorders rows that no longer exist.
+  Future<Loadable<UserCollection>> collection(String id) async {
+    try {
+      return Loadable.loaded(UserCollection.fromJson(await api.getMeCollectionsById(id)));
+    } on ApiException catch (e) {
+      return Loadable.failed(e);
+    }
+  }
+
+  /// Creates a collection. Private unless asked otherwise, and the server
+  /// enforces that floor independently (§37).
+  Future<WriteResult<UserCollection>> createCollection(
+    String name, {
+    String description = '',
+    String? visibility,
+  }) =>
+      _invalidatingWrite(
+        () => api.postMeCollections({
+          'name': name,
+          if (description.isNotEmpty) 'description': description,
+          if (visibility != null && visibility.isNotEmpty) 'visibility': visibility,
+        }),
         UserCollection.fromJson,
       );
+
+  Future<WriteResult<UserCollection>> updateCollection(
+    String id, {
+    String? name,
+    String? description,
+    String? visibility,
+  }) =>
+      _invalidatingWrite(
+        () => api.patchMeCollectionsById(id, {
+          if (name != null) 'name': name,
+          if (description != null) 'description': description,
+          if (visibility != null) 'visibility': visibility,
+        }),
+        UserCollection.fromJson,
+      );
+
+  Future<WriteResult<void>> deleteCollection(String id) =>
+      _invalidatingWrite(() => api.deleteMeCollectionsById(id), (_) {});
+
+  /// Adds a confession to a collection. The server answers with the whole
+  /// collection, so the caller does not need a second read to refresh.
+  Future<WriteResult<UserCollection>> addToCollection(
+          String collectionId, String confessionId) =>
+      _invalidatingWrite(
+        () => api.postMeCollectionsByIdItems(
+            collectionId, {'confession_id': confessionId}),
+        UserCollection.fromJson,
+      );
+
+  Future<WriteResult<void>> removeFromCollection(
+          String collectionId, String confessionId) =>
+      _invalidatingWrite(
+        () => api.deleteMeCollectionsByIdItemsByConfessionId(
+            collectionId, confessionId),
+        (_) {},
+      );
+
+  Future<WriteResult<UserCollection>> reorderCollection(
+          String collectionId, List<String> confessionIds) =>
+      _invalidatingWrite(
+        () => api.patchMeCollectionsByIdReorder(
+            collectionId, {'confession_ids': confessionIds}),
+        UserCollection.fromJson,
+      );
+
+  /// Removes a favourite of any entity type.
+  ///
+  /// The library lists favourited categories and voices alongside confessions,
+  /// so the type has to be carried rather than assumed — hard-coding
+  /// 'confession' would make a favourited category impossible to remove from
+  /// the one screen that shows it.
+  Future<WriteResult<void>> removeFavorite({
+    required String entityType,
+    required String entityId,
+  }) async {
+    final result = await write(
+      () => api.deleteMeFavorites({
+        'entity_type': entityType,
+        'entity_id': entityId,
+      }),
+      (_) {},
+    );
+    if (result.succeeded) {
+      await cache.delete(CacheKeys.favorites);
+      await cache.delete('${CacheKeys.favorites}:$entityType');
+    }
+    return result;
+  }
+
+  /// The listener's favourites, newest first, with display names resolved by
+  /// the server. [type] narrows to one kind of entity.
+  Future<Loadable<List<Favorite>>> favorites({String? type}) => cachedRead(
+        key: type == null || type.isEmpty
+            ? CacheKeys.favorites
+            : '${CacheKeys.favorites}:$type',
+        ttl: CacheTtl.library,
+        fetch: () async => {
+          'data': (await api.getMeFavorites(
+                type: type == null || type.isEmpty ? null : type,
+              ))['data'] ??
+              []
+        },
+        decode: (json) => parseList(json['data'], Favorite.fromJson),
+      );
+
+  /// Confessions the listener wrote, newest first.
+  ///
+  /// Decoded as [UserConfession], not [Confession]: `/me/confessions` returns
+  /// the user's own writing, which shares no field names with editorial
+  /// content beyond the id.
+  Future<Loadable<List<UserConfession>>> myConfessions() => cachedRead(
+        key: CacheKeys.myConfessions,
+        ttl: CacheTtl.library,
+        fetch: () async => {'data': (await api.getMeConfessions())['data'] ?? []},
+        decode: (json) => parseList(json['data'], UserConfession.fromJson),
+      );
+
+  /// Offers a draft for moderation review. Publication is the moderator's
+  /// decision, so a success here means "submitted", never "published".
+  Future<WriteResult<UserConfession>> submitConfession(String id) =>
+      _invalidatingWrite(
+        () => api.postMeConfessionsByIdSubmit(id),
+        UserConfession.fromJson,
+      );
+
+  /// Performs a write and drops the library's cached reads.
+  ///
+  /// Without this a user who creates a collection sees their new collection
+  /// appear and then vanish on the next open, because the cached list — up to
+  /// 30 minutes old — is served over it. The invalidation runs only on
+  /// success: a failed write changed nothing, and throwing away a good cache
+  /// because the network refused would make the offline case worse.
+  Future<WriteResult<T>> _invalidatingWrite<T>(
+    Future<Map<String, dynamic>> Function() action,
+    T Function(Map<String, dynamic>) decode,
+  ) async {
+    final result = await write(action, decode);
+    if (result.succeeded) {
+      await cache.delete(CacheKeys.collections);
+      await cache.delete(CacheKeys.favorites);
+      await cache.delete(CacheKeys.myConfessions);
+    }
+    return result;
+  }
 
   Future<Loadable<List<Schedule>>> schedules() => cachedRead(
         key: CacheKeys.schedules,

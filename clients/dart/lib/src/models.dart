@@ -928,24 +928,199 @@ final class UserCollection {
     required this.id,
     required this.name,
     this.description = '',
+    this.coverUrl = '',
     this.visibility = 'private',
     this.itemCount = 0,
+    this.items = const [],
+    this.updatedAt,
   });
 
   final String id;
   final String name;
   final String description;
+
+  /// Artwork for the collection. Empty for most: the library falls back to a
+  /// generated treatment rather than shipping a placeholder image, so an
+  /// uncovered collection still looks deliberate.
+  final String coverUrl;
   final String visibility;
   final int itemCount;
 
+  /// Populated only by the detail read (`GET /me/collections/{id}`). The list
+  /// endpoint returns counts without items, so an empty list here means "not
+  /// loaded", which is why [itemCount] is carried separately rather than
+  /// derived from `items.length`.
+  final List<CollectionItem> items;
+  final DateTime? updatedAt;
+
   bool get isPrivate => visibility == 'private';
+  bool get isEmpty => itemCount == 0;
 
   factory UserCollection.fromJson(Map<String, dynamic> json) => UserCollection(
         id: _str(json, 'id'),
         name: _str(json, 'name'),
         description: _str(json, 'description'),
+        coverUrl: _str(json, 'cover_url'),
         visibility: _str(json, 'visibility', 'private'),
-        itemCount: _int(json, 'item_count'),
+        // The detail response carries items but the server computes
+        // item_count from them; when both are present they agree, and when
+        // only items are present the length is the honest count.
+        itemCount: json['item_count'] == null && json['items'] is List
+            ? (json['items'] as List).length
+            : _int(json, 'item_count'),
+        items: _list(json['items']).map(CollectionItem.fromJson).toList(),
+        updatedAt: _time(json, 'updated_at'),
+      );
+}
+
+/// One entry in a user collection (§36).
+final class CollectionItem {
+  const CollectionItem({
+    required this.id,
+    required this.confessionId,
+    this.title = '',
+    this.position = 0,
+  });
+
+  final String id;
+  final String confessionId;
+  final String title;
+  final int position;
+
+  /// The server resolves the title by joining `confessions`. An empty title
+  /// means the confession behind this item no longer resolves — archived or
+  /// withdrawn — and the row should say so rather than render blank.
+  bool get resolved => title.isNotEmpty;
+
+  factory CollectionItem.fromJson(Map<String, dynamic> json) => CollectionItem(
+        id: _str(json, 'id'),
+        confessionId: _str(json, 'confession_id'),
+        title: _str(json, 'title'),
+        position: _int(json, 'position'),
+      );
+}
+
+/// A favourite (§35).
+///
+/// The server's favourites table is polymorphic — one row shape covers
+/// confessions, categories, sessions and voices — so this model is too. The
+/// display fields are resolved server-side at read time and are absent from
+/// the write endpoints, which take only the type and the id.
+final class Favorite {
+  const Favorite({
+    required this.id,
+    required this.entityType,
+    required this.entityId,
+    this.title = '',
+    this.subtitle = '',
+    this.missing = false,
+    this.createdAt,
+  });
+
+  final String id;
+  final String entityType;
+  final String entityId;
+  final String title;
+  final String subtitle;
+
+  /// The favourited thing no longer resolves. The row is still shown, so the
+  /// user can clear it; hiding it would leave an entry they cannot remove.
+  final bool missing;
+  final DateTime? createdAt;
+
+  bool get isConfession => entityType == 'confession';
+
+  /// What a row leads with. Never empty: an unresolvable favourite says so
+  /// rather than rendering an opaque id, which is what this surface did before
+  /// the server learned to hydrate.
+  String get displayTitle {
+    if (title.isNotEmpty) return title;
+    return missing ? 'No longer available' : entityId;
+  }
+
+  factory Favorite.fromJson(Map<String, dynamic> json) => Favorite(
+        id: _str(json, 'id'),
+        entityType: _str(json, 'entity_type'),
+        entityId: _str(json, 'entity_id'),
+        title: _str(json, 'title'),
+        subtitle: _str(json, 'subtitle'),
+        missing: _bool(json, 'missing'),
+        createdAt: _time(json, 'created_at'),
+      );
+}
+
+/// A confession the listener wrote (§22).
+///
+/// Distinct from [Confession], which is editorial content. They share a name
+/// and almost nothing else: the user's own writing has one `text` field rather
+/// than three lengths, and it carries a moderation status the editorial model
+/// has no equivalent for. Decoding one as the other — which the library did
+/// before PHASE 27 — yields rows with every field empty, because none of the
+/// keys line up.
+final class UserConfession {
+  const UserConfession({
+    required this.id,
+    this.title = '',
+    this.text = '',
+    this.categoryId = '',
+    this.status = 'draft',
+    this.visibility = 'private',
+    this.rejectionReason = '',
+    this.reviewNotes = '',
+    this.createdAt,
+    this.updatedAt,
+  });
+
+  final String id;
+  final String title;
+  final String text;
+  final String categoryId;
+
+  /// The moderation lifecycle: draft, submitted, approved, rejected,
+  /// published or archived.
+  final String status;
+
+  /// The audience the author asked for: private, shared or public. Asking is
+  /// not receiving — publication is the moderator's decision, and the UI must
+  /// not present a `public` visibility on a `draft` as though it were live.
+  final String visibility;
+  final String rejectionReason;
+  final String reviewNotes;
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
+
+  /// Whether the author can still edit and submit this.
+  bool get isDraft => status == 'draft';
+
+  /// Waiting on a moderator. The author can neither edit nor resubmit.
+  bool get isPending => status == 'submitted';
+
+  bool get isPublished => status == 'published';
+  bool get isRejected => status == 'rejected';
+
+  /// Only a draft may be offered for review, and only one that asks for an
+  /// audience beyond the author. A private note has nothing to moderate.
+  bool get canSubmit => isDraft && visibility != 'private';
+
+  /// The line a list row leads with. Falls back to the opening of the text,
+  /// because a title is not enforced at creation.
+  String get lead {
+    if (title.isNotEmpty) return title;
+    if (text.isEmpty) return 'Untitled';
+    return text.length <= 60 ? text : '${text.substring(0, 60).trimRight()}…';
+  }
+
+  factory UserConfession.fromJson(Map<String, dynamic> json) => UserConfession(
+        id: _str(json, 'id'),
+        title: _str(json, 'title'),
+        text: _str(json, 'text'),
+        categoryId: _str(json, 'category_id'),
+        status: _str(json, 'status', 'draft'),
+        visibility: _str(json, 'visibility', 'private'),
+        rejectionReason: _str(json, 'rejection_reason'),
+        reviewNotes: _str(json, 'review_notes'),
+        createdAt: _time(json, 'created_at'),
+        updatedAt: _time(json, 'updated_at'),
       );
 }
 

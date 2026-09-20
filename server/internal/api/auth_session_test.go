@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/Teamthy/i-confess/internal/db"
 	"github.com/Teamthy/i-confess/internal/store"
 )
 
@@ -20,6 +21,9 @@ import (
 type authHarness struct {
 	h      *Handler
 	router http.Handler
+	// db is the same connection the handler serves from, so a test can seed
+	// content the API has no endpoint to create.
+	db *db.DB
 }
 
 func newAuthHarness(t *testing.T) *authHarness {
@@ -29,7 +33,7 @@ func newAuthHarness(t *testing.T) *authHarness {
 
 	h := NewHandler(Config{JWTSecret: "test-secret", TokenTTL: "24h"}, dbConn)
 	h.BuildEngine()
-	return &authHarness{h: h, router: h.Routes()}
+	return &authHarness{h: h, router: h.Routes(), db: dbConn}
 }
 
 func (a *authHarness) do(method, path, token string, body any) (int, map[string]any) {

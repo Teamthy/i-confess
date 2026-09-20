@@ -214,12 +214,18 @@ extension IConfessEndpoints on ApiClient {
           [Map<String, dynamic>? body]) =>
       post('/me/confessions', body);
 
+  /// Offer a personal confession for moderation review
+  Future<Map<String, dynamic>> postMeConfessionsByIdSubmit(String id,
+          [Map<String, dynamic>? body]) =>
+      post('/me/confessions/$id/submit', body);
+
   /// Remove a favourite
   Future<Map<String, dynamic>> deleteMeFavorites([Map<String, dynamic>? body]) =>
       delete('/me/favorites', body);
 
-  /// List favourites
-  Future<Map<String, dynamic>> getMeFavorites() => get('/me/favorites');
+  /// List favourites, optionally narrowed to one entity type
+  Future<Map<String, dynamic>> getMeFavorites({String? type}) =>
+      get('/me/favorites', query: type == null ? null : {'type': type});
 
   /// Add a favourite
   Future<Map<String, dynamic>> postMeFavorites([Map<String, dynamic>? body]) =>
