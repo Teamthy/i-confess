@@ -11,6 +11,7 @@ import (
 	"mime"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -46,6 +47,7 @@ type S3Storage struct {
 	presigner S3Presigner
 	bucket    string
 	region    string
+	cdnDomain string
 }
 
 // NewS3Storage creates a working S3 storage provider.
@@ -94,6 +96,7 @@ func NewS3Storage(cfg *StorageConfig) (ObjectStorage, error) {
 		presigner: s3.NewPresignClient(client),
 		bucket:    cfg.S3Bucket,
 		region:    cfg.S3Region,
+		cdnDomain: cfg.CDNDomain,
 	}, nil
 }
 
@@ -177,6 +180,21 @@ func (s *S3Storage) GenerateSignedURL(ctx context.Context, key string, ttl time.
 	if err != nil {
 		return "", s3Error("sign_url", key, err)
 	}
+
+	if s.cdnDomain != "" {
+		if parsed, perr := url.Parse(res.URL); perr == nil {
+			cdnURL := s.cdnDomain
+			if !strings.HasPrefix(cdnURL, "http://") && !strings.HasPrefix(cdnURL, "https://") {
+				cdnURL = "https://" + cdnURL
+			}
+			if cdnParsed, cerr := url.Parse(cdnURL); cerr == nil {
+				parsed.Scheme = cdnParsed.Scheme
+				parsed.Host = cdnParsed.Host
+				return parsed.String(), nil
+			}
+		}
+	}
+
 	return res.URL, nil
 }
 

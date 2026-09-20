@@ -123,9 +123,19 @@ func (s *UserStore) SubscriptionState(ctx context.Context, userID string) (plan,
 }
 
 func (s *UserStore) SetSubscription(ctx context.Context, userID, plan, status string) error {
-	_, err := s.db.ExecContext(ctx,
+	res, err := s.db.ExecContext(ctx,
 		`UPDATE subscriptions SET plan = ?, status = ? WHERE user_id = ?`, plan, status, userID)
-	return err
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		_, err = s.db.ExecContext(ctx,
+			`INSERT INTO subscriptions (id, user_id, plan, status, created_at) VALUES (?,?,?,?,?)`,
+			newID(), userID, plan, status, now())
+		return err
+	}
+	return nil
 }
 
 // UpdatePassword updates a user's password hash.

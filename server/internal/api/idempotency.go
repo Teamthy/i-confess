@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"net/http"
@@ -104,4 +105,12 @@ func (r *responseRecorder) Write(b []byte) (int, error) {
 	}
 	r.body.Write(b)
 	return r.ResponseWriter.Write(b)
+}
+
+// RunIdempotencySweep purges expired idempotency keys periodically (IC-023).
+func (h *Handler) RunIdempotencySweep(ctx context.Context) (int, error) {
+	if h.idem == nil {
+		return 0, nil
+	}
+	return h.idem.PurgeExpired(ctx)
 }

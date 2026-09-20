@@ -108,6 +108,10 @@ func (h *Handler) readyz(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	var catCount, voiceCount int
+	_ = h.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM categories WHERE status='published'`).Scan(&catCount)
+	_ = h.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM voices WHERE status='active'`).Scan(&voiceCount)
+
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{
 		"status": "ready",
 		// Reported so an operator can see degraded subsystems without them
@@ -117,6 +121,11 @@ func (h *Handler) readyz(w http.ResponseWriter, r *http.Request) {
 			"email":    h.mail != nil,
 			"push":     h.dispatcher != nil,
 			"storage":  h.signer != nil,
+			"catalog":  catCount > 0 && voiceCount > 0,
+		},
+		"inventory": map[string]int{
+			"published_categories": catCount,
+			"active_voices":        voiceCount,
 		},
 	})
 }

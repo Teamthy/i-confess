@@ -218,11 +218,17 @@ class _PlanCard extends StatelessWidget {
             ),
           const SizedBox(height: IConfess.space4),
           FilledButton(
-            onPressed: () {},
+            onPressed: () => _purchasePlan(context, ref, plan),
             child: Text(plan.trialDays > 0 ? 'Start ${plan.trialDays}-day trial' : 'Subscribe'),
           ),
         ],
       ),
+    );
+  }
+
+  void _purchasePlan(BuildContext context, WidgetRef ref, dynamic plan) async {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Starting checkout for ${plan.name}…')),
     );
   }
 }

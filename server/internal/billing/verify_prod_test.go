@@ -52,6 +52,15 @@ func TestDevelopmentStillAcceptsStubReceipts(t *testing.T) {
 	}
 }
 
+func TestStagingRefusesStubReceipts(t *testing.T) {
+	t.Setenv("ENV", "staging")
+	t.Setenv("BILLING_VERIFIER", "")
+	ver, err := VerifierFromEnv().Verify(context.Background(), "apple", "valid_monthly")
+	if err == nil && ver.Valid {
+		t.Errorf("ENV=staging accepted stub receipt as valid")
+	}
+}
+
 // TestStubVerifiersAreSelectable pins that the named modes still resolve to
 // something, so replacing a stub with a real verifier cannot silently fall
 // through to the default branch.

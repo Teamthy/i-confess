@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Teamthy/i-confess/internal/db"
@@ -95,7 +96,10 @@ type Handler struct {
 	cacheStats func() CacheStats
 	// routes records every registered endpoint, so the API spec is generated
 	// from the same calls that serve traffic and cannot drift.
-	routes *routeRecorder
+	routes   *routeRecorder
+	authMW   map[string]func(http.Handler) http.Handler
+	authMWmu sync.Mutex
+	isProd   bool
 }
 
 // SetLimiter installs a rate limiter. Production passes a Redis-backed
@@ -114,6 +118,9 @@ func (h *Handler) SetMailer(q *email.Queue, cfg email.Config) {
 
 // SetDevTokenSink installs a development/test hook for one-time tokens.
 func (h *Handler) SetDevTokenSink(f func(purpose, email, token string)) { h.devTokenSink = f }
+
+// SetProduction configures production mode for security headers and hardening.
+func (h *Handler) SetProduction(prod bool) { h.isProd = prod }
 
 type Config struct {
 	JWTSecret string
@@ -149,6 +156,7 @@ func NewHandler(cfg Config, db *db.DB) *Handler {
 		cacheMeter:   &cache.Meter{},
 		metrics:      NewAuthMetrics(),
 		routes:       &routeRecorder{},
+		authMW:       make(map[string]func(http.Handler) http.Handler),
 	}
 }
 
@@ -336,7 +344,7 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 	// failure. Every other error is refused. Collapsing the two - as
 	// "mErr == nil && enrolment.Enabled" did - is what let a database error
 	// skip the second factor entirely.
-	enrolment, mErr := h.users.MFAEnrolmentFor(r.Context(), u.ID)
+	enrolment, mErr := h.getMFAEnrolment(r.Context(), u.ID)
 	if mErr != nil && !errors.Is(mErr, store.ErrNotFound) {
 		log.Printf("auth: cannot read MFA enrolment for %s, refusing sign-in: %v", u.ID, mErr)
 		writeCode(w, http.StatusServiceUnavailable, "AUTH_UNAVAILABLE", "sign-in is temporarily unavailable, try again")
@@ -1065,8 +1073,32 @@ func (h *Handler) createSession(w http.ResponseWriter, r *http.Request) {
 		// one is the guarantee that survives a future edit to the handler.
 		MaxDurationSeconds: ent.MaxSessionSeconds(),
 	})
+	if errors.Is(err, engine.ErrNoVoice) {
+		httpx.WriteJSON(w, http.StatusUnprocessableEntity, map[string]any{
+			"error":  "no available active voice",
+			"code":   "VOICE_UNAVAILABLE",
+			"reason": "voice_unavailable",
+		})
+		return
+	}
 	if errors.Is(err, engine.ErrNoContent) {
-		httpx.WriteError(w, http.StatusUnprocessableEntity, "no content available for the selected categories and voice")
+		httpx.WriteJSON(w, http.StatusUnprocessableEntity, map[string]any{
+			"error":  "no published content available for the selected categories and voice",
+			"code":   "CONTENT_UNAVAILABLE",
+			"reason": "content_unavailable",
+		})
+		return
+	}
+	if errors.Is(err, engine.ErrDurationTooShort) || errors.Is(err, engine.ErrDurationTooLong) {
+		httpx.WriteJSON(w, http.StatusUnprocessableEntity, map[string]any{
+			"error":  err.Error(),
+			"code":   "DURATION_OUT_OF_BOUNDS",
+			"reason": "duration_out_of_bounds",
+		})
+		return
+	}
+	if errors.Is(err, engine.ErrDurationExceedsPlan) {
+		writePlanLimit(w, ent)
 		return
 	}
 	if errors.Is(err, engine.ErrNoExactFit) {
@@ -1075,6 +1107,7 @@ func (h *Handler) createSession(w http.ResponseWriter, r *http.Request) {
 		// without cutting a confession short, which we do not do.
 		httpx.WriteJSON(w, http.StatusUnprocessableEntity, map[string]any{
 			"error":  "no combination of complete confessions matches that exact length",
+			"code":   "EXACT_DURATION_UNAVAILABLE",
 			"reason": "exact_duration_unavailable",
 			"hint":   "choose a nearby length, or use the balanced strategy",
 		})

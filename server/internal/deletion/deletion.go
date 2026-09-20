@@ -329,8 +329,14 @@ func parentTableFor(child string) string {
 		return "user_collections"
 	case "session_items":
 		return "sessions"
+	case "user_confession_audio":
+		return "user_confessions"
 	case "community_posts":
 		// author_id is a direct reference to users(id).
+		return "users"
+	case "security_events":
+		return "users"
+	case "audit_logs":
 		return "users"
 	}
 	return child

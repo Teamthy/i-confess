@@ -8,14 +8,19 @@
 package mfa
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha1"
+	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base32"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"net/url"
 	"strings"
 	"time"
@@ -130,4 +135,59 @@ func ProvisioningURI(secret, accountName, issuer string) string {
 	q.Set("digits", fmt.Sprintf("%d", Digits))
 	q.Set("period", fmt.Sprintf("%d", int(Period.Seconds())))
 	return "otpauth://totp/" + label + "?" + q.Encode()
+}
+
+// EncryptSecret encrypts a raw base32 TOTP secret using AES-256-GCM (IC-010).
+func EncryptSecret(secret, key string) (string, error) {
+	if key == "" {
+		return secret, nil
+	}
+	k := sha256.Sum256([]byte(key))
+	block, err := aes.NewCipher(k[:])
+	if err != nil {
+		return "", err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return "", err
+	}
+	sealed := gcm.Seal(nonce, nonce, []byte(secret), nil)
+	return "enc:" + hex.EncodeToString(sealed), nil
+}
+
+// DecryptSecret decrypts an encrypted secret, falling back to plaintext for legacy rows.
+func DecryptSecret(stored, key string) (string, error) {
+	if !strings.HasPrefix(stored, "enc:") {
+		return stored, nil
+	}
+	if key == "" {
+		return "", errors.New("encryption key required to decrypt TOTP secret")
+	}
+	raw, err := hex.DecodeString(strings.TrimPrefix(stored, "enc:"))
+	if err != nil {
+		return "", err
+	}
+	k := sha256.Sum256([]byte(key))
+	block, err := aes.NewCipher(k[:])
+	if err != nil {
+		return "", err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+	nonceSize := gcm.NonceSize()
+	if len(raw) < nonceSize {
+		return "", errors.New("invalid ciphertext")
+	}
+	nonce, ciphertext := raw[:nonceSize], raw[nonceSize:]
+	plain, err := gcm.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		return "", err
+	}
+	return string(plain), nil
 }

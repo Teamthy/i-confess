@@ -78,7 +78,7 @@ func (s *ContentStore) ListCategories(ctx context.Context, includeUnpublished bo
 		return nil, err
 	}
 	defer rows.Close()
-	var out []models.Category
+	out := make([]models.Category, 0)
 	for rows.Next() {
 		var c models.Category
 		if err := rows.Scan(&c.ID, &c.Name, &c.Slug, &c.Description, &c.Icon, &c.Premium, &c.Status, &c.SortOrder, &c.CreatedAt, &c.UpdatedAt); err != nil {
@@ -222,7 +222,7 @@ func (s *ContentStore) ConfessionsByCategory(ctx context.Context, categoryID str
 		return nil, err
 	}
 	defer rows.Close()
-	var out []models.Confession
+	out := make([]models.Confession, 0)
 	for rows.Next() {
 		var c models.Confession
 		var tags, publishedAt sql.NullString
@@ -252,7 +252,7 @@ func (s *ContentStore) ListConfessions(ctx context.Context, publishedOnly bool) 
 		return nil, err
 	}
 	defer rows.Close()
-	var out []models.Confession
+	out := make([]models.Confession, 0)
 	for rows.Next() {
 		var c models.Confession
 		var tags, publishedAt sql.NullString

@@ -83,6 +83,8 @@ var Policies = []TablePolicy{
 	{Table: "user_devices", Action: Erase},
 
 	// ---- User-created content and library.
+	{Table: "user_confession_audio", Action: Erase, Column: "user_confession_id",
+		Reason: "removed via their parent user confession"},
 	{Table: "user_collection_items", Action: Erase, Column: "collection_id",
 		Reason: "removed via their parent collection"},
 	{Table: "user_collections", Action: Erase},
@@ -92,6 +94,12 @@ var Policies = []TablePolicy{
 	{Table: "session_items", Action: Erase, Column: "session_id",
 		Reason: "removed via their parent session"},
 	{Table: "sessions", Action: Erase},
+
+	// ---- Security and audit trails (IC-007).
+	{Table: "security_events", Action: Erase, Column: "user_id",
+		Reason: "IP and user agent traces erased with the account"},
+	{Table: "audit_logs", Action: Anonymise, Column: "admin_user_id",
+		Reason: "audit records retained for accountability with the individual admin detached"},
 
 	// ---- Notification dispatch log. Erased with the account: it records when
 	// someone was reminded to pray, which is behavioural data about them, and

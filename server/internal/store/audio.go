@@ -36,7 +36,7 @@ func (s *AudioStore) ListVoices(ctx context.Context) ([]models.Voice, error) {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []models.Voice
+	out := make([]models.Voice, 0)
 	for rows.Next() {
 		var v models.Voice
 		if err := rows.Scan(&v.ID, &v.Name, &v.Description, &v.Type, &v.Provider, &v.Gender, &v.Language, &v.Premium, &v.Status, &v.SampleURL, &v.CreatedAt, &v.UpdatedAt); err != nil {

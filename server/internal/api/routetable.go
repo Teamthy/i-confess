@@ -73,6 +73,8 @@ func (h *Handler) route(mux *http.ServeMux, pattern, auth, tag, summary string,
 	var handler http.Handler = fn
 	if wrap != nil {
 		handler = wrap(fn)
+	} else if authMW := h.routeAuth(auth); authMW != nil {
+		handler = authMW(fn)
 	}
 	mux.Handle(pattern, handler)
 

@@ -10,26 +10,52 @@ import (
 	"github.com/Teamthy/i-confess/internal/store"
 )
 
-// EnsureContent installs the canonical content library — the 39 categories and
-// the confessions under them — into whatever database it is pointed at.
+// EnsureContent installs the canonical content library — the 39 categories,
+// canonical confessions, canonical voices and collections — into whatever
+// database it is pointed at.
 //
-// It is idempotent and safe to run on every boot, in every environment. That
-// is the point of it.
-//
-// Why this exists: the catalogue used to be created only by Seed, and Seed only
-// runs when ENV=development or SEED=1. A production deployment therefore came
-// up with zero categories and zero confessions — an empty library behind a
-// marketing claim of "39 areas of life". Categories and confessions are the
-// product's inventory; inventory cannot be an optional dev-only step.
-//
-// What it deliberately does NOT do is create audio. Seed generates placeholder
-// tone bytes and marks the assets "ready", which is fine for a demo and would
-// be a defect in production: users would be served beeps labelled as
-// confessions. Real audio comes from the generation pipeline behind the rights
-// gate (directive §5), not from a bootstrap. A confession with no audio asset
-// is honest about being text-only until audio is generated.
+// It is idempotent and safe to run on every boot, in every environment.
 func EnsureContent(ctx context.Context, conn *db.DB) (categories, confessions int, err error) {
 	content := store.NewContentStore(conn)
+	audio := store.NewAudioStore(conn)
+
+	// Ensure Canonical Collections
+	existingCols, err := content.ListCollections(ctx, true)
+	if err == nil {
+		colSlugs := make(map[string]bool)
+		for _, c := range existingCols {
+			colSlugs[c.Slug] = true
+		}
+		for _, c := range []models.Collection{
+			{Name: "Launch", Slug: "launch", Status: "published", SortOrder: 1, Description: "Launch collection — 39 canonical areas of life."},
+			{Name: "Expanded", Slug: "expanded", Status: "published", SortOrder: 2, Description: "Expanded spiritual and personal confession catalogue."},
+		} {
+			if !colSlugs[c.Slug] {
+				col := c
+				_ = content.CreateCollection(ctx, &col)
+			}
+		}
+	}
+
+	// Ensure Canonical Voices
+	existingVoices, err := audio.ListVoices(ctx)
+	if err == nil {
+		voiceNames := make(map[string]bool)
+		for _, v := range existingVoices {
+			voiceNames[v.Name] = true
+		}
+		canonicalVoices := []models.Voice{
+			{Name: "Grace", Description: "Warm, calm professional narration voice.", Type: "professional", Provider: "i-confess", Gender: "female", Language: "en", Premium: false, Status: "active"},
+			{Name: "David", Description: "Clear, grounded and reflective voice.", Type: "professional", Provider: "i-confess", Gender: "male", Language: "en", Premium: false, Status: "active"},
+			{Name: "Faith", Description: "Uplifting, resonant expressive voice.", Type: "professional", Provider: "i-confess", Gender: "female", Language: "en", Premium: true, Status: "active"},
+		}
+		for _, cv := range canonicalVoices {
+			if !voiceNames[cv.Name] {
+				v := cv
+				_ = audio.CreateVoice(ctx, &v)
+			}
+		}
+	}
 
 	existing, err := content.ListCategories(ctx, true)
 	if err != nil {
