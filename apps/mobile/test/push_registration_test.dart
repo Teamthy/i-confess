@@ -279,7 +279,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(transport.permissionRequests, 1);
     expect(api.bodyOf('/me/devices')!['push_token'], 'apns-current');
-    expect(api.bodyOf('/me/notifications')!['scheduled_sessions'], true);
+    expect(api.bodyOf('/me/notifications', method: 'PATCH')!['scheduled_sessions'], true);
     expect(find.text('Reminders enabled on this device.'), findsOneWidget);
   });
 

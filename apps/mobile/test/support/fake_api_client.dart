@@ -30,9 +30,9 @@ class FakeApiClient extends ApiClient {
   void respondWith(String path, ApiException error) => responses[path] = error;
 
   /// The body of the last call to [path], as decoded JSON.
-  Map<String, dynamic>? bodyOf(String path) {
+  Map<String, dynamic>? bodyOf(String path, {String? method}) {
     for (final call in calls.reversed) {
-      if (call.path == path) return call.body;
+      if (call.path == path && (method == null || call.method == method)) return call.body;
     }
     return null;
   }
