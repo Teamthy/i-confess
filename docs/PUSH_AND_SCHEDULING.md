@@ -194,3 +194,40 @@ as `failed — no registered devices`.
 Next I'd do **offline downloads**: it is the remaining piece that makes a
 scheduled session reliable for users on intermittent mobile data, which is a
 large share of the target market.
+
+### PR C integration notes (2026-09-20)
+
+- **Opt-in:** Activity → “This device”, or Settings → Notifications → “This
+  device”. The action requests OS permission, registers a nonempty token, then
+  writes `scheduled_sessions: true`. A failed registration never reports success.
+  The account toggle is separate from the handset's OS permission.
+- **Startup/rotation:** a restored signed-in session registers without prompting;
+  foreground resume and token refresh re-read the transport token. Signed-out
+  callbacks do not register. Provider disposal cancels listeners.
+- **iOS:** the backend routes `platform: ios` to APNs, so registration uses
+  `getAPNSToken()`, **not** the FCM token. Direct APNs messages have no Firebase
+  message id: AppDelegate forwards taps on the server's `data.deeplink` through
+  `app.iconfess/push_taps` and presents foreground alerts. Both native and Dart
+  sides buffer taps until listeners attach (cold start).
+- **Android:** the installation identifier is random and persisted. Android's
+  `Build.ID` is not a device identifier. The Google Services Gradle plugin is
+  applied when the project-specific `google-services.json` is present.
+- **Queue:** scheduled jobs retain the collapse key, sound, data and destination
+  of the inline notification. The queue retries provider failures; a `queued`
+  occurrence is not evidence of successful delivery.
+
+#### Required device smoke test before release
+
+Configure Firebase for the actual application id (`flutterfire configure`), add
+its iOS plist to the Runner target, enable Push Notifications in the Apple app id
+and signing profile, and provide server APNs/FCM credentials through deployment
+secrets. The committed `aps-environment: development` is for local development;
+Xcode distribution export must produce a production entitlement matching the
+server's APNs environment. Never put provider private keys in mobile assets.
+
+On a physical Android and iOS device, exercise permission grant/denial, token
+registration, rotation, app resume, and foreground/background/terminated taps.
+Verify that a tap calls the authenticated schedule-start endpoint before opening
+the player. Confirm opt-out stops subsequent schedule reminders. Flutter unit
+and widget tests do **not** validate native signing, provisioning, Firebase
+configuration, or delivery through the live providers.

@@ -279,3 +279,27 @@ not exist in the store says so instead of charging for the wrong thing.
 Restore is present and wired (`restorePurchases` → server verification), which
 App Store review requires for a non-consumable and which is the only way back for
 someone who reinstalled.
+
+### Mobile purchase integration (PR C)
+
+The paywall resolves product ids using `ICONFESS_APPLE_MONTHLY`,
+`ICONFESS_APPLE_ANNUAL`, `ICONFESS_GOOGLE_MONTHLY` and `ICONFESS_GOOGLE_ANNUAL`
+Dart defines. These must match the store listings **and** server product mappings.
+The displayed price/availability comes from the native storefront, not the
+illustrative regional API catalogue. Trial eligibility is left to the store;
+the app does not promise a trial based only on catalogue metadata.
+
+StoreKit 2 is required (iOS deployment target 15+). The StoreKit plugin lower
+bound includes JWS `serverVerificationData` and corrected pending/cancellation
+callbacks. Do not enable StoreKit 1: its legacy base64 receipt is not the signed
+transaction format accepted by the server. Play supplies the purchase token.
+Only the backend's verified entitlement response is used to announce Premium.
+
+The app subscribes at startup, serializes purchase callbacks, and completes a
+purchase only after successful backend verification or a definitive
+`RECEIPT_INVALID` response. Offline/server/authentication/account-conflict errors
+leave it unfinished. “Restore purchases” is the explicit retry path; completion
+failure retains the native transaction for another attempt. Cancellation clears
+the busy state without granting entitlement. Storefront sandbox purchase,
+cancel, restore, interrupted verification and Play acknowledgement must still be
+exercised on signed native builds before release; fakes do not prove store billing.
