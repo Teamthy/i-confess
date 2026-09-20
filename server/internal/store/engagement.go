@@ -5,6 +5,7 @@ import (
 
 	"github.com/Teamthy/i-confess/internal/db"
 	"github.com/Teamthy/i-confess/internal/models"
+	"github.com/lib/pq"
 )
 
 // EngagementStore manages favorites, playback history, and user confessions.
@@ -14,12 +15,30 @@ func NewEngagementStore(db *db.DB) *EngagementStore { return &EngagementStore{db
 
 // ---------- Favorites ----------
 
+// AddFavorite records a favourite, or returns the existing one unchanged.
+//
+// Favouriting is idempotent because the gesture is: a listener who taps the
+// heart on a confession they have already favourited means "this is a
+// favourite", not "make a second one". The conflict target is the natural key
+// (user, entity_type, entity_id) rather than the primary key — the previous
+// `ON CONFLICT(id)` could never fire, because the id is freshly generated on
+// every call, so three taps wrote three rows (see migration 0013).
+//
+// On conflict the stored row is returned rather than the one just built, so
+// the caller sees the real id and the original created_at. Reporting a
+// fabricated id for a row that was never inserted would give clients a handle
+// that matches nothing in the table.
 func (s *EngagementStore) AddFavorite(ctx context.Context, userID, entityType, entityID string) (*models.Favorite, error) {
 	f := &models.Favorite{ID: newID(), UserID: userID, EntityType: entityType, EntityID: entityID, CreatedAt: now()}
-	_, err := s.db.ExecContext(ctx,
+	err := s.db.QueryRowContext(ctx,
 		`INSERT INTO favorites (id,user_id,entity_type,entity_id,created_at) VALUES (?,?,?,?,?)
-		 ON CONFLICT(id) DO NOTHING`, f.ID, f.UserID, f.EntityType, f.EntityID, f.CreatedAt)
-	return f, err
+		 ON CONFLICT (user_id,entity_type,entity_id) DO UPDATE SET entity_id = favorites.entity_id
+		 RETURNING id, created_at`,
+		f.ID, f.UserID, f.EntityType, f.EntityID, f.CreatedAt).Scan(&f.ID, &f.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return f, nil
 }
 
 func (s *EngagementStore) RemoveFavorite(ctx context.Context, userID, entityType, entityID string) error {
@@ -50,6 +69,86 @@ func (s *EngagementStore) ListFavorites(ctx context.Context, userID, entityType 
 		out = append(out, f)
 	}
 	return out, rows.Err()
+}
+
+// ListFavoritesDetailed returns favourites with each entity's display name
+// resolved, newest first.
+//
+// The favourites table is polymorphic and stores only (entity_type,
+// entity_id), which is the right shape for writing but useless for rendering:
+// a library screen built on the bare rows can only print opaque ids. Resolving
+// here rather than in the handler keeps it a single round trip per entity kind
+// instead of one per favourite, which is what a naive client-side hydration
+// would produce.
+//
+// A favourite whose target no longer exists is returned with Missing set
+// rather than dropped. The row is real, the user can see it in their data
+// export, and they need a way to clear it.
+func (s *EngagementStore) ListFavoritesDetailed(ctx context.Context, userID, entityType string) ([]models.Favorite, error) {
+	favs, err := s.ListFavorites(ctx, userID, entityType)
+	if err != nil {
+		return nil, err
+	}
+	if len(favs) == 0 {
+		return favs, nil
+	}
+
+	// Group the ids by kind so each table is queried once.
+	byType := map[string][]string{}
+	for _, f := range favs {
+		byType[f.EntityType] = append(byType[f.EntityType], f.EntityID)
+	}
+
+	type label struct{ title, subtitle string }
+	titles := map[string]label{}
+
+	// Confessions carry the category they belong to as a subtitle: "Peace"
+	// under a confession title is what makes a list of favourites readable.
+	for kind, ids := range byType {
+		var query string
+		switch kind {
+		case "confession":
+			query = `SELECT f.id, f.title, COALESCE(c.name,'')
+			         FROM confessions f LEFT JOIN categories c ON c.id = f.category_id
+			         WHERE f.id = ANY(?)`
+		case "category":
+			query = `SELECT id, name, COALESCE(description,'') FROM categories WHERE id = ANY(?)`
+		case "voice":
+			query = `SELECT id, name, COALESCE(description,'') FROM voices WHERE id = ANY(?)`
+		case "session":
+			query = `SELECT id, type, status FROM sessions WHERE id = ANY(?)`
+		default:
+			continue
+		}
+
+		rows, err := s.db.QueryContext(ctx, query, pq.Array(ids))
+		if err != nil {
+			return nil, err
+		}
+		for rows.Next() {
+			var id, title, subtitle string
+			if err := rows.Scan(&id, &title, &subtitle); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			titles[kind+"\x00"+id] = label{title, subtitle}
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		rows.Close()
+	}
+
+	for i := range favs {
+		l, ok := titles[favs[i].EntityType+"\x00"+favs[i].EntityID]
+		if !ok {
+			favs[i].Missing = true
+			continue
+		}
+		favs[i].Title, favs[i].Subtitle = l.title, l.subtitle
+	}
+	return favs, nil
 }
 
 // ---------- Playback history ----------

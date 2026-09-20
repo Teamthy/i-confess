@@ -1410,8 +1410,23 @@ func (h *Handler) removeFavorite(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// listFavorites returns the caller's favourites with display names resolved.
+//
+// The bare table rows carry only (entity_type, entity_id), which a library
+// screen cannot render as anything but opaque ids — which is exactly what the
+// favourites tab showed before PHASE 27. An optional `type` narrows the list
+// to one kind of entity.
 func (h *Handler) listFavorites(w http.ResponseWriter, r *http.Request) {
-	list, err := h.eng.ListFavorites(r.Context(), h.userID(r), r.URL.Query().Get("type"))
+	entityType := r.URL.Query().Get("type")
+	// A filter the vocabulary does not contain would silently return nothing,
+	// which reads to the caller as "you have no favourites" rather than "that
+	// is not a thing you can favourite".
+	if entityType != "" && !validEntityType(entityType) {
+		writeCode(w, http.StatusBadRequest, "VALIDATION_FAILED",
+			"type must be one of confession, category, session, voice")
+		return
+	}
+	list, err := h.eng.ListFavoritesDetailed(r.Context(), h.userID(r), entityType)
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to load favorites")
 		return

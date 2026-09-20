@@ -95,6 +95,21 @@ final class JsonCache {
     }
   }
 
+  /// Drops one entry.
+  ///
+  /// Used after a write that invalidates a cached read: creating a collection
+  /// makes the cached list wrong, and serving it for the rest of its TTL would
+  /// show the user their new collection disappearing.
+  Future<void> delete(String key) async {
+    try {
+      await _cache.delete(key);
+    } on Object {
+      // Same reasoning as a failed write: the mutation already succeeded on
+      // the server, and failing it here because the local copy could not be
+      // dropped would be a worse outcome than a stale read.
+    }
+  }
+
   Future<void> clear() => _cache.clear();
 }
 
@@ -106,7 +121,12 @@ abstract final class CacheKeys {
   static const preferences = 'preferences';
   static const categories = 'categories';
   static const voices = 'voices';
+  /// The listener's own collections. The editorial, published collections use
+  /// 'published_collections': same word, different data, and one key for both
+  /// would hand each surface the other's payload.
   static const collections = 'collections';
+  static const favorites = 'favorites';
+  static const myConfessions = 'my_confessions';
   static const downloads = 'downloads';
   static const schedules = 'schedules';
 }

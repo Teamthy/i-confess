@@ -457,7 +457,26 @@ type QAReport struct {
 	Checks []QACheck `json:"checks"`
 }
 
+// Favorite is polymorphic by design: one table holds a listener's favourites
+// across confessions, categories, sessions and voices, so adding a favouritable
+// kind does not need a new table (§35).
+//
+// The cost of that shape is that a favourite carries no name. Title, Subtitle
+// and Missing are resolved at read time by ListFavoritesDetailed and are not
+// stored: denormalising a title would leave the library showing the old one
+// after an editor renames a confession. They are omitted from the JSON when
+// empty, so the bare rows written by AddFavorite serialise unchanged.
 type Favorite struct {
+	// Title is the display name of the favourited entity, resolved on read.
+	Title string `json:"title,omitempty"`
+	// Subtitle is a short line of context — the category a confession sits in.
+	Subtitle string `json:"subtitle,omitempty"`
+	// Missing marks a favourite whose target no longer resolves, because the
+	// content was archived or deleted. The row is still returned so the user
+	// can clear it; silently dropping it would leave an entry they can see in
+	// their export but never remove.
+	Missing bool `json:"missing,omitempty"`
+
 	ID         string `json:"id"`
 	UserID     string `json:"user_id"`
 	EntityType string `json:"entity_type"`

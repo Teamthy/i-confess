@@ -134,9 +134,20 @@ PHASE 26 Templates — **PASS** (templates list from GET /templates, detail show
     shape and can start via POST /templates/{id}/start, share via GET /t/{token}
     renders for signed-out per IA, delete/update)
 
-PHASE 27 Library — **PASS** (library with 3 tabs Collections/Favorites/My Confessions,
-    collections from GET /me/collections, favorites from polymorphic table,
-    personal confessions from GET /me/confessions, collection detail)
+PHASE 27 Library — **PASS WITH CONDITIONS** (re-audited 2026-09-20; the earlier
+    PASS was not true. 8 defects found and fixed: duplicate favourite rows —
+    ON CONFLICT(id) on a freshly generated id could never fire, no uniqueness
+    constraint existed; favourites rendered raw UUIDs, now hydrated server-side
+    with titles and a `missing` flag; My Confessions decoded editorial
+    Confession instead of UserConfession so every row was blank; isFavorite
+    matched the favourite row's own id against a confession id; writes never
+    invalidated the 30-minute read cache; the tabs would have thrown on layout
+    under scrollable:true; /library/collection/:id had no IA entry so test_ia.py
+    never checked it; unknown ?type= answered 200 empty. Migration 0013.
+    36 new tests. Conditions: flutter analyze/test owed to CI (no SDK in the
+    sandbox — mitigated by scripts/check_dart_symbols.py, 49 assertions, now
+    gating in CI); reorder + add-to-collection have endpoints but no gesture
+    (G-43); cover_url has no writer (G-44). See docs/27-LIBRARY.md)
 
 PHASE 28 Downloads — **PASS** (offline licences from GET /me/downloads,
     DownloadLibrary with used/limit/offlineHoursAllowed, expiringWithin 3d banner,
@@ -168,7 +179,8 @@ PHASE 31 Moderation — **PASS WITH CONDITIONS** (the last three 501s are real:
 
 Open gaps carried forward: G-3, G-7, G-9, G-10, G-12, G-13,
 G-14, G-15, G-16, G-17, G-18, G-19, G-20, G-21, G-22, G-23, G-24, G-25, G-26, G-27, G-28,
-G-29, G-33, G-34, G-35, G-36, G-37, G-38, G-39, G-40, G-41, G-42.
+G-29, G-33, G-34, G-35, G-36, G-37, G-38, G-39, G-40, G-41, G-42, G-43, G-44,
+G-45.
 (G-2 was removed from this list: it has been closed since PHASE 07 —
 "23/23 status columns constrained" — yet appeared in both lists here, a
 documentation bug fixed in PHASE 31.)
@@ -197,6 +209,14 @@ states could not be persisted at all and returned a 500.
 New in PHASE 12: **G-37** (no enforced transition graph, only a vocabulary),
 **G-38** (`deprecated` is defined but nothing reads it), **G-39** (the other 20
 constrained `status` columns were not audited).
+
+New in the PHASE 27 re-audit: **G-43** (collection reordering and in-app
+"add to collection" have endpoints and typed client methods but no gesture, so
+reordering is API-only), **G-44** (`cover_url` is rendered but nothing can set
+it — no upload path for collection artwork, so every collection shows the
+monogram fallback), **G-45** (the favourites tab lists all four entity kinds,
+but only confessions navigate; a favourited voice or session renders and can be
+removed yet does nothing when tapped, because no detail surface exists).
 Each is described in the phase document that raised it.
 
 ## How the phases are gated

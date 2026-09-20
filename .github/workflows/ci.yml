@@ -98,6 +98,14 @@ jobs:
           python3 design/test_design.py
           python3 design/test_ia.py
 
+      # Catches the cheap class of Dart mistake — a model field, endpoint,
+      # provider or token that does not exist — without needing an SDK, so it
+      # fails here in seconds rather than in the Flutter job minutes later.
+      # It does not replace `flutter analyze`; both run.
+      - name: Dart symbols
+        working-directory: .
+        run: python3 scripts/check_dart_symbols.py
+
       # new-from-merge-base: main needs a ref literally named `main`. The PR
       # checkout is a detached merge ref, so create it before lint runs;
       # otherwise golangci cannot resolve the base and reports findings on
