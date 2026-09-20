@@ -516,18 +516,20 @@ class SessionEngine extends StateNotifier<SessionPlaybackState> {
   }
 
   /// Handles incoming audio interruptions (e.g. phone call, Siri).
-  void onInterruption() {
-    _audio.pause();
+  Future<void> onInterruption() async {
     state = state.copyWith(status: PlayerLifecycleStatus.interrupted);
     _persist();
     try {
-      _api.postSessionsByIdInterrupt(sessionId);
+      await _audio.pause();
+    } catch (_) {}
+    try {
+      await _api.postSessionsByIdInterrupt(sessionId);
     } catch (_) {}
   }
 
   /// Handles audio becoming noisy (e.g. headphones unplugged).
-  void onBecomingNoisy() {
-    pause();
+  Future<void> onBecomingNoisy() async {
+    await pause();
   }
 
   /// Retry action for actionable error states.

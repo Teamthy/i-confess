@@ -202,6 +202,9 @@ void main() {
     await engine.play();
 
     audio.emitInterruption();
+    // Allow the interruption stream (sync broadcast) and any microtasks to run.
+    await Future<void>.delayed(Duration.zero);
+    await Future<void>.delayed(Duration.zero);
 
     final state = container.read(sessionEngineProvider('s-1'));
     expect(state.status, PlayerLifecycleStatus.interrupted);
@@ -214,6 +217,8 @@ void main() {
     await engine.play();
 
     audio.emitBecomingNoisy();
+    await Future<void>.delayed(Duration.zero);
+    await Future<void>.delayed(Duration.zero);
 
     final state = container.read(sessionEngineProvider('s-1'));
     expect(state.status, PlayerLifecycleStatus.paused);

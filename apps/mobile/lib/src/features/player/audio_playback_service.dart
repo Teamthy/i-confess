@@ -184,12 +184,12 @@ class TestAudioPlaybackService implements AudioPlaybackService {
   AudioPlaybackStatus _status = AudioPlaybackStatus.idle;
   Duration _position = Duration.zero;
 
-  final _positionController = StreamController<Duration>.broadcast();
-  final _durationController = StreamController<Duration?>.broadcast();
-  final _statusController = StreamController<AudioPlaybackStatus>.broadcast();
-  final _errorController = StreamController<String>.broadcast();
-  final _interruptionController = StreamController<void>.broadcast();
-  final _becomingNoisyController = StreamController<void>.broadcast();
+  final _positionController = StreamController<Duration>.broadcast(sync: true);
+  final _durationController = StreamController<Duration?>.broadcast(sync: true);
+  final _statusController = StreamController<AudioPlaybackStatus>.broadcast(sync: true);
+  final _errorController = StreamController<String>.broadcast(sync: true);
+  final _interruptionController = StreamController<void>.broadcast(sync: true);
+  final _becomingNoisyController = StreamController<void>.broadcast(sync: true);
 
   String? loadedUrl;
   Duration? loadedInitialPosition;
