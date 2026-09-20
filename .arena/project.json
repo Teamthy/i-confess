@@ -6,7 +6,7 @@
   "framework": "go modular monolith + flutter",
   "package_manager": "go mod + pub",
   "primary_branch": "main",
-  "current_branch": "arena/01a0b97c-i-confess",
+  "current_branch": "arena/01a0bb8b-i-confess",
   "deployment": "k8s + docker",
   "database": "postgres"
 }

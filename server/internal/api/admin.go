@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"github.com/Teamthy/i-confess/internal/httpx"
 	"github.com/Teamthy/i-confess/internal/models"
 	"github.com/Teamthy/i-confess/internal/storage"
+	"github.com/Teamthy/i-confess/internal/store"
 )
 
 // ---------- Admin: categories ----------
@@ -137,15 +139,27 @@ func (h *Handler) adminGetConfession(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, c)
 }
 
+// adminUpdateConfessionStatus moves a confession along the editorial
+// lifecycle. Until PHASE 31 this wrote no history, 500'd on a missing id, and
+// reset published_at to NULL on any move other than into published - so
+// unpublishing erased when the confession first went live, and
+// content_moderation_history had no writer at all.
 func (h *Handler) adminUpdateConfessionStatus(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Status string `json:"status"`
+		Reason string `json:"reason"`
 	}
 	if err := httpx.DecodeJSON(r, &req); err != nil || !content.Valid(req.Status) {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid status")
 		return
 	}
-	if err := h.cont.UpdateConfessionStatus(r.Context(), r.PathValue("id"), req.Status); err != nil {
+	err := h.mod.UpdateConfessionStatusAudited(r.Context(), r.PathValue("id"), req.Status,
+		actor(r), strings.TrimSpace(req.Reason))
+	if errors.Is(err, store.ErrNotFound) {
+		httpx.WriteError(w, http.StatusNotFound, "confession not found")
+		return
+	}
+	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to update confession")
 		return
 	}

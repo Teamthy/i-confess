@@ -15,6 +15,48 @@
   },
   {
     "method": "GET",
+    "path": "/admin/audio/jobs",
+    "auth": "audio_producer,voice_manager",
+    "summary": "List generation requests, newest first",
+    "tag": "admin-audio"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/audio/jobs/{id}",
+    "auth": "audio_producer,voice_manager",
+    "summary": "One generation request with its outcome",
+    "tag": "admin-audio"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/audio/{id}/archive",
+    "auth": "audio_producer,voice_manager",
+    "summary": "Withdraw a render, including from existing sessions",
+    "tag": "admin-audio"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/audio/{id}/publish",
+    "auth": "audio_producer,voice_manager",
+    "summary": "Surface an approved render in discovery",
+    "tag": "admin-audio"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/audio/{id}/qa/approve",
+    "auth": "audio_producer,voice_manager",
+    "summary": "Approve a render for listeners",
+    "tag": "admin-audio"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/audio/{id}/qa/reject",
+    "auth": "audio_producer,voice_manager",
+    "summary": "Reject a render; a note is required",
+    "tag": "admin-audio"
+  },
+  {
+    "method": "GET",
     "path": "/admin/audit",
     "auth": "admin",
     "summary": "Recent privileged actions",
@@ -85,6 +127,13 @@
   },
   {
     "method": "POST",
+    "path": "/admin/moderation/reports/{id}/decision",
+    "auth": "admin",
+    "summary": "Close an open report (resolved|dismissed)",
+    "tag": "admin-content"
+  },
+  {
+    "method": "POST",
     "path": "/admin/moderation/user-confessions/{id}/review",
     "auth": "admin",
     "summary": "Review a user confession (approved|rejected)",
@@ -103,6 +152,20 @@
     "auth": "admin",
     "summary": "Create or update a pricing plan",
     "tag": "admin-content"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/queue",
+    "auth": "admin",
+    "summary": "Background queue: counts by status and the job types this server runs",
+    "tag": "admin-queue"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/queue/requeue",
+    "auth": "admin",
+    "summary": "Release dead-lettered jobs back into the queue",
+    "tag": "admin-queue"
   },
   {
     "method": "GET",
@@ -532,6 +595,13 @@
     "tag": "library"
   },
   {
+    "method": "POST",
+    "path": "/me/confessions/{id}/submit",
+    "auth": "user",
+    "summary": "Offer a personal confession for moderation review",
+    "tag": "moderation"
+  },
+  {
     "method": "DELETE",
     "path": "/me/deletion",
     "auth": "user",
@@ -707,6 +777,13 @@
     "tag": "home"
   },
   {
+    "method": "POST",
+    "path": "/reports",
+    "auth": "user",
+    "summary": "Report published content or a community post",
+    "tag": "moderation"
+  },
+  {
     "method": "GET",
     "path": "/schedules",
     "auth": "user",
@@ -767,6 +844,13 @@
     "path": "/sessions/preview",
     "auth": "user",
     "summary": "Preview a session (dry-run)",
+    "tag": "sessions"
+  },
+  {
+    "method": "DELETE",
+    "path": "/sessions/{id}",
+    "auth": "user",
+    "summary": "Remove a session from history",
     "tag": "sessions"
   },
   {
@@ -925,6 +1009,48 @@
   },
   {
     "method": "GET",
+    "path": "/v1/admin/audio/jobs",
+    "auth": "audio_producer,voice_manager",
+    "summary": "List generation requests, newest first",
+    "tag": "admin-audio"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/admin/audio/jobs/{id}",
+    "auth": "audio_producer,voice_manager",
+    "summary": "One generation request with its outcome",
+    "tag": "admin-audio"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/admin/audio/{id}/archive",
+    "auth": "audio_producer,voice_manager",
+    "summary": "Withdraw a render, including from existing sessions",
+    "tag": "admin-audio"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/admin/audio/{id}/publish",
+    "auth": "audio_producer,voice_manager",
+    "summary": "Surface an approved render in discovery",
+    "tag": "admin-audio"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/admin/audio/{id}/qa/approve",
+    "auth": "audio_producer,voice_manager",
+    "summary": "Approve a render for listeners",
+    "tag": "admin-audio"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/admin/audio/{id}/qa/reject",
+    "auth": "audio_producer,voice_manager",
+    "summary": "Reject a render; a note is required",
+    "tag": "admin-audio"
+  },
+  {
+    "method": "GET",
     "path": "/v1/admin/audit",
     "auth": "admin",
     "summary": "Recent privileged actions",
@@ -995,6 +1121,13 @@
   },
   {
     "method": "POST",
+    "path": "/v1/admin/moderation/reports/{id}/decision",
+    "auth": "admin",
+    "summary": "Close an open report (resolved|dismissed)",
+    "tag": "admin-content"
+  },
+  {
+    "method": "POST",
     "path": "/v1/admin/moderation/user-confessions/{id}/review",
     "auth": "admin",
     "summary": "Review a user confession (approved|rejected)",
@@ -1013,6 +1146,20 @@
     "auth": "admin",
     "summary": "Create or update a pricing plan",
     "tag": "admin-content"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/admin/queue",
+    "auth": "admin",
+    "summary": "Background queue: counts by status and the job types this server runs",
+    "tag": "admin-queue"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/admin/queue/requeue",
+    "auth": "admin",
+    "summary": "Release dead-lettered jobs back into the queue",
+    "tag": "admin-queue"
   },
   {
     "method": "GET",
@@ -1442,6 +1589,13 @@
     "tag": "library"
   },
   {
+    "method": "POST",
+    "path": "/v1/me/confessions/{id}/submit",
+    "auth": "user",
+    "summary": "Offer a personal confession for moderation review",
+    "tag": "moderation"
+  },
+  {
     "method": "DELETE",
     "path": "/v1/me/deletion",
     "auth": "user",
@@ -1617,6 +1771,13 @@
     "tag": "home"
   },
   {
+    "method": "POST",
+    "path": "/v1/reports",
+    "auth": "user",
+    "summary": "Report published content or a community post",
+    "tag": "moderation"
+  },
+  {
     "method": "GET",
     "path": "/v1/schedules",
     "auth": "user",
@@ -1677,6 +1838,13 @@
     "path": "/v1/sessions/preview",
     "auth": "user",
     "summary": "Preview a session (dry-run, no persistence)",
+    "tag": "sessions"
+  },
+  {
+    "method": "DELETE",
+    "path": "/v1/sessions/{id}",
+    "auth": "user",
+    "summary": "Remove a session from history",
     "tag": "sessions"
   },
   {

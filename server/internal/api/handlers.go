@@ -18,6 +18,7 @@ import (
 	"github.com/Teamthy/i-confess/internal/httpx"
 	"github.com/Teamthy/i-confess/internal/jobs"
 	"github.com/Teamthy/i-confess/internal/models"
+	"github.com/Teamthy/i-confess/internal/moderation"
 	"github.com/Teamthy/i-confess/internal/oauth"
 	"github.com/Teamthy/i-confess/internal/ratelimit"
 	"github.com/Teamthy/i-confess/internal/scheduler"
@@ -37,6 +38,7 @@ type Handler struct {
 	sess      *store.SessionStore
 	sched     *store.ScheduleStore
 	eng       *store.EngagementStore
+	mod       *store.ModerationStore
 	engn      *engine.Engine
 	search    *search.SearchStore
 	templates *store.TemplateStore
@@ -127,6 +129,7 @@ func NewHandler(cfg Config, db *db.DB) *Handler {
 		sess:         store.NewSessionStore(db),
 		sched:        store.NewScheduleStore(db),
 		eng:          store.NewEngagementStore(db),
+		mod:          store.NewModerationStore(db),
 		search:       search.NewSearchStore(db),
 		templates:    store.NewTemplateStore(db),
 		plans:        store.NewPlanStore(db),
@@ -1418,6 +1421,7 @@ func (h *Handler) createUserConfession(w http.ResponseWriter, r *http.Request) {
 		Title      string `json:"title"`
 		Text       string `json:"text"`
 		CategoryID string `json:"category_id"`
+		Visibility string `json:"visibility"`
 	}
 	if err := httpx.DecodeJSON(r, &req); err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid request body")
@@ -1427,12 +1431,26 @@ func (h *Handler) createUserConfession(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusBadRequest, "title and text are required")
 		return
 	}
+	// PRIVATE is the default and the floor (PRD §22): asking for a public
+	// audience is allowed at creation, but the moderation review is what
+	// actually publishes - visibility is the author's intent, not the outcome.
+	visibility := req.Visibility
+	if visibility == "" {
+		visibility = moderation.VisibilityPrivate
+	}
+	if !moderation.ValidVisibility(visibility) {
+		httpx.WriteError(w, http.StatusBadRequest,
+			"visibility must be one of: "+strings.Join(moderation.UGCVisibilities(), ", "))
+		return
+	}
 	uc := &models.UserConfession{
 		UserID:     h.userID(r),
 		Title:      req.Title,
 		Text:       req.Text,
 		CategoryID: req.CategoryID,
-		IsPrivate:  true, // private by default (PRD §22)
+		IsPrivate:  visibility == moderation.VisibilityPrivate,
+		Status:     string(moderation.UGCDraft),
+		Visibility: visibility,
 	}
 	if err := h.eng.CreateUserConfession(r.Context(), uc); err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to create confession")

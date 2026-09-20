@@ -175,6 +175,8 @@ func (h *Handler) Routes() http.Handler {
 	h.route(mux, "POST /me/history", "user", "library", "Record playback", authed, h.recordPlayback)
 
 	h.route(mux, "POST /me/confessions", "user", "library", "Create a personal confession", authed, h.createUserConfession)
+	h.route(mux, "POST /me/confessions/{id}/submit", "user", "moderation", "Offer a personal confession for moderation review", authed, h.submitUserConfession)
+	h.route(mux, "POST /reports", "user", "moderation", "Report published content or a community post", authed, h.createReport)
 	h.route(mux, "GET /recommendations", "user", "home", "Personalized recommendations", authed, h.recommendations)
 	h.route(mux, "GET /me/confessions", "user", "library", "List personal confessions", authed, h.listUserConfessions)
 
@@ -193,6 +195,7 @@ func (h *Handler) Routes() http.Handler {
 
 	h.route(mux, "GET /admin/moderation/queue", "admin", "admin-content", "Moderation queue (UGC + editorial pending)", admin, h.adminListModerationQueue)
 	h.route(mux, "POST /admin/moderation/user-confessions/{id}/review", "admin", "admin-content", "Review a user confession (approved|rejected)", admin, h.adminReviewUserConfession)
+	h.route(mux, "POST /admin/moderation/reports/{id}/decision", "admin", "admin-content", "Close an open report (resolved|dismissed)", admin, h.adminDecideReport)
 
 	h.route(mux, "POST /admin/voices", "admin", "admin-voice", "Create a voice", admin, h.adminCreateVoice)
 	h.route(mux, "GET /admin/voices", "admin", "admin-voice", "List voices", admin, h.adminListVoices)
@@ -400,6 +403,8 @@ func (h *Handler) Routes() http.Handler {
 	h.route(mux, "GET /v1/me/history", "user", "library", "Listening history", authed, h.history)
 	h.route(mux, "POST /v1/me/history", "user", "library", "Record playback", authed, h.recordPlayback)
 	h.route(mux, "POST /v1/me/confessions", "user", "library", "Create a personal confession", authed, h.createUserConfession)
+	h.route(mux, "POST /v1/me/confessions/{id}/submit", "user", "moderation", "Offer a personal confession for moderation review", authed, h.submitUserConfession)
+	h.route(mux, "POST /v1/reports", "user", "moderation", "Report published content or a community post", authed, h.createReport)
 	h.route(mux, "GET /v1/me/confessions", "user", "library", "List personal confessions", authed, h.listUserConfessions)
 	h.route(mux, "GET /v1/recommendations", "user", "home", "Personalized recommendations (deterministic v1)", authed, h.recommendations)
 	// Subscription & entitlements (v1)
@@ -428,6 +433,7 @@ func (h *Handler) Routes() http.Handler {
 	h.route(mux, "POST /v1/admin/confessions/{id}/qa", "admin", "admin-content", "Run Audio QA checklist (§75) before APPROVED", admin, h.adminQAConfession)
 	h.route(mux, "GET /v1/admin/moderation/queue", "admin", "admin-content", "Moderation queue (UGC + editorial pending)", admin, h.adminListModerationQueue)
 	h.route(mux, "POST /v1/admin/moderation/user-confessions/{id}/review", "admin", "admin-content", "Review a user confession (approved|rejected)", admin, h.adminReviewUserConfession)
+	h.route(mux, "POST /v1/admin/moderation/reports/{id}/decision", "admin", "admin-content", "Close an open report (resolved|dismissed)", admin, h.adminDecideReport)
 	h.route(mux, "POST /v1/admin/voices", "admin", "admin-voice", "Create a voice", admin, h.adminCreateVoice)
 	h.route(mux, "GET /v1/admin/voices", "admin", "admin-voice", "List voices", admin, h.adminListVoices)
 	h.route(mux, "POST /v1/admin/audio", "admin", "admin-audio", "Attach an audio asset to a confession", admin, h.adminUpsertAudio)

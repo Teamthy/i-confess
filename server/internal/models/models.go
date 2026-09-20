@@ -266,15 +266,92 @@ type SessionItem struct {
 	LockReason string `json:"lock_reason,omitempty"`
 }
 
+// UserConfession is user-generated content (§22). Status and Visibility were
+// columns without any Go reading them until PHASE 31; Status carries the
+// moderation lifecycle (draft|submitted|approved|rejected|published|archived),
+// Visibility the audience the author is asking for (private|shared|public).
+// The review fields are set by the moderation review endpoint and are empty
+// until a reviewer acts.
 type UserConfession struct {
+	ID              string `json:"id"`
+	UserID          string `json:"user_id"`
+	Title           string `json:"title"`
+	Text            string `json:"text"`
+	CategoryID      string `json:"category_id,omitempty"`
+	IsPrivate       bool   `json:"is_private"`
+	Status          string `json:"status"`
+	Visibility      string `json:"visibility"`
+	ReviewNotes     string `json:"review_notes,omitempty"`
+	ReviewedBy      string `json:"reviewed_by,omitempty"`
+	ReviewedAt      string `json:"reviewed_at,omitempty"`
+	RejectionReason string `json:"rejection_reason,omitempty"`
+	PublishedAt     string `json:"published_at,omitempty"`
+	Version         int    `json:"version"`
+	CreatedAt       string `json:"created_at"`
+	UpdatedAt       string `json:"updated_at"`
+}
+
+// Report is a user flag on a piece of content (§10, §22). Status is
+// open|reviewed|resolved|dismissed; one open report per reporter per entity is
+// enforced by a partial unique index, so re-reporting the same thing is a
+// no-op that returns the existing row.
+type Report struct {
+	ID             string `json:"id"`
+	ReporterID     string `json:"reporter_id"`
+	EntityType     string `json:"entity_type"`
+	EntityID       string `json:"entity_id"`
+	Reason         string `json:"reason"`
+	Detail         string `json:"detail,omitempty"`
+	Status         string `json:"status"`
+	ReviewedBy     string `json:"reviewed_by,omitempty"`
+	ReviewedAt     string `json:"reviewed_at,omitempty"`
+	ResolutionNote string `json:"resolution_note,omitempty"`
+	CreatedAt      string `json:"created_at"`
+}
+
+// ModerationCase is the work item a moderator drains (§10). One case is open
+// at a time per entity, enforced by a partial unique index; Before/After hold
+// the status the entity had on either side of the decision that closed the
+// case.
+type ModerationCase struct {
 	ID         string `json:"id"`
-	UserID     string `json:"user_id"`
-	Title      string `json:"title"`
-	Text       string `json:"text"`
-	CategoryID string `json:"category_id,omitempty"`
-	IsPrivate  bool   `json:"is_private"`
+	EntityType string `json:"entity_type"`
+	EntityID   string `json:"entity_id"`
+	Status     string `json:"status"`
+	Reason     string `json:"reason,omitempty"`
+	Actor      string `json:"actor,omitempty"`
+	Before     string `json:"before,omitempty"`
+	After      string `json:"after,omitempty"`
+	Detail     string `json:"detail,omitempty"`
 	CreatedAt  string `json:"created_at"`
 	UpdatedAt  string `json:"updated_at"`
+}
+
+// ModerationQueue is the moderator's work list: UGC awaiting review, open
+// user reports and editorial content parked in a human review state.
+type ModerationQueue struct {
+	UserConfessions []UserConfession `json:"user_confessions"`
+	Reports         []Report         `json:"reports"`
+	Editorial       []Confession     `json:"editorial"`
+	Counts          map[string]int   `json:"counts"`
+}
+
+// QACheck is one line of the §75 audio QA checklist.
+type QACheck struct {
+	Name   string `json:"name"`
+	Passed bool   `json:"passed"`
+	Detail string `json:"detail"`
+}
+
+// QAReport is the persisted outcome of running the §75 gate against a
+// confession. It is written to confessions.qa_report on every run, pass or
+// fail, so a failed gate leaves evidence rather than silence.
+type QAReport struct {
+	RanAt  string    `json:"ran_at"`
+	Actor  string    `json:"actor"`
+	Passed bool      `json:"passed"`
+	Note   string    `json:"note,omitempty"`
+	Checks []QACheck `json:"checks"`
 }
 
 type Favorite struct {
