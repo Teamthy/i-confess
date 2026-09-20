@@ -245,3 +245,37 @@ tested without a real refund from Apple.
 
 The stub is unreachable outside development and test — see
 `TestProductionRefusesStubReceipts` and `RequireVerification`.
+
+---
+
+## The client: a purchase is not an entitlement
+
+`apps/mobile/lib/src/features/premium/` runs the flow in one order, and the
+order is the design:
+
+1. **Buy.** `in_app_purchase` charges the App Store or Play. The paywall shows
+   the store's own localised price, because that is what will be charged.
+2. **Verify.** The receipt (iOS) or purchase token (Play) goes to
+   `POST /subscriptions/verify`. Nothing on the device interprets it; the server
+   is the only thing that decides what an account owns.
+3. **Finish.** `completePurchase` is called *after* the server has recorded the
+   entitlement.
+
+Step 3 is where money is lost either way round. Finishing early tells the store
+to forget a sale the server never saw; never finishing after a permanent
+rejection makes the store replay it on every launch forever. So the rule is:
+complete on success and on a permanent rejection, leave the transaction open on
+anything retryable — offline, 429, 5xx, or a verification provider that is not
+configured — and let the store replay it. The user is told their purchase is
+safe while that happens.
+
+Store product ids are per platform and per deployment (`ICONFESS_APPLE_MONTHLY`,
+`ICONFESS_GOOGLE_MONTHLY`, … via `--dart-define`), never derived from the
+catalogue plan id: the plan is what the product grants, the product id is what
+the store sells, and the server maps one to the other from its own environment
+(`APPLE_PRODUCT_MONTHLY`, `GOOGLE_PLAY_PRODUCT_MONTHLY`). A build whose ids do
+not exist in the store says so instead of charging for the wrong thing.
+
+Restore is present and wired (`restorePurchases` → server verification), which
+App Store review requires for a non-consumable and which is the only way back for
+someone who reinstalled.

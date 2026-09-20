@@ -7,6 +7,7 @@ import '../../core/theme/theme.dart';
 import '../../core/theme/tokens.dart';
 import '../../core/widgets/screen.dart';
 import 'templates_providers.dart';
+import '../../core/di/providers.dart';
 
 /// Templates list: saved shapes.
 class TemplatesScreen extends ConsumerWidget {

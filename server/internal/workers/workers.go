@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 
 	"github.com/Teamthy/i-confess/internal/jobs"
@@ -52,6 +53,21 @@ type Processor interface {
 	Process(ctx context.Context, assetID string) error
 }
 
+// Devices owns the push-token lifecycle a notification delivery learns about.
+//
+// A provider that answers "this token is gone" is telling the server something
+// durable: the app was uninstalled or the token was rotated, and no later
+// attempt will succeed. Something has to write that down, and the handler that
+// receives the answer is the only component that has it - so it gets a narrow
+// interface rather than the whole store.
+type Devices interface {
+	// ClearPushToken forgets a token a provider rejected as dead.
+	ClearPushToken(ctx context.Context, userID, deviceID string) error
+	// RecordPushFailure counts a rejection that was not a dead token, so a
+	// device failing every delivery can be told apart from one that is gone.
+	RecordPushFailure(ctx context.Context, userID, deviceID string) error
+}
+
 // Services are the collaborators the handlers need.
 //
 // A collaborator left nil does not make its job type quietly succeed. That was
@@ -62,6 +78,10 @@ type Services struct {
 	Generate Generator
 	Notify   push.Sender
 	Process  Processor
+	// Devices is optional. Without it a dead token is reported as a permanent
+	// failure and parked, but not forgotten - so the next reminder queues
+	// another job for it and the one after that, until somebody notices.
+	Devices Devices
 }
 
 // Register installs the handlers whose collaborator is configured, and returns
@@ -131,6 +151,11 @@ func (s Services) handleNotify(ctx context.Context, p map[string]any) error {
 	}
 	body, _ := p["body"].(string)
 	platform, _ := p["platform"].(string)
+	// Who this delivery belongs to, when the producer said so. The inline
+	// dispatcher path has always known; carrying it in the payload is what
+	// lets the queue path clear a token as well.
+	userID, _ := p["user_id"].(string)
+	deviceID, _ := p["device_id"].(string)
 
 	n := push.Notification{
 		Token:    token,
@@ -151,6 +176,24 @@ func (s Services) handleNotify(ctx context.Context, p map[string]any) error {
 	if err == nil {
 		return nil
 	}
+
+	// The provider's answer has a consequence beyond this job: a token it says
+	// is gone must never be used again, and a transport fault is worth
+	// counting against the device. Both are recorded here because here is
+	// where the answer arrives.
+	switch {
+	case push.IsInvalidToken(err):
+		if s.Devices != nil && userID != "" && deviceID != "" {
+			if cerr := s.Devices.ClearPushToken(ctx, userID, deviceID); cerr != nil {
+				log.Printf("workers: clearing token for %s/%s: %v", userID, deviceID, cerr)
+			}
+		}
+	case userID != "" && deviceID != "" && s.Devices != nil && !push.IsRetryable(err):
+		if ferr := s.Devices.RecordPushFailure(ctx, userID, deviceID); ferr != nil {
+			log.Printf("workers: recording push failure for %s/%s: %v", userID, deviceID, ferr)
+		}
+	}
+
 	// A transport fault is worth another attempt; a rejected token is not. The
 	// distinction is what keeps a permanently undeliverable notification from
 	// occupying a retry slot for half an hour before it parks.

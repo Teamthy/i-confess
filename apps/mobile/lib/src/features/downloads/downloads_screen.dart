@@ -5,6 +5,7 @@ import '../../core/theme/theme.dart';
 import '../../core/theme/tokens.dart';
 import '../../core/widgets/screen.dart';
 import 'downloads_providers.dart';
+import '../../core/di/providers.dart';
 
 /// Downloads: offline licences, expiry, renew.
 class DownloadsScreen extends ConsumerWidget {
