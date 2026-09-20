@@ -130,8 +130,8 @@ func (h *Handler) verifySubscriptionV2(w http.ResponseWriter, r *http.Request) {
 	// A purchase belongs to one account. This check runs before anything is
 	// written, so the unique index behind it is a backstop rather than the
 	// thing that reports the conflict.
-	if ver.OriginalTransactionID != "" {
-		owner, found, oerr := h.users.SubscriptionOwner(r.Context(), ver.Provider, ver.OriginalTransactionID)
+	if ver.OriginalTransactionID != "" || ver.PurchaseToken != "" {
+		owner, found, oerr := h.users.SubscriptionOwnerFor(r.Context(), ver.Provider, ver.OriginalTransactionID, ver.PurchaseToken)
 		if oerr != nil {
 			log.Printf("billing: cannot check receipt ownership: %v", oerr)
 			httpx.WriteError(w, http.StatusInternalServerError, "could not record the subscription")
@@ -183,6 +183,7 @@ func (h *Handler) verifySubscriptionV2(w http.ResponseWriter, r *http.Request) {
 		ProductID:             ver.ProductID,
 		StoreEnvironment:      ver.Environment,
 		AutoRenew:             ver.AutoRenew,
+		PurchaseToken:         ver.PurchaseToken,
 	})
 	if err != nil {
 		log.Printf("billing: failed to record verified subscription for user %s: %v", userID, err)
@@ -190,12 +191,15 @@ func (h *Handler) verifySubscriptionV2(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	acknowledged := false
 	if ver.NeedsAcknowledgement {
-		// Play refunds a purchase that is not acknowledged within three days.
-		// The receipt is still honoured, because the customer paid; the log
-		// line is what tells an operator that acknowledgement is missing.
-		log.Printf("billing: user %s has an unacknowledged Play purchase (%s) - it will be refunded in 3 days unless acknowledged",
-			userID, ver.ProductID)
+		// Play refunds a purchase that is not acknowledged within three days,
+		// so this is not a courtesy: an unacknowledged purchase is money taken
+		// and then returned, three days later, with the customer still holding
+		// an entitlement. The receipt is honoured either way, because the
+		// customer paid - but the acknowledgement is attempted here, and its
+		// outcome is reported rather than assumed.
+		acknowledged = h.acknowledgePlayPurchase(r.Context(), userID, ver.ProductID, ver.PurchaseToken)
 	}
 
 	ent := h.entitlementsFor(r.Context(), userID)
@@ -206,6 +210,9 @@ func (h *Handler) verifySubscriptionV2(w http.ResponseWriter, r *http.Request) {
 		"provider":     ver.Provider,
 		"expires_at":   ver.ExpiresAt,
 		"entitlements": ent,
+		// Only meaningful for a Play purchase that arrived unacknowledged;
+		// false for every other provider, and false when Google refused it.
+		"acknowledged": acknowledged,
 	})
 }
 

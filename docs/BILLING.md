@@ -121,9 +121,63 @@ local purchase flow gets removed.
 | `GOOGLE_PLAY_SERVICE_ACCOUNT` | Service-account JSON with Play Console access; falls back to `FCM_SERVICE_ACCOUNT` |
 | `GOOGLE_PLAY_PRODUCT_MONTHLY`, `GOOGLE_PLAY_PRODUCT_ANNUAL` | Product id to plan mapping |
 | `GOOGLE_PLAY_PRODUCT_PLANS` | Optional extra mappings, `product=plan` comma-separated |
+| `PUBSUB_PUSH_AUDIENCE` | Audience configured on the Pub/Sub push subscription. Required for the Play webhook: without it nothing can authenticate a delivery |
+| `PUBSUB_PUSH_SERVICE_ACCOUNT` | Optional sender email. Recommended — it narrows acceptance from "any Google-signed token for this audience" to "this project's push subscription" |
+| `PUBSUB_JWKS_URL` | Optional override for Google's key set. Tests use it; there is no production reason to change it |
 
 An unrecognised `BILLING_VERIFIER` is refused rather than ignored: a typo must
 not silently disable verification.
+
+## Store notification webhooks
+
+A receipt describes a purchase. It does not describe what happens afterwards:
+the renewal at 3am, the card that failed and then recovered, the cancellation
+made from the App Store settings screen, the refund Apple granted after a
+support call. Both stores push those events, and until this server handles them
+the entitlement row is a snapshot of the last app launch.
+
+| Endpoint | Provider | Authentication |
+|---|---|---|
+| `POST /v1/subscriptions/webhooks/apple` | App Store Server Notifications V2 | The JWS signature on the payload, verified against the pinned Apple Root CA — G3. No shared secret. |
+| `POST /v1/subscriptions/webhooks/google` | Play Real Time Developer Notifications, delivered by Pub/Sub push | The OIDC token on the request (`iss`, `aud`, `exp`, signature against Google's key set, and optionally the sender), plus a signed call to the Play Developer API. |
+
+Both are public routes. Their authentication is the store's signature, not a
+session: the caller is a store, not a user, and a shared secret in the URL would
+be strictly worse — it cannot be rotated per deployment without coordinating
+with the store's console, and it proves only that the caller knows a string.
+
+Two properties make a push stream safe to write entitlement from, and both are
+enforced in `ApplyStoreNotification` rather than in the handlers:
+
+- **Idempotency.** Both stores deliver at least once and retry until
+  acknowledged. The notification's own id (Apple's `notificationUUID`, Pub/Sub's
+  `messageId`) is inserted into `store_notifications` under a unique index
+  before anything else in the transaction, so a duplicate inserts nothing and
+  never reaches the statement that writes a subscription. The second delivery
+  answers `200 {"status":"duplicate"}`.
+- **Ordering.** `subscriptions.last_store_event_at` is a watermark. An event
+  older than the last one applied is recorded as `stale` and refused, so
+  reordered delivery cannot move a subscription backwards — a `DID_RENEW` from
+  yesterday landing after today's `EXPIRED` leaves it expired.
+
+Every delivery is recorded in `store_notifications` with its outcome
+(`applied`, `duplicate`, `stale`, `unmatched`, `ignored`). That ledger is the
+audit trail: "we applied REFUND at 14:02 with this notification id" is an answer
+to a customer dispute, and a rotated log line is not.
+
+A notification that arrives before any account has redeemed the purchase is
+recorded as `unmatched` rather than guessed at. The stores push the moment a
+subscription is bought, which can precede the app's first `POST
+/subscriptions/verify`.
+
+### Play acknowledgement
+
+Play refunds a purchase that is not acknowledged within three days. The verify
+endpoint acknowledges as soon as it sees an unacknowledged purchase, and the
+notification webhook does the same for a purchase whose app never got that far.
+Outside development, a missing service account is reported as an error rather
+than skipped: an unacknowledged purchase is money taken and then returned three
+days later, with the customer still holding the entitlement.
 
 ## App Store verification
 

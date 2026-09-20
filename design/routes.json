@@ -966,6 +966,20 @@
     "tag": "subscription"
   },
   {
+    "method": "POST",
+    "path": "/subscriptions/webhooks/apple",
+    "auth": "public",
+    "summary": "App Store Server Notifications V2 (JWS verified against the pinned Apple root)",
+    "tag": "subscription"
+  },
+  {
+    "method": "POST",
+    "path": "/subscriptions/webhooks/google",
+    "auth": "public",
+    "summary": "Play real-time developer notification via Pub/Sub push (OIDC verified)",
+    "tag": "subscription"
+  },
+  {
     "method": "GET",
     "path": "/t/{token}",
     "auth": "public",
@@ -1978,6 +1992,20 @@
     "path": "/v1/subscriptions/verify",
     "auth": "user",
     "summary": "Verify store receipt (server-side, billing.Verifier)",
+    "tag": "subscription"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/subscriptions/webhooks/apple",
+    "auth": "public",
+    "summary": "App Store Server Notifications V2 (JWS verified against the pinned Apple root)",
+    "tag": "subscription"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/subscriptions/webhooks/google",
+    "auth": "public",
+    "summary": "Play real-time developer notification via Pub/Sub push (OIDC verified)",
     "tag": "subscription"
   },
   {

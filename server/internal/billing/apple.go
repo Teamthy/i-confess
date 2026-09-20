@@ -233,6 +233,17 @@ func decodeAppleHeader(encoded string) (appleJWSHeader, error) {
 
 // verifyChain parses x5c and verifies the leaf against the pinned roots.
 func (v *AppleVerifier) verifyChain(x5c []string, at time.Time) (*x509.Certificate, error) {
+	return verifyAppleChain(x5c, v.cfg.Roots, at)
+}
+
+// verifyAppleChain verifies a certificate chain against a trust pool.
+//
+// Package-level and parameterised by the roots because App Store Server
+// Notifications are signed the same way receipts are, by the same chain, and
+// must be checked against the same pinned root. Sharing the function is what
+// guarantees the notification path cannot be configured with a weaker trust
+// anchor than the receipt path.
+func verifyAppleChain(x5c []string, roots *x509.CertPool, at time.Time) (*x509.Certificate, error) {
 	certs := make([]*x509.Certificate, 0, len(x5c))
 	for i, encoded := range x5c {
 		der, err := decodeX5cEntry(encoded)
@@ -261,7 +272,7 @@ func (v *AppleVerifier) verifyChain(x5c []string, at time.Time) (*x509.Certifica
 	// chains to Apple", which the signatures along the chain establish; what the
 	// certificate is used for is asserted by the JWS signature that follows.
 	opts := x509.VerifyOptions{
-		Roots:         v.cfg.Roots,
+		Roots:         roots,
 		Intermediates: intermediates,
 		CurrentTime:   at,
 		KeyUsages:     []x509.ExtKeyUsage{x509.ExtKeyUsageAny},

@@ -9205,6 +9205,100 @@
         ]
       }
     },
+    "/subscriptions/webhooks/apple": {
+      "post": {
+        "operationId": "postSubscriptionsWebhooksApple",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Rate limited; honour Retry-After"
+          }
+        },
+        "summary": "App Store Server Notifications V2 (JWS verified against the pinned Apple root)",
+        "tags": [
+          "subscription"
+        ]
+      }
+    },
+    "/subscriptions/webhooks/google": {
+      "post": {
+        "operationId": "postSubscriptionsWebhooksGoogle",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Rate limited; honour Retry-After"
+          }
+        },
+        "summary": "Play real-time developer notification via Pub/Sub push (OIDC verified)",
+        "tags": [
+          "subscription"
+        ]
+      }
+    },
     "/t/{token}": {
       "get": {
         "operationId": "getTByToken",
@@ -18836,6 +18930,100 @@
           }
         ],
         "summary": "Verify store receipt (server-side, billing.Verifier)",
+        "tags": [
+          "subscription"
+        ]
+      }
+    },
+    "/v1/subscriptions/webhooks/apple": {
+      "post": {
+        "operationId": "postV1SubscriptionsWebhooksApple",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Rate limited; honour Retry-After"
+          }
+        },
+        "summary": "App Store Server Notifications V2 (JWS verified against the pinned Apple root)",
+        "tags": [
+          "subscription"
+        ]
+      }
+    },
+    "/v1/subscriptions/webhooks/google": {
+      "post": {
+        "operationId": "postV1SubscriptionsWebhooksGoogle",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Rate limited; honour Retry-After"
+          }
+        },
+        "summary": "Play real-time developer notification via Pub/Sub push (OIDC verified)",
         "tags": [
           "subscription"
         ]

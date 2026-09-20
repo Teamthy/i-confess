@@ -12,6 +12,7 @@ import (
 	"github.com/Teamthy/i-confess/internal/db"
 
 	"github.com/Teamthy/i-confess/internal/auth"
+	"github.com/Teamthy/i-confess/internal/billing"
 	"github.com/Teamthy/i-confess/internal/cache"
 	"github.com/Teamthy/i-confess/internal/deletion"
 	"github.com/Teamthy/i-confess/internal/email"
@@ -92,6 +93,13 @@ type Handler struct {
 	cacheMeter   *cache.Meter
 	// metrics counts security-relevant events for alerting (S83, S84).
 	metrics *AuthMetrics
+	// Store notification collaborators (IC-003, PR B). Nil means "resolve from
+	// the environment", which is what production does; tests supply them
+	// directly, and a deployment that reads credentials from a secret manager
+	// can too.
+	appleNotify  appleNotificationVerifier
+	googleNotify googleNotificationResolver
+	playAck      billing.PlayAcknowledger
 	// cacheStats reports cache hit-rate for /metrics (§7.1)
 	cacheStats func() CacheStats
 	// routes records every registered endpoint, so the API spec is generated
