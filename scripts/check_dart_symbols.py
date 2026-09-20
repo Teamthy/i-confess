@@ -437,6 +437,41 @@ if test_path.exists():
 
 
 # ---------------------------------------------------------------------------
+# Community (G-40) — public UGC reader
+# ---------------------------------------------------------------------------
+
+check(
+    "getCommunityConfessions is on the typed client",
+    "getCommunityConfessions" in declared_endpoints,
+)
+
+community_repo_methods = method_names("CommunityRepository", repo_src)
+for required in ["feed", "confessions", "react"]:
+    check(f"CommunityRepository.{required} exists", required in community_repo_methods)
+
+# Mobile community screen symbols
+community_screen_src = read(MOBILE / "src/features/community/community_screen.dart")
+check(
+    "community_screen.dart declares communityFeedProvider",
+    "communityFeedProvider" in read(MOBILE / "src/features/community/community_screen.dart"),
+)
+check(
+    "community_screen.dart declares communityConfessionsProvider",
+    "communityConfessionsProvider" in community_screen_src,
+)
+check(
+    "community_screen.dart renders both tabs",
+    "Stories" in community_screen_src and "Testimonies" in community_screen_src,
+)
+
+# The community endpoint must be wired in IA
+ia_src = (ROOT / "design/ia.json").read_text()
+check(
+    "community screen declares GET /community/confessions in IA",
+    "GET /community/confessions" in ia_src,
+)
+
+# ---------------------------------------------------------------------------
 # Report
 # ---------------------------------------------------------------------------
 

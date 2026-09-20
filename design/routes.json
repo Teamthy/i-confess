@@ -442,6 +442,13 @@
   },
   {
     "method": "GET",
+    "path": "/community/confessions",
+    "auth": "public",
+    "summary": "Published user confessions (public UGC reader, anonymous)",
+    "tag": "community"
+  },
+  {
+    "method": "GET",
     "path": "/community/feed",
     "auth": "public",
     "summary": "Approved community feed",
@@ -1475,6 +1482,13 @@
     "auth": "public",
     "summary": "Published collections",
     "tag": "content"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/community/confessions",
+    "auth": "public",
+    "summary": "Published user confessions (public UGC reader, anonymous)",
+    "tag": "community"
   },
   {
     "method": "GET",

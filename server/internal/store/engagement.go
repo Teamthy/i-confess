@@ -221,3 +221,31 @@ func (s *EngagementStore) ListUserConfessions(ctx context.Context, userID string
 	}
 	return out, rows.Err()
 }
+
+// ListPublishedUserConfessions returns the public UGC reader: only confessions
+// the author offered as public and a moderator published. Shared/private and
+// any status other than published are excluded, and the caller never sees the
+// author identity — that is enforced by the handler projecting away user_id.
+// Ordered by published_at DESC so the newest testimony appears first.
+func (s *EngagementStore) ListPublishedUserConfessions(ctx context.Context, limit int) ([]models.UserConfession, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT `+ucColumns+` FROM user_confessions
+		 WHERE visibility = 'public' AND status = 'published'
+		 ORDER BY COALESCE(published_at, created_at) DESC LIMIT ?`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []models.UserConfession
+	for rows.Next() {
+		uc, err := scanUserConfession(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, uc)
+	}
+	return out, rows.Err()
+}

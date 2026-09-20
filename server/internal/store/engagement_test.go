@@ -225,6 +225,74 @@ func TestListFavoritesDetailedFiltersByType(t *testing.T) {
 	}
 }
 
+// Published UGC reader (G-40): only public+published user confessions are
+// visible, ordered newest first, and private/shared or non-published rows are
+// excluded.
+func TestListPublishedUserConfessions(t *testing.T) {
+	conn := dbtest.New(t)
+	defer conn.Close()
+	s := NewEngagementStore(conn)
+	seedEngUser(t, conn, "ugc-u1")
+	ctx := engCtx()
+
+	// Create four user confessions: one that should appear, three that must not.
+	// The store's CreateUserConfession sets status/visibility from the model,
+	// but we insert directly to control published_at ordering.
+	cases := []struct {
+		id         string
+		title      string
+		visibility string
+		status     string
+		published  string
+		shouldShow bool
+	}{
+		{"ugc-pub-1", "Public testimony", "public", "published", "2026-09-20T10:00:00Z", true},
+		{"ugc-priv-1", "Private diary", "private", "published", "2026-09-20T11:00:00Z", false},
+		{"ugc-shared-1", "Circle only", "shared", "published", "2026-09-20T12:00:00Z", false},
+		{"ugc-draft-1", "Draft public intent", "public", "draft", "", false},
+		{"ugc-sub-1", "Submitted public", "public", "submitted", "", false},
+		{"ugc-approved-1", "Approved but not yet published", "public", "approved", "", false},
+	}
+	for _, c := range cases {
+		if _, err := conn.ExecContext(ctx,
+			`INSERT INTO user_confessions (id,user_id,title,text,category_id,is_private,status,visibility,created_at,updated_at,published_at,version)
+			 VALUES (?,?,?,?,?,0,?,?,?, ?,?,1)`,
+			c.id, "ugc-u1", c.title, "body "+c.title, nil, c.status, c.visibility,
+			"2026-09-20T09:00:00Z", "2026-09-20T09:00:00Z",
+			nullIfEmpty(c.published)); err != nil {
+			t.Fatalf("insert %s: %v", c.id, err)
+		}
+	}
+
+	list, err := s.ListPublishedUserConfessions(ctx, 20)
+	if err != nil {
+		t.Fatalf("ListPublished: %v", err)
+	}
+	if len(list) != 1 {
+		t.Fatalf("published feed returned %d rows, want 1: %+v", len(list), list)
+	}
+	if list[0].ID != "ugc-pub-1" {
+		t.Fatalf("feed returned %q, want %q", list[0].ID, "ugc-pub-1")
+	}
+	if list[0].Visibility != "public" || list[0].Status != "published" {
+		t.Fatalf("feed row has visibility=%q status=%q, want public/published", list[0].Visibility, list[0].Status)
+	}
+
+	// Ordering: newest published_at first.
+	if _, err := conn.ExecContext(ctx,
+		`INSERT INTO user_confessions (id,user_id,title,text,category_id,is_private,status,visibility,created_at,updated_at,published_at,version)
+		 VALUES ('ugc-pub-2','ugc-u1','Second testimony','body second',NULL,0,'published','public','2026-09-20T09:00:00Z','2026-09-20T09:00:00Z','2026-09-20T15:00:00Z',1)`); err != nil {
+		t.Fatalf("insert second: %v", err)
+	}
+	list, err = s.ListPublishedUserConfessions(ctx, 20)
+	if err != nil {
+		t.Fatalf("ListPublished second: %v", err)
+	}
+	if len(list) != 2 || list[0].ID != "ugc-pub-2" {
+		t.Fatalf("ordering wrong, got %+v", list)
+	}
+}
+
 // Removing a favourite must remove exactly the one named, leaving the
 // listener's other favourites alone.
 func TestRemoveFavoriteIsScoped(t *testing.T) {

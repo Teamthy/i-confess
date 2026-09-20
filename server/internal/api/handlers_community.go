@@ -2,9 +2,11 @@ package api
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/Teamthy/i-confess/internal/community"
 	"github.com/Teamthy/i-confess/internal/httpx"
+	"github.com/Teamthy/i-confess/internal/store"
 )
 
 func (h *Handler) createCommunityPost(w http.ResponseWriter, r *http.Request) {
@@ -82,10 +84,57 @@ func (h *Handler) reactCommunity(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid reaction")
 		return
 	}
-	store := community.NewStore(h.db)
-	if err := store.React(r.Context(), id, h.userID(r), community.Reaction(req.Reaction)); err != nil {
+	cStore := community.NewStore(h.db)
+	if err := cStore.React(r.Context(), id, h.userID(r), community.Reaction(req.Reaction)); err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to react")
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// feedUserConfessions is the public UGC reader that closes G-40. It returns
+// only confessions that are both public in intent (visibility=public) and
+// published by a moderator (status=published), ordered newest first. Author
+// identity is never returned — the projection omits user_id, reviewed_by and
+// any other account-linked field. Shared/private or non-published rows are
+// excluded by the store query, not by post-filtering, so a regression that
+// widens the query is caught by the database-backed tests.
+func (h *Handler) feedUserConfessions(w http.ResponseWriter, r *http.Request) {
+	limit := 20
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 100 {
+			limit = n
+		}
+	}
+	eng := store.NewEngagementStore(h.db)
+	list, err := eng.ListPublishedUserConfessions(r.Context(), limit)
+	if err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, "failed to load confessions")
+		return
+	}
+	// Project to anonymous public shape.
+	type publicUC struct {
+		ID          string `json:"id"`
+		Title       string `json:"title"`
+		Text        string `json:"text"`
+		CategoryID  string `json:"category_id,omitempty"`
+		Visibility  string `json:"visibility"`
+		Status      string `json:"status"`
+		PublishedAt string `json:"published_at,omitempty"`
+		CreatedAt   string `json:"created_at"`
+	}
+	out := make([]publicUC, 0, len(list))
+	for _, uc := range list {
+		out = append(out, publicUC{
+			ID:          uc.ID,
+			Title:       uc.Title,
+			Text:        uc.Text,
+			CategoryID:  uc.CategoryID,
+			Visibility:  uc.Visibility,
+			Status:      uc.Status,
+			PublishedAt: uc.PublishedAt,
+			CreatedAt:   uc.CreatedAt,
+		})
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"confessions": out})
 }
