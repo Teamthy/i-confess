@@ -61,6 +61,12 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
             ),
             onChanged: (value) => setState(() => _query = value),
           ),
+          const SizedBox(height: IConfess.space3),
+          OutlinedButton.icon(
+            onPressed: () => context.go(AppRoutes.community),
+            icon: const Icon(Icons.forum_outlined),
+            label: const Text('Community stories'),
+          ),
           const SizedBox(height: IConfess.space6),
           _FeaturedRail(state: collections),
           const SizedBox(height: IConfess.space6),

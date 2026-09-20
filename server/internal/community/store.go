@@ -35,7 +35,8 @@ func (s *Store) Create(ctx context.Context, authorID, body, visibility string) (
 	return p, nil
 }
 
-// Feed returns approved public/shared posts with AuthorID stripped for anonymity (IC-006).
+// Feed is the anonymous public reader. Shared posts are deliberately excluded:
+// a public endpoint cannot enforce an author's circle membership.
 func (s *Store) Feed(ctx context.Context, limit int) ([]FeedPost, error) {
 	if limit <= 0 || limit > 50 {
 		limit = 20
@@ -43,9 +44,9 @@ func (s *Store) Feed(ctx context.Context, limit int) ([]FeedPost, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT id, body, visibility, status, created_at
 		 FROM community_posts
-		 WHERE visibility IN (?, ?) AND status IN (?, ?)
+		 WHERE visibility = ? AND status IN (?, ?)
 		 ORDER BY created_at DESC LIMIT ?`,
-		VisibilityShared, VisibilityPublic, StatusApproved, StatusPublished, limit)
+		VisibilityPublic, StatusApproved, StatusPublished, limit)
 	if err != nil {
 		return nil, err
 	}
