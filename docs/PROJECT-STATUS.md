@@ -162,7 +162,12 @@ PHASE 31 Moderation — **PASS WITH CONDITIONS** (the last three 501s are real:
     fault injections confirmed caught. Conditions: G-40 published UGC has no
     reader yet, G-41 audit_logs still does not cover content/moderation
     actions, G-42 the seeded demo catalogue fails its own voices_licensed
-    gate)
+    gate. **MERGED to main 2026-09-20** — PR #40 (phase) and PR #41 (CI
+    repair: the regenerated design/routes.json surfaced three user-facing
+    endpoints with no IA screen — POST /reports, POST /me/confessions/{id}/submit
+    and the PHASE-17 orphan DELETE /sessions/{id}; mapped to confess/confession
+    and activity/session in design/ia.json; main's CI green again, run
+    35495421214, 2m4s))
 
 Open gaps carried forward: G-3, G-7, G-9, G-10, G-12, G-13,
 G-14, G-15, G-16, G-17, G-18, G-19, G-20, G-21, G-22, G-23, G-24, G-25, G-26, G-27, G-28,
