@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:iconfess/src/core/di/providers.dart';
+import 'package:iconfess/src/core/theme/theme.dart';
 import 'package:iconfess/src/features/player/audio_playback_service.dart';
 import 'package:iconfess/src/features/player/player_providers.dart';
 import 'package:iconfess/src/features/player/player_screen.dart';
@@ -76,6 +77,7 @@ void main() {
           audioPlaybackServiceProvider.overrideWithValue(audio),
         ],
         child: MaterialApp(
+          theme: AppTheme.immersive(),
           home: PlayerScreen(sessionId: sessionId),
         ),
       ),

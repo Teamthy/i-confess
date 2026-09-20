@@ -1,6 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:iconfess_api/iconfess_api.dart';
@@ -475,7 +473,6 @@ class SessionEngine extends StateNotifier<SessionPlaybackState> {
     state = state.copyWith(isRefreshingUrl: true);
 
     final savedPos = state.positionMs;
-    final savedIndex = state.currentIndex;
 
     final queueLoadable = await _content.sessionQueue(sessionId);
     if (queueLoadable is LoadLoaded<SessionQueueResponse>) {

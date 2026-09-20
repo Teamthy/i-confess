@@ -22,13 +22,15 @@ class PlayerScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final engine = ref.read(sessionEngineProvider(sessionId).notifier);
     final state = ref.watch(sessionEngineProvider(sessionId));
-    final surfaces = AppSurfaces.of(context);
 
     return AppScaffold(
       immersive: true,
       scrollable: false,
       body: Builder(
         builder: (context) {
+          final surfaces =
+              Theme.of(context).extension<AppSurfaces>() ?? AppSurfaces.paletteToken;
+
           // 1. Loading state
           if (state.isLoading) {
             return Center(

@@ -183,7 +183,6 @@ class JustAudioPlaybackService implements AudioPlaybackService {
 class TestAudioPlaybackService implements AudioPlaybackService {
   AudioPlaybackStatus _status = AudioPlaybackStatus.idle;
   Duration _position = Duration.zero;
-  Duration? _duration = const Duration(seconds: 60);
 
   final _positionController = StreamController<Duration>.broadcast();
   final _durationController = StreamController<Duration?>.broadcast();
@@ -234,7 +233,6 @@ class TestAudioPlaybackService implements AudioPlaybackService {
   }
 
   void emitDuration(Duration? duration) {
-    _duration = duration;
     _durationController.add(duration);
   }
 
