@@ -124,8 +124,8 @@
       "title": "Confession",
       "depth": 1,
       "parents": ["confess", "explore/category", "explore/collection", "search", "library/favorites"],
-      "endpoints": ["GET /confessions/{id}", "POST /me/favorites", "POST /me/confessions"],
-      "notes": ""
+      "endpoints": ["GET /confessions/{id}", "POST /me/favorites", "POST /me/confessions", "POST /me/confessions/{id}/submit", "POST /reports"],
+      "notes": "Own drafts submit for publication from here; viewers can report a confession (PHASE 31)."
     },
     {
       "id": "confess/duration",
@@ -174,7 +174,7 @@
       "title": "Session detail",
       "depth": 1,
       "parents": ["activity", "home"],
-      "endpoints": ["GET /sessions/{id}", "GET /sessions/{id}/queue", "PATCH /sessions/{id}"],
+      "endpoints": ["GET /sessions/{id}", "GET /sessions/{id}/queue", "PATCH /sessions/{id}", "DELETE /sessions/{id}"],
       "notes": ""
     },
     {
