@@ -59,15 +59,18 @@ func main() {
 	// in every environment (PRD S11). config.Validate has already refused
 	// STORAGE_PROVIDER=local outside development.
 	objStore, err := storage.New(&storage.StorageConfig{
-		Provider:      cfg.StorageProvider,
-		LocalRootPath: cfg.MediaDir,
-		S3Bucket:      cfg.S3Bucket,
-		S3Region:      cfg.S3Region,
-		S3AccessKey:   cfg.S3AccessKey,
-		S3SecretKey:   cfg.S3SecretKey,
-		S3Endpoint:    cfg.S3Endpoint,
-		CDNDomain:     cfg.MediaBaseURL,
-		SigningSecret: cfg.AudioSignSecret,
+		Provider:                 cfg.StorageProvider,
+		LocalRootPath:            cfg.MediaDir,
+		S3Bucket:                 cfg.S3Bucket,
+		S3Region:                 cfg.S3Region,
+		S3AccessKey:              cfg.S3AccessKey,
+		S3SecretKey:              cfg.S3SecretKey,
+		S3Endpoint:               cfg.S3Endpoint,
+		CDNDomain:                cfg.MediaBaseURL,
+		CDNProvider:              "cloudfront",
+		CloudFrontKeyPairID:      cfg.CloudFrontKeyPairID,
+		CloudFrontPrivateKeyPath: cfg.CloudFrontPrivateKeyPath,
+		SigningSecret:            cfg.AudioSignSecret,
 	})
 	if err != nil {
 		log.Fatalf("storage: %v", err)

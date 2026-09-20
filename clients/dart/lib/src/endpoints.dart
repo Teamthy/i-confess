@@ -123,6 +123,15 @@ extension IConfessEndpoints on ApiClient {
   /// Available voices
   Future<Map<String, dynamic>> getVoices() => get('/voices');
 
+  // ---- community ----
+  /// Anonymous, moderation-approved community posts
+  Future<Map<String, dynamic>> getCommunityFeed() => get('/community/feed');
+
+  /// Add an idempotent reaction to an approved community post
+  Future<Map<String, dynamic>> postCommunityPostsByIdReact(
+          String id, String reaction) =>
+      post('/community/posts/$id/react', {'reaction': reaction});
+
   // ---- devices ----
   /// List devices
   Future<Map<String, dynamic>> getMeDevices() => get('/me/devices');

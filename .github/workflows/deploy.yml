@@ -1,0 +1,37 @@
+name: Deploy
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        type: choice
+        options: [staging, production]
+        required: true
+      image_digest:
+        description: Immutable ghcr.io image digest (sha256:...)
+        required: true
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  deploy:
+    name: Deploy approved immutable image
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Require digest
+        env: { IMAGE_DIGEST: '${{ inputs.image_digest }}' }
+        run: '[[ "$IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]'
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Configure cluster
+        run: aws eks update-kubeconfig --name '${{ vars.EKS_CLUSTER }}'
+      - name: Apply and verify rollout
+        env: { IMAGE_DIGEST: '${{ inputs.image_digest }}' }
+        run: |
+          sed "s|ghcr.io/teamthy/i-confess:IMAGE_DIGEST_REQUIRED|ghcr.io/teamthy/i-confess@${IMAGE_DIGEST}|" server/k8s/deployment-prod.yaml | kubectl apply -f -
+          kubectl -n iconfess-prod rollout status deployment/iconfess-backend --timeout=5m
+          kubectl -n iconfess-prod get deployment/iconfess-backend -o jsonpath='{.spec.template.spec.containers[0].image}' | grep -F "@${IMAGE_DIGEST}"

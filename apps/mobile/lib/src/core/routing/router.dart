@@ -16,6 +16,7 @@ import '../../features/confess/duration_screen.dart';
 import '../../features/confess/review_screen.dart';
 import '../../features/confess/voice_screen.dart';
 import '../../features/confession/confession_detail_screen.dart';
+import '../../features/community/community_screen.dart';
 import '../../features/downloads/downloads_screen.dart';
 import '../../features/explore/category_detail_screen.dart';
 import '../../features/explore/explore_screen.dart';
@@ -150,6 +151,11 @@ GoRouter createRouter(
               name: AppRouteNames.explore,
               builder: (context, state) => const ExploreScreen(),
               routes: [
+                GoRoute(
+                  path: 'community',
+                  name: AppRouteNames.community,
+                  builder: (context, state) => const CommunityScreen(),
+                ),
                 GoRoute(
                   path: 'search',
                   name: AppRouteNames.search,

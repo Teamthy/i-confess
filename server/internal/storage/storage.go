@@ -70,9 +70,11 @@ type StorageConfig struct {
 	SigningSecret string
 
 	// Common
-	CDNDomain   string        // Optional CDN domain for signed URLs (e.g., audio.example.com)
-	CDNProvider string        // "cloudflare" | "cloudfront" | "bunny" (may not apply to all storage)
-	CacheTTL    time.Duration // Default cache TTL for CDN
+	CDNDomain                string // Absolute CloudFront base URL
+	CDNProvider              string // "cloudfront" when native edge signing is configured
+	CloudFrontKeyPairID      string
+	CloudFrontPrivateKeyPath string
+	CacheTTL                 time.Duration // Default cache TTL for CDN
 }
 
 // AvailableProviders are the providers that are actually implemented. GCS and
