@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Teamthy/i-confess/internal/api"
+	"github.com/Teamthy/i-confess/internal/billing"
 	"github.com/Teamthy/i-confess/internal/config"
 	"github.com/Teamthy/i-confess/internal/db"
 	"github.com/Teamthy/i-confess/internal/email"
@@ -30,6 +31,17 @@ func main() {
 	// Refuse to start production with development secrets.
 	if err := cfg.Validate(); err != nil {
 		log.Fatalf("config: %v", err)
+	}
+
+	// Store verification (IC-003). Which verifier is installed decides whether a
+	// paying customer gets what they paid for, and a stub that reaches
+	// production gives premium away - so the process says out loud which one it
+	// built, and refuses to start outside development and test without a real
+	// one. Both lines exist because "billing is quietly disabled" is not
+	// something a running server should be able to hide.
+	log.Printf("billing: verifier %s", billing.DescribeVerifier(billing.VerifierFromEnv()))
+	if err := billing.RequireVerification(); err != nil {
+		log.Fatalf("billing: %v", err)
 	}
 
 	conn, err := db.Open(cfg.DatabaseURL)
