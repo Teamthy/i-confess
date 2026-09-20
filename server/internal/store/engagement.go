@@ -98,24 +98,24 @@ func (s *EngagementStore) CreateUserConfession(ctx context.Context, uc *models.U
 	}
 	uc.CreatedAt, uc.UpdatedAt = now(), now()
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO user_confessions (id,user_id,title,text,category_id,is_private,created_at,updated_at)
-		 VALUES (?,?,?,?,?,?,?,?)`,
-		uc.ID, uc.UserID, uc.Title, uc.Text, nullIfEmpty(uc.CategoryID), boolInt(uc.IsPrivate), uc.CreatedAt, uc.UpdatedAt)
+		`INSERT INTO user_confessions (id,user_id,title,text,category_id,is_private,status,visibility,created_at,updated_at)
+		 VALUES (?,?,?,?,?,?,?,?,?,?)`,
+		uc.ID, uc.UserID, uc.Title, uc.Text, nullIfEmpty(uc.CategoryID), boolInt(uc.IsPrivate),
+		uc.Status, uc.Visibility, uc.CreatedAt, uc.UpdatedAt)
 	return err
 }
 
 func (s *EngagementStore) ListUserConfessions(ctx context.Context, userID string) ([]models.UserConfession, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id,user_id,title,text,COALESCE(category_id,''),is_private,created_at,updated_at
-		 FROM user_confessions WHERE user_id=? ORDER BY created_at DESC`, userID)
+		`SELECT `+ucColumns+` FROM user_confessions WHERE user_id=? ORDER BY created_at DESC`, userID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	var out []models.UserConfession
 	for rows.Next() {
-		var uc models.UserConfession
-		if err := rows.Scan(&uc.ID, &uc.UserID, &uc.Title, &uc.Text, &uc.CategoryID, &uc.IsPrivate, &uc.CreatedAt, &uc.UpdatedAt); err != nil {
+		uc, err := scanUserConfession(rows)
+		if err != nil {
 			return nil, err
 		}
 		out = append(out, uc)

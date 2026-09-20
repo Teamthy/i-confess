@@ -1,16 +1,15 @@
 # Project Status
 
-**Last verified:** 2026-09-19, at PHASE 23 (Mobile Session Builder; the builder
-walk confess/duration → confess/voice → confess/create is real: engine ladder
-and strategies with a source-reading drift guard, live `POST /sessions/preview`
-card, licensed-only voice picker, review that creates a session and offers the
-shape as a template; confession handoff from "Build a session with this";
-client contract shape-checked against a live server with a real database.
-Go toolchain 1.27.1 and PostgreSQL 17.10 installed from npm/PyPI mirrors;
-27/28 Go packages pass (one pre-existing, environmental `/etc/mime.types`
-failure in `internal/storage`); the Dart/Flutter SDKs remain unreachable from
-this sandbox, so `dart test` / `flutter test` are written and owed to CI —
-see PHASE 23 condition C-1).
+**Last verified:** 2026-09-19, at PHASE 31 (Moderation: reporting, the queue,
+submission, review and the QA gate — the last 501 stubs are gone; the phase
+was rebuilt from `main` after the previously-reported delivery commit
+`d19a47aa` proved unrecoverable: absent from every ref on GitHub and from the
+sandbox, with no export on disk. See the reconciliation note in
+`docs/31-MODERATION.md`. Go toolchain 1.27.1 and PostgreSQL 17.10 installed
+from npm/PyPI mirrors; the full `-race` suite passes apart from the one
+pre-existing, environmental `/etc/mime.types` failure in `internal/storage`;
+the Dart/Flutter SDKs remain unreachable from this sandbox, so `dart test` /
+`flutter test` are written and owed to CI — see PHASE 23 condition C-1).
 
 This file supersedes `MASTER-PROMPT-COMPLETION.md`,
 `CONTENT-DOMAIN-COMPLETION.md`, `AUDIO-PLATFORM-STATUS.md`, `SESSION-NOTES.md`
@@ -46,8 +45,7 @@ it.** Every claim below was produced by running something.
 | **Website / admin** | 434 and 168 lines of scaffolding. Being replaced per D-5. |
 | **Payments** | Every store verifier is a stub. Real App Store / Play verification is PHASE 36. |
 | **Trial lifecycle** | The six states in §36 do not exist. |
-| **UGC `PUBLIC` visibility** | Not represented; the public moderation pipeline has nothing to publish to. |
-| **4 handlers** | Still return 501: recommendations, confession QA, moderation queue, user confession review. |
+| **UGC `PUBLIC` readers** | The pipeline publishes (`visibility=public` + approval → `published`), but no public surface serves published UGC yet (G-40). |
 | **Soft delete / versioning** | Present on 2 of 64 tables each. Section 25 asks for both generally. |
 | **Cache** | Per-process only; no cross-instance invalidation. |
 | **Design system** | 120 tokens, contrast-verified, but not yet consumed by any real surface. |
@@ -151,9 +149,27 @@ PHASE 30 Premium — **PASS** (paywall with regional pricing NGN/USD/GBP/EUR/PHP
     journey from GET /subscriptions/trial, current plan card, server-side
     verification via POST /subscriptions/verify, no hard-coded prices)
 
-Open gaps carried forward: G-2, G-3, G-7, G-9, G-10, G-12, G-13,
+PHASE 31 Moderation — **PASS WITH CONDITIONS** (the last three 501s are real:
+    user reporting with per-entity dedupe, a per-account throttle and a
+    decidable outcome; the moderation queue (UGC + reports + editorial
+    pending, oldest-first) that drains as work is done; author submission
+    draft→submitted; moderator review that publishes only what the author
+    offered publicly and never rejects without a reason; the §75 QA gate as
+    the one enforced editorial edge audio_qa→approved with the checklist
+    persisted pass or fail; canonical status changes finally write
+    content_moderation_history, preserve published_at and 404 a phantom id;
+    all vocabularies parity-tested against the live CHECK constraints; three
+    fault injections confirmed caught. Conditions: G-40 published UGC has no
+    reader yet, G-41 audit_logs still does not cover content/moderation
+    actions, G-42 the seeded demo catalogue fails its own voices_licensed
+    gate)
+
+Open gaps carried forward: G-3, G-7, G-9, G-10, G-12, G-13,
 G-14, G-15, G-16, G-17, G-18, G-19, G-20, G-21, G-22, G-23, G-24, G-25, G-26, G-27, G-28,
-G-29, G-33, G-34, G-35, G-36, G-37, G-38, G-39.
+G-29, G-33, G-34, G-35, G-36, G-37, G-38, G-39, G-40, G-41, G-42.
+(G-2 was removed from this list: it has been closed since PHASE 07 —
+"23/23 status columns constrained" — yet appeared in both lists here, a
+documentation bug fixed in PHASE 31.)
 
 Closed: **G-1** (queues are snapshots), **G-2** (23/23 status columns constrained),
 **G-8** (route parity), **G-11** (clients/dart is not a Flutter app),

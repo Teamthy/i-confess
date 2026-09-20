@@ -167,30 +167,10 @@ func (h *Handler) searchAll(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{"results": results, "count": len(results)})
 }
 
-// --- Not yet implemented -------------------------------------------------
-//
-// These five routes are registered in the v1 tree but their services are not
-// wired into the Handler yet: recommendations, billing and entitlements exist
-// as standalone packages with no constructors, and the moderation queue has no
-// store at all. They answer 501 rather than a fabricated response, so a client
-// integrating against this API learns the truth immediately instead of
-// discovering it in production.
-//
-// Two of the original six - subscription and entitlements - were removed in
-// PHASE 08. Their packages existed and were already used elsewhere in this
-// package; the comment describing them as having "no constructors" was simply
-// wrong, and a 501 behind a false explanation outlived the reason for it.
-//
-// Tracked in docs/AUDIT-2026-09-05.md.
-
-func notImplemented(what string) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		httpx.WriteJSON(w, http.StatusNotImplemented, map[string]any{
-			"error": what + " is not implemented yet",
-			"code":  "NOT_IMPLEMENTED",
-		})
-	}
-}
+// The last 501 stubs on this surface were removed in PHASE 31: the moderation
+// queue, user-confession review and confession QA now have a store and live in
+// internal/api/moderation.go. The original six are all real; see
+// docs/AUDIT-2026-09-05.md for the audit that listed them.
 
 func (h *Handler) recommendations(w http.ResponseWriter, r *http.Request) {
 	userID := h.userID(r)
@@ -350,16 +330,4 @@ func (h *Handler) getEntitlements(w http.ResponseWriter, r *http.Request) {
 	view := entitlementView(ent)
 	view["playback_ttl_seconds"] = int(ent.PlaybackTTL().Seconds())
 	httpx.WriteJSON(w, http.StatusOK, view)
-}
-
-func (h *Handler) adminQAConfession(w http.ResponseWriter, r *http.Request) {
-	notImplemented("confession QA")(w, r)
-}
-
-func (h *Handler) adminListModerationQueue(w http.ResponseWriter, r *http.Request) {
-	notImplemented("the moderation queue")(w, r)
-}
-
-func (h *Handler) adminReviewUserConfession(w http.ResponseWriter, r *http.Request) {
-	notImplemented("user confession review")(w, r)
 }
