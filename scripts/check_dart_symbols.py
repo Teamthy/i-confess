@@ -341,6 +341,43 @@ check(
 
 
 # ---------------------------------------------------------------------------
+# autoDispose + ref-after-await
+#
+# A Provider holding an actions object is reached with `ref.read` inside a tap
+# handler. A `read` registers no listener, so an autoDispose provider is
+# disposed immediately and any `ref.invalidate` after an await throws
+# UnmountedRefException. The write has already reached the server by then, so
+# the symptom is the worst kind: saved, and never shown. This shipped once.
+# ---------------------------------------------------------------------------
+
+ref_after_await = []
+for path in feature_dart:
+    src = read(path)
+    # Providers of a plain object (not Future/Stream) that auto-dispose.
+    for m in re.finditer(r"final (\w+) = Provider\.autoDispose<(\w+)>", src):
+        provider, held = m.group(1), m.group(2)
+        cls = re.search(r"class %s\b.*?(?=\nclass |\Z)" % re.escape(held), src, re.S)
+        if not cls:
+            continue
+        body = cls.group(0)
+        # Does any async method touch the ref after an await?
+        for meth in re.finditer(r"async \{(.*?)\n  \}", body, re.S):
+            code = meth.group(1)
+            if "await" in code and re.search(r"_?ref\.(invalidate|read|refresh)", code):
+                after = code.split("await", 1)[1]
+                if re.search(r"_?ref\.(invalidate|read|refresh)", after):
+                    ref_after_await.append(f"{path.name}:{provider}")
+                    break
+
+check(
+    "no autoDispose Provider uses its ref after an await",
+    not ref_after_await,
+    "disposed before the await returns, so the invalidate throws: "
+    f"{sorted(set(ref_after_await))}",
+)
+
+
+# ---------------------------------------------------------------------------
 # Widget test: keys it drives must be keys the screen renders
 # ---------------------------------------------------------------------------
 
