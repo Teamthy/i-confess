@@ -117,6 +117,9 @@ func TestValidProductionConfigPasses(t *testing.T) {
 	t.Setenv("POSTMARK_TOKEN", "pm-token")
 	t.Setenv("PUBLIC_BASE_URL", "https://iconfess.app")
 	t.Setenv("REDIS_ADDR", "redis:6379")
+	t.Setenv("MEDIA_BASE_URL", "https://media.iconfess.app")
+	t.Setenv("CLOUDFRONT_KEY_PAIR_ID", "KTEST")
+	t.Setenv("CLOUDFRONT_PRIVATE_KEY_PATH", "/run/secrets/cloudfront-key.pem")
 	// Production audio must live in object storage (§6). STORAGE_PROVIDER
 	// defaults to "local", which Validate now refuses outside development.
 	t.Setenv("STORAGE_PROVIDER", "s3")
@@ -154,6 +157,9 @@ func productionBase(t *testing.T) {
 	t.Setenv("POSTMARK_TOKEN", "pm-token")
 	t.Setenv("PUBLIC_BASE_URL", "https://iconfess.app")
 	t.Setenv("REDIS_ADDR", "redis:6379")
+	t.Setenv("MEDIA_BASE_URL", "https://media.iconfess.app")
+	t.Setenv("CLOUDFRONT_KEY_PAIR_ID", "KTEST")
+	t.Setenv("CLOUDFRONT_PRIVATE_KEY_PATH", "/run/secrets/cloudfront-key.pem")
 }
 
 // TestProductionRefusesLocalStorage covers the PHASE 13 boot guard.

@@ -162,6 +162,30 @@ jobs:
         if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
         run: ../../scripts/ci-check.sh flutter test --reporter expanded
 
+  deployment:
+    name: Container and deployment checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build production image
+        run: docker build --tag iconfess:ci server
+      - name: Assert non-root runtime
+        run: test "$(docker image inspect iconfess:ci --format '{{.Config.User}}')" = "10001:10001"
+      - name: Validate Kubernetes manifests
+        run: |
+          docker run --rm -v "$PWD:/work" ghcr.io/yannh/kubeconform:latest -strict -summary /work/server/k8s/deployment-prod.yaml
+      - name: Lint CloudFormation
+        uses: scottbrenner/cfn-lint-action@v2
+        with:
+          command: cfn-lint infrastructure/media-cloudfront.yaml
+      - name: Scan filesystem
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: .
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+
   dart-client:
     name: Dart test (clients/dart)
     runs-on: ubuntu-latest

@@ -27,7 +27,9 @@ type Config struct {
 
 	// MediaBaseURL is the URL prefix signed audio links point at. Set this to
 	// the CDN hostname in production.
-	MediaBaseURL string
+	MediaBaseURL             string
+	CloudFrontKeyPairID      string
+	CloudFrontPrivateKeyPath string
 	// AudioSignSecret signs audio URLs. Distinct from JWTSecret so either can
 	// be rotated without invalidating the other. MUST be set in production.
 	AudioSignSecret string
@@ -104,9 +106,11 @@ func Load() Config {
 		RedisAddr:    getenv("REDIS_ADDR", ""),
 		QueueWorkers: intEnv("QUEUE_WORKERS", 4),
 
-		MediaBaseURL:     getenv("MEDIA_BASE_URL", "/media"),
-		AudioSignSecret:  getenv("AUDIO_SIGN_SECRET", "dev-only-audio-secret"),
-		ElevenLabsAPIKey: os.Getenv("ELEVENLABS_API_KEY"),
+		MediaBaseURL:             getenv("MEDIA_BASE_URL", "/media"),
+		CloudFrontKeyPairID:      os.Getenv("CLOUDFRONT_KEY_PAIR_ID"),
+		CloudFrontPrivateKeyPath: os.Getenv("CLOUDFRONT_PRIVATE_KEY_PATH"),
+		AudioSignSecret:          getenv("AUDIO_SIGN_SECRET", "dev-only-audio-secret"),
+		ElevenLabsAPIKey:         os.Getenv("ELEVENLABS_API_KEY"),
 
 		StorageProvider: strings.ToLower(getenv("STORAGE_PROVIDER", "local")),
 		S3Bucket:        os.Getenv("S3_BUCKET"),
@@ -194,6 +198,12 @@ func (c Config) Validate() error {
 	}
 	if c.AudioSignSecret == "" || c.AudioSignSecret == "dev-only-audio-secret" {
 		return errors.New("AUDIO_SIGN_SECRET must be set to a non-default value in production")
+	}
+	if !strings.HasPrefix(c.MediaBaseURL, "https://") {
+		return errors.New("MEDIA_BASE_URL must be an absolute https CloudFront URL in production")
+	}
+	if c.CloudFrontKeyPairID == "" || c.CloudFrontPrivateKeyPath == "" {
+		return errors.New("CLOUDFRONT_KEY_PAIR_ID and CLOUDFRONT_PRIVATE_KEY_PATH are required in production")
 	}
 	if err := storage.ValidateProvider(&storage.StorageConfig{
 		Provider:      c.StorageProvider,

@@ -11,7 +11,6 @@ import (
 	"mime"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -43,11 +42,12 @@ type S3Presigner interface {
 
 // S3Storage implements ObjectStorage for Amazon S3 using the AWS SDK v2.
 type S3Storage struct {
-	client    S3API
-	presigner S3Presigner
-	bucket    string
-	region    string
-	cdnDomain string
+	client     S3API
+	presigner  S3Presigner
+	bucket     string
+	region     string
+	cdnDomain  string
+	cloudFront *cloudFrontSigner
 }
 
 // NewS3Storage creates a working S3 storage provider.
@@ -90,13 +90,14 @@ func NewS3Storage(cfg *StorageConfig) (ObjectStorage, error) {
 		})
 	}
 
+	cloudFront, err := newCloudFrontSigner(cfg.CDNDomain, cfg.CloudFrontKeyPairID, cfg.CloudFrontPrivateKeyPath)
+	if err != nil {
+		return nil, err
+	}
 	client := s3.NewFromConfig(awscfg, clientOpts...)
 	return &S3Storage{
-		client:    client,
-		presigner: s3.NewPresignClient(client),
-		bucket:    cfg.S3Bucket,
-		region:    cfg.S3Region,
-		cdnDomain: cfg.CDNDomain,
+		client: client, presigner: s3.NewPresignClient(client), bucket: cfg.S3Bucket,
+		region: cfg.S3Region, cdnDomain: cfg.CDNDomain, cloudFront: cloudFront,
 	}, nil
 }
 
@@ -171,6 +172,9 @@ func (s *S3Storage) GenerateSignedURL(ctx context.Context, key string, ttl time.
 	if ttl <= 0 {
 		ttl = 15 * time.Minute
 	}
+	if s.cloudFront != nil {
+		return s.cloudFront.sign(key, time.Now().Add(ttl))
+	}
 	res, err := s.presigner.PresignGetObject(ctx, &s3.GetObjectInput{
 		Bucket: aws.String(s.bucket),
 		Key:    aws.String(key),
@@ -179,20 +183,6 @@ func (s *S3Storage) GenerateSignedURL(ctx context.Context, key string, ttl time.
 	})
 	if err != nil {
 		return "", s3Error("sign_url", key, err)
-	}
-
-	if s.cdnDomain != "" {
-		if parsed, perr := url.Parse(res.URL); perr == nil {
-			cdnURL := s.cdnDomain
-			if !strings.HasPrefix(cdnURL, "http://") && !strings.HasPrefix(cdnURL, "https://") {
-				cdnURL = "https://" + cdnURL
-			}
-			if cdnParsed, cerr := url.Parse(cdnURL); cerr == nil {
-				parsed.Scheme = cdnParsed.Scheme
-				parsed.Host = cdnParsed.Host
-				return parsed.String(), nil
-			}
-		}
 	}
 
 	return res.URL, nil
