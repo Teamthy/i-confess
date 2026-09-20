@@ -587,6 +587,138 @@ void main() {
       // said, which the product rules forbid.
       expect(interests.explicit, isNot(contains('finance')));
     });
+
+    test('SessionItem copyWith preserves existing values unless overridden', () {
+      const item = SessionItem(
+        id: 'i1',
+        confessionId: 'c1',
+        title: 'Title',
+        status: 'QUEUED',
+      );
+      final updated = item.copyWith(status: 'PLAYING', position: 2);
+      expect(updated.id, 'i1');
+      expect(updated.confessionId, 'c1');
+      expect(updated.title, 'Title');
+      expect(updated.status, 'PLAYING');
+      expect(updated.position, 2);
+    });
+  });
+
+  group('session playback', () {
+    test('sessionQueue parses items, counts and progress', () async {
+      api.respond('/sessions/s-1/queue', 200, {
+        'session_id': 's-1',
+        'status': 'ACTIVE',
+        'items': [
+          {
+            'id': 'qi-1',
+            'confession_id': 'c-1',
+            'title': 'Peace',
+            'audio_url': '/media/p.mp3?sig=test',
+            'duration_seconds': 60,
+            'status': 'PLAYING',
+            'position': 0,
+          },
+          {
+            'id': 'qi-2',
+            'confession_id': 'c-2',
+            'title': 'Joy',
+            'audio_url': '/media/j.mp3?sig=test',
+            'duration_seconds': 90,
+            'status': 'QUEUED',
+            'position': 1,
+          },
+        ],
+        'counts': {'PLAYING': 1, 'QUEUED': 1, 'COMPLETED': 0},
+        'items_total': 2,
+        'items_completed': 0,
+        'progress': {
+          'session_id': 's-1',
+          'queue_item_id': 'qi-1',
+          'position_ms': 5000,
+          'completed_items': 0,
+          'last_updated_at': '2026-09-20T10:00:00Z',
+        },
+      });
+
+      final repo = ContentRepository(client, cache);
+      final loadable = await repo.sessionQueue('s-1');
+
+      final queue = (loadable as LoadLoaded<SessionQueueResponse>).value;
+      expect(queue.sessionId, 's-1');
+      expect(queue.status, 'ACTIVE');
+      expect(queue.items, hasLength(2));
+      expect(queue.items[0].isPlayable, isTrue);
+      expect(queue.counts['PLAYING'], 1);
+      expect(queue.itemsTotal, 2);
+      expect(queue.progress, isNotNull);
+      expect(queue.progress!.positionMs, 5000);
+    });
+
+    test('lifecycle calls start, pause, resume and interrupt', () async {
+      api.respond('/sessions/s-1/start', 200, {'id': 's-1', 'status': 'ACTIVE'});
+      api.respond('/sessions/s-1/pause', 200, {'id': 's-1', 'status': 'PAUSED'});
+      api.respond('/sessions/s-1/resume', 200, {'id': 's-1', 'status': 'ACTIVE'});
+      api.respond('/sessions/s-1/interrupt', 200, {'id': 's-1', 'status': 'INTERRUPTED'});
+
+      final repo = ContentRepository(client, cache);
+      final start = await repo.startSession('s-1');
+      expect((start as WriteSuccess<ListeningSession>).value.status, 'ACTIVE');
+
+      final pause = await repo.pauseSession('s-1');
+      expect((pause as WriteSuccess<ListeningSession>).value.status, 'PAUSED');
+
+      final resume = await repo.resumeSession('s-1');
+      expect((resume as WriteSuccess<ListeningSession>).value.status, 'ACTIVE');
+
+      final interrupt = await repo.interruptSession('s-1');
+      expect((interrupt as WriteSuccess<ListeningSession>).value.status, 'INTERRUPTED');
+    });
+
+    test('syncProgress posts progress payload and decodes response', () async {
+      api.respond('/sessions/s-1/progress', 200, {
+        'applied': true,
+        'progress': {
+          'session_id': 's-1',
+          'queue_item_id': 'qi-1',
+          'position_ms': 12000,
+          'last_updated_at': '2026-09-20T10:05:00Z',
+        },
+      });
+
+      final repo = ContentRepository(client, cache);
+      final result = await repo.syncProgress(
+        's-1',
+        positionMs: 12000,
+        queueItemId: 'qi-1',
+        itemStatus: 'PLAYING',
+        deviceId: 'dev-1',
+        lastUpdatedAt: '2026-09-20T10:05:00Z',
+      );
+
+      final res = (result as WriteSuccess<SyncProgressResponse>).value;
+      expect(res.applied, isTrue);
+      expect(res.progress.positionMs, 12000);
+
+      final sent = jsonDecode(api.lastBody!) as Map<String, dynamic>;
+      expect(sent['position_ms'], 12000);
+      expect(sent['queue_item_id'], 'qi-1');
+      expect(sent['item_status'], 'PLAYING');
+      expect(sent['device_id'], 'dev-1');
+      expect(sent['last_updated_at'], '2026-09-20T10:05:00Z');
+    });
+
+    test('skip and complete post to their respective endpoints', () async {
+      api.respond('/sessions/s-1/skip', 200, {'skipped': 'qi-1', 'advanced': true});
+      api.respond('/sessions/s-1/complete', 200, {'status': 'COMPLETED'});
+
+      final repo = ContentRepository(client, cache);
+      final skipRes = await repo.skipSessionItem('s-1', 'qi-1');
+      expect((skipRes as WriteSuccess<Map<String, dynamic>>).value['skipped'], 'qi-1');
+
+      final compRes = await repo.completeSession('s-1');
+      expect((compRes as WriteSuccess<Map<String, dynamic>>).value['status'], 'COMPLETED');
+    });
   });
 }
 

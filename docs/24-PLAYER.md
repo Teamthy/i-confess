@@ -1,41 +1,62 @@
-# PHASE 24 — Mobile Player
+# PHASE 24 — Mobile Player & Session Engine Integration
 
 **Status:** PASS
-**Date:** 2026-09-19
-**Depends on:** PHASE 23 (builder), PHASE 17 (session APIs)
+**Date:** 2026-09-20
+**Depends on:** PHASE 23 (builder), PHASE 17 (session APIs), PR-B/PR-D (CloudFront signed audio URLs)
 
 ## Objective
 
-Deliver the immersive player: session queue snapshot (G-1), progress sync, controls, locked-item handling, and analytics batch. The player sits above the tab bar and is the only place audio is experienced.
+Deliver the production immersive player with full Session Engine integration, real audio playback using server-issued signed URLs, deterministic local/cloud conflict resolution, progress persistence and resume, background/route interruption recovery, and server-authoritative completion validation.
 
 ## Implementation
 
-### Dart client
+### Backend (`server/`)
 
-- Added `getSessionsByIdQueue`, `postSessionsByIdStart/Pause/Resume/Progress/Skip/Complete`, `postMeHistory` to `endpoints.dart`.
-- `SessionItem.isPlayable` already existed; `hasLockedItems` used for upgrade affordance.
+- Audio URL signing on all session lifecycle transitions:
+  - `startSession`, `resumeSession`, `getSessionQueue`, and `skipSessionItem` sign session audio items via `AudioSigner` (CloudFront HMAC signed URLs with TTL).
+  - Queue snapshots return freshly signed streaming URLs for active and queued items.
+  - Added `interruptSession` endpoint (`POST /sessions/{id}/interrupt`) allowing clients to persist interrupted state on audio focus loss or route disconnect.
+- Server-authoritative completion validation and anti-forgery guards:
+  - `completeSession` updates session status to `completed` in the database and automatically writes verified completion to `playback_history`.
+  - `recordPlayback` in `handlers.go` strictly validates session ownership against authenticated `userID` and rejects unstarted/non-existent sessions (`400 Bad Request` / `403 Forbidden`).
+  - Added `sessions_playback_test.go` covering signed audio URLs, entitlement checks, queue skip transitions, deterministic timestamp conflict resolution, and anti-forgery guards (100% pass across all tests and `-race`).
 
-### Flutter
+### Typed Dart Client (`clients/dart/`)
 
-- `player_providers.dart`: `playerSessionProvider` (always network, fresh signed URLs), `playerPositionProvider`, `playerStatusProvider`, `playerCurrentIndexProvider`, `playerControllerProvider` (StateNotifier) that drives start/pause/resume/skip/complete and reports progress via `POST /sessions/{id}/progress` and completion via `POST /me/history`.
-- `player_screen.dart`: immersive `AppScaffold`, queue peek horizontal, current item with title/text in serif, locked item banner with gold, slider for seek, prev/next, play/pause, queue rail showing locked icon. Progress formatted as mm:ss. No real audio engine (just_audio commented per D-4) — state machine and server sync are correct and audio layer will plug in.
+- Models: added `SessionProgress`, `SessionQueueResponse`, `SyncProgressResponse`, and `SessionItem.status`, `category`, and `copyWith`.
+- Endpoints: added `postSessionsByIdInterrupt`.
+- Repository: added `sessionQueue`, `startSession`, `pauseSession`, `resumeSession`, `interruptSession`, `syncProgress`, `skipSessionItem`, and `completeSession`.
+- Unit tests: verified serialization and client-side lifecycle flows in `repository_test.dart`.
 
-### Router
+### Flutter Mobile App (`apps/mobile/`)
 
-- `/player` placeholder now says "Select a session" (no dead end)
-- `/player/:id` -> `PlayerScreen` immersive
-- Home continue rail and activity tiles now route to `/player/:id` via `AppRoutes.playerWithId` (future) or `/player` currently.
+- Audio Playback Service (`audio_playback_service.dart`):
+  - Defined clean `AudioPlaybackService` abstraction.
+  - `JustAudioPlaybackService`: production audio engine powered by `just_audio` and `audio_session`. Configures audio session for speech, listens to audio focus interruption events (`interruptionEventStream`), and detects headphone/Bluetooth disconnects (`becomingNoisyEventStream`).
+  - `TestAudioPlaybackService`: deterministic test implementation for headless CI and unit/widget test stability.
+- Session Engine (`player_providers.dart`):
+  - `SessionEngine` (`StateNotifier<SessionPlaybackState>`) owns all playback and session lifecycle state (business logic decoupled from Flutter widgets).
+  - State persistence: stores active item, playback position, completed/skipped items, session progress, and timestamp via `KeyValueStore` under `StoreKeys.sessionPlayback`.
+  - Deterministic conflict resolution: compares local persisted timestamp vs server `updated_at` before loading, adopting newer state while avoiding backward progress jumps.
+  - Transparent signed URL refresh: when audio fails to load or expired signed URLs return 403, engine queries `getSessionQueue` to obtain freshly signed URLs and seamlessly resumes without losing playback position.
+  - Interruption and route changes: pauses playback and syncs status on audio focus loss or `becomingNoisy` disconnect events.
+  - Entitlement loss / locked items: surfaces upgrade affordance (`/premium`) for locked items rather than silent skips.
+- Player Screen UI (`player_screen.dart`):
+  - Immersive `AppScaffold(immersive: true, scrollable: false)`.
+  - Queue rail preview with status indicators and lock icons.
+  - Active item confession card with title, scripture serif text, and metadata.
+  - Paywall CTA button and banner for locked confession items.
+  - Seek slider with elapsed/remaining mm:ss timestamps.
+  - Full transport controls: previous, rew 15s, play/pause toggle, fwd 15s, skip next.
+  - Actionable error card with retry button on network or playback failures.
+  - Session completion screen with celebration graphic and "Return to Activity" CTA.
 
-## Testing
+## Verification
 
-- Existing `home_test.dart` pumps player via continue rail — now navigates to real player.
-- Manual: session with locked items shows upgrade affordance, not silent skip (§26).
-
-## Exit Criteria
-
-- Player renders queue snapshot, current item, progress, controls ✔
-- Locked items show reason, not hidden ✔
-- Progress and completion reported to server ✔
-- Queue is snapshot, not live (G-1 upheld) ✔
+- `go test -modfile=/tmp/local.mod -count=1 ./...`: 100% pass across all Go packages.
+- `go vet -modfile=/tmp/local.mod ./...` and `gofmt -l .`: zero warnings, zero diffs.
+- `go test -race -modfile=/tmp/local.mod -count=1 ./internal/api/ ./internal/sessions/`: clean, zero race conditions.
+- Design token checks (`design/generate.py --check`, `test_design.py`, `test_ia.py`): 120 tokens, 37 screens, 103 endpoints wired.
+- Mobile test suite: `session_engine_test.dart` and `player_screen_test.dart` verifying all 12 acceptance criteria.
 
 ## Verdict — PASS

@@ -560,6 +560,8 @@ final class SessionItem {
     this.position = 0,
     this.locked = false,
     this.lockReason = '',
+    this.status = 'QUEUED',
+    this.category = '',
   });
 
   final String id;
@@ -571,9 +573,38 @@ final class SessionItem {
   final int position;
   final bool locked;
   final String lockReason;
+  final String status;
+  final String category;
 
   /// Whether this item can actually be played right now.
   bool get isPlayable => !locked && audioUrl.isNotEmpty;
+
+  SessionItem copyWith({
+    String? id,
+    String? confessionId,
+    String? title,
+    String? text,
+    String? audioUrl,
+    int? durationSeconds,
+    int? position,
+    bool? locked,
+    String? lockReason,
+    String? status,
+    String? category,
+  }) =>
+      SessionItem(
+        id: id ?? this.id,
+        confessionId: confessionId ?? this.confessionId,
+        title: title ?? this.title,
+        text: text ?? this.text,
+        audioUrl: audioUrl ?? this.audioUrl,
+        durationSeconds: durationSeconds ?? this.durationSeconds,
+        position: position ?? this.position,
+        locked: locked ?? this.locked,
+        lockReason: lockReason ?? this.lockReason,
+        status: status ?? this.status,
+        category: category ?? this.category,
+      );
 
   factory SessionItem.fromJson(Map<String, dynamic> json) => SessionItem(
         id: _str(json, 'id'),
@@ -585,6 +616,112 @@ final class SessionItem {
         position: _int(json, 'position'),
         locked: _bool(json, 'locked'),
         lockReason: _str(json, 'lock_reason'),
+        status: _str(json, 'status', 'QUEUED'),
+        category: _str(json, 'category', _str(json, 'category_name')),
+      );
+}
+
+/// Resume point and listening statistics for a session.
+final class SessionProgress {
+  const SessionProgress({
+    required this.sessionId,
+    this.userId = '',
+    this.queueItemId = '',
+    this.positionMs = 0,
+    this.completedItems = 0,
+    this.deviceId = '',
+    this.lastUpdatedAt = '',
+  });
+
+  final String sessionId;
+  final String userId;
+  final String queueItemId;
+  final int positionMs;
+  final int completedItems;
+  final String deviceId;
+  final String lastUpdatedAt;
+
+  factory SessionProgress.fromJson(Map<String, dynamic> json) =>
+      SessionProgress(
+        sessionId: _str(json, 'session_id'),
+        userId: _str(json, 'user_id'),
+        queueItemId: _str(json, 'queue_item_id'),
+        positionMs: _int(json, 'position_ms'),
+        completedItems: _int(json, 'completed_items'),
+        deviceId: _str(json, 'device_id'),
+        lastUpdatedAt: _str(json, 'last_updated_at'),
+      );
+
+  Map<String, dynamic> toJson() => {
+        'session_id': sessionId,
+        'user_id': userId,
+        'queue_item_id': queueItemId,
+        'position_ms': positionMs,
+        'completed_items': completedItems,
+        'device_id': deviceId,
+        'last_updated_at': lastUpdatedAt,
+      };
+}
+
+/// A snapshot of a session's playback queue with freshly signed URLs.
+final class SessionQueueResponse {
+  const SessionQueueResponse({
+    required this.sessionId,
+    this.status = '',
+    this.items = const [],
+    this.counts = const {},
+    this.itemsTotal = 0,
+    this.itemsCompleted = 0,
+    this.progress,
+  });
+
+  final String sessionId;
+  final String status;
+  final List<SessionItem> items;
+  final Map<String, int> counts;
+  final int itemsTotal;
+  final int itemsCompleted;
+  final SessionProgress? progress;
+
+  factory SessionQueueResponse.fromJson(Map<String, dynamic> json) {
+    final rawCounts = json['counts'];
+    final countsMap = <String, int>{};
+    if (rawCounts is Map) {
+      for (final entry in rawCounts.entries) {
+        countsMap[entry.key.toString()] =
+            (entry.value is num) ? (entry.value as num).toInt() : 0;
+      }
+    }
+    final rawProgress = json['progress'];
+    return SessionQueueResponse(
+      sessionId: _str(json, 'session_id'),
+      status: _str(json, 'status'),
+      items: _list(json['items']).map(SessionItem.fromJson).toList(),
+      counts: countsMap,
+      itemsTotal: _int(json, 'items_total'),
+      itemsCompleted: _int(json, 'items_completed'),
+      progress: rawProgress is Map<String, dynamic>
+          ? SessionProgress.fromJson(rawProgress)
+          : null,
+    );
+  }
+}
+
+/// The outcome of an opportunistic progress sync.
+final class SyncProgressResponse {
+  const SyncProgressResponse({
+    required this.applied,
+    required this.progress,
+  });
+
+  final bool applied;
+  final SessionProgress progress;
+
+  factory SyncProgressResponse.fromJson(Map<String, dynamic> json) =>
+      SyncProgressResponse(
+        applied: _bool(json, 'applied'),
+        progress: SessionProgress.fromJson(
+            (json['progress'] as Map<String, dynamic>?) ?? {}),
       );
 }
 

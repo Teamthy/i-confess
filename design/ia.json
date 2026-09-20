@@ -157,7 +157,7 @@
       "title": "Session",
       "depth": 1,
       "parents": ["confess/create", "home", "activity", "activity/session", "template/detail", "activity/schedule"],
-      "endpoints": ["GET /sessions/{id}", "GET /sessions/{id}/queue", "POST /sessions/{id}/start", "POST /sessions/{id}/pause", "POST /sessions/{id}/resume", "POST /sessions/{id}/progress", "POST /sessions/{id}/skip", "POST /sessions/{id}/complete", "POST /analytics/batch"],
+      "endpoints": ["GET /sessions/{id}", "GET /sessions/{id}/queue", "POST /sessions/{id}/start", "POST /sessions/{id}/pause", "POST /sessions/{id}/resume", "POST /sessions/{id}/interrupt", "POST /sessions/{id}/progress", "POST /sessions/{id}/skip", "POST /sessions/{id}/complete", "POST /analytics/batch"],
       "notes": "Full screen, above the tab bar at z-index player. The queue is a snapshot and must not change under the user mid-session - G-1. Progress syncs so a kill does not lose the session."
     },
     {
