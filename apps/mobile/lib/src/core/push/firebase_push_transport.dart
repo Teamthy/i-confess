@@ -33,7 +33,7 @@ class FirebasePushTransport implements PushTransport {
 
   final _tokens = StreamController<String>.broadcast();
   final _pendingTaps = <PushTap>[];
-  late final _opened = StreamController<PushTap>.broadcast(onListen: () {
+  late final StreamController<PushTap> _opened = StreamController<PushTap>.broadcast(onListen: () {
     for (final tap in _pendingTaps) { _opened.add(tap); }
     _pendingTaps.clear();
   });
