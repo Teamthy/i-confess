@@ -39,11 +39,34 @@ type Target struct {
 	Platform string
 }
 
+// Queue defers a delivery to something that outlives this process.
+//
+// The sweep is the wrong place to talk to APNs. A provider call takes as long
+// as it takes, the sweep runs every minute on a ticker, and a delivery that was
+// handed to the network when the process was restarted is gone with it. With a
+// queue installed the sweep's only job is to decide *who* is due; retries,
+// backoff and dead-lettering belong to the queue, which is what production runs.
+//
+// The interface is deliberately one method wide and names no job type: the
+// adapter supplies that, so this package stays independent of how the queue
+// names its work.
+type Queue interface {
+	// EnqueueNotification queues one delivery. The dedupe key is the
+	// occurrence and the device, so a repeated enqueue of the same reminder
+	// to the same phone is a no-op rather than a second notification.
+	EnqueueNotification(ctx context.Context, payload map[string]any, dedupeKey string) error
+}
+
 // Dispatcher runs the schedule sweep.
 type Dispatcher struct {
 	store  Store
 	sender push.Sender
 	Now    func() time.Time
+
+	// Queue, when set, takes ownership of delivery. Sender is then unused by
+	// the sweep - it stays for the inline path, which is what development and
+	// tests run on, where a queue would only hide the notification.
+	Queue Queue
 
 	// lastSweep bounds the window each run examines.
 	lastSweep time.Time
@@ -123,10 +146,19 @@ func (d *Dispatcher) Sweep(ctx context.Context) (Report, error) {
 			continue
 		}
 
+		// "queued" rather than "sent" when a queue owns delivery: the
+		// occurrence is handled - the queue will not be asked for it again -
+		// but nobody has reached a phone yet, and claiming otherwise would
+		// make the delivery log useless for the one question it is opened to
+		// answer: did this reminder arrive?
+		status := "sent"
+		if d.Queue != nil {
+			status = "queued"
+		}
 		sent, detail := d.deliver(ctx, s, key)
 		if sent > 0 {
 			rep.Sent++
-			_ = d.store.MarkDelivery(ctx, s.ID, key, "sent", detail)
+			_ = d.store.MarkDelivery(ctx, s.ID, key, status, detail)
 		} else {
 			rep.Failed++
 			_ = d.store.MarkDelivery(ctx, s.ID, key, "failed", detail)
@@ -154,23 +186,13 @@ func (d *Dispatcher) deliver(ctx context.Context, s Schedule, key string) (sent 
 		minutes = 1
 	}
 
+	if d.Queue != nil {
+		return d.enqueue(ctx, s, key, targets, label, minutes)
+	}
+
 	lastErr := ""
 	for _, t := range targets {
-		n := push.Notification{
-			Token:    t.Token,
-			Platform: push.Platform(t.Platform),
-			Title:    label,
-			Body:     "Your " + itoa(minutes) + "-minute session is ready.",
-			Data: map[string]string{
-				// A deep link so tapping the notification opens the session
-				// rather than the home screen.
-				"deeplink":    "iconfess://schedules/" + s.ID + "/start",
-				"schedule_id": s.ID,
-			},
-			// Collapse on the occurrence: if yesterday's reminder is still
-			// undelivered, today's replaces it rather than stacking.
-			CollapseKey: "sched-" + s.ID,
-		}
+		n := notificationFor(s, t, label, minutes)
 
 		err := d.sender.Send(ctx, n)
 		switch {
@@ -192,6 +214,72 @@ func (d *Dispatcher) deliver(ctx context.Context, s Schedule, key string) (sent 
 		return sent, "delivered to " + itoa(sent) + " device(s)"
 	}
 	return 0, lastErr
+}
+
+// notificationFor builds the message a device receives.
+//
+// One place, so a queued reminder and an inline one are the same notification:
+// the body, the deep link and the collapse key cannot drift apart depending on
+// which path a deployment happens to run.
+func notificationFor(s Schedule, t Target, label string, minutes int) push.Notification {
+	return push.Notification{
+		Token:    t.Token,
+		Platform: push.Platform(t.Platform),
+		Title:    label,
+		Body:     "Your " + itoa(minutes) + "-minute session is ready.",
+		Data: map[string]string{
+			// A deep link so tapping the notification opens the session
+			// rather than the home screen.
+			"deeplink":    "iconfess://schedules/" + s.ID + "/start",
+			"schedule_id": s.ID,
+		},
+		// Collapse on the occurrence: if yesterday's reminder is still
+		// undelivered, today's replaces it rather than stacking.
+		CollapseKey: "sched-" + s.ID,
+	}
+}
+
+// enqueue hands one delivery per device to the queue.
+//
+// The payload carries user_id and device_id as well as the message, because
+// token lifecycle moved with the send: the component that learns a provider has
+// rejected a token is now the queue handler, so it is the one that has to clear
+// it. An enqueue that loses a dedupe race is not an error - the delivery it
+// wanted is already queued, which is the outcome it asked for.
+func (d *Dispatcher) enqueue(ctx context.Context, s Schedule, occurrence string, targets []Target,
+	label string, minutes int) (queued int, detail string) {
+	var firstErr string
+	for _, t := range targets {
+		n := notificationFor(s, t, label, minutes)
+		payload := map[string]any{
+			"token":     n.Token,
+			"platform":  string(n.Platform),
+			"title":     n.Title,
+			"body":      n.Body,
+			"data":      n.Data,
+			"user_id":   s.UserID,
+			"device_id": t.DeviceID,
+		}
+		// One reminder per occurrence per device. The occurrence key is in the
+		// dedupe key because without it tomorrow's 6am would be swallowed as a
+		// duplicate of today's.
+		dedupe := "sched:" + s.ID + ":" + occurrence + ":" + t.DeviceID
+		if err := d.Queue.EnqueueNotification(ctx, payload, dedupe); err != nil {
+			log.Printf("scheduler: enqueue failed for %s@%s device=%s: %v", s.ID, occurrence, t.DeviceID, err)
+			if firstErr == "" {
+				firstErr = err.Error()
+			}
+			continue
+		}
+		queued++
+	}
+	if queued > 0 {
+		return queued, "queued to " + itoa(queued) + " device(s)"
+	}
+	if firstErr == "" {
+		firstErr = "nothing to queue"
+	}
+	return 0, firstErr
 }
 
 func itoa(n int) string {

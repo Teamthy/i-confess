@@ -10,6 +10,7 @@ import '../../core/theme/tokens.dart';
 import '../../core/widgets/screen.dart';
 import '../../core/widgets/states.dart';
 import 'confession_providers.dart';
+import '../../core/di/providers.dart';
 
 /// The confession experience — where a listener reads, reflects and acts.
 ///

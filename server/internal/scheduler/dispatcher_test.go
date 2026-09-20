@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync"
 	"testing"
@@ -70,6 +71,13 @@ func (f *fakeStore) RecordPushFailure(_ context.Context, userID, deviceID string
 	defer f.mu.Unlock()
 	f.failures = append(f.failures, userID+"/"+deviceID)
 	return nil
+}
+
+// status reports what was recorded for a schedule occurrence.
+func (f *fakeStore) status(scheduleID, key string) string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.marks[scheduleID+"@"+key]
 }
 
 func (f *fakeStore) NotificationsEnabled(_ context.Context, userID string) (bool, error) {
@@ -305,4 +313,171 @@ func (s *selectiveSender) Send(_ context.Context, n push.Notification) error {
 		return push.InvalidToken("gone")
 	}
 	return nil
+}
+
+// ---------------------------------------------------------------------------
+// Queued delivery (IC-012)
+// ---------------------------------------------------------------------------
+//
+// The sweep decides who is due; the queue performs the send. These tests pin
+// the two properties that make handing delivery off safe: the sweep stops
+// talking to the provider, and every device gets exactly one queued job carrying
+// the same message the inline path would have sent.
+
+// fakeQueue records what the sweep asked to be delivered.
+type fakeQueue struct {
+	mu      sync.Mutex
+	payload []map[string]any
+	keys    []string
+	seen    map[string]bool
+	err     error
+}
+
+func newFakeQueue() *fakeQueue { return &fakeQueue{seen: map[string]bool{}} }
+
+func (q *fakeQueue) EnqueueNotification(_ context.Context, payload map[string]any, dedupeKey string) error {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if q.err != nil {
+		return q.err
+	}
+	// Mirror the queue's own contract: a dedupe key already present is not a
+	// second delivery. The real queue reports Jobs.ErrDuplicateJob and the
+	// adapter turns that into success.
+	if q.seen[dedupeKey] {
+		return nil
+	}
+	q.seen[dedupeKey] = true
+	q.payload = append(q.payload, payload)
+	q.keys = append(q.keys, dedupeKey)
+	return nil
+}
+
+func (q *fakeQueue) count() int {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return len(q.payload)
+}
+
+func TestQueuedSweepDoesNotContactTheProvider(t *testing.T) {
+	d, _, sender, _ := setup(t)
+	q := newFakeQueue()
+	d.Queue = q
+
+	rep, err := d.Sweep(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Sent != 1 {
+		t.Fatalf("queued delivery not counted: %+v", rep)
+	}
+	if n := len(sender.Sent()); n != 0 {
+		t.Fatalf("the sweep sent %d notification(s) directly; the queue owns delivery now", n)
+	}
+	if q.count() != 1 {
+		t.Fatalf("queued %d deliveries, want 1", q.count())
+	}
+}
+
+// The recorded status must not claim a delivery that has not happened.
+func TestQueuedOccurrenceIsRecordedAsQueued(t *testing.T) {
+	d, store, _, fire := setup(t)
+	d.Queue = newFakeQueue()
+
+	if _, err := d.Sweep(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	key, ok := Due(store.schedules[0], fire.Add(-time.Minute).UTC(), fire.UTC())
+	if !ok {
+		t.Fatal("the fixture schedule is not due, so this test asserts nothing")
+	}
+	if got := store.status(store.schedules[0].ID, key); got != "queued" {
+		t.Fatalf("delivery status = %q, want \"queued\"", got)
+	}
+}
+
+// The payload is the contract with the worker: it carries everything the
+// provider call needs, and the two ids that let the handler clear a dead token.
+func TestQueuedPayloadCarriesTheSameMessageAsInlineDelivery(t *testing.T) {
+	d, store, _, _ := setup(t)
+	q := newFakeQueue()
+	d.Queue = q
+	store.targets["u1"] = []Target{
+		{DeviceID: "phone", Token: "t-ios", Platform: "ios"},
+		{DeviceID: "tablet", Token: "t-android", Platform: "android"},
+	}
+
+	if _, err := d.Sweep(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if q.count() != 2 {
+		t.Fatalf("queued %d deliveries, want one per device", q.count())
+	}
+
+	for i, payload := range q.payload {
+		if payload["token"] == "" || payload["platform"] == "" {
+			t.Fatalf("payload %d has no destination: %+v", i, payload)
+		}
+		if payload["title"] == "" || payload["body"] == "" {
+			t.Fatalf("payload %d has no message: %+v", i, payload)
+		}
+		data, _ := payload["data"].(map[string]string)
+		if !strings.Contains(data["deeplink"], "/start") {
+			t.Fatalf("payload %d lost the deep link: %+v", i, data)
+		}
+		if payload["user_id"] != "u1" || payload["device_id"] == "" {
+			t.Fatalf("payload %d cannot be attributed to a device: %+v", i, payload)
+		}
+	}
+}
+
+// Tomorrow's reminder is not a duplicate of today's.
+func TestQueuedDedupeKeyIsPerOccurrence(t *testing.T) {
+	d, store, _, fire := setup(t)
+	q := newFakeQueue()
+	d.Queue = q
+
+	store.schedules[0].Time = "06:00"
+	store.schedules[0].DaysOfWeek = []int{0, 1, 2, 3, 4, 5, 6}
+
+	if _, err := d.Sweep(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	// The same schedule, the next morning.
+	next := fire.Add(24 * time.Hour)
+	d.Now = func() time.Time { return next.UTC() }
+	d.lastSweep = fire.Add(time.Minute).UTC()
+	if _, err := d.Sweep(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	if q.count() != 2 {
+		t.Fatalf("queued %d deliveries across two mornings, want 2", q.count())
+	}
+	if q.keys[0] == q.keys[1] {
+		t.Fatalf("both occurrences share the dedupe key %q, so the second reminder would be swallowed", q.keys[0])
+	}
+}
+
+// A queue that is down is a failed delivery, not a silent one.
+func TestQueueFailureIsReportedAsFailed(t *testing.T) {
+	d, store, _, fire := setup(t)
+	q := newFakeQueue()
+	q.err = errors.New("queue unavailable")
+	d.Queue = q
+
+	rep, err := d.Sweep(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Failed != 1 {
+		t.Fatalf("a queue failure was not reported: %+v", rep)
+	}
+
+	key, _ := Due(store.schedules[0], fire.Add(-time.Minute).UTC(), fire.UTC())
+	if got := store.status(store.schedules[0].ID, key); got != "failed" {
+		t.Fatalf("delivery status = %q, want \"failed\"", got)
+	}
 }

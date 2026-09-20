@@ -11,6 +11,7 @@ import '../../core/theme/tokens.dart';
 import '../../core/widgets/screen.dart';
 import 'builder_providers.dart';
 import 'session_builder.dart';
+import 'confess_providers.dart';
 
 /// The builder's last step: review, and the only place a session is created
 /// (§12, confess/create).

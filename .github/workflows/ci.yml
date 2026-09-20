@@ -121,3 +121,63 @@ jobs:
             echo "$files"
             exit 1
           fi
+
+  # The Dart and Flutter clients have no job here before this change, and their
+  # fifteen test files had never been executed by anything - not CI, not a
+  # release, not the audit beyond reading them. Adding the jobs is what makes
+  # "the tests pass" mean something for the mobile app.
+  #
+  # These run on GitHub's runners because pub.dev is unreachable from the
+  # development sandbox: dependencies can be resolved here and nowhere else, so
+  # this job IS the verification for anything under apps/ and clients/.
+  mobile:
+    name: Flutter analyze & test (apps/mobile)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/mobile
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Resolve dependencies
+        run: flutter pub get
+
+      # --no-fatal-infos on purpose. Lint infos are style, and this package has
+      # never been analyzed in CI; failing on the pre-existing ones would make
+      # the job red for reasons that have nothing to do with the change under
+      # review. Errors and warnings still fail it, which is where the real
+      # findings live - a missing import compiles nowhere.
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos
+
+      - name: Test
+        run: flutter test
+
+  dart-client:
+    name: Dart test (clients/dart)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: clients/dart
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Dart
+        uses: dart-lang/setup-dart@v1
+
+      - name: Resolve dependencies
+        run: dart pub get
+
+      - name: Analyze
+        run: dart analyze
+
+      - name: Test
+        run: dart test

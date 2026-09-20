@@ -3,6 +3,7 @@ import 'package:iconfess_api/iconfess_api.dart';
 
 import '../../core/di/providers.dart';
 import 'session_builder.dart';
+import 'confess_providers.dart';
 
 /// The builder's steps after category selection: how long, which voice,
 /// and the review that creates the session (§12 — the core loop
