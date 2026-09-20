@@ -304,6 +304,43 @@ for symbol, module in [
 
 
 # ---------------------------------------------------------------------------
+# Third-party API surface
+#
+# This script derives its expectations from first-party source, so it is blind
+# to the shape of packages it cannot see. That blindness shipped a real compile
+# error once: `AsyncValue.valueOrNull` does not exist in the pinned Riverpod,
+# and CI caught it only after a full Flutter build. Rather than model Riverpod,
+# hold the codebase to the one spelling it already uses everywhere — a
+# convention check, which is enforceable without the package.
+# ---------------------------------------------------------------------------
+
+feature_dart = sorted((MOBILE / "src/features").rglob("*.dart"))
+assert feature_dart, "no feature sources found; the scan path is wrong"
+offenders = []
+for path in feature_dart:
+    for lineno, line in enumerate(read(path).splitlines(), 1):
+        # `ref.watch(x).valueOrNull` / `async.valueOrNull` unwraps an
+        # AsyncValue directly. The established spelling is `.asData?.value`.
+        # A `.valueOrNull` reached THROUGH `.asData?.value` is the Loadable's
+        # own, and correct.
+        for m in re.finditer(r"(\w+)\.valueOrNull", line):
+            recv = m.group(1)
+            before = line[: m.start()]
+            if recv == "value" and before.rstrip().endswith("asData?."):
+                continue
+            if recv == "value" and "asData!" in before:
+                continue
+            if recv in {"async"} or re.search(r"ref\.watch\([^)]*\)$", before):
+                offenders.append(f"{path.name}:{lineno}")
+
+check(
+    "AsyncValue is unwrapped with .asData?.value, not .valueOrNull",
+    not offenders,
+    f"AsyncValue has no valueOrNull in the pinned Riverpod: {offenders}",
+)
+
+
+# ---------------------------------------------------------------------------
 # Widget test: keys it drives must be keys the screen renders
 # ---------------------------------------------------------------------------
 
