@@ -971,8 +971,8 @@ final class CommunityRepository extends Repository {
     try {
       final json = await api.getCommunityFeed();
       final posts = (json['posts'] as List? ?? const [])
-          .whereType<Map>()
-          .map((e) => Map<String, dynamic>.from(e as Map))
+          .whereType<Map<String, dynamic>>()
+          .map((e) => Map<String, dynamic>.from(e))
           .toList(growable: false);
       return Loadable.loaded(posts);
     } on ApiException catch (e) {
