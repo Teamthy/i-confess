@@ -437,6 +437,19 @@ func (s *ModerationStore) ModerationQueue(ctx context.Context) (models.Moderatio
 	return q, nil
 }
 
+// ErrReviewRequired is returned when a confession is moved out of
+// theological_review without a recorded "reviewed" outcome (PHASE 44). Review
+// carries the outcome the reviewer recorded, so the caller can say whether the
+// text was sent back or never looked at.
+type ErrReviewRequired struct {
+	Review string
+}
+
+func (e *ErrReviewRequired) Error() string {
+	return fmt.Sprintf("theological review must be recorded as %s before audio production; it is %q",
+		content.ReviewReviewed, e.Review)
+}
+
 // ---------- The §75 audio QA gate ----------
 
 // ErrQAGateState is returned when the QA gate is invoked on a confession that
@@ -563,8 +576,9 @@ func (s *ModerationStore) UpdateConfessionStatusAudited(ctx context.Context, id,
 	}
 	defer tx.Rollback()
 
+	var review string
 	err = tx.QueryRowContext(ctx,
-		`SELECT status FROM confessions WHERE id = ? FOR UPDATE`, id).Scan(&from)
+		`SELECT status, theological_review_status FROM confessions WHERE id = ? FOR UPDATE`, id).Scan(&from, &review)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", ErrNotFound
 	}
@@ -574,6 +588,16 @@ func (s *ModerationStore) UpdateConfessionStatusAudited(ctx context.Context, id,
 	if from != status {
 		if err := content.Transition(from, status); err != nil {
 			return from, err
+		}
+		// Directive §22 makes theological review mandatory before
+		// production. The edge out of theological_review is therefore
+		// gated on the reviewer's recorded outcome, the way audio_qa →
+		// approved is gated on the §75 checklist: a content admin cannot
+		// move text into the studio that no reviewer has passed.
+		if from == string(content.StatusTheologicalReview) &&
+			status == string(content.StatusAudioProduction) &&
+			review != string(content.ReviewReviewed) {
+			return from, &ErrReviewRequired{Review: review}
 		}
 	}
 

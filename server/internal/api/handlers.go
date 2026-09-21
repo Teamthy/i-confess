@@ -929,14 +929,10 @@ func (h *Handler) adminSetUserStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 // Helper functions
-func isValidAdminRole(role string) bool {
-	switch role {
-	case auth.RoleSuperAdmin, auth.RoleContentAdmin, auth.RoleAudioProducer,
-		auth.RoleTheologicalRev, auth.RoleSupportAdmin, auth.RoleAnalyticsAdmin:
-		return true
-	}
-	return false
-}
+// isValidAdminRole defers to the RBAC matrix. The inline list it replaced
+// omitted voice_manager, so the highest-consequence role could be held (the
+// seed grants it) but never granted through the API.
+func isValidAdminRole(role string) bool { return auth.ValidRole(role) }
 
 func isValidUserStatus(status string) bool {
 	switch status {

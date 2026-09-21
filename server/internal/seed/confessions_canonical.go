@@ -1,6 +1,9 @@
 package seed
 
-import "github.com/Teamthy/i-confess/internal/models"
+import (
+	"github.com/Teamthy/i-confess/internal/content"
+	"github.com/Teamthy/i-confess/internal/models"
+)
 
 // This file is the canonical confession corpus for I CONFESS.
 //
@@ -35,9 +38,9 @@ import "github.com/Teamthy/i-confess/internal/models"
 const CanonicalAuthor = "Canonical corpus"
 
 const (
-	TheologicalReviewUnreviewed  = "unreviewed"
-	TheologicalReviewReviewed    = "reviewed"
-	TheologicalReviewNeedsWork   = "needs_revision"
+	TheologicalReviewUnreviewed  = string(content.ReviewUnreviewed)
+	TheologicalReviewReviewed    = string(content.ReviewReviewed)
+	TheologicalReviewNeedsWork   = string(content.ReviewNeedsRevision)
 	CanonicalTheologicalReviewer = "I CONFESS editorial review"
 )
 

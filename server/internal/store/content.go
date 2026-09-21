@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/Teamthy/i-confess/internal/db"
@@ -343,3 +344,51 @@ func placeholders(n int) string {
 	}
 	return out
 }
+
+// ---------- Theological review (directive §22) ----------
+
+// TheologicalReview reads the review record on a confession. PHASE 40 added
+// the columns; until PHASE 44 only the seed wrote them and nothing read them
+// back, so a reviewer's outcome was invisible to the people who act on it.
+func (s *ContentStore) TheologicalReview(ctx context.Context, id string) (*models.TheologicalReview, error) {
+	var out models.TheologicalReview
+	err := s.db.QueryRowContext(ctx,
+		`SELECT id, status, theological_review_status, COALESCE(theological_reviewer,''),
+		        COALESCE(theological_reviewed_at,''), COALESCE(theological_review_notes,'')
+		   FROM confessions WHERE id = ? AND deleted_at IS NULL`, id).
+		Scan(&out.ConfessionID, &out.LifecycleStatus, &out.Status, &out.Reviewer, &out.ReviewedAt, &out.Notes)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// RecordTheologicalReview writes a reviewer's outcome. status must be one of
+// content.ReviewOutcomes(); "unreviewed" cannot be written back because a
+// review that happened is a fact. The row's version advances so a concurrent
+// editor sees the change.
+func (s *ContentStore) RecordTheologicalReview(ctx context.Context, id, status, reviewer, notes string) (*models.TheologicalReview, error) {
+	if !content.ValidReviewOutcome(status) {
+		return nil, fmt.Errorf("%w: %q is not a review outcome", ErrInvalidReview, status)
+	}
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE confessions
+		    SET theological_review_status = ?, theological_reviewer = ?,
+		        theological_reviewed_at = ?, theological_review_notes = ?,
+		        updated_at = ?, row_version = row_version + 1
+		  WHERE id = ? AND deleted_at IS NULL`,
+		status, nullIfEmpty(reviewer), now(), nullIfEmpty(notes), now(), id)
+	if err != nil {
+		return nil, err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return nil, ErrNotFound
+	}
+	return s.TheologicalReview(ctx, id)
+}
+
+// ErrInvalidReview is returned for an outcome outside content.ReviewOutcomes().
+var ErrInvalidReview = errors.New("invalid theological review outcome")

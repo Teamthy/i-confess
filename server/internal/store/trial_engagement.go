@@ -322,3 +322,71 @@ func (s *AnalyticsStore) Recent(ctx context.Context, userID string, limit int) (
 	}
 	return out, rows.Err()
 }
+
+// AnalyticsOverview is the platform-wide view the admin analytics module
+// renders (PHASE 44). Every number is a count over rows that already exist;
+// nothing is sampled or estimated.
+type AnalyticsOverview struct {
+	Since string `json:"since"`
+	Until string `json:"until"`
+	// Events counts analytics_events by name inside the window.
+	Events map[string]int `json:"events"`
+	// TrialStates counts trials by state, all time: a funnel is read against
+	// its whole population, not a window.
+	TrialStates map[string]int `json:"trial_states"`
+	// Subscriptions counts subscription rows by status, all time.
+	Subscriptions map[string]int `json:"subscriptions"`
+	// Sessions inside the window: created, completed, and the distinct
+	// listeners who created one.
+	SessionsCreated   int `json:"sessions_created"`
+	SessionsCompleted int `json:"sessions_completed"`
+	ActiveListeners   int `json:"active_listeners"`
+	// NewAccounts is users created inside the window.
+	NewAccounts int `json:"new_accounts"`
+}
+
+// Overview computes the platform-wide analytics for [since, until].
+func (s *AnalyticsStore) Overview(ctx context.Context, since, until time.Time) (*AnalyticsOverview, error) {
+	from, to := since.UTC().Format(time.RFC3339), until.UTC().Format(time.RFC3339)
+	out := &AnalyticsOverview{Since: from, Until: to, Events: map[string]int{}, TrialStates: map[string]int{}, Subscriptions: map[string]int{}}
+
+	countBy := func(query string, into map[string]int, args ...any) error {
+		rows, err := s.db.QueryContext(ctx, query, args...)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var key string
+			var n int
+			if err := rows.Scan(&key, &n); err != nil {
+				return err
+			}
+			into[key] = n
+		}
+		return rows.Err()
+	}
+	if err := countBy(`SELECT name, count(*) FROM analytics_events
+	                     WHERE deleted_at IS NULL AND occurred_at >= ? AND occurred_at <= ?
+	                     GROUP BY name`, out.Events, from, to); err != nil {
+		return nil, err
+	}
+	if err := countBy(`SELECT state, count(*) FROM trials WHERE deleted_at IS NULL GROUP BY state`, out.TrialStates); err != nil {
+		return nil, err
+	}
+	if err := countBy(`SELECT status, count(*) FROM subscriptions WHERE deleted_at IS NULL GROUP BY status`, out.Subscriptions); err != nil {
+		return nil, err
+	}
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT count(*), count(*) FILTER (WHERE status = 'COMPLETED'), count(DISTINCT user_id)
+		   FROM sessions WHERE deleted_at IS NULL AND created_at >= ? AND created_at <= ?`, from, to).
+		Scan(&out.SessionsCreated, &out.SessionsCompleted, &out.ActiveListeners); err != nil {
+		return nil, err
+	}
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT count(*) FROM users WHERE deleted_at IS NULL AND created_at >= ? AND created_at <= ?`, from, to).
+		Scan(&out.NewAccounts); err != nil {
+		return nil, err
+	}
+	return out, nil
+}

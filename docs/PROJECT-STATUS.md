@@ -1,27 +1,31 @@
-**Last verified:** 2026-09-21, at PHASE 43 (personalization — the seven
-listener signals of master-plan item 34. `GET /recommendations` ranked on
-explicit interests alone and claimed `personalized: true` for it; it now reads
-what the listener did — categories listened to, completion rate, time of day in
-the listener's own timezone, session duration, favourites, skips and repeat
-listening as a count — through a read-only `SignalStore` and ranks with
-deterministic constants in a pure `internal/personalization` package, each
-signal proven on its own to move the result. The response keeps its v1 shape
-and adds `signals`, `reasons`, `listen_again` and `suggested_duration_seconds`;
-both listener switches are enforced server-side. Gap G-55 closed; no route,
-schema or contract change. Note on provenance: this phase was first built in a
+**Last verified:** 2026-09-21, at PHASE 44 (RBAC — roles open modules,
+modules own routes; master-plan 40, access-control half. `router.go` wrapped
+forty admin routes with a role gate handed no roles, so four of the seven
+administrative roles could be granted and opened nothing. `internal/auth/rbac.go`
+is now the one matrix — eleven modules, read/write — and every administrative
+route declares its module in its auth label; the router resolves label and
+method to the admitted roles, and a label naming no module panics at
+registration. `GET /admin/access` reports the caller's modules from the same
+table. The theological reviewer gets the review: `POST
+/admin/confessions/{id}/review` records `reviewed|needs_revision`, and the
+`theological_review → audio_production` edge is refused without a `reviewed`
+outcome (409 `CONTENT_REVIEW_REQUIRED`), which makes directive §22 enforced
+rather than described. The analyst gets `GET /admin/analytics`. G-57 closed;
+`isValidAdminRole` now knows voice_manager. API moves to 328 routes / 256 paths
+/ 328 operations; schema unchanged at 70 tables / 83 foreign keys. PHASE 43
+(personalization; G-55 closed) and PHASE 42 (blocking and appeals; G-50, G-51
+closed) stand as verified. Provenance note: PHASE 43 was first built in a
 previous session as commits `e32fb2c`/`3c878f0` with `docs/HANDOFF-AFTER-43.md`,
 none of which reached the remote; it was rebuilt from the plan and the code.
-PHASE 42 (moderation completeness — user blocking and appeals, G-50 and G-51
-closed) stands as verified. The schema stays at 70 tables / 83 foreign keys; the
-API stays at 320 routes / 250 paths / 320 operations. PHASE 35 Conditions
-remain unavailable in this checkout: `docs/35-TRIAL-LIFECYCLE.md` is absent, so
-no claim is made that they were read. Previous phase reconciliation still
-applies — see `docs/31-MODERATION.md`, `docs/33-AUDIT-COVERAGE.md`,
-`docs/34-LIBRARY-GESTURES.md`, `docs/36-BILLING-TRIAL.md`,
-`docs/37-CONTENT-LIFECYCLE.md`, `docs/38-RETENTION-VERSIONING.md`,
-`docs/39-CANONICAL-AUDIO.md`, `docs/40-THEOLOGICAL-REVIEW.md`,
-`docs/41-TRIAL-ENGAGEMENT.md`, `docs/42-MODERATION-BLOCKING-APPEALS.md`,
-`docs/43-PERSONALIZATION-SIGNALS.md`).
+PHASE 35 Conditions remain unavailable in this checkout:
+`docs/35-TRIAL-LIFECYCLE.md` is absent, so no claim is made that they were
+read. Previous phase reconciliation still applies — see `docs/31-MODERATION.md`,
+`docs/33-AUDIT-COVERAGE.md`, `docs/34-LIBRARY-GESTURES.md`,
+`docs/36-BILLING-TRIAL.md`, `docs/37-CONTENT-LIFECYCLE.md`,
+`docs/38-RETENTION-VERSIONING.md`, `docs/39-CANONICAL-AUDIO.md`,
+`docs/40-THEOLOGICAL-REVIEW.md`, `docs/41-TRIAL-ENGAGEMENT.md`,
+`docs/42-MODERATION-BLOCKING-APPEALS.md`, `docs/43-PERSONALIZATION-SIGNALS.md`,
+`docs/44-RBAC-ROLES-TO-MODULES.md`).
 
 This file supersedes `MASTER-PROMPT-COMPLETION.md`,
 `CONTENT-DOMAIN-COMPLETION.md`, `AUDIO-PLATFORM-STATUS.md`, `SESSION-NOTES.md`
@@ -47,6 +51,7 @@ it.** Every claim below was produced by running something.
 | Account erasure covers every user table | `internal/deletion` |
 | All 39 categories seed | `internal/seed` |
 | Production refuses stub payment receipts | `internal/billing/verify_prod_test.go` |
+| Every admin route enforces the RBAC matrix for all 7 roles | `TestRBACMatrixIsEnforcedOnEveryAdminRoute` (294 role×route pairs) |
 
 ## Not done
 
@@ -54,7 +59,7 @@ it.** Every claim below was produced by running something.
 |---|---|
 | **Content** | **Done in PHASES 39–40** — 78 canonical confessions, 312 object-backed audio fixtures, explicit theological-review metadata, and provenance-neutral authorship. |
 | **Mobile app** | `apps/mobile` cannot play audio — `just_audio` and `audio_service` are commented out. Being replaced per D-4. |
-| **Website / admin** | 434 and 168 lines of scaffolding. Being replaced per D-5. |
+| **Website / admin** | 434 and 168 lines of scaffolding. Being replaced per D-5. RBAC for the admin platform is done in PHASE 44 (`GET /admin/access` is what the command centre will navigate from). |
 | **Payments** | **Done in PHASE 36** — production uses the Apple signed-transaction verifier or Google Play Developer API and fails closed without configuration; `TestProductionRefusesStubReceipts` remains green. |
 | **Trial lifecycle** | **Done in PHASE 36** — persistent `trials` row, explicit six-state graph, one-time start, expiry/conversion, and Premium projection tests. |
 | **UGC `PUBLIC` readers** | **Done in PHASE 32** — `GET /community/confessions` public, anonymous, newest-first, mobile 2-tab + web both-feeds. Was G-40. |
@@ -384,6 +389,41 @@ PHASE 43 Personalization: the seven listener signals — **PASS** (master-plan
     fields and still decodes a v1 payload. See
     docs/43-PERSONALIZATION-SIGNALS.md)
 
+PHASE 44 RBAC: roles open modules, modules own routes — **PASS** (master-plan
+    40, access-control half; G-57 closed. `router.go:22` built one gate with
+    `RequireRoleWithSessions(secret, sv)` and no roles — super_admin only — and
+    wrapped forty admin routes with it, naming voice_manager and audio_producer
+    by hand on eleven more; content_admin, theological_reviewer, support_admin
+    and analytics_admin opened nothing, and `TestRoleScopingIsEnforced` asserted
+    that as correct. `internal/auth/rbac.go` is now the single matrix: eleven
+    modules (dashboard, users, content, review, moderation, voices, audio,
+    subscriptions, analytics, roles, system), read = GET/HEAD and write =
+    everything else including read, one grants table, super_admin never listed
+    because the middleware admits it unconditionally, roles and system held by
+    nobody else. Every administrative route declares `admin:<module>` in its
+    auth label; `routeAuth(level, method)` resolves it through
+    `auth.RolesWith`, the three hand-built wrappers are gone, and a label naming
+    no module panics at registration. `GET /admin/access` reports the caller's
+    modules from the same table. The reviewer's step became real: `POST
+    /admin/confessions/{id}/review` records reviewed|needs_revision (notes
+    required to send back; unreviewed unwritable; reviewer of record is the
+    caller; audited), `content.ReviewStatus` is the closed vocabulary the
+    parity test now reads, and `UpdateConfessionStatusAudited` refuses
+    theological_review → audio_production without a reviewed outcome (409
+    CONTENT_REVIEW_REQUIRED), the §22 analogue of the §75 QA gate. `GET
+    /admin/analytics?days=N` gives analytics_admin its first route (events,
+    trial states, subscriptions, session activity, new accounts — counts over
+    existing rows). `isValidAdminRole` omitted voice_manager and now defers to
+    `auth.ValidRole`. Proving commands: `go test -race -count=1 ./...` (35 ok,
+    zero FAIL); `TestRBACMatrixIsEnforcedOnEveryAdminRoute` sweeps 294
+    role×route pairs and fails on any role with no route or any module with no
+    route (open per role: super 42, audio_producer 15, voice_manager 15,
+    content_admin 14, analytics_admin 8, theological_reviewer 7, support_admin
+    5); `TestTheologicalReviewIsRecordedByTheReviewerAndGatesProduction`;
+    `TestAdminAccessReportsTheCallersModules`; nine matrix unit tests in
+    `internal/auth`; route export plus genspec 328/256/328 (was 320/250/320).
+    Schema unchanged. See docs/44-RBAC-ROLES-TO-MODULES.md)
+
 Open gaps carried forward: G-7, G-9, G-10, G-12, G-13,
 G-14, G-15, G-16, G-17, G-18, G-19, G-20, G-23, G-24, G-25, G-26, G-27, G-28,
 G-33, G-48, G-49, G-52, G-53, G-54, G-56.
@@ -482,6 +522,12 @@ decodes them, but the mobile home still shows the two ranked lists as before. A
 recommendation whose reason is never shown is indistinguishable from an
 arbitrary one to the listener, which is the complaint personalization exists to
 answer.
+
+New in PHASE 44: **G-57** (four of the seven administrative roles could be
+granted and opened no route; the router gated forty admin routes on
+super_admin alone). **Closed in PHASE 44**, together with two findings that had
+no number: the theological review outcome had no writer but the seed and no
+reader, and `isValidAdminRole` could not grant voice_manager.
 
 **G-54 — A report still cannot name a user.** `ReportableEntityTypes` remains
 `{confession, community_post}`. Blocking now covers the harassment case that

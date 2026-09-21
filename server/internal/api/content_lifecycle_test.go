@@ -47,6 +47,19 @@ func TestAdminCanMoveAConfessionThroughTheWholeLifecycle(t *testing.T) {
 
 	for _, s := range content.All() {
 		body := fmt.Sprintf(`{"status":%q}`, string(s))
+		if s == content.StatusAudioProduction {
+			// §22: the edge out of theological_review is gated on a
+			// recorded review (PHASE 44). Unreviewed text is refused, and
+			// the whole-lifecycle walk records the review the way a
+			// reviewer would.
+			if status, resp := adminPatch(t, srv, "/admin/confessions/"+confID, token, body); status != http.StatusConflict {
+				t.Errorf("audio_production without a theological review returned %d, want 409: %s", status, resp)
+			}
+			if status, resp := doRequest(t, srv, http.MethodPost, "/admin/confessions/"+confID+"/review", token,
+				`{"status":"reviewed","notes":"lifecycle probe"}`); status != http.StatusOK {
+				t.Fatalf("recording the review returned %d: %s", status, resp)
+			}
+		}
 		status, resp := adminPatch(t, srv, "/admin/confessions/"+confID, token, body)
 		if status != http.StatusOK {
 			t.Errorf("moving a confession to %q returned %d, want 200: %s", s, status, resp)

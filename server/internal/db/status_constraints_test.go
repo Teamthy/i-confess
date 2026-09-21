@@ -195,7 +195,10 @@ func TestTheologicalReviewVocabularyParityAgainstConstraint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("confessions.theological_review_status: %v", err)
 	}
-	want := map[string]bool{"unreviewed": true, "reviewed": true, "needs_revision": true}
+	want := map[string]bool{}
+	for _, status := range content.ReviewStatuses() {
+		want[string(status)] = true
+	}
 	got := map[string]bool{}
 	for _, match := range valueRe.FindAllStringSubmatch(def, -1) {
 		got[match[1]] = true

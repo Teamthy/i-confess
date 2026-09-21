@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -23,25 +24,38 @@ const (
 	AuthPublic = "public"
 	// AuthUser requires a valid access token whose session is still honoured.
 	AuthUser = "user"
-	// AuthAdmin requires the super-admin role.
-	AuthAdmin = "admin"
 )
 
-// routeAuth returns the middleware that enforces a declared auth level.
+// Administrative routes declare their module instead of a level:
+// "admin:content", "admin:voices", "admin:system". The module and the route's
+// method select the roles admitted through auth.RolesWith, so the matrix in
+// internal/auth/rbac.go is the only place that says who may do what
+// (PHASE 44). A bare "admin" label is refused at registration: before this
+// existed it meant "super_admin only" for forty routes and left four roles
+// with nothing to open. See auth.AdminLabelPrefix.
+
+// routeAuth returns the middleware that enforces a declared auth level for a
+// route answering method.
 //
 // A nil return means "no protection", which is only ever correct for
 // AuthPublic. Callers must not treat nil as an error: Handler.route installs
 // the identity wrapper in that case.
 //
-// Wrappers are cached per level. There are ~290 registrations and a handful of
-// distinct levels; building a fresh closure for each registration would be
-// harmless but wasteful, and the cache also guarantees that every route
+// Wrappers are cached per (level, access). There are ~320 registrations and a
+// few dozen distinct keys; building a fresh closure for each registration would
+// be harmless but wasteful, and the cache also guarantees that every route
 // declaring the same level shares one enforcement object.
-func (h *Handler) routeAuth(level string) func(http.Handler) http.Handler {
+//
+// An unparseable admin label panics. Registration happens once at start-up and
+// in every API test, so a typo in a module name fails the build rather than
+// silently admitting or refusing the wrong roles.
+func (h *Handler) routeAuth(level, method string) func(http.Handler) http.Handler {
 	key := strings.ToLower(strings.TrimSpace(level))
 	if key == "" || key == AuthPublic {
 		return nil
 	}
+	access := auth.AccessFor(method)
+	cacheKey := key + "|" + string(access)
 
 	h.authMWmu.Lock()
 	defer h.authMWmu.Unlock()
@@ -49,7 +63,7 @@ func (h *Handler) routeAuth(level string) func(http.Handler) http.Handler {
 	if h.authMW == nil {
 		h.authMW = map[string]func(http.Handler) http.Handler{}
 	}
-	if mw, ok := h.authMW[key]; ok {
+	if mw, ok := h.authMW[cacheKey]; ok {
 		return mw
 	}
 
@@ -62,34 +76,21 @@ func (h *Handler) routeAuth(level string) func(http.Handler) http.Handler {
 	switch {
 	case key == AuthUser:
 		mw = auth.MiddlewareWithSessions(h.cfg.JWTSecret, sv)
-	default:
-		// Anything that is not "public" or "user" is a role list. "admin"
-		// deliberately names no additional role, which admits super admins
-		// only; RequireRoleWithSessions always admits RoleSuperAdmin.
-		mw = auth.RequireRoleWithSessions(h.cfg.JWTSecret, sv, rolesFor(key)...)
-	}
-
-	h.authMW[key] = mw
-	return mw
-}
-
-// rolesFor expands a declared level into the roles admitted besides
-// super_admin. "admin" expands to nothing on purpose: the platform's ordinary
-// administrative surface is super-admin only, and the narrower operational
-// roles are named explicitly on the routes that need them
-// ("voice_manager", "audio_producer,voice_manager").
-func rolesFor(level string) []string {
-	if level == AuthAdmin {
-		return nil
-	}
-	parts := strings.Split(level, ",")
-	roles := make([]string, 0, len(parts))
-	for _, p := range parts {
-		if p = strings.TrimSpace(p); p != "" && p != auth.RoleSuperAdmin {
-			roles = append(roles, p)
+	case auth.IsAdminLabel(key):
+		module, ok := auth.ParseAdminLabel(key)
+		if !ok {
+			panic(fmt.Sprintf("route auth %q: administrative routes must name a module (%s<module>)", level, auth.AdminLabelPrefix))
 		}
+		// RequireRoleWithSessions always admits RoleSuperAdmin; the matrix
+		// supplies everyone else. A module nobody below super_admin holds
+		// (roles, system) yields an empty list, which is super_admin only.
+		mw = auth.RequireRoleWithSessions(h.cfg.JWTSecret, sv, auth.RolesWith(module, access)...)
+	default:
+		panic(fmt.Sprintf("route auth %q is not public, user or an admin module", level))
 	}
-	return roles
+
+	h.authMW[cacheKey] = mw
+	return mw
 }
 
 // AuthLevels returns every distinct protection level in the route table,

@@ -19,7 +19,6 @@ func (h *Handler) Routes() http.Handler {
 	// the token happens to expire (PRD S3, S54).
 	sv := sessionValidator{h: h}
 	authed := auth.MiddlewareWithSessions(h.cfg.JWTSecret, sv)
-	admin := auth.RequireRoleWithSessions(h.cfg.JWTSecret, sv)
 
 	// Authentication endpoints are the highest-value attack surface, so they
 	// are throttled by client address before any database work happens (S20).
@@ -38,7 +37,7 @@ func (h *Handler) Routes() http.Handler {
 	h.route(mux, "GET /health/ready", "public", "ops", "Readiness with subsystem detail", nil, h.readyz)
 
 	// Machine-readable API description, generated from the route table above.
-	h.route(mux, "GET /metrics", "admin", "admin-ops", "Prometheus metrics", admin, h.promMetrics)
+	h.route(mux, "GET /metrics", "admin:system", "admin-ops", "Prometheus metrics", nil, h.promMetrics)
 	h.route(mux, "GET /openapi.json", "public", "ops", "OpenAPI JSON specification", nil, h.serveOpenAPI)
 
 	// Listener web application (SPA), served at the site root.
@@ -192,73 +191,80 @@ func (h *Handler) Routes() http.Handler {
 	h.route(mux, "GET /me/confessions", "user", "library", "List personal confessions", authed, h.listUserConfessions)
 
 	// Admin routes
-	h.route(mux, "GET /admin/stats", "admin", "admin-ops", "Platform totals", admin, h.adminStats)
+	h.route(mux, "GET /admin/stats", "admin:dashboard", "admin-ops", "Platform totals", nil, h.adminStats)
+	// What the caller may open. The admin UI builds its navigation from this
+	// rather than from a copy of the matrix, so it cannot show a locked door.
+	h.route(mux, "GET /admin/access", "admin:dashboard", "admin-ops", "The caller's role and the modules it may open", nil, h.adminAccess)
+	h.route(mux, "GET /admin/analytics", "admin:analytics", "admin-ops", "Platform analytics: events, trial funnel, subscriptions and session activity for a window", nil, h.adminAnalytics)
 
-	h.route(mux, "POST /admin/categories", "admin", "admin-content", "Create a category", admin, h.adminCreateCategory)
-	h.route(mux, "GET /admin/categories", "admin", "admin-content", "List all categories including drafts", admin, h.adminListCategories)
+	h.route(mux, "POST /admin/categories", "admin:content", "admin-content", "Create a category", nil, h.adminCreateCategory)
+	h.route(mux, "GET /admin/categories", "admin:content", "admin-content", "List all categories including drafts", nil, h.adminListCategories)
 
-	h.route(mux, "POST /admin/confessions", "admin", "admin-content", "Create a confession", admin, h.adminCreateConfession)
-	h.route(mux, "GET /admin/confessions", "admin", "admin-content", "List all confessions including drafts", admin, h.adminListConfessions)
-	h.route(mux, "GET /admin/confessions/{id}", "admin", "admin-content", "Read a confession with variants", admin, h.adminGetConfession)
-	h.route(mux, "PATCH /admin/confessions/{id}", "admin", "admin-content", "Update or publish a confession", admin, h.adminUpdateConfessionStatus)
-	h.route(mux, "POST /admin/confessions/{id}/qa", "admin", "admin-content", "Run Audio QA checklist (§75) before APPROVED", admin, h.adminQAConfession)
+	h.route(mux, "POST /admin/confessions", "admin:content", "admin-content", "Create a confession", nil, h.adminCreateConfession)
+	h.route(mux, "GET /admin/confessions", "admin:content", "admin-content", "List all confessions including drafts", nil, h.adminListConfessions)
+	h.route(mux, "GET /admin/confessions/{id}", "admin:content", "admin-content", "Read a confession with variants", nil, h.adminGetConfession)
+	h.route(mux, "PATCH /admin/confessions/{id}", "admin:content", "admin-content", "Update or publish a confession", nil, h.adminUpdateConfessionStatus)
+	h.route(mux, "POST /admin/confessions/{id}/qa", "admin:content", "admin-content", "Run Audio QA checklist (§75) before APPROVED", nil, h.adminQAConfession)
+	// Theological review (directive §22) is its own module: the reviewer
+	// records the outcome, content admins read it. PHASE 40 added the columns
+	// and only the seed wrote them.
+	h.route(mux, "GET /admin/confessions/{id}/review", "admin:review", "admin-content", "Theological review record", nil, h.adminGetTheologicalReview)
+	h.route(mux, "POST /admin/confessions/{id}/review", "admin:review", "admin-content", "Record a theological review (reviewed|needs_revision)", nil, h.adminRecordTheologicalReview)
 
-	h.route(mux, "GET /admin/moderation/queue", "admin", "admin-content", "Moderation queue (UGC + editorial pending)", admin, h.adminListModerationQueue)
-	h.route(mux, "POST /admin/moderation/user-confessions/{id}/review", "admin", "admin-content", "Review a user confession (approved|rejected)", admin, h.adminReviewUserConfession)
-	h.route(mux, "POST /admin/moderation/reports/{id}/decision", "admin", "admin-content", "Close an open report (resolved|dismissed)", admin, h.adminDecideReport)
-	h.route(mux, "POST /admin/moderation/appeals/{id}/decision", "admin", "admin-content", "Decide an appeal (upheld|overturned)", admin, h.adminDecideAppeal)
+	h.route(mux, "GET /admin/moderation/queue", "admin:moderation", "admin-content", "Moderation queue (UGC + editorial pending)", nil, h.adminListModerationQueue)
+	h.route(mux, "POST /admin/moderation/user-confessions/{id}/review", "admin:moderation", "admin-content", "Review a user confession (approved|rejected)", nil, h.adminReviewUserConfession)
+	h.route(mux, "POST /admin/moderation/reports/{id}/decision", "admin:moderation", "admin-content", "Close an open report (resolved|dismissed)", nil, h.adminDecideReport)
+	h.route(mux, "POST /admin/moderation/appeals/{id}/decision", "admin:moderation", "admin-content", "Decide an appeal (upheld|overturned)", nil, h.adminDecideAppeal)
 
-	h.route(mux, "POST /admin/voices", "admin", "admin-voice", "Create a voice", admin, h.adminCreateVoice)
-	h.route(mux, "GET /admin/voices", "admin", "admin-voice", "List voices", admin, h.adminListVoices)
+	h.route(mux, "POST /admin/voices", "admin:voices", "admin-voice", "Create a voice", nil, h.adminCreateVoice)
+	h.route(mux, "GET /admin/voices", "admin:voices", "admin-voice", "List voices", nil, h.adminListVoices)
 
-	h.route(mux, "POST /admin/audio", "admin", "admin-audio", "Attach an audio asset to a confession", admin, h.adminUpsertAudio)
+	h.route(mux, "POST /admin/audio", "admin:audio", "admin-audio", "Attach an audio asset to a confession", nil, h.adminUpsertAudio)
 
-	h.route(mux, "POST /admin/users/role", "admin", "admin-users", "Grant an admin role", admin, h.adminSetUserRole)
-	h.route(mux, "DELETE /admin/users/role", "admin", "admin-users", "Revoke an admin role", admin, h.adminRemoveUserRole)
-	h.route(mux, "GET /admin/users/admins", "admin", "admin-users", "List admin accounts", admin, h.adminListAdmins)
-	h.route(mux, "POST /admin/users/status", "admin", "admin-users", "Suspend or restore an account", admin, h.adminSetUserStatus)
-	h.route(mux, "POST /admin/users/subscription", "admin", "admin-users", "Set a subscription plan", admin, h.adminSetSubscription)
+	h.route(mux, "POST /admin/users/role", "admin:roles", "admin-users", "Grant an admin role", nil, h.adminSetUserRole)
+	h.route(mux, "DELETE /admin/users/role", "admin:roles", "admin-users", "Revoke an admin role", nil, h.adminRemoveUserRole)
+	h.route(mux, "GET /admin/users/admins", "admin:users", "admin-users", "List admin accounts", nil, h.adminListAdmins)
+	h.route(mux, "POST /admin/users/status", "admin:users", "admin-users", "Suspend or restore an account", nil, h.adminSetUserStatus)
+	h.route(mux, "POST /admin/users/subscription", "admin:subscriptions", "admin-users", "Set a subscription plan", nil, h.adminSetSubscription)
 
 	// Operational surfaces. Admin-only: failure counts reveal whether an attack
 	// is landing, which is what an attacker most wants to know (S83).
-	h.route(mux, "GET /admin/metrics", "admin", "admin-ops", "Security event counters", admin, h.metricsHandler)
-	h.route(mux, "GET /admin/audit", "admin", "admin-ops", "Recent privileged actions", admin, h.adminAuditTrail)
+	h.route(mux, "GET /admin/metrics", "admin:system", "admin-ops", "Security event counters", nil, h.metricsHandler)
+	h.route(mux, "GET /admin/audit", "admin:system", "admin-ops", "Recent privileged actions", nil, h.adminAuditTrail)
 
 	// Voice rights and synthesis (PRD S13, S14, S61).
 	//
-	// Restricted to the voice manager rather than any admin: a mistake here can
-	// mean synthesizing a person's voice without permission. SUPER_ADMIN is
-	// admitted by RoleBasedMiddleware.
-	voiceMgr := auth.RequireRoleWithSessions(h.cfg.JWTSecret, sv, auth.RoleVoiceManager)
-	h.route(mux, "GET /admin/voices/{id}/rights", "voice_manager", "admin-voice", "Rights record with a live evaluation", voiceMgr, h.adminGetVoiceRights)
-	h.route(mux, "PUT /admin/voices/{id}/rights", "voice_manager", "admin-voice", "Set rights; AI grants require an attestation", voiceMgr, h.adminUpsertVoiceRights)
-	h.route(mux, "POST /admin/voices/{id}/rights/revoke", "voice_manager", "admin-voice", "Revoke every use of a voice", voiceMgr, h.adminRevokeVoiceRights)
+	// The voices module is held by the voice manager alone (audio producers
+	// read it): a mistake here can mean synthesizing a person's voice without
+	// permission. See the matrix in internal/auth/rbac.go.
+	h.route(mux, "GET /admin/voices/{id}/rights", "admin:voices", "admin-voice", "Rights record with a live evaluation", nil, h.adminGetVoiceRights)
+	h.route(mux, "PUT /admin/voices/{id}/rights", "admin:voices", "admin-voice", "Set rights; AI grants require an attestation", nil, h.adminUpsertVoiceRights)
+	h.route(mux, "POST /admin/voices/{id}/rights/revoke", "admin:voices", "admin-voice", "Revoke every use of a voice", nil, h.adminRevokeVoiceRights)
 
-	// Generation is an audio-team operation but consumes voice rights, so both
-	// roles may run it.
-	// Immediate erasure is SUPER_ADMIN only: RequireRoleWithSessions admits
-	// super admins everywhere, and naming no other role keeps it to them.
-	h.route(mux, "POST /admin/users/{id}/erase", "admin", "admin-users", "Immediate account erasure (super-admin only)", admin, h.adminEraseUser)
+	// Immediate erasure sits in the roles module, which nothing below
+	// super_admin holds.
+	h.route(mux, "POST /admin/users/{id}/erase", "admin:roles", "admin-users", "Immediate account erasure (super-admin only)", nil, h.adminEraseUser)
 
-	audioMgr := auth.RequireRoleWithSessions(h.cfg.JWTSecret, sv, auth.RoleAudioProducer, auth.RoleVoiceManager)
-	h.route(mux, "POST /admin/audio/generate", "audio_producer,voice_manager", "admin-audio", "Generate audio; refused 451 when voice rights disallow it", audioMgr, h.adminGenerateAudio)
+	// Generation is an audio-team operation but consumes voice rights, so the
+	// audio module is held by both the audio producer and the voice manager.
+	h.route(mux, "POST /admin/audio/generate", "admin:audio", "admin-audio", "Generate audio; refused 451 when voice rights disallow it", nil, h.adminGenerateAudio)
 
 	// Generation requests and their outcomes. These are what make a generation
 	// observable: until now a render was a synchronous call with no record, so
 	// there was nothing to poll and nothing to retry.
-	h.route(mux, "GET /admin/queue", "admin", "admin-queue", "Background queue: counts by status and the job types this server runs", admin, h.adminQueueStats)
-	h.route(mux, "POST /admin/queue/requeue", "admin", "admin-queue", "Release dead-lettered jobs back into the queue", admin, h.adminQueueRequeue)
-	h.route(mux, "GET /admin/audio/jobs", "audio_producer,voice_manager", "admin-audio", "List generation requests, newest first", audioMgr, h.adminListAudioJobs)
-	h.route(mux, "GET /admin/audio/jobs/{id}", "audio_producer,voice_manager", "admin-audio", "One generation request with its outcome", audioMgr, h.adminGetAudioJob)
+	h.route(mux, "GET /admin/queue", "admin:system", "admin-queue", "Background queue: counts by status and the job types this server runs", nil, h.adminQueueStats)
+	h.route(mux, "POST /admin/queue/requeue", "admin:system", "admin-queue", "Release dead-lettered jobs back into the queue", nil, h.adminQueueRequeue)
+	h.route(mux, "GET /admin/audio/jobs", "admin:audio", "admin-audio", "List generation requests, newest first", nil, h.adminListAudioJobs)
+	h.route(mux, "GET /admin/audio/jobs/{id}", "admin:audio", "admin-audio", "One generation request with its outcome", nil, h.adminGetAudioJob)
 
 	// Asset QA. Generated audio enters 'processing'; nothing could previously
 	// move it out, because the codebase had no UPDATE audio_assets at all.
 	// Approving is what makes a render servable, and rejecting records who
 	// decided and why.
-	h.route(mux, "POST /admin/audio/{id}/qa/approve", "audio_producer,voice_manager", "admin-audio", "Approve a render for listeners", audioMgr, h.adminApproveAudio)
-	h.route(mux, "POST /admin/audio/{id}/qa/reject", "audio_producer,voice_manager", "admin-audio", "Reject a render; a note is required", audioMgr, h.adminRejectAudio)
-	h.route(mux, "POST /admin/audio/{id}/publish", "audio_producer,voice_manager", "admin-audio", "Surface an approved render in discovery", audioMgr, h.adminPublishAudio)
-	h.route(mux, "POST /admin/audio/{id}/archive", "audio_producer,voice_manager", "admin-audio", "Withdraw a render, including from existing sessions", audioMgr, h.adminArchiveAudio)
+	h.route(mux, "POST /admin/audio/{id}/qa/approve", "admin:audio", "admin-audio", "Approve a render for listeners", nil, h.adminApproveAudio)
+	h.route(mux, "POST /admin/audio/{id}/qa/reject", "admin:audio", "admin-audio", "Reject a render; a note is required", nil, h.adminRejectAudio)
+	h.route(mux, "POST /admin/audio/{id}/publish", "admin:audio", "admin-audio", "Surface an approved render in discovery", nil, h.adminPublishAudio)
+	h.route(mux, "POST /admin/audio/{id}/archive", "admin:audio", "admin-audio", "Withdraw a render, including from existing sessions", nil, h.adminArchiveAudio)
 
 	// ─────────────────────────────────────────────────────────────────
 	// Routes that existed only under /v1/. The comment below promises every
@@ -314,8 +320,8 @@ func (h *Handler) Routes() http.Handler {
 	h.route(mux, "POST /ai/parse", "user", "ai", "AI NLU → categories/duration (never invents theology)", authed, h.aiParse)
 	h.route(mux, "POST /analytics/batch", "user", "analytics", "Batch analytics events (no PII)", authed, h.analyticsBatch)
 	h.route(mux, "GET /search", "public", "content", "Search confessions, categories, voices, Scripture", registerLimit, h.searchAll)
-	h.route(mux, "GET /admin/plans", "admin", "admin-content", "List pricing plans (admin-editable)", admin, h.adminListPlans)
-	h.route(mux, "PUT /admin/plans", "admin", "admin-content", "Create or update a pricing plan", admin, h.adminUpsertPlan)
+	h.route(mux, "GET /admin/plans", "admin:subscriptions", "admin-content", "List pricing plans (admin-editable)", nil, h.adminListPlans)
+	h.route(mux, "PUT /admin/plans", "admin:subscriptions", "admin-content", "Create or update a pricing plan", nil, h.adminUpsertPlan)
 	// Versioned aliases — §46, §110-§112.
 	// Every API route is also served under /v1/* for versioned clients.
 	// Legacy without prefix is kept for backward compat until minVersion forces upgrade.
@@ -338,7 +344,7 @@ func (h *Handler) Routes() http.Handler {
 	h.route(mux, "GET /v1/healthz", "public", "ops", "Liveness", nil, h.livez)
 	h.route(mux, "GET /v1/health/live", "public", "ops", "Liveness", nil, h.livez)
 	h.route(mux, "GET /v1/health/ready", "public", "ops", "Readiness with subsystem detail", nil, h.readyz)
-	h.route(mux, "GET /v1/metrics", "admin", "admin-ops", "Prometheus metrics", admin, h.promMetrics)
+	h.route(mux, "GET /v1/metrics", "admin:system", "admin-ops", "Prometheus metrics", nil, h.promMetrics)
 	h.route(mux, "GET /v1/openapi.json", "public", "ops", "OpenAPI JSON specification", nil, h.serveOpenAPI)
 	// Authenticated user (v1) — all with server-side session validation
 	h.route(mux, "GET /v1/me", "user", "profile", "Account summary", authed, h.me)
@@ -473,44 +479,48 @@ func (h *Handler) Routes() http.Handler {
 	h.route(mux, "POST /v1/analytics/batch", "user", "analytics", "Batch analytics events (no PII)", authed, h.analyticsBatch)
 	h.route(mux, "GET /v1/search", "public", "content", "Search confessions, categories, voices, Scripture", registerLimit, h.searchAll)
 	// Admin (v1)
-	h.route(mux, "GET /v1/admin/stats", "admin", "admin-ops", "Platform totals", admin, h.adminStats)
-	h.route(mux, "POST /v1/admin/users/{id}/erase", "admin", "admin-users", "Immediate account erasure (super-admin only)", admin, h.adminEraseUser)
-	h.route(mux, "POST /v1/admin/categories", "admin", "admin-content", "Create a category", admin, h.adminCreateCategory)
-	h.route(mux, "GET /v1/admin/categories", "admin", "admin-content", "List all categories including drafts", admin, h.adminListCategories)
-	h.route(mux, "POST /v1/admin/confessions", "admin", "admin-content", "Create a confession", admin, h.adminCreateConfession)
-	h.route(mux, "GET /v1/admin/confessions", "admin", "admin-content", "List all confessions including drafts", admin, h.adminListConfessions)
-	h.route(mux, "GET /v1/admin/confessions/{id}", "admin", "admin-content", "Read a confession with variants", admin, h.adminGetConfession)
-	h.route(mux, "PATCH /v1/admin/confessions/{id}", "admin", "admin-content", "Update or publish a confession", admin, h.adminUpdateConfessionStatus)
-	h.route(mux, "POST /v1/admin/confessions/{id}/qa", "admin", "admin-content", "Run Audio QA checklist (§75) before APPROVED", admin, h.adminQAConfession)
-	h.route(mux, "GET /v1/admin/moderation/queue", "admin", "admin-content", "Moderation queue (UGC + editorial pending)", admin, h.adminListModerationQueue)
-	h.route(mux, "POST /v1/admin/moderation/user-confessions/{id}/review", "admin", "admin-content", "Review a user confession (approved|rejected)", admin, h.adminReviewUserConfession)
-	h.route(mux, "POST /v1/admin/moderation/reports/{id}/decision", "admin", "admin-content", "Close an open report (resolved|dismissed)", admin, h.adminDecideReport)
-	h.route(mux, "POST /v1/admin/moderation/appeals/{id}/decision", "admin", "admin-content", "Decide an appeal (upheld|overturned)", admin, h.adminDecideAppeal)
-	h.route(mux, "POST /v1/admin/voices", "admin", "admin-voice", "Create a voice", admin, h.adminCreateVoice)
-	h.route(mux, "GET /v1/admin/voices", "admin", "admin-voice", "List voices", admin, h.adminListVoices)
-	h.route(mux, "POST /v1/admin/audio", "admin", "admin-audio", "Attach an audio asset to a confession", admin, h.adminUpsertAudio)
-	h.route(mux, "POST /v1/admin/users/role", "admin", "admin-users", "Grant an admin role", admin, h.adminSetUserRole)
-	h.route(mux, "DELETE /v1/admin/users/role", "admin", "admin-users", "Revoke an admin role", admin, h.adminRemoveUserRole)
-	h.route(mux, "GET /v1/admin/users/admins", "admin", "admin-users", "List admin accounts", admin, h.adminListAdmins)
-	h.route(mux, "POST /v1/admin/users/status", "admin", "admin-users", "Suspend or restore an account", admin, h.adminSetUserStatus)
+	h.route(mux, "GET /v1/admin/stats", "admin:dashboard", "admin-ops", "Platform totals", nil, h.adminStats)
+	h.route(mux, "GET /v1/admin/access", "admin:dashboard", "admin-ops", "The caller's role and the modules it may open", nil, h.adminAccess)
+	h.route(mux, "GET /v1/admin/analytics", "admin:analytics", "admin-ops", "Platform analytics: events, trial funnel, subscriptions and session activity for a window", nil, h.adminAnalytics)
+	h.route(mux, "POST /v1/admin/users/{id}/erase", "admin:roles", "admin-users", "Immediate account erasure (super-admin only)", nil, h.adminEraseUser)
+	h.route(mux, "POST /v1/admin/categories", "admin:content", "admin-content", "Create a category", nil, h.adminCreateCategory)
+	h.route(mux, "GET /v1/admin/categories", "admin:content", "admin-content", "List all categories including drafts", nil, h.adminListCategories)
+	h.route(mux, "POST /v1/admin/confessions", "admin:content", "admin-content", "Create a confession", nil, h.adminCreateConfession)
+	h.route(mux, "GET /v1/admin/confessions", "admin:content", "admin-content", "List all confessions including drafts", nil, h.adminListConfessions)
+	h.route(mux, "GET /v1/admin/confessions/{id}", "admin:content", "admin-content", "Read a confession with variants", nil, h.adminGetConfession)
+	h.route(mux, "PATCH /v1/admin/confessions/{id}", "admin:content", "admin-content", "Update or publish a confession", nil, h.adminUpdateConfessionStatus)
+	h.route(mux, "POST /v1/admin/confessions/{id}/qa", "admin:content", "admin-content", "Run Audio QA checklist (§75) before APPROVED", nil, h.adminQAConfession)
+	h.route(mux, "GET /v1/admin/confessions/{id}/review", "admin:review", "admin-content", "Theological review record", nil, h.adminGetTheologicalReview)
+	h.route(mux, "POST /v1/admin/confessions/{id}/review", "admin:review", "admin-content", "Record a theological review (reviewed|needs_revision)", nil, h.adminRecordTheologicalReview)
+	h.route(mux, "GET /v1/admin/moderation/queue", "admin:moderation", "admin-content", "Moderation queue (UGC + editorial pending)", nil, h.adminListModerationQueue)
+	h.route(mux, "POST /v1/admin/moderation/user-confessions/{id}/review", "admin:moderation", "admin-content", "Review a user confession (approved|rejected)", nil, h.adminReviewUserConfession)
+	h.route(mux, "POST /v1/admin/moderation/reports/{id}/decision", "admin:moderation", "admin-content", "Close an open report (resolved|dismissed)", nil, h.adminDecideReport)
+	h.route(mux, "POST /v1/admin/moderation/appeals/{id}/decision", "admin:moderation", "admin-content", "Decide an appeal (upheld|overturned)", nil, h.adminDecideAppeal)
+	h.route(mux, "POST /v1/admin/voices", "admin:voices", "admin-voice", "Create a voice", nil, h.adminCreateVoice)
+	h.route(mux, "GET /v1/admin/voices", "admin:voices", "admin-voice", "List voices", nil, h.adminListVoices)
+	h.route(mux, "POST /v1/admin/audio", "admin:audio", "admin-audio", "Attach an audio asset to a confession", nil, h.adminUpsertAudio)
+	h.route(mux, "POST /v1/admin/users/role", "admin:roles", "admin-users", "Grant an admin role", nil, h.adminSetUserRole)
+	h.route(mux, "DELETE /v1/admin/users/role", "admin:roles", "admin-users", "Revoke an admin role", nil, h.adminRemoveUserRole)
+	h.route(mux, "GET /v1/admin/users/admins", "admin:users", "admin-users", "List admin accounts", nil, h.adminListAdmins)
+	h.route(mux, "POST /v1/admin/users/status", "admin:users", "admin-users", "Suspend or restore an account", nil, h.adminSetUserStatus)
 	h.route(mux, "GET /subscriptions/plans", "public", "subscription", "List plans", nil, h.listPlans)
-	h.route(mux, "POST /v1/admin/users/subscription", "admin", "admin-users", "Set a subscription plan", admin, h.adminSetSubscription)
-	h.route(mux, "GET /v1/admin/plans", "admin", "admin-content", "List pricing plans (admin-editable)", admin, h.adminListPlans)
-	h.route(mux, "PUT /v1/admin/plans", "admin", "admin-content", "Create or update a pricing plan", admin, h.adminUpsertPlan)
-	h.route(mux, "GET /v1/admin/metrics", "admin", "admin-ops", "Security event counters", admin, h.metricsHandler)
-	h.route(mux, "GET /v1/admin/audit", "admin", "admin-ops", "Recent privileged actions", admin, h.adminAuditTrail)
-	h.route(mux, "GET /v1/admin/voices/{id}/rights", "voice_manager", "admin-voice", "Rights record with a live evaluation", voiceMgr, h.adminGetVoiceRights)
-	h.route(mux, "PUT /v1/admin/voices/{id}/rights", "voice_manager", "admin-voice", "Set rights; AI grants require an attestation", voiceMgr, h.adminUpsertVoiceRights)
-	h.route(mux, "POST /v1/admin/voices/{id}/rights/revoke", "voice_manager", "admin-voice", "Revoke every use of a voice", voiceMgr, h.adminRevokeVoiceRights)
-	h.route(mux, "POST /v1/admin/audio/generate", "audio_producer,voice_manager", "admin-audio", "Generate audio; refused 451 when voice rights disallow it", audioMgr, h.adminGenerateAudio)
-	h.route(mux, "GET /v1/admin/queue", "admin", "admin-queue", "Background queue: counts by status and the job types this server runs", admin, h.adminQueueStats)
-	h.route(mux, "POST /v1/admin/queue/requeue", "admin", "admin-queue", "Release dead-lettered jobs back into the queue", admin, h.adminQueueRequeue)
-	h.route(mux, "GET /v1/admin/audio/jobs", "audio_producer,voice_manager", "admin-audio", "List generation requests, newest first", audioMgr, h.adminListAudioJobs)
-	h.route(mux, "GET /v1/admin/audio/jobs/{id}", "audio_producer,voice_manager", "admin-audio", "One generation request with its outcome", audioMgr, h.adminGetAudioJob)
-	h.route(mux, "POST /v1/admin/audio/{id}/qa/approve", "audio_producer,voice_manager", "admin-audio", "Approve a render for listeners", audioMgr, h.adminApproveAudio)
-	h.route(mux, "POST /v1/admin/audio/{id}/qa/reject", "audio_producer,voice_manager", "admin-audio", "Reject a render; a note is required", audioMgr, h.adminRejectAudio)
-	h.route(mux, "POST /v1/admin/audio/{id}/publish", "audio_producer,voice_manager", "admin-audio", "Surface an approved render in discovery", audioMgr, h.adminPublishAudio)
-	h.route(mux, "POST /v1/admin/audio/{id}/archive", "audio_producer,voice_manager", "admin-audio", "Withdraw a render, including from existing sessions", audioMgr, h.adminArchiveAudio)
+	h.route(mux, "POST /v1/admin/users/subscription", "admin:subscriptions", "admin-users", "Set a subscription plan", nil, h.adminSetSubscription)
+	h.route(mux, "GET /v1/admin/plans", "admin:subscriptions", "admin-content", "List pricing plans (admin-editable)", nil, h.adminListPlans)
+	h.route(mux, "PUT /v1/admin/plans", "admin:subscriptions", "admin-content", "Create or update a pricing plan", nil, h.adminUpsertPlan)
+	h.route(mux, "GET /v1/admin/metrics", "admin:system", "admin-ops", "Security event counters", nil, h.metricsHandler)
+	h.route(mux, "GET /v1/admin/audit", "admin:system", "admin-ops", "Recent privileged actions", nil, h.adminAuditTrail)
+	h.route(mux, "GET /v1/admin/voices/{id}/rights", "admin:voices", "admin-voice", "Rights record with a live evaluation", nil, h.adminGetVoiceRights)
+	h.route(mux, "PUT /v1/admin/voices/{id}/rights", "admin:voices", "admin-voice", "Set rights; AI grants require an attestation", nil, h.adminUpsertVoiceRights)
+	h.route(mux, "POST /v1/admin/voices/{id}/rights/revoke", "admin:voices", "admin-voice", "Revoke every use of a voice", nil, h.adminRevokeVoiceRights)
+	h.route(mux, "POST /v1/admin/audio/generate", "admin:audio", "admin-audio", "Generate audio; refused 451 when voice rights disallow it", nil, h.adminGenerateAudio)
+	h.route(mux, "GET /v1/admin/queue", "admin:system", "admin-queue", "Background queue: counts by status and the job types this server runs", nil, h.adminQueueStats)
+	h.route(mux, "POST /v1/admin/queue/requeue", "admin:system", "admin-queue", "Release dead-lettered jobs back into the queue", nil, h.adminQueueRequeue)
+	h.route(mux, "GET /v1/admin/audio/jobs", "admin:audio", "admin-audio", "List generation requests, newest first", nil, h.adminListAudioJobs)
+	h.route(mux, "GET /v1/admin/audio/jobs/{id}", "admin:audio", "admin-audio", "One generation request with its outcome", nil, h.adminGetAudioJob)
+	h.route(mux, "POST /v1/admin/audio/{id}/qa/approve", "admin:audio", "admin-audio", "Approve a render for listeners", nil, h.adminApproveAudio)
+	h.route(mux, "POST /v1/admin/audio/{id}/qa/reject", "admin:audio", "admin-audio", "Reject a render; a note is required", nil, h.adminRejectAudio)
+	h.route(mux, "POST /v1/admin/audio/{id}/publish", "admin:audio", "admin-audio", "Surface an approved render in discovery", nil, h.adminPublishAudio)
+	h.route(mux, "POST /v1/admin/audio/{id}/archive", "admin:audio", "admin-audio", "Withdraw a render, including from existing sessions", nil, h.adminArchiveAudio)
 
 	return RequestIDMiddleware(tracing.Middleware(SecurityHeadersMiddleware(logRequests(mux), h.isProd)))
 }

@@ -44,7 +44,7 @@ func TestEveryAdminRouteRejectsANonAdmin(t *testing.T) {
 	checked, skipped := 0, 0
 
 	for _, r := range routes {
-		if r.Auth != "admin" {
+		if !auth.IsAdminLabel(r.Auth) {
 			continue
 		}
 		// Only exercise the unprefixed form; the /v1/ twins are covered by the
@@ -233,9 +233,11 @@ func TestRoleScopingIsEnforced(t *testing.T) {
 	srv := httptest.NewServer(h.Routes())
 	defer srv.Close()
 
-	// A route the generic admin wrapper serves: super admins only.
-	const superOnly = "/admin/categories"
-	// A route wrapped for voice managers (router.go:217).
+	// A system-module route: nothing below super_admin holds it.
+	const superOnly = "/admin/audit"
+	// A content-module route: content admins write it, reviewers read it.
+	const contentRoute = "/admin/categories"
+	// A voices-module route: voice managers write it, audio producers read it.
 	const voiceOnly = "/admin/voices/00000000-0000-0000-0000-000000000000/rights"
 
 	cases := []struct {
@@ -244,16 +246,22 @@ func TestRoleScopingIsEnforced(t *testing.T) {
 		path    string
 		wantDen bool // want a 403 from the role gate
 	}{
-		{"content admin denied a super-admin route", auth.RoleContentAdmin, superOnly, true},
+		{"content admin denied a system route", auth.RoleContentAdmin, superOnly, true},
 		{"content admin denied a voice-manager route", auth.RoleContentAdmin, voiceOnly, true},
+		{"content admin admitted to a content route", auth.RoleContentAdmin, contentRoute, false},
+		{"theological reviewer reads a content route", auth.RoleTheologicalRev, contentRoute, false},
+		{"support admin denied a content route", auth.RoleSupportAdmin, contentRoute, true},
 		{"voice manager admitted to a voice-manager route", auth.RoleVoiceManager, voiceOnly, false},
+		{"audio producer reads a voice route", auth.RoleAudioProducer, voiceOnly, false},
 		{"super admin admitted everywhere", auth.RoleSuperAdmin, superOnly, false},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			email := strings.ReplaceAll(tc.role, "_", "-") + "-scoping@example.com"
-			registerAndSignIn(t, srv, email, "a-strong-enough-passphrase")
+			// Eight sign-ups exceed the per-address registration burst;
+			// each arrives from its own forwarded address.
+			registerFrom(t, srv, email, "a-strong-enough-passphrase", fmt.Sprintf("10.45.0.%d", len(tc.name)))
 			uid := userIDForEmail(t, h, email)
 			if err := h.users.SetAdminRole(context.Background(), uid, tc.role); err != nil {
 				t.Fatalf("promote: %v", err)

@@ -163,6 +163,18 @@ func (h *Handler) adminUpdateConfessionStatus(w http.ResponseWriter, r *http.Req
 		httpx.WriteError(w, http.StatusConflict, "content lifecycle transition is not allowed")
 		return
 	}
+	var reviewGate *store.ErrReviewRequired
+	if errors.As(err, &reviewGate) {
+		// §22: no theological review, no studio. The body says what the
+		// review currently is so the admin knows whether to chase a
+		// reviewer or a rewrite.
+		httpx.WriteJSON(w, http.StatusConflict, map[string]any{
+			"error":  reviewGate.Error(),
+			"code":   "CONTENT_REVIEW_REQUIRED",
+			"review": reviewGate.Review,
+		})
+		return
+	}
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to update confession")
 		return
@@ -309,34 +321,6 @@ func (h *Handler) adminUpsertAudio(w http.ResponseWriter, r *http.Request) {
 }
 
 // ---------- Admin: users ----------
-
-func (h *Handler) adminSetRole(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		UserID string `json:"user_id"`
-		Role   string `json:"role"`
-	}
-	if err := httpx.DecodeJSON(r, &req); err != nil || !validRole(req.Role) {
-		httpx.WriteError(w, http.StatusBadRequest, "invalid role")
-		return
-	}
-	if _, err := h.users.ByID(r.Context(), req.UserID); err != nil {
-		httpx.WriteError(w, http.StatusBadRequest, "user not found")
-		return
-	}
-	if err := h.users.SetAdminRole(r.Context(), req.UserID, req.Role); err != nil {
-		httpx.WriteError(w, http.StatusInternalServerError, "failed to set role")
-		return
-	}
-	httpx.WriteJSON(w, http.StatusOK, map[string]string{"user_id": req.UserID, "role": req.Role})
-}
-
-func validRole(s string) bool {
-	switch s {
-	case "super_admin", "content_admin", "audio_producer", "theological_reviewer", "support_admin", "analytics_admin":
-		return true
-	}
-	return false
-}
 
 func (h *Handler) adminSetSubscription(w http.ResponseWriter, r *http.Request) {
 	var req struct {

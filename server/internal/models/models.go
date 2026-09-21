@@ -67,6 +67,19 @@ type ConfessionVariant struct {
 	SortOrder       int    `json:"sort_order"`
 }
 
+// TheologicalReview is the reviewer's recorded outcome on a confession
+// (directive §22). It is read and written through the admin review module
+// and deliberately not embedded in Confession's public JSON: review provenance
+// is editorial metadata, not something the catalogue advertises.
+type TheologicalReview struct {
+	ConfessionID    string `json:"confession_id"`
+	LifecycleStatus string `json:"lifecycle_status"`
+	Status          string `json:"status"`
+	Reviewer        string `json:"reviewer,omitempty"`
+	ReviewedAt      string `json:"reviewed_at,omitempty"`
+	Notes           string `json:"notes,omitempty"`
+}
+
 type ScriptureRef struct {
 	ID            string `json:"id"`
 	ConfessionID  string `json:"confession_id"`

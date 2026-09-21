@@ -1,260 +1,288 @@
 [
   {
+    "method": "GET",
+    "path": "/admin/access",
+    "auth": "admin:dashboard",
+    "summary": "The caller's role and the modules it may open",
+    "tag": "admin-ops"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/analytics",
+    "auth": "admin:analytics",
+    "summary": "Platform analytics: events, trial funnel, subscriptions and session activity for a window",
+    "tag": "admin-ops"
+  },
+  {
     "method": "POST",
     "path": "/admin/audio",
-    "auth": "admin",
+    "auth": "admin:audio",
     "summary": "Attach an audio asset to a confession",
     "tag": "admin-audio"
   },
   {
     "method": "POST",
     "path": "/admin/audio/generate",
-    "auth": "audio_producer,voice_manager",
+    "auth": "admin:audio",
     "summary": "Generate audio; refused 451 when voice rights disallow it",
     "tag": "admin-audio"
   },
   {
     "method": "GET",
     "path": "/admin/audio/jobs",
-    "auth": "audio_producer,voice_manager",
+    "auth": "admin:audio",
     "summary": "List generation requests, newest first",
     "tag": "admin-audio"
   },
   {
     "method": "GET",
     "path": "/admin/audio/jobs/{id}",
-    "auth": "audio_producer,voice_manager",
+    "auth": "admin:audio",
     "summary": "One generation request with its outcome",
     "tag": "admin-audio"
   },
   {
     "method": "POST",
     "path": "/admin/audio/{id}/archive",
-    "auth": "audio_producer,voice_manager",
+    "auth": "admin:audio",
     "summary": "Withdraw a render, including from existing sessions",
     "tag": "admin-audio"
   },
   {
     "method": "POST",
     "path": "/admin/audio/{id}/publish",
-    "auth": "audio_producer,voice_manager",
+    "auth": "admin:audio",
     "summary": "Surface an approved render in discovery",
     "tag": "admin-audio"
   },
   {
     "method": "POST",
     "path": "/admin/audio/{id}/qa/approve",
-    "auth": "audio_producer,voice_manager",
+    "auth": "admin:audio",
     "summary": "Approve a render for listeners",
     "tag": "admin-audio"
   },
   {
     "method": "POST",
     "path": "/admin/audio/{id}/qa/reject",
-    "auth": "audio_producer,voice_manager",
+    "auth": "admin:audio",
     "summary": "Reject a render; a note is required",
     "tag": "admin-audio"
   },
   {
     "method": "GET",
     "path": "/admin/audit",
-    "auth": "admin",
+    "auth": "admin:system",
     "summary": "Recent privileged actions",
     "tag": "admin-ops"
   },
   {
     "method": "GET",
     "path": "/admin/categories",
-    "auth": "admin",
+    "auth": "admin:content",
     "summary": "List all categories including drafts",
     "tag": "admin-content"
   },
   {
     "method": "POST",
     "path": "/admin/categories",
-    "auth": "admin",
+    "auth": "admin:content",
     "summary": "Create a category",
     "tag": "admin-content"
   },
   {
     "method": "GET",
     "path": "/admin/confessions",
-    "auth": "admin",
+    "auth": "admin:content",
     "summary": "List all confessions including drafts",
     "tag": "admin-content"
   },
   {
     "method": "POST",
     "path": "/admin/confessions",
-    "auth": "admin",
+    "auth": "admin:content",
     "summary": "Create a confession",
     "tag": "admin-content"
   },
   {
     "method": "GET",
     "path": "/admin/confessions/{id}",
-    "auth": "admin",
+    "auth": "admin:content",
     "summary": "Read a confession with variants",
     "tag": "admin-content"
   },
   {
     "method": "PATCH",
     "path": "/admin/confessions/{id}",
-    "auth": "admin",
+    "auth": "admin:content",
     "summary": "Update or publish a confession",
     "tag": "admin-content"
   },
   {
     "method": "POST",
     "path": "/admin/confessions/{id}/qa",
-    "auth": "admin",
+    "auth": "admin:content",
     "summary": "Run Audio QA checklist (§75) before APPROVED",
     "tag": "admin-content"
   },
   {
     "method": "GET",
+    "path": "/admin/confessions/{id}/review",
+    "auth": "admin:review",
+    "summary": "Theological review record",
+    "tag": "admin-content"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/confessions/{id}/review",
+    "auth": "admin:review",
+    "summary": "Record a theological review (reviewed|needs_revision)",
+    "tag": "admin-content"
+  },
+  {
+    "method": "GET",
     "path": "/admin/metrics",
-    "auth": "admin",
+    "auth": "admin:system",
     "summary": "Security event counters",
     "tag": "admin-ops"
   },
   {
     "method": "POST",
     "path": "/admin/moderation/appeals/{id}/decision",
-    "auth": "admin",
+    "auth": "admin:moderation",
     "summary": "Decide an appeal (upheld|overturned)",
     "tag": "admin-content"
   },
   {
     "method": "GET",
     "path": "/admin/moderation/queue",
-    "auth": "admin",
+    "auth": "admin:moderation",
     "summary": "Moderation queue (UGC + editorial pending)",
     "tag": "admin-content"
   },
   {
     "method": "POST",
     "path": "/admin/moderation/reports/{id}/decision",
-    "auth": "admin",
+    "auth": "admin:moderation",
     "summary": "Close an open report (resolved|dismissed)",
     "tag": "admin-content"
   },
   {
     "method": "POST",
     "path": "/admin/moderation/user-confessions/{id}/review",
-    "auth": "admin",
+    "auth": "admin:moderation",
     "summary": "Review a user confession (approved|rejected)",
     "tag": "admin-content"
   },
   {
     "method": "GET",
     "path": "/admin/plans",
-    "auth": "admin",
+    "auth": "admin:subscriptions",
     "summary": "List pricing plans (admin-editable)",
     "tag": "admin-content"
   },
   {
     "method": "PUT",
     "path": "/admin/plans",
-    "auth": "admin",
+    "auth": "admin:subscriptions",
     "summary": "Create or update a pricing plan",
     "tag": "admin-content"
   },
   {
     "method": "GET",
     "path": "/admin/queue",
-    "auth": "admin",
+    "auth": "admin:system",
     "summary": "Background queue: counts by status and the job types this server runs",
     "tag": "admin-queue"
   },
   {
     "method": "POST",
     "path": "/admin/queue/requeue",
-    "auth": "admin",
+    "auth": "admin:system",
     "summary": "Release dead-lettered jobs back into the queue",
     "tag": "admin-queue"
   },
   {
     "method": "GET",
     "path": "/admin/stats",
-    "auth": "admin",
+    "auth": "admin:dashboard",
     "summary": "Platform totals",
     "tag": "admin-ops"
   },
   {
     "method": "GET",
     "path": "/admin/users/admins",
-    "auth": "admin",
+    "auth": "admin:users",
     "summary": "List admin accounts",
     "tag": "admin-users"
   },
   {
     "method": "DELETE",
     "path": "/admin/users/role",
-    "auth": "admin",
+    "auth": "admin:roles",
     "summary": "Revoke an admin role",
     "tag": "admin-users"
   },
   {
     "method": "POST",
     "path": "/admin/users/role",
-    "auth": "admin",
+    "auth": "admin:roles",
     "summary": "Grant an admin role",
     "tag": "admin-users"
   },
   {
     "method": "POST",
     "path": "/admin/users/status",
-    "auth": "admin",
+    "auth": "admin:users",
     "summary": "Suspend or restore an account",
     "tag": "admin-users"
   },
   {
     "method": "POST",
     "path": "/admin/users/subscription",
-    "auth": "admin",
+    "auth": "admin:subscriptions",
     "summary": "Set a subscription plan",
     "tag": "admin-users"
   },
   {
     "method": "POST",
     "path": "/admin/users/{id}/erase",
-    "auth": "admin",
+    "auth": "admin:roles",
     "summary": "Immediate account erasure (super-admin only)",
     "tag": "admin-users"
   },
   {
     "method": "GET",
     "path": "/admin/voices",
-    "auth": "admin",
+    "auth": "admin:voices",
     "summary": "List voices",
     "tag": "admin-voice"
   },
   {
     "method": "POST",
     "path": "/admin/voices",
-    "auth": "admin",
+    "auth": "admin:voices",
     "summary": "Create a voice",
     "tag": "admin-voice"
   },
   {
     "method": "GET",
     "path": "/admin/voices/{id}/rights",
-    "auth": "voice_manager",
+    "auth": "admin:voices",
     "summary": "Rights record with a live evaluation",
     "tag": "admin-voice"
   },
   {
     "method": "PUT",
     "path": "/admin/voices/{id}/rights",
-    "auth": "voice_manager",
+    "auth": "admin:voices",
     "summary": "Set rights; AI grants require an attestation",
     "tag": "admin-voice"
   },
   {
     "method": "POST",
     "path": "/admin/voices/{id}/rights/revoke",
-    "auth": "voice_manager",
+    "auth": "admin:voices",
     "summary": "Revoke every use of a voice",
     "tag": "admin-voice"
   },
@@ -828,7 +856,7 @@
   {
     "method": "GET",
     "path": "/metrics",
-    "auth": "admin",
+    "auth": "admin:system",
     "summary": "Prometheus metrics",
     "tag": "admin-ops"
   },
@@ -1113,261 +1141,289 @@
     "tag": "templates"
   },
   {
+    "method": "GET",
+    "path": "/v1/admin/access",
+    "auth": "admin:dashboard",
+    "summary": "The caller's role and the modules it may open",
+    "tag": "admin-ops"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/admin/analytics",
+    "auth": "admin:analytics",
+    "summary": "Platform analytics: events, trial funnel, subscriptions and session activity for a window",
+    "tag": "admin-ops"
+  },
+  {
     "method": "POST",
     "path": "/v1/admin/audio",
-    "auth": "admin",
+    "auth": "admin:audio",
     "summary": "Attach an audio asset to a confession",
     "tag": "admin-audio"
   },
   {
     "method": "POST",
     "path": "/v1/admin/audio/generate",
-    "auth": "audio_producer,voice_manager",
+    "auth": "admin:audio",
     "summary": "Generate audio; refused 451 when voice rights disallow it",
     "tag": "admin-audio"
   },
   {
     "method": "GET",
     "path": "/v1/admin/audio/jobs",
-    "auth": "audio_producer,voice_manager",
+    "auth": "admin:audio",
     "summary": "List generation requests, newest first",
     "tag": "admin-audio"
   },
   {
     "method": "GET",
     "path": "/v1/admin/audio/jobs/{id}",
-    "auth": "audio_producer,voice_manager",
+    "auth": "admin:audio",
     "summary": "One generation request with its outcome",
     "tag": "admin-audio"
   },
   {
     "method": "POST",
     "path": "/v1/admin/audio/{id}/archive",
-    "auth": "audio_producer,voice_manager",
+    "auth": "admin:audio",
     "summary": "Withdraw a render, including from existing sessions",
     "tag": "admin-audio"
   },
   {
     "method": "POST",
     "path": "/v1/admin/audio/{id}/publish",
-    "auth": "audio_producer,voice_manager",
+    "auth": "admin:audio",
     "summary": "Surface an approved render in discovery",
     "tag": "admin-audio"
   },
   {
     "method": "POST",
     "path": "/v1/admin/audio/{id}/qa/approve",
-    "auth": "audio_producer,voice_manager",
+    "auth": "admin:audio",
     "summary": "Approve a render for listeners",
     "tag": "admin-audio"
   },
   {
     "method": "POST",
     "path": "/v1/admin/audio/{id}/qa/reject",
-    "auth": "audio_producer,voice_manager",
+    "auth": "admin:audio",
     "summary": "Reject a render; a note is required",
     "tag": "admin-audio"
   },
   {
     "method": "GET",
     "path": "/v1/admin/audit",
-    "auth": "admin",
+    "auth": "admin:system",
     "summary": "Recent privileged actions",
     "tag": "admin-ops"
   },
   {
     "method": "GET",
     "path": "/v1/admin/categories",
-    "auth": "admin",
+    "auth": "admin:content",
     "summary": "List all categories including drafts",
     "tag": "admin-content"
   },
   {
     "method": "POST",
     "path": "/v1/admin/categories",
-    "auth": "admin",
+    "auth": "admin:content",
     "summary": "Create a category",
     "tag": "admin-content"
   },
   {
     "method": "GET",
     "path": "/v1/admin/confessions",
-    "auth": "admin",
+    "auth": "admin:content",
     "summary": "List all confessions including drafts",
     "tag": "admin-content"
   },
   {
     "method": "POST",
     "path": "/v1/admin/confessions",
-    "auth": "admin",
+    "auth": "admin:content",
     "summary": "Create a confession",
     "tag": "admin-content"
   },
   {
     "method": "GET",
     "path": "/v1/admin/confessions/{id}",
-    "auth": "admin",
+    "auth": "admin:content",
     "summary": "Read a confession with variants",
     "tag": "admin-content"
   },
   {
     "method": "PATCH",
     "path": "/v1/admin/confessions/{id}",
-    "auth": "admin",
+    "auth": "admin:content",
     "summary": "Update or publish a confession",
     "tag": "admin-content"
   },
   {
     "method": "POST",
     "path": "/v1/admin/confessions/{id}/qa",
-    "auth": "admin",
+    "auth": "admin:content",
     "summary": "Run Audio QA checklist (§75) before APPROVED",
     "tag": "admin-content"
   },
   {
     "method": "GET",
+    "path": "/v1/admin/confessions/{id}/review",
+    "auth": "admin:review",
+    "summary": "Theological review record",
+    "tag": "admin-content"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/admin/confessions/{id}/review",
+    "auth": "admin:review",
+    "summary": "Record a theological review (reviewed|needs_revision)",
+    "tag": "admin-content"
+  },
+  {
+    "method": "GET",
     "path": "/v1/admin/metrics",
-    "auth": "admin",
+    "auth": "admin:system",
     "summary": "Security event counters",
     "tag": "admin-ops"
   },
   {
     "method": "POST",
     "path": "/v1/admin/moderation/appeals/{id}/decision",
-    "auth": "admin",
+    "auth": "admin:moderation",
     "summary": "Decide an appeal (upheld|overturned)",
     "tag": "admin-content"
   },
   {
     "method": "GET",
     "path": "/v1/admin/moderation/queue",
-    "auth": "admin",
+    "auth": "admin:moderation",
     "summary": "Moderation queue (UGC + editorial pending)",
     "tag": "admin-content"
   },
   {
     "method": "POST",
     "path": "/v1/admin/moderation/reports/{id}/decision",
-    "auth": "admin",
+    "auth": "admin:moderation",
     "summary": "Close an open report (resolved|dismissed)",
     "tag": "admin-content"
   },
   {
     "method": "POST",
     "path": "/v1/admin/moderation/user-confessions/{id}/review",
-    "auth": "admin",
+    "auth": "admin:moderation",
     "summary": "Review a user confession (approved|rejected)",
     "tag": "admin-content"
   },
   {
     "method": "GET",
     "path": "/v1/admin/plans",
-    "auth": "admin",
+    "auth": "admin:subscriptions",
     "summary": "List pricing plans (admin-editable)",
     "tag": "admin-content"
   },
   {
     "method": "PUT",
     "path": "/v1/admin/plans",
-    "auth": "admin",
+    "auth": "admin:subscriptions",
     "summary": "Create or update a pricing plan",
     "tag": "admin-content"
   },
   {
     "method": "GET",
     "path": "/v1/admin/queue",
-    "auth": "admin",
+    "auth": "admin:system",
     "summary": "Background queue: counts by status and the job types this server runs",
     "tag": "admin-queue"
   },
   {
     "method": "POST",
     "path": "/v1/admin/queue/requeue",
-    "auth": "admin",
+    "auth": "admin:system",
     "summary": "Release dead-lettered jobs back into the queue",
     "tag": "admin-queue"
   },
   {
     "method": "GET",
     "path": "/v1/admin/stats",
-    "auth": "admin",
+    "auth": "admin:dashboard",
     "summary": "Platform totals",
     "tag": "admin-ops"
   },
   {
     "method": "GET",
     "path": "/v1/admin/users/admins",
-    "auth": "admin",
+    "auth": "admin:users",
     "summary": "List admin accounts",
     "tag": "admin-users"
   },
   {
     "method": "DELETE",
     "path": "/v1/admin/users/role",
-    "auth": "admin",
+    "auth": "admin:roles",
     "summary": "Revoke an admin role",
     "tag": "admin-users"
   },
   {
     "method": "POST",
     "path": "/v1/admin/users/role",
-    "auth": "admin",
+    "auth": "admin:roles",
     "summary": "Grant an admin role",
     "tag": "admin-users"
   },
   {
     "method": "POST",
     "path": "/v1/admin/users/status",
-    "auth": "admin",
+    "auth": "admin:users",
     "summary": "Suspend or restore an account",
     "tag": "admin-users"
   },
   {
     "method": "POST",
     "path": "/v1/admin/users/subscription",
-    "auth": "admin",
+    "auth": "admin:subscriptions",
     "summary": "Set a subscription plan",
     "tag": "admin-users"
   },
   {
     "method": "POST",
     "path": "/v1/admin/users/{id}/erase",
-    "auth": "admin",
+    "auth": "admin:roles",
     "summary": "Immediate account erasure (super-admin only)",
     "tag": "admin-users"
   },
   {
     "method": "GET",
     "path": "/v1/admin/voices",
-    "auth": "admin",
+    "auth": "admin:voices",
     "summary": "List voices",
     "tag": "admin-voice"
   },
   {
     "method": "POST",
     "path": "/v1/admin/voices",
-    "auth": "admin",
+    "auth": "admin:voices",
     "summary": "Create a voice",
     "tag": "admin-voice"
   },
   {
     "method": "GET",
     "path": "/v1/admin/voices/{id}/rights",
-    "auth": "voice_manager",
+    "auth": "admin:voices",
     "summary": "Rights record with a live evaluation",
     "tag": "admin-voice"
   },
   {
     "method": "PUT",
     "path": "/v1/admin/voices/{id}/rights",
-    "auth": "voice_manager",
+    "auth": "admin:voices",
     "summary": "Set rights; AI grants require an attestation",
     "tag": "admin-voice"
   },
   {
     "method": "POST",
     "path": "/v1/admin/voices/{id}/rights/revoke",
-    "auth": "voice_manager",
+    "auth": "admin:voices",
     "summary": "Revoke every use of a voice",
     "tag": "admin-voice"
   },
@@ -1941,7 +1997,7 @@
   {
     "method": "GET",
     "path": "/v1/metrics",
-    "auth": "admin",
+    "auth": "admin:system",
     "summary": "Prometheus metrics",
     "tag": "admin-ops"
   },

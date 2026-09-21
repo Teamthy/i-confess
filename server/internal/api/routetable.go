@@ -70,15 +70,16 @@ func (h *Handler) RouteTable() []Route {
 func (h *Handler) route(mux *http.ServeMux, pattern, auth, tag, summary string,
 	wrap func(http.Handler) http.Handler, fn http.HandlerFunc) {
 
+	method, path := splitPattern(pattern)
+
 	var handler http.Handler = fn
 	if wrap != nil {
 		handler = wrap(fn)
-	} else if authMW := h.routeAuth(auth); authMW != nil {
+	} else if authMW := h.routeAuth(auth, method); authMW != nil {
 		handler = authMW(fn)
 	}
 	mux.Handle(pattern, handler)
 
-	method, path := splitPattern(pattern)
 	h.routes.add(Route{
 		Method: method, Path: path, Auth: auth, Tag: tag, Summary: summary,
 	})
