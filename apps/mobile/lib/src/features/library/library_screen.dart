@@ -1093,7 +1093,7 @@ class _CollectionItemRow extends ConsumerWidget {
           child: Row(
             children: [
               if (dragIndex != null)
-                ReorderableDragStartListener(
+                ReorderableDelayedDragStartListener(
                   key: ValueKey('drag-${item.confessionId}'),
                   index: dragIndex!,
                   child: SizedBox(
