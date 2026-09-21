@@ -346,6 +346,7 @@ func (s *ModerationStore) ModerationQueue(ctx context.Context) (models.Moderatio
 		UserConfessions: []models.UserConfession{},
 		Reports:         []models.Report{},
 		Editorial:       []models.Confession{},
+		Appeals:         []any{},
 	}
 
 	rows, err := s.db.QueryContext(ctx,
@@ -414,10 +415,23 @@ func (s *ModerationStore) ModerationQueue(ctx context.Context) (models.Moderatio
 		return q, err
 	}
 
+	// An appeal is queue work in the same sense a report is: it is a person
+	// waiting on a human, oldest first. It was not part of the queue before
+	// PHASE 42 because appeals did not exist, which is what made a rejection
+	// final.
+	pending, err := s.PendingAppeals(ctx)
+	if err != nil {
+		return q, err
+	}
+	for _, a := range pending {
+		q.Appeals = append(q.Appeals, a)
+	}
+
 	q.Counts = map[string]int{
 		"user_confessions": len(q.UserConfessions),
 		"reports":          len(q.Reports),
 		"editorial":        len(q.Editorial),
+		"appeals":          len(q.Appeals),
 		"open_cases":       openCases,
 	}
 	return q, nil

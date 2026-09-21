@@ -119,6 +119,13 @@
     "tag": "admin-ops"
   },
   {
+    "method": "POST",
+    "path": "/admin/moderation/appeals/{id}/decision",
+    "auth": "admin",
+    "summary": "Decide an appeal (upheld|overturned)",
+    "tag": "admin-content"
+  },
+  {
     "method": "GET",
     "path": "/admin/moderation/queue",
     "auth": "admin",
@@ -518,6 +525,20 @@
     "tag": "profile"
   },
   {
+    "method": "GET",
+    "path": "/me/appeals",
+    "auth": "user",
+    "summary": "Your appeals and their outcomes",
+    "tag": "moderation"
+  },
+  {
+    "method": "POST",
+    "path": "/me/appeals",
+    "auth": "user",
+    "summary": "Appeal a dismissed report or a rejected confession",
+    "tag": "moderation"
+  },
+  {
     "method": "DELETE",
     "path": "/me/avatar",
     "auth": "user",
@@ -530,6 +551,27 @@
     "auth": "user",
     "summary": "Upload an avatar; EXIF is stripped",
     "tag": "profile"
+  },
+  {
+    "method": "GET",
+    "path": "/me/blocks",
+    "auth": "user",
+    "summary": "Accounts you have blocked",
+    "tag": "moderation"
+  },
+  {
+    "method": "POST",
+    "path": "/me/blocks",
+    "auth": "user",
+    "summary": "Block an account",
+    "tag": "moderation"
+  },
+  {
+    "method": "DELETE",
+    "path": "/me/blocks/{userId}",
+    "auth": "user",
+    "summary": "Unblock an account",
+    "tag": "moderation"
   },
   {
     "method": "GET",
@@ -1190,6 +1232,13 @@
     "tag": "admin-ops"
   },
   {
+    "method": "POST",
+    "path": "/v1/admin/moderation/appeals/{id}/decision",
+    "auth": "admin",
+    "summary": "Decide an appeal (upheld|overturned)",
+    "tag": "admin-content"
+  },
+  {
     "method": "GET",
     "path": "/v1/admin/moderation/queue",
     "auth": "admin",
@@ -1589,6 +1638,20 @@
     "tag": "profile"
   },
   {
+    "method": "GET",
+    "path": "/v1/me/appeals",
+    "auth": "user",
+    "summary": "Your appeals and their outcomes",
+    "tag": "moderation"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/me/appeals",
+    "auth": "user",
+    "summary": "Appeal a dismissed report or a rejected confession",
+    "tag": "moderation"
+  },
+  {
     "method": "DELETE",
     "path": "/v1/me/avatar",
     "auth": "user",
@@ -1601,6 +1664,27 @@
     "auth": "user",
     "summary": "Upload an avatar; EXIF is stripped",
     "tag": "profile"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/me/blocks",
+    "auth": "user",
+    "summary": "Accounts you have blocked",
+    "tag": "moderation"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/me/blocks",
+    "auth": "user",
+    "summary": "Block an account",
+    "tag": "moderation"
+  },
+  {
+    "method": "DELETE",
+    "path": "/v1/me/blocks/{userId}",
+    "auth": "user",
+    "summary": "Unblock an account",
+    "tag": "moderation"
   },
   {
     "method": "GET",

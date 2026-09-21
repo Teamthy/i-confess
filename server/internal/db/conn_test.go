@@ -97,7 +97,9 @@ func replaceDatabaseName(url, name string) string {
 // store_notifications, the ledger of store notifications applied to
 // subscriptions (IC-003, PR B); 0018 added trial_day_completions and
 // analytics_events, the measured trial journey and the persisted funnel
-// events (PHASE 41).
+// events (PHASE 41); 0019 added user_blocks and moderation_appeals, the
+// listener's self-service boundary and the answer to a moderation decision
+// (PHASE 42).
 func TestPostgresSchemaLoads(t *testing.T) {
 	ctx := context.Background()
 	d := newTestDB(t)
@@ -107,8 +109,8 @@ func TestPostgresSchemaLoads(t *testing.T) {
 		`SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public'`).Scan(&tables); err != nil {
 		t.Fatalf("count tables: %v", err)
 	}
-	if tables != 68 {
-		t.Errorf("expected 68 tables, got %d", tables)
+	if tables != 70 {
+		t.Errorf("expected 70 tables, got %d", tables)
 	}
 
 	var fks int
@@ -117,8 +119,8 @@ func TestPostgresSchemaLoads(t *testing.T) {
 		 WHERE constraint_type = 'FOREIGN KEY' AND table_schema = 'public'`).Scan(&fks); err != nil {
 		t.Fatalf("count foreign keys: %v", err)
 	}
-	if fks != 81 {
-		t.Errorf("expected 81 foreign keys, got %d", fks)
+	if fks != 83 {
+		t.Errorf("expected 83 foreign keys, got %d", fks)
 	}
 
 	var flags int

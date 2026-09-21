@@ -1357,6 +1357,79 @@ final class Subscription {
       );
 }
 
+/// One account's boundary against another.
+///
+/// A block is not a moderation action. It does not delete anything, it does not
+/// penalise the blocked account, and it is not shown to them; it changes what
+/// one account is served. A client must not render it as a penalty, or the
+/// feature becomes a harassment tool in the other direction.
+final class UserBlock {
+  const UserBlock({
+    this.id = '',
+    this.blockerId = '',
+    this.blockedId = '',
+    this.reason = '',
+    this.createdAt = '',
+  });
+
+  final String id;
+  final String blockerId;
+  final String blockedId;
+  final String reason;
+  final String createdAt;
+
+  factory UserBlock.fromJson(Map<String, dynamic> json) => UserBlock(
+        id: _str(json, 'id'),
+        blockerId: _str(json, 'blocker_id'),
+        blockedId: _str(json, 'blocked_id'),
+        reason: _str(json, 'reason'),
+        createdAt: _str(json, 'created_at'),
+      );
+}
+
+/// A listener's answer to a decision made about them.
+///
+/// [status] is one of submitted, under_review, upheld, overturned. Both
+/// decisions are terminal: an appeal is heard once, because an appeal that
+/// could be filed until a moderator relented is a queue, not an appeal.
+final class ModerationAppeal {
+  const ModerationAppeal({
+    this.id = '',
+    this.decisionType = '',
+    this.decisionId = '',
+    this.statement = '',
+    this.status = 'submitted',
+    this.decisionNote = '',
+    this.createdAt = '',
+  });
+
+  final String id;
+  final String decisionType;
+  final String decisionId;
+  final String statement;
+  final String status;
+  final String decisionNote;
+  final String createdAt;
+
+  /// Whether a moderator has answered.
+  bool get isDecided => status == 'upheld' || status == 'overturned';
+
+  /// Whether the original decision was reversed. An overturned appeal reopens
+  /// the work; it does not publish or resolve anything.
+  bool get wasOverturned => status == 'overturned';
+
+  factory ModerationAppeal.fromJson(Map<String, dynamic> json) =>
+      ModerationAppeal(
+        id: _str(json, 'id'),
+        decisionType: _str(json, 'decision_type'),
+        decisionId: _str(json, 'decision_id'),
+        statement: _str(json, 'statement'),
+        status: _str(json, 'status', 'submitted'),
+        decisionNote: _str(json, 'decision_note'),
+        createdAt: _str(json, 'created_at'),
+      );
+}
+
 /// Trial journey day.
 ///
 /// Each day teaches one thing, and [intent] names it. The flags are not

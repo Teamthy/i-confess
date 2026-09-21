@@ -199,8 +199,8 @@
       "title": "Library",
       "depth": 1,
       "parents": ["profile", "explore"],
-      "endpoints": ["GET /me/confessions", "GET /me/favorites", "GET /me/collections", "GET /me/collections/{id}", "POST /me/collections", "PATCH /me/collections/{id}", "DELETE /me/collections/{id}", "POST /me/collections/{id}/items", "DELETE /me/collections/{id}/items/{confessionId}", "PATCH /me/collections/{id}/reorder", "DELETE /me/favorites", "POST /me/confessions/{id}/submit"],
-      "notes": "Three tabs over one question - what is mine. Collections, favourites and the listener's own writing; the Mine tab offers a draft for review, which is why submit is listed here as well as on the confession screen."
+      "endpoints": ["GET /me/confessions", "GET /me/favorites", "GET /me/collections", "GET /me/collections/{id}", "POST /me/collections", "PATCH /me/collections/{id}", "DELETE /me/collections/{id}", "POST /me/collections/{id}/items", "DELETE /me/collections/{id}/items/{confessionId}", "PATCH /me/collections/{id}/reorder", "DELETE /me/favorites", "POST /me/confessions/{id}/submit", "GET /me/appeals", "POST /me/appeals"],
+      "notes": "Three tabs over one question - what is mine. Collections, favourites and the listener's own writing; the Mine tab offers a draft for review, which is why submit is listed here as well as on the confession screen. Appeals are here for the same reason: a rejection lands on the listener's own writing, so the answer to it belongs next to the writing rather than behind a support form."
     },
     {
       "id": "library/favorites",
@@ -281,8 +281,8 @@
       "title": "Settings",
       "depth": 1,
       "parents": ["profile"],
-      "endpoints": ["GET /me/preferences", "PATCH /me/preferences"],
-      "notes": ""
+      "endpoints": ["GET /me/preferences", "PATCH /me/preferences", "GET /me/blocks", "POST /me/blocks", "DELETE /me/blocks/{userId}"],
+      "notes": "Blocking lives here rather than on a moderation screen on purpose. It is a listener controlling their own view, not a moderator acting on someone else, and putting it beside the moderation vocabulary would make it read as a penalty against the blocked account - which is the confusion that turns a block feature into a harassment tool. The list is the blocker's own and is never shown to the blocked account."
     },
     {
       "id": "settings/interests",

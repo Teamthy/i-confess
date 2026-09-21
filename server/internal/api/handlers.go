@@ -46,6 +46,9 @@ type Handler struct {
 	// and cancellation are recorded here rather than in a client batch, so the
 	// server is the source of truth for the numbers it reports about itself.
 	analytics *store.AnalyticsStore
+	// blocks owns listener-set boundaries. Separate from mod because a block is
+	// not a moderation action: no moderator takes it and none can see it.
+	blocks    *store.BlockStore
 	engn      *engine.Engine
 	search    *search.SearchStore
 	templates *store.TemplateStore
@@ -145,6 +148,7 @@ func NewHandler(cfg Config, db *db.DB) *Handler {
 		cfg:       cfg,
 		users:     store.NewUserStore(db),
 		analytics: store.NewAnalyticsStore(db),
+		blocks:    store.NewBlockStore(db),
 		// The trial store writes its own funnel events: expiry is a clock fact
 		// that no single handler reliably observes, so the transition records it.
 		trials:       store.NewTrialStore(db).WithAnalytics(store.NewAnalyticsStore(db)),

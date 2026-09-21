@@ -218,6 +218,57 @@ check(
     "completed.contains(day.day)" in premium_screen_src,
 )
 
+# PHASE 42: moderation completeness. Reporting, blocking and appeals are one
+# system seen from the listener's side, and the typed client had none of them -
+# not even POST /reports, so a client could not file the report an appeal is
+# the answer to.
+for required in [
+    "postReports",
+    "getMeBlocks",
+    "postMeBlocks",
+    "deleteMeBlocksByUserId",
+    "getMeAppeals",
+    "postMeAppeals",
+]:
+    check(f"{required} is on the typed client", required in declared_endpoints)
+
+check("ModerationRepository is declared", "final class ModerationRepository" in repo_src)
+moderation_methods = method_names("ModerationRepository", repo_src)
+for required in ["report", "blocks", "block", "unblock", "appeals", "appeal"]:
+    check(f"ModerationRepository.{required} exists", required in moderation_methods)
+
+check("UserBlock model is declared", "final class UserBlock" in models_src)
+check("UserBlock has a fromJson factory", "factory UserBlock.fromJson" in models_src)
+check("ModerationAppeal model is declared", "final class ModerationAppeal" in models_src)
+check(
+    "ModerationAppeal has a fromJson factory",
+    "factory ModerationAppeal.fromJson" in models_src,
+)
+check(
+    "ModerationAppeal can tell a decided appeal from a pending one",
+    "bool get isDecided" in models_src,
+)
+check(
+    "ModerationAppeal can tell an overturn from an uphold",
+    "bool get wasOverturned" in models_src,
+)
+
+# A block is a boundary, not a punishment: the client carries the blocked
+# account's id and nothing about them, because a block is never shown to them.
+check(
+    "UserBlock carries no identity for the blocked account beyond the id",
+    "final String blockedId;" in models_src and "final String blockedName;" not in models_src,
+)
+
+for endpoint in [
+    "GET /me/blocks",
+    "POST /me/blocks",
+    "DELETE /me/blocks/{userId}",
+    "GET /me/appeals",
+    "POST /me/appeals",
+]:
+    check(f"moderation endpoint {endpoint} is wired in IA", endpoint in trial_ia)
+
 
 # ---------------------------------------------------------------------------
 # Every path the typed client calls must be a real server route
