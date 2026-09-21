@@ -1055,6 +1055,23 @@ final class SubscriptionRepository extends Repository {
     }
   }
 
+  Future<WriteResult<TrialStatus>> startTrial() =>
+      write(() => api.postSubscriptionsTrial(), TrialStatus.fromJson);
+
+  Future<Loadable<TrialStatus>> trialStatus() async {
+    try {
+      return Loadable.loaded(
+          TrialStatus.fromJson(await api.getSubscriptionsTrialStatus()));
+    } on ApiException catch (e) {
+      return Loadable.failed(e);
+    }
+  }
+
+  Future<WriteResult<TrialStatus>> convertTrial() => write(
+        () => api.postSubscriptionsTrialConvert(),
+        TrialStatus.fromJson,
+      );
+
   Future<WriteResult<Subscription>> verifyReceipt(
           {required String provider, required String receipt}) =>
       write(

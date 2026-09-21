@@ -279,6 +279,13 @@ func (h *Handler) Routes() http.Handler {
 	h.route(mux, "GET /subscription", "user", "subscription", "Current plan and entitlements", authed, h.getSubscription)
 	h.route(mux, "GET /entitlements", "user", "subscription", "Entitlement flags", authed, h.getEntitlements)
 	h.route(mux, "GET /subscriptions/trial", "user", "subscription", "Trial journey (Day1..Day7)", authed, h.getTrial)
+	h.route(mux, "POST /subscriptions/trial", "user", "subscription", "Start the one-time Premium trial", authed, func(w http.ResponseWriter, r *http.Request) {
+		idempotent(http.HandlerFunc(h.startTrial)).ServeHTTP(w, r)
+	})
+	h.route(mux, "GET /subscriptions/trial/status", "user", "subscription", "Current trial lifecycle state", authed, h.getTrialStatus)
+	h.route(mux, "POST /subscriptions/trial/convert", "user", "subscription", "Finish the trial before store verification", authed, func(w http.ResponseWriter, r *http.Request) {
+		idempotent(http.HandlerFunc(h.convertTrial)).ServeHTTP(w, r)
+	})
 	h.route(mux, "POST /subscriptions/verify", "user", "subscription", "Verify store receipt (server-side, billing.Verifier)", authed, func(w http.ResponseWriter, r *http.Request) {
 		idempotent(http.HandlerFunc(h.verifySubscriptionV2)).ServeHTTP(w, r)
 	})
@@ -428,6 +435,13 @@ func (h *Handler) Routes() http.Handler {
 	h.route(mux, "GET /v1/entitlements", "user", "subscription", "Entitlement flags", authed, h.getEntitlements)
 	h.route(mux, "GET /v1/subscriptions/plans", "public", "subscription", "List plans with regional pricing (NGN/USD/GBP/EUR/PHP)", nil, h.listPlans)
 	h.route(mux, "GET /v1/subscriptions/trial", "user", "subscription", "Trial journey (Day1..Day7)", authed, h.getTrial)
+	h.route(mux, "POST /v1/subscriptions/trial", "user", "subscription", "Start the one-time Premium trial", authed, func(w http.ResponseWriter, r *http.Request) {
+		idempotent(http.HandlerFunc(h.startTrial)).ServeHTTP(w, r)
+	})
+	h.route(mux, "GET /v1/subscriptions/trial/status", "user", "subscription", "Current trial lifecycle state", authed, h.getTrialStatus)
+	h.route(mux, "POST /v1/subscriptions/trial/convert", "user", "subscription", "Finish the trial before store verification", authed, func(w http.ResponseWriter, r *http.Request) {
+		idempotent(http.HandlerFunc(h.convertTrial)).ServeHTTP(w, r)
+	})
 	h.route(mux, "POST /v1/subscriptions/verify", "user", "subscription", "Verify store receipt (server-side, billing.Verifier)", authed, func(w http.ResponseWriter, r *http.Request) {
 		idempotent(http.HandlerFunc(h.verifySubscriptionV2)).ServeHTTP(w, r)
 	})

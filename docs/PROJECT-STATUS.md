@@ -1,6 +1,6 @@
 # Project Status
 
-**Last verified:** 2026-09-21, at PHASE 34 (Audit coverage and library gestures — G-41 closed in PHASE 33: `audit_logs` records every moderation and editorial action through one sink with `TestAuditLogsCoverContentAndModeration`; G-42/G-43/G-44/G-45 closed in PHASE 34: seeded voice licence passes the QA gate, drag-reorder + add-to-collection gestures exist, `cover_url` is writable, favourites navigate all four kinds. 73 Dart symbol assertions; routes/openapi byte-identical. Previous phase reconciliation still applies — see `docs/31-MODERATION.md`, `docs/33-AUDIT-COVERAGE.md`, `docs/34-LIBRARY-GESTURES.md`).
+**Last verified:** 2026-09-21, at PHASE 36 (billing and trial lifecycle — G-29 closed: production selects real Apple JWS or Google Play Developer API verification and refuses unconfigured/stub receipts; the persisted six-state trial starts only on request, grants Premium through one `subscriptions` projection writer, and expires/converts fail closed. 85 Dart symbol assertions; 306 routes / 240 OpenAPI paths / 306 operations; routes/openapi regenerated from the live table. PHASE 35 Conditions were not available in this checkout: `docs/35-TRIAL-LIFECYCLE.md` is absent, so no claim is made that they were read. Previous phase reconciliation still applies — see `docs/31-MODERATION.md`, `docs/33-AUDIT-COVERAGE.md`, `docs/34-LIBRARY-GESTURES.md`, `docs/36-BILLING-TRIAL.md`).
 
 This file supersedes `MASTER-PROMPT-COMPLETION.md`,
 `CONTENT-DOMAIN-COMPLETION.md`, `AUDIO-PLATFORM-STATUS.md`, `SESSION-NOTES.md`
@@ -17,10 +17,10 @@ it.** Every claim below was produced by running something.
 | Claim | Evidence |
 |---|---|
 | Backend builds | `make build` |
-| 24 test packages pass against PostgreSQL 17 | `make test` |
+| 51 Go packages pass against PostgreSQL 17 | `make test` |
 | No data races | `make race` |
 | Lint clean, 10 linters | `make lint` → 0 issues |
-| Schema loads 65 tables, 76 foreign keys | `internal/db` tests |
+| Schema loads 66 tables, 77 foreign keys | `internal/db` tests |
 | Session lifecycle: 11 states, no forged completions | `internal/sessions`, 16 tests |
 | Session queues are snapshots | `internal/store/snapshot_test.go` |
 | Account erasure covers every user table | `internal/deletion` |
@@ -34,8 +34,8 @@ it.** Every claim below was produced by running something.
 | **Content** | 16 confessions exist. 39 categories need content before launch (D-3). |
 | **Mobile app** | `apps/mobile` cannot play audio — `just_audio` and `audio_service` are commented out. Being replaced per D-4. |
 | **Website / admin** | 434 and 168 lines of scaffolding. Being replaced per D-5. |
-| **Payments** | Every store verifier is a stub. Real App Store / Play verification is PHASE 36. |
-| **Trial lifecycle** | The six states in §36 do not exist. |
+| **Payments** | **Done in PHASE 36** — production uses the Apple signed-transaction verifier or Google Play Developer API and fails closed without configuration; `TestProductionRefusesStubReceipts` remains green. |
+| **Trial lifecycle** | **Done in PHASE 36** — persistent `trials` row, explicit six-state graph, one-time start, expiry/conversion, and Premium projection tests. |
 | **UGC `PUBLIC` readers** | **Done in PHASE 32** — `GET /community/confessions` public, anonymous, newest-first, mobile 2-tab + web both-feeds. Was G-40. |
 | **Soft delete / versioning** | Present on 2 of 64 tables each. Section 25 asks for both generally. |
 | **Cache** | Per-process only; no cross-instance invalidation. |
@@ -206,9 +206,26 @@ PHASE 34 Library gestures and licence seeding — **PASS** (G-42 closed: seed
     routes.json and openapi.json regenerate byte-identical. See
     docs/34-LIBRARY-GESTURES.md)
 
-Open gaps carried forward: G-3, G-7, G-9, G-10, G-12, G-13,
+PHASE 36 Billing and trial lifecycle — **PASS** (G-29 closed: Apple receipts
+    are accepted only after ES256 JWS verification against the pinned Apple
+    certificate chain and Google purchases are fetched and evaluated through
+    the Play Developer API; production/staging never fall back to the Noop
+    verifier, and `TestProductionRefusesStubReceipts` remains in the suite.
+    `trials` is now persistent with `ELIGIBLE→STARTED→ACTIVE→EXPIRING→EXPIRED`
+    or `CONVERTED`; `TestTrialTransitions` names the explicit edge-table test,
+    `TestTrialLifecycle` covers clock boundaries, and `TrialStore` is the only
+    trial projection writer (`premium/trial` while running, fail-closed on
+    terminal states). The API adds the start/status/convert surface under both
+    prefixes; the typed client and IA are synchronized. Migration 0014 moves
+    the live schema to 66 tables / 77 foreign keys. Proving commands: `go test
+    ./internal/billing ./internal/trial ./internal/store ./internal/api`,
+    `python3 design/test_ia.py`, `python3 scripts/check_dart_symbols.py`, and
+    route export plus genspec (306 routes / 240 paths / 306 operations). See
+    docs/36-BILLING-TRIAL.md)
+
+Open gaps carried forward: G-7, G-9, G-10, G-12, G-13,
 G-14, G-15, G-16, G-17, G-18, G-19, G-20, G-21, G-22, G-23, G-24, G-25, G-26, G-27, G-28,
-G-29, G-33, G-34, G-35, G-36, G-37, G-38, G-39.
+G-33, G-34, G-35, G-36, G-37, G-38, G-39.
 (G-2 was removed from this list: it has been closed since PHASE 07 —
 "23/23 status columns constrained" — yet appeared in both lists here, a
 documentation bug fixed in PHASE 31.)
@@ -225,6 +242,10 @@ plaintext-token functions were removed),
 **G-43** (PHASE 34: drag-reorder with a grip in collection detail; add-to-collection from the confession page).
 **G-44** (PHASE 34: `cover_url` written by POST/PATCH, cleared by empty, refused unless http(s)/same-origin).
 **G-45** (PHASE 34: favourites navigate all four entity kinds).
+**G-29** (PHASE 36: production receipt verification is real Apple/Google
+provider verification, and unconfigured deployments refuse rather than grant).
+**G-3** (PHASE 36: the persistent six-state trial lifecycle and its one
+Premium projection writer are implemented).
 **G-33** is new: the 24-entry blocklist is a floor, not a breach corpus.
 
 New in PHASE 11: **G-34** (no audio exists for any of the 78 confessions),

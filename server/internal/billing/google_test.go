@@ -36,6 +36,7 @@ type fakePlay struct {
 	mu        sync.Mutex
 	asked     []string
 	purchase  *playapi.Subscription
+	returnNil bool
 	err       error
 	callCount int
 }
@@ -47,6 +48,9 @@ func (f *fakePlay) Subscription(_ context.Context, purchaseToken string) (*playa
 	f.callCount++
 	if f.err != nil {
 		return nil, f.err
+	}
+	if f.returnNil {
+		return nil, nil
 	}
 	if f.purchase == nil {
 		return nil, fmt.Errorf("%w: no purchase configured", playapi.ErrTokenInvalid)
@@ -327,6 +331,14 @@ func TestGoogleVerifierFlagsAnUnacknowledgedPurchase(t *testing.T) {
 	}
 	if !got.NeedsAcknowledgement {
 		t.Error("an unacknowledged purchase was not flagged - it will be refunded in three days")
+	}
+}
+
+func TestGoogleVerifierRefusesAnEmptyProviderResponse(t *testing.T) {
+	verifier := newPlayVerifier(t, &fakePlay{returnNil: true}, nil)
+	_, err := verifier.Verify(context.Background(), "google", testPlayToken)
+	if !errors.Is(err, ErrProviderError) {
+		t.Fatalf("empty provider response error = %v, want ErrProviderError", err)
 	}
 }
 

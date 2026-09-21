@@ -144,6 +144,9 @@ var Policies = []TablePolicy{
 	{Table: "signed_urls", Action: Anonymise,
 		Reason: "short-lived access audit; expires on its own"},
 
+	// Trial state is personal lifecycle data and is erased with the account.
+	{Table: "trials", Action: Erase},
+
 	// ---- Retained. Each states the obligation it satisfies.
 	{Table: "subscriptions", Action: Retain,
 		Reason: "financial record required for tax and accounting obligations; " +
