@@ -139,8 +139,11 @@ func Seed(db *db.DB, signer storage.ObjectStorage) error {
 		}
 		c := &models.Confession{
 			CategoryID: catID, Title: s.Title, ShortText: s.Short, MediumText: s.Medium, LongText: s.Long,
-			Intensity: s.Intensity, Language: "en", Status: "published", Author: "i-confess content team",
-			Variants: variants, Scriptures: s.Scriptures,
+			Intensity: s.Intensity, Language: "en", Status: "published", Author: CanonicalAuthor,
+			TheologicalReviewStatus: TheologicalReviewReviewed,
+			TheologicalReviewer:     CanonicalTheologicalReviewer,
+			TheologicalReviewNotes:  reviewNotesFor(s),
+			Variants:                variants, Scriptures: s.Scriptures,
 		}
 		if err := content.CreateConfession(bg, c); err != nil {
 			return err

@@ -117,6 +117,9 @@ func (s *ContentStore) CreateConfession(ctx context.Context, c *models.Confessio
 	if c.Version == 0 {
 		c.Version = 1
 	}
+	if c.TheologicalReviewStatus == "" {
+		c.TheologicalReviewStatus = "unreviewed"
+	}
 	c.CreatedAt, c.UpdatedAt = now(), now()
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -125,10 +128,11 @@ func (s *ContentStore) CreateConfession(ctx context.Context, c *models.Confessio
 	defer tx.Rollback()
 
 	_, err = tx.ExecContext(ctx,
-		`INSERT INTO confessions (id,category_id,title,short_text,medium_text,long_text,description,tags,intensity,language,status,author,version,published_at,created_at,updated_at)
-		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		`INSERT INTO confessions (id,category_id,title,short_text,medium_text,long_text,description,tags,intensity,language,status,author,version,published_at,created_at,updated_at, theological_review_status,theological_reviewer,theological_reviewed_at,theological_review_notes)
+		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		c.ID, c.CategoryID, c.Title, c.ShortText, c.MediumText, c.LongText, c.Description,
-		strings.Join(c.Tags, ","), c.Intensity, c.Language, c.Status, c.Author, c.Version, nullIfEmpty(c.PublishedAt), c.CreatedAt, c.UpdatedAt)
+		strings.Join(c.Tags, ","), c.Intensity, c.Language, c.Status, c.Author, c.Version, nullIfEmpty(c.PublishedAt), c.CreatedAt, c.UpdatedAt,
+		c.TheologicalReviewStatus, nullIfEmpty(c.TheologicalReviewer), nullIfEmpty(c.TheologicalReviewedAt), nullIfEmpty(c.TheologicalReviewNotes))
 	if err != nil {
 		return err
 	}

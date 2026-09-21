@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/Teamthy/i-confess/internal/db"
 	"github.com/Teamthy/i-confess/internal/media"
@@ -111,7 +112,7 @@ func EnsureContent(ctx context.Context, conn *db.DB) (categories, confessions in
 			CategoryID: catID, Title: canon.Title,
 			ShortText: canon.Short, MediumText: canon.Medium, LongText: canon.Long,
 			Intensity: canon.Intensity, Language: "en", Status: "published",
-			Author: "i-confess content team", Variants: variantsFor(canon), Scriptures: canon.Scriptures,
+			Author: CanonicalAuthor, Variants: variantsFor(canon), Scriptures: canon.Scriptures,
 		}
 		if err := content.CreateConfession(ctx, c); err != nil {
 			return categories, confessions, fmt.Errorf("create confession %q: %w", canon.Title, err)
@@ -123,6 +124,92 @@ func EnsureContent(ctx context.Context, conn *db.DB) (categories, confessions in
 		log.Printf("content: ensured %d categories, %d confessions", categories, confessions)
 	}
 	return categories, confessions, nil
+}
+
+// reviewNotesFor records the bounded review that actually took place. It does
+// not claim pastoral or ecclesiastical authority: the repository review checks
+// that the cited references are complete and that direct-quote flags are
+// explicit, while preserving the corpus wording for a later human church
+// review if the product requires one.
+func reviewNotesFor(c CanonicalConfession) string {
+	return fmt.Sprintf("Repository editorial review: %d scripture reference(s) recorded; direct-quote flags retained as supplied. This is not ecclesiastical endorsement or a claim of named authorship.", len(c.Scriptures))
+}
+
+func validateCanonicalReview(c CanonicalConfession) error {
+	if c.Title == "" || c.Short == "" || c.Medium == "" || c.Long == "" {
+		return fmt.Errorf("%q has incomplete confession text", c.Title)
+	}
+	if len(c.Scriptures) == 0 {
+		return fmt.Errorf("%q has no scripture references", c.Title)
+	}
+	for _, scripture := range c.Scriptures {
+		if scripture.Book == "" || scripture.Chapter <= 0 || scripture.Verse == "" || scripture.Translation == "" {
+			return fmt.Errorf("%q has an incomplete scripture reference", c.Title)
+		}
+	}
+	return nil
+}
+
+// EnsureCanonicalTheology records the review decision for every canonical
+// confession. It is keyed by the repository corpus, never by a broad UPDATE
+// that could relabel user-authored content. Existing rows from before PHASE 40
+// are migrated on the next boot, while a repeated run changes nothing.
+func EnsureCanonicalTheology(ctx context.Context, conn *db.DB) (int, error) {
+	content := store.NewContentStore(conn)
+	categories, err := content.ListCategories(ctx, true)
+	if err != nil {
+		return 0, fmt.Errorf("list categories for theological review: %w", err)
+	}
+	categoryIDs := make(map[string]string, len(categories))
+	for _, category := range categories {
+		categoryIDs[category.Name] = category.ID
+	}
+	confessions, err := content.ListConfessions(ctx, false)
+	if err != nil {
+		return 0, fmt.Errorf("list confessions for theological review: %w", err)
+	}
+	byKey := make(map[string]models.Confession, len(confessions))
+	for _, confession := range confessions {
+		byKey[confession.CategoryID+"\x00"+confession.Title] = confession
+	}
+
+	changed := 0
+	for _, canonical := range CanonicalConfessions {
+		if err := validateCanonicalReview(canonical); err != nil {
+			return changed, err
+		}
+		categoryID := categoryIDs[canonical.Category]
+		if categoryID == "" {
+			return changed, fmt.Errorf("canonical category %q is missing", canonical.Category)
+		}
+		confession, ok := byKey[categoryID+"\x00"+canonical.Title]
+		if !ok {
+			return changed, fmt.Errorf("canonical confession %q is missing", canonical.Title)
+		}
+		notes := reviewNotesFor(canonical)
+		var status, author, reviewer, reviewedAt, existingNotes string
+		err := conn.QueryRowContext(ctx,
+			`SELECT theological_review_status, COALESCE(author,''), COALESCE(theological_reviewer,''),
+			        COALESCE(theological_reviewed_at,''), COALESCE(theological_review_notes,'')
+			 FROM confessions WHERE id=? AND deleted_at IS NULL`, confession.ID).
+			Scan(&status, &author, &reviewer, &reviewedAt, &existingNotes)
+		if err != nil {
+			return changed, fmt.Errorf("read theological review for %q: %w", canonical.Title, err)
+		}
+		if status == TheologicalReviewReviewed && author == CanonicalAuthor &&
+			reviewer == CanonicalTheologicalReviewer && reviewedAt != "" && existingNotes == notes {
+			continue
+		}
+		if _, err := conn.ExecContext(ctx,
+			`UPDATE confessions SET author=?, theological_review_status=?, theological_reviewer=?,
+			 theological_reviewed_at=?, theological_review_notes=?, updated_at=? WHERE id=?`,
+			CanonicalAuthor, TheologicalReviewReviewed, CanonicalTheologicalReviewer,
+			time.Now().UTC().Format(time.RFC3339Nano), notes, time.Now().UTC().Format(time.RFC3339Nano), confession.ID); err != nil {
+			return changed, fmt.Errorf("write theological review for %q: %w", canonical.Title, err)
+		}
+		changed++
+	}
+	return changed, nil
 }
 
 // EnsureCanonicalAudio guarantees one real object-storage asset for every
@@ -184,6 +271,14 @@ func EnsureCanonicalAudio(ctx context.Context, conn *db.DB, objects storage.Obje
 		confession, ok := byKey[categoryID+"\x00"+canonical.Title]
 		if !ok {
 			return created, fmt.Errorf("canonical confession %q is missing", canonical.Title)
+		}
+		var reviewStatus string
+		if err := conn.QueryRowContext(ctx,
+			`SELECT theological_review_status FROM confessions WHERE id=? AND deleted_at IS NULL`, confession.ID).Scan(&reviewStatus); err != nil {
+			return created, fmt.Errorf("read theological review for %q: %w", canonical.Title, err)
+		}
+		if reviewStatus != TheologicalReviewReviewed {
+			return created, fmt.Errorf("canonical confession %q has theological review status %q", canonical.Title, reviewStatus)
 		}
 		variants, err := content.Variants(ctx, confession.ID)
 		if err != nil {

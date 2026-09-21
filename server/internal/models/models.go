@@ -32,24 +32,31 @@ type Category struct {
 }
 
 type Confession struct {
-	ID          string              `json:"id"`
-	CategoryID  string              `json:"category_id"`
-	Title       string              `json:"title"`
-	ShortText   string              `json:"short_text,omitempty"`
-	MediumText  string              `json:"medium_text,omitempty"`
-	LongText    string              `json:"long_text,omitempty"`
-	Description string              `json:"description,omitempty"`
-	Tags        []string            `json:"tags,omitempty"`
-	Intensity   int                 `json:"intensity"`
-	Language    string              `json:"language"`
-	Status      string              `json:"status"`
-	Author      string              `json:"author,omitempty"`
-	Version     int                 `json:"version"`
-	PublishedAt string              `json:"published_at,omitempty"`
-	CreatedAt   string              `json:"created_at"`
-	UpdatedAt   string              `json:"updated_at"`
-	Variants    []ConfessionVariant `json:"variants,omitempty"`
-	Scriptures  []ScriptureRef      `json:"scriptures,omitempty"`
+	ID          string   `json:"id"`
+	CategoryID  string   `json:"category_id"`
+	Title       string   `json:"title"`
+	ShortText   string   `json:"short_text,omitempty"`
+	MediumText  string   `json:"medium_text,omitempty"`
+	LongText    string   `json:"long_text,omitempty"`
+	Description string   `json:"description,omitempty"`
+	Tags        []string `json:"tags,omitempty"`
+	Intensity   int      `json:"intensity"`
+	Language    string   `json:"language"`
+	Status      string   `json:"status"`
+	Author      string   `json:"author,omitempty"`
+	// The author is provenance for the text, not a claim that a named team or
+	// church authored or endorsed it. Review metadata is stored separately and
+	// kept out of the public confession projection.
+	TheologicalReviewStatus string              `json:"-"`
+	TheologicalReviewer     string              `json:"-"`
+	TheologicalReviewedAt   string              `json:"-"`
+	TheologicalReviewNotes  string              `json:"-"`
+	Version                 int                 `json:"version"`
+	PublishedAt             string              `json:"published_at,omitempty"`
+	CreatedAt               string              `json:"created_at"`
+	UpdatedAt               string              `json:"updated_at"`
+	Variants                []ConfessionVariant `json:"variants,omitempty"`
+	Scriptures              []ScriptureRef      `json:"scriptures,omitempty"`
 }
 
 type ConfessionVariant struct {

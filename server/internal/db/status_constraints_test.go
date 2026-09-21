@@ -186,6 +186,32 @@ func TestDatabaseVocabularyMatchesGoConstants(t *testing.T) {
 
 var valueRe = regexp.MustCompile(`'([^']*)'(?:::\w+)?`)
 
+// TestTheologicalReviewVocabularyParityAgainstConstraint protects the
+// canonical-review gate introduced in PHASE 40. Like the lifecycle tests, it
+// reads the installed PostgreSQL CHECK rather than migration text.
+func TestTheologicalReviewVocabularyParityAgainstConstraint(t *testing.T) {
+	raw := dbtest.Raw(t)
+	def, err := checkDefinition(context.Background(), raw, "confessions", "theological_review_status")
+	if err != nil {
+		t.Fatalf("confessions.theological_review_status: %v", err)
+	}
+	want := map[string]bool{"unreviewed": true, "reviewed": true, "needs_revision": true}
+	got := map[string]bool{}
+	for _, match := range valueRe.FindAllStringSubmatch(def, -1) {
+		got[match[1]] = true
+	}
+	for value := range want {
+		if !got[value] {
+			t.Errorf("theology code accepts %q but live CHECK rejects it", value)
+		}
+	}
+	for value := range got {
+		if !want[value] {
+			t.Errorf("live theology CHECK accepts %q but code does not declare it", value)
+		}
+	}
+}
+
 // TestTrialVocabularyParityAgainstConstraint is the Phase 36 pattern used by
 // content in TestContentVocabularyParityAgainstConstraint: compare the Go
 // vocabulary with the CHECK installed in the live PostgreSQL test database.

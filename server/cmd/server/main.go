@@ -97,6 +97,11 @@ func main() {
 	if _, _, err := seed.EnsureContent(context.Background(), conn); err != nil {
 		log.Fatalf("content: failed to ensure the canonical library: %v", err)
 	}
+	if reviewed, err := seed.EnsureCanonicalTheology(context.Background(), conn); err != nil {
+		log.Fatalf("content: failed to record canonical theological review: %v", err)
+	} else if reviewed > 0 {
+		log.Printf("content: recorded %d canonical theological reviews", reviewed)
+	}
 	if created, err := seed.EnsureCanonicalAudio(context.Background(), conn, objStore); err != nil {
 		log.Fatalf("audio: failed to ensure canonical audio: %v", err)
 	} else if created > 0 {

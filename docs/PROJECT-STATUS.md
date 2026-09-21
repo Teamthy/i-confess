@@ -1,6 +1,6 @@
 # Project Status
 
-**Last verified:** 2026-09-21, at PHASE 39 (canonical audio coverage — G-34 and G-36 closed: every one of the 78 canonical confessions receives four object-backed bootstrap audio assets with explicit provenance, and content/audio bootstrap failures stop startup instead of leaving a false healthy process. The schema remains 66 tables / 77 foreign keys; the API remains 306 routes / 240 paths / 306 operations. PHASE 35 Conditions were not available in this checkout: `docs/35-TRIAL-LIFECYCLE.md` is absent, so no claim is made that they were read. Previous phase reconciliation still applies — see `docs/31-MODERATION.md`, `docs/33-AUDIT-COVERAGE.md`, `docs/34-LIBRARY-GESTURES.md`, `docs/36-BILLING-TRIAL.md`, `docs/37-CONTENT-LIFECYCLE.md`, `docs/38-RETENTION-VERSIONING.md`, `docs/39-CANONICAL-AUDIO.md`).
+**Last verified:** 2026-09-21, at PHASE 40 (canonical theological review — G-35 closed: canonical text now carries explicit review status, reviewer, timestamp, and bounded review notes; `Author` is the provenance-neutral `Canonical corpus`, never a claim that a team or church authored it. Audio creation requires reviewed canonical text. The schema remains 66 tables / 77 foreign keys; the API remains 306 routes / 240 paths / 306 operations. PHASE 35 Conditions were not available in this checkout: `docs/35-TRIAL-LIFECYCLE.md` is absent, so no claim is made that they were read. Previous phase reconciliation still applies — see `docs/31-MODERATION.md`, `docs/33-AUDIT-COVERAGE.md`, `docs/34-LIBRARY-GESTURES.md`, `docs/36-BILLING-TRIAL.md`, `docs/37-CONTENT-LIFECYCLE.md`, `docs/38-RETENTION-VERSIONING.md`, `docs/39-CANONICAL-AUDIO.md`, `docs/40-THEOLOGICAL-REVIEW.md`).
 
 This file supersedes `MASTER-PROMPT-COMPLETION.md`,
 `CONTENT-DOMAIN-COMPLETION.md`, `AUDIO-PLATFORM-STATUS.md`, `SESSION-NOTES.md`
@@ -31,7 +31,7 @@ it.** Every claim below was produced by running something.
 
 | Area | State |
 |---|---|
-| **Content** | Canonical text and audio coverage are complete in PHASES 39–40; theological review metadata is the remaining content gate. |
+| **Content** | **Done in PHASES 39–40** — 78 canonical confessions, 312 object-backed audio fixtures, explicit theological-review metadata, and provenance-neutral authorship. |
 | **Mobile app** | `apps/mobile` cannot play audio — `just_audio` and `audio_service` are commented out. Being replaced per D-4. |
 | **Website / admin** | 434 and 168 lines of scaffolding. Being replaced per D-5. |
 | **Payments** | **Done in PHASE 36** — production uses the Apple signed-transaction verifier or Google Play Developer API and fails closed without configuration; `TestProductionRefusesStubReceipts` remains green. |
@@ -260,9 +260,22 @@ PHASE 39 Canonical audio coverage — **PASS** (G-34 and G-36 closed:
     ./internal/api -count=1`, `gofmt -l internal cmd`, and `go vet ./...`. See
     docs/39-CANONICAL-AUDIO.md)
 
+PHASE 40 Canonical theological review — **PASS** (G-35 closed:
+    migration 0017 adds the constrained `unreviewed|reviewed|needs_revision`
+    vocabulary and review provenance columns. `EnsureCanonicalTheology` checks
+    every corpus item has complete text and explicit Scripture references,
+    records an internal editorial review without claiming clergy or church
+    endorsement, and normalizes the old `i-confess content team` author to
+    `Canonical corpus`. `EnsureCanonicalAudio` refuses an unreviewed canonical
+    row, so review is a real prerequisite rather than documentation. The named
+    seed tests prove 78 reviewed rows and zero overstated authors; live CHECK
+    parity covers the new vocabulary. Proving commands: `go test ./internal/db
+    ./internal/seed ./internal/store ./internal/api -count=1`, `gofmt -l
+    internal cmd`, and `go vet ./...`. See docs/40-THEOLOGICAL-REVIEW.md)
+
 Open gaps carried forward: G-7, G-9, G-10, G-12, G-13,
 G-14, G-15, G-16, G-17, G-18, G-19, G-20, G-23, G-24, G-25, G-26, G-27, G-28,
-G-33, G-35.
+G-33.
 (G-2 was removed from this list: it has been closed since PHASE 07 —
 "23/23 status columns constrained" — yet appeared in both lists here, a
 documentation bug fixed in PHASE 31.)
@@ -299,12 +312,15 @@ covered separately).
 bootstrap audio assets, each linked to a content version and storage key).
 **G-36** (PHASE 39: content and canonical-audio bootstrap failures are fatal at
 startup, so a healthy process cannot hide an empty or partial catalogue).
+**G-35** (PHASE 40: every canonical confession has explicit bounded editorial
+review metadata, and `Author` is provenance-neutral rather than an unsupported
+team or church claim).
 **G-33** is new: the 24-entry blocklist is a floor, not a breach corpus.
 
 Recorded in PHASE 11: **G-34** (canonical audio coverage), **G-35**
 (canonical content has had no theological review; `Author` overstates its
 provenance), and **G-36** (an `EnsureContent` failure booted silently). G-34
-and G-36 were closed in PHASE 39; G-35 remains for PHASE 40. PHASE 11 also
+and G-36 were closed in PHASE 39; G-35 was closed in PHASE 40. PHASE 11 also
 fixed a launch blocker that had no gap number: production came up with an empty
 catalogue because content was classed as dev-only seed data.
 

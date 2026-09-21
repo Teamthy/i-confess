@@ -114,6 +114,14 @@ func TestEnsureCanonicalAudioCoversAllCanonicalConfessions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, err := EnsureCanonicalAudio(ctx, conn, objects); err == nil {
+		t.Fatal("canonical audio was created before theological review")
+	}
+	if reviewed, err := EnsureCanonicalTheology(ctx, conn); err != nil {
+		t.Fatalf("EnsureCanonicalTheology: %v", err)
+	} else if reviewed != len(CanonicalConfessions) {
+		t.Errorf("reviewed %d canonical confessions, want %d", reviewed, len(CanonicalConfessions))
+	}
 	created, err := EnsureCanonicalAudio(ctx, conn, objects)
 	if err != nil {
 		t.Fatalf("EnsureCanonicalAudio: %v", err)
@@ -131,6 +139,16 @@ func TestEnsureCanonicalAudioCoversAllCanonicalConfessions(t *testing.T) {
 	}
 	if confessions != len(CanonicalConfessions) || assets != wantAssets {
 		t.Errorf("audio coverage = %d confessions/%d assets, want %d/%d", confessions, assets, len(CanonicalConfessions), wantAssets)
+	}
+	var reviewed, oldAuthor int
+	if err := conn.QueryRowContext(ctx,
+		`SELECT COUNT(*) FILTER (WHERE theological_review_status='reviewed' AND author=$1),
+		        COUNT(*) FILTER (WHERE author='i-confess content team')
+		 FROM confessions`, CanonicalAuthor).Scan(&reviewed, &oldAuthor); err != nil {
+		t.Fatal(err)
+	}
+	if reviewed != len(CanonicalConfessions) || oldAuthor != 0 {
+		t.Errorf("canonical provenance = %d reviewed rows/%d overstated authors, want %d/0", reviewed, oldAuthor, len(CanonicalConfessions))
 	}
 
 	if again, err := EnsureCanonicalAudio(ctx, conn, objects); err != nil {

@@ -29,6 +29,18 @@ import "github.com/Teamthy/i-confess/internal/models"
 // Alluding to a verse is not quoting it, and claiming otherwise overstates
 // the biblical warrant for the words a user is being asked to speak.
 
+// CanonicalAuthor is deliberately provenance-neutral. The repository contains
+// the text; this string does not claim a named author, pastor, church, or
+// theological institution wrote or endorsed it.
+const CanonicalAuthor = "Canonical corpus"
+
+const (
+	TheologicalReviewUnreviewed  = "unreviewed"
+	TheologicalReviewReviewed    = "reviewed"
+	TheologicalReviewNeedsWork   = "needs_revision"
+	CanonicalTheologicalReviewer = "I CONFESS editorial review"
+)
+
 // CanonicalConfession is one authored confession.
 type CanonicalConfession struct {
 	Category string
