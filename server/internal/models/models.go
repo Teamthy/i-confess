@@ -446,7 +446,11 @@ type ModerationQueue struct {
 	UserConfessions []UserConfession `json:"user_confessions"`
 	Reports         []Report         `json:"reports"`
 	Editorial       []Confession     `json:"editorial"`
-	Counts          map[string]int   `json:"counts"`
+	// Appeals is []any rather than a moderation type because models is the
+	// shared shape package and must not import the moderation vocabulary that
+	// reads it. The store fills it with its own appeal rows.
+	Appeals []any          `json:"appeals"`
+	Counts  map[string]int `json:"counts"`
 }
 
 // QACheck is one line of the §75 audio QA checklist.

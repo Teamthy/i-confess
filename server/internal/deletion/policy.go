@@ -146,6 +146,20 @@ var Policies = []TablePolicy{
 
 	// Trial state is personal lifecycle data and is erased with the account.
 	{Table: "trials", Action: Erase},
+	// The measured journey is personal in the same way the trial row is: it
+	// names which days this person listened. Erased with the account.
+	{Table: "trial_day_completions", Action: Erase},
+	// A block names two people, and the row exists only because one of them
+	// asked for it. It goes when either leaves: it is not a record of anything
+	// that happened to the blocked account, it is a preference of the blocker.
+	{Table: "user_blocks", Action: Erase, Column: "blocker_id"},
+	// An appeal is the appellant's own words about a decision made about them.
+	{Table: "moderation_appeals", Action: Erase},
+
+	// Analytics rows carry a user reference, so they go with the account.
+	// Aggregate reporting does not need the link: the counts survive as
+	// numbers, the attribution does not.
+	{Table: "analytics_events", Action: Erase},
 
 	// ---- Retained. Each states the obligation it satisfies.
 	{Table: "subscriptions", Action: Retain,

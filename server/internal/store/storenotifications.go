@@ -99,6 +99,11 @@ type NotificationOutcome struct {
 	// UserID is the account the notification was applied to, empty otherwise.
 	UserID string
 	Detail string
+	// State is the subscription state the notification wrote, and is only set
+	// when the notification applied. Carrying it lets the caller act on the
+	// outcome - a cancellation is the one thing a listener's journey analytics
+	// cannot recover from the row alone once a later renewal overwrites it.
+	State string
 }
 
 // Applied reports whether the notification changed entitlement.
@@ -248,7 +253,7 @@ func (s *UserStore) applyNotificationTx(ctx context.Context, tx *db.Tx, n StoreN
 	if detail == "" {
 		detail = "applied " + n.Provider + " " + n.NotificationType
 	}
-	return NotificationOutcome{Status: NotificationApplied, UserID: userID, Detail: detail}, nil
+	return NotificationOutcome{Status: NotificationApplied, UserID: userID, Detail: detail, State: n.State}, nil
 }
 
 // finishNotification writes the outcome into the ledger row claimed in step 1.

@@ -9,8 +9,10 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/Teamthy/i-confess/internal/analytics"
 	"github.com/Teamthy/i-confess/internal/billing"
 	"github.com/Teamthy/i-confess/internal/httpx"
+	"github.com/Teamthy/i-confess/internal/models"
 	"github.com/Teamthy/i-confess/internal/playapi"
 	"github.com/Teamthy/i-confess/internal/pubsub"
 	"github.com/Teamthy/i-confess/internal/store"
@@ -155,6 +157,7 @@ func (h *Handler) appleStoreWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	logNotification("apple", note.NotificationID, note.Type, outcome)
+	h.recordSubscriptionCancellation(r.Context(), "apple", outcome)
 	httpx.WriteJSON(w, http.StatusOK, notificationResponse{
 		Provider: "apple",
 		Status:   outcome.Status,
@@ -301,6 +304,7 @@ func (h *Handler) googleStoreWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	logNotification("google", note.NotificationID, note.TypeName, outcome)
+	h.recordSubscriptionCancellation(r.Context(), "google", outcome)
 	httpx.WriteJSON(w, http.StatusOK, notificationResponse{
 		Provider: "google",
 		Status:   outcome.Status,
@@ -371,6 +375,33 @@ func (h *Handler) acknowledgePlayPurchase(ctx context.Context, userID, productID
 // A duplicate is the expected consequence of at-least-once delivery and is not
 // worth an error line every few minutes; an applied change or anything
 // unexpected is.
+// recordSubscriptionCancellation writes the cancellation side of the
+// subscription funnel.
+//
+// A cancellation is the one lifecycle fact that cannot be recovered later: the
+// next renewal overwrites subscriptions.status, so if the store notification
+// that ended the subscription does not record it, the account simply looks
+// like one that renewed. Only an applied notification records the event - a
+// duplicate or stale delivery is not a second cancellation.
+func (h *Handler) recordSubscriptionCancellation(ctx context.Context, provider string, outcome store.NotificationOutcome) {
+	if !outcome.Applied() || outcome.UserID == "" {
+		return
+	}
+	switch outcome.State {
+	case models.SubscriptionCancelled, models.SubscriptionExpired, models.SubscriptionRefunded:
+	default:
+		return
+	}
+	_ = h.analytics.Record(ctx, analytics.Event{
+		Name:   analytics.EventSubscriptionCancelled,
+		UserID: outcome.UserID,
+		Props: map[string]any{
+			"provider": provider,
+			"state":    outcome.State,
+		},
+	})
+}
+
 func logNotification(provider, id, kind string, outcome store.NotificationOutcome) {
 	switch outcome.Status {
 	case store.NotificationDuplicate:

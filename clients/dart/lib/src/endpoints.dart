@@ -418,6 +418,10 @@ extension IConfessEndpoints on ApiClient {
   Future<Map<String, dynamic>> getSubscriptionsTrialStatus() =>
       get('/subscriptions/trial/status');
 
+  /// Measured trial journey: completed days and funnel
+  Future<Map<String, dynamic>> getSubscriptionsTrialEngagement() =>
+      get('/subscriptions/trial/engagement');
+
   /// Finish the trial before store verification
   Future<Map<String, dynamic>> postSubscriptionsTrialConvert(
           [Map<String, dynamic>? body]) =>
@@ -467,4 +471,32 @@ extension IConfessEndpoints on ApiClient {
   Future<Map<String, dynamic>> postSessionsByIdComplete(String id,
           [Map<String, dynamic>? body]) =>
       post('/sessions/$id/complete', body);
+
+  // ---- moderation: reporting, blocking, appeals ----
+  /// Report published content or a community post.
+  ///
+  /// This was missing from the typed client entirely, so a client could not
+  /// file a report at all. It is added alongside appeals because an appeal
+  /// against a dismissed report is meaningless to a client that cannot file
+  /// the report in the first place.
+  Future<Map<String, dynamic>> postReports(Map<String, dynamic> body) =>
+      post('/reports', body);
+
+  /// Accounts you have blocked
+  Future<Map<String, dynamic>> getMeBlocks() => get('/me/blocks');
+
+  /// Block an account
+  Future<Map<String, dynamic>> postMeBlocks(Map<String, dynamic> body) =>
+      post('/me/blocks', body);
+
+  /// Unblock an account
+  Future<Map<String, dynamic>> deleteMeBlocksByUserId(String userId) =>
+      delete('/me/blocks/$userId');
+
+  /// Your appeals and their outcomes
+  Future<Map<String, dynamic>> getMeAppeals() => get('/me/appeals');
+
+  /// Appeal a dismissed report or a rejected confession
+  Future<Map<String, dynamic>> postMeAppeals(Map<String, dynamic> body) =>
+      post('/me/appeals', body);
 }

@@ -1055,6 +1055,21 @@ final class SubscriptionRepository extends Repository {
     }
   }
 
+  /// The measured trial: which days were actually completed, and the funnel
+  /// behind it.
+  ///
+  /// Deliberately not cached. A progress display is the evidence the paywall
+  /// shows before asking for payment, and a five-minute-old reading would let
+  /// it show a day as unfinished that the listener completed a moment ago.
+  Future<Loadable<TrialEngagement>> trialEngagement() async {
+    try {
+      return Loadable.loaded(
+          TrialEngagement.fromJson(await api.getSubscriptionsTrialEngagement()));
+    } on ApiException catch (e) {
+      return Loadable.failed(e);
+    }
+  }
+
   Future<WriteResult<TrialStatus>> startTrial() =>
       write(() => api.postSubscriptionsTrial(), TrialStatus.fromJson);
 
@@ -1080,5 +1095,99 @@ final class SubscriptionRepository extends Repository {
           'receipt': receipt,
         }),
         Subscription.fromVerification,
+      );
+}
+
+/// Reporting, blocking and appeals (PHASE 42).
+///
+/// The three belong together because they are one system seen from the
+/// listener's side: reporting is asking a moderator to act, blocking is acting
+/// for yourself without waiting, and appealing is answering a decision the
+/// moderator made. Keeping them apart is how a block ends up rendered as a
+/// punishment, which is the confusion that turns the feature around.
+final class ModerationRepository extends Repository {
+  ModerationRepository(super.api, super.cache);
+
+  /// Files a report against published content or a community post.
+  Future<WriteResult<Map<String, dynamic>>> report({
+    required String entityType,
+    required String entityId,
+    required String reason,
+    String detail = '',
+  }) =>
+      write(
+        () => api.postReports({
+          'entity_type': entityType,
+          'entity_id': entityId,
+          'reason': reason,
+          if (detail.isNotEmpty) 'detail': detail,
+        }),
+        (json) => json,
+      );
+
+  /// The accounts this listener has blocked, newest first.
+  Future<Loadable<List<UserBlock>>> blocks() async {
+    try {
+      final json = await api.getMeBlocks();
+      return Loadable.loaded(
+        parseList(json['blocks'], UserBlock.fromJson),
+      );
+    } on ApiException catch (e) {
+      return Loadable.failed(e);
+    }
+  }
+
+  /// Blocks an account. Idempotent on the server: a repeated call returns the
+  /// existing boundary rather than an error, so a retry after a lost response
+  /// still succeeds.
+  Future<WriteResult<UserBlock>> block(String userId, {String reason = ''}) =>
+      write(
+        () => api.postMeBlocks({
+          'user_id': userId,
+          if (reason.isNotEmpty) 'reason': reason,
+        }),
+        UserBlock.fromJson,
+      );
+
+  /// Removes a boundary. The server treats unblocking something never blocked
+  /// as success, so this never needs a "was it blocked?" check first.
+  Future<WriteResult<bool>> unblock(String userId) async {
+    try {
+      await api.deleteMeBlocksByUserId(userId);
+      return WriteResult.success(true);
+    } on ApiException catch (e) {
+      return WriteResult.failure(e);
+    }
+  }
+
+  /// This listener's appeals, with the moderator's reasoning once there is any.
+  Future<Loadable<List<ModerationAppeal>>> appeals() async {
+    try {
+      final json = await api.getMeAppeals();
+      return Loadable.loaded(
+        parseList(json['appeals'], ModerationAppeal.fromJson),
+      );
+    } on ApiException catch (e) {
+      return Loadable.failed(e);
+    }
+  }
+
+  /// Appeals a dismissed report or a rejected confession.
+  ///
+  /// The server refuses an appeal against a decision that was never made - a
+  /// report still open, a confession still in review - so a client should not
+  /// offer the action until the decision exists.
+  Future<WriteResult<ModerationAppeal>> appeal({
+    required String decisionType,
+    required String decisionId,
+    required String statement,
+  }) =>
+      write(
+        () => api.postMeAppeals({
+          'decision_type': decisionType,
+          'decision_id': decisionId,
+          'statement': statement,
+        }),
+        ModerationAppeal.fromJson,
       );
 }

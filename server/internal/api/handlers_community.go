@@ -84,6 +84,26 @@ func (h *Handler) reactCommunity(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid reaction")
 		return
 	}
+	// A block stops a reaction in both directions (PHASE 42). If the author
+	// blocked the reactor, the reaction is exactly what the block was for. If
+	// the reactor blocked the author, honouring it would let a listener keep
+	// contacting someone they asked not to hear from, which makes the block
+	// half a boundary.
+	author, err := h.blocks.PostAuthor(r.Context(), id)
+	if err != nil {
+		httpx.WriteError(w, http.StatusNotFound, "no such post")
+		return
+	}
+	blocked, err := h.blocks.BlocksBetween(r.Context(), h.userID(r), author)
+	if err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, "failed to react")
+		return
+	}
+	if blocked {
+		httpx.WriteError(w, http.StatusForbidden, "you cannot react to this post")
+		return
+	}
+
 	cStore := community.NewStore(h.db)
 	if err := cStore.React(r.Context(), id, h.userID(r), community.Reaction(req.Reaction)); err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to react")
@@ -107,7 +127,21 @@ func (h *Handler) feedUserConfessions(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	eng := store.NewEngagementStore(h.db)
-	list, err := eng.ListPublishedUserConfessions(r.Context(), limit)
+	// A signed-in reader gets their own blocked authors filtered out; an
+	// anonymous one has no blocks to apply. The filter runs in SQL so the limit
+	// still means `limit` rows the reader is allowed to see, rather than
+	// `limit` rows minus however many were dropped in memory - which would
+	// render as a short feed indistinguishable from running out of content.
+	var blocked []string
+	var err error
+	if viewer := h.userID(r); viewer != "" {
+		blocked, err = h.blocks.BlockedIDs(r.Context(), viewer)
+		if err != nil {
+			httpx.WriteError(w, http.StatusInternalServerError, "failed to load confessions")
+			return
+		}
+	}
+	list, err := eng.ListPublishedUserConfessionsExcluding(r.Context(), limit, blocked)
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to load confessions")
 		return

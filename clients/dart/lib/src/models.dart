@@ -1357,26 +1357,217 @@ final class Subscription {
       );
 }
 
+/// One account's boundary against another.
+///
+/// A block is not a moderation action. It does not delete anything, it does not
+/// penalise the blocked account, and it is not shown to them; it changes what
+/// one account is served. A client must not render it as a penalty, or the
+/// feature becomes a harassment tool in the other direction.
+final class UserBlock {
+  const UserBlock({
+    this.id = '',
+    this.blockerId = '',
+    this.blockedId = '',
+    this.reason = '',
+    this.createdAt = '',
+  });
+
+  final String id;
+  final String blockerId;
+  final String blockedId;
+  final String reason;
+  final String createdAt;
+
+  factory UserBlock.fromJson(Map<String, dynamic> json) => UserBlock(
+        id: _str(json, 'id'),
+        blockerId: _str(json, 'blocker_id'),
+        blockedId: _str(json, 'blocked_id'),
+        reason: _str(json, 'reason'),
+        createdAt: _str(json, 'created_at'),
+      );
+}
+
+/// A listener's answer to a decision made about them.
+///
+/// [status] is one of submitted, under_review, upheld, overturned. Both
+/// decisions are terminal: an appeal is heard once, because an appeal that
+/// could be filed until a moderator relented is a queue, not an appeal.
+final class ModerationAppeal {
+  const ModerationAppeal({
+    this.id = '',
+    this.decisionType = '',
+    this.decisionId = '',
+    this.statement = '',
+    this.status = 'submitted',
+    this.decisionNote = '',
+    this.createdAt = '',
+  });
+
+  final String id;
+  final String decisionType;
+  final String decisionId;
+  final String statement;
+  final String status;
+  final String decisionNote;
+  final String createdAt;
+
+  /// Whether a moderator has answered.
+  bool get isDecided => status == 'upheld' || status == 'overturned';
+
+  /// Whether the original decision was reversed. An overturned appeal reopens
+  /// the work; it does not publish or resolve anything.
+  bool get wasOverturned => status == 'overturned';
+
+  factory ModerationAppeal.fromJson(Map<String, dynamic> json) =>
+      ModerationAppeal(
+        id: _str(json, 'id'),
+        decisionType: _str(json, 'decision_type'),
+        decisionId: _str(json, 'decision_id'),
+        statement: _str(json, 'statement'),
+        status: _str(json, 'status', 'submitted'),
+        decisionNote: _str(json, 'decision_note'),
+        createdAt: _str(json, 'created_at'),
+      );
+}
+
 /// Trial journey day.
+///
+/// Each day teaches one thing, and [intent] names it. The flags are not
+/// decoration: [sessionCount] is two on the morning-and-night day, [personalized]
+/// means the server substituted this listener's own interests, [premiumVoice]
+/// and [custom] select a different surface entirely. A client renders the right
+/// affordance from the flag rather than guessing at it from the prose.
 final class TrialDay {
   const TrialDay({
     this.day = 0,
+    this.intent = '',
     this.title = '',
     this.description = '',
     this.cta = '',
+    this.categories = const <String>[],
+    this.duration = 0,
+    this.sessionCount = 1,
+    this.personalized = false,
+    this.premiumVoice = false,
+    this.custom = false,
+    this.summary = false,
   });
 
   final int day;
+  final String intent;
   final String title;
   final String description;
   final String cta;
+  final List<String> categories;
+  final int duration;
+  final int sessionCount;
+  final bool personalized;
+  final bool premiumVoice;
+  final bool custom;
+  final bool summary;
 
   factory TrialDay.fromJson(Map<String, dynamic> json) => TrialDay(
         day: _int(json, 'day'),
+        intent: _str(json, 'intent'),
         title: _str(json, 'title'),
         description: _str(json, 'description'),
         cta: _str(json, 'cta'),
+        // Categories are category slugs, so this is a string list. The shared
+        // _list helper only yields maps, which would have decoded every slug
+        // into the string form of an empty map.
+        categories: (json['categories'] as List?)?.whereType<String>().toList() ??
+            const <String>[],
+        duration: _int(json, 'duration'),
+        sessionCount: _int(json, 'session_count', 1),
+        personalized: _bool(json, 'personalized'),
+        premiumVoice: _bool(json, 'premium_voice'),
+        custom: _bool(json, 'custom'),
+        summary: _bool(json, 'summary'),
       );
+}
+
+/// One measured day of the trial journey.
+///
+/// [sessionId] is the evidence: the row exists because a real session reached
+/// COMPLETED, not because a client said the day was done.
+final class TrialDayCompletion {
+  const TrialDayCompletion({
+    this.id = '',
+    this.day = 0,
+    this.sessionId = '',
+    this.completedAt = '',
+  });
+
+  final String id;
+  final int day;
+  final String sessionId;
+  final String completedAt;
+
+  factory TrialDayCompletion.fromJson(Map<String, dynamic> json) =>
+      TrialDayCompletion(
+        id: _str(json, 'id'),
+        day: _int(json, 'day'),
+        sessionId: _str(json, 'session_id'),
+        completedAt: _str(json, 'completed_at'),
+      );
+}
+
+/// The measured trial: days actually completed, not days elapsed.
+///
+/// An account on day five that finished two sessions reports 2 of 7. The
+/// distinction is the whole point - a clock reading is true of a listener who
+/// never opened the app.
+final class TrialEngagement {
+  const TrialEngagement({
+    this.state = 'ELIGIBLE',
+    this.currentDay = 0,
+    this.completedDays = const <int>[],
+    this.daysCompleted = 0,
+    this.daysTotal = 0,
+    this.completionRate = 0,
+    this.completions = const <TrialDayCompletion>[],
+    this.funnel = const <String, int>{},
+  });
+
+  final String state;
+  final int currentDay;
+  final List<int> completedDays;
+  final int daysCompleted;
+  final int daysTotal;
+  final double completionRate;
+  final List<TrialDayCompletion> completions;
+  final Map<String, int> funnel;
+
+  factory TrialEngagement.fromJson(Map<String, dynamic> json) {
+    final days = <int>[];
+    if (json['completed_days'] is List) {
+      for (final d in json['completed_days'] as List) {
+        if (d is int) {
+          days.add(d);
+        } else if (d is num) {
+          days.add(d.toInt());
+        }
+      }
+    }
+    final funnel = <String, int>{};
+    if (json['funnel'] is Map) {
+      (json['funnel'] as Map).forEach((k, v) {
+        funnel[k.toString()] = v is num ? v.toInt() : 0;
+      });
+    }
+    return TrialEngagement(
+      state: _str(json, 'state', 'ELIGIBLE'),
+      currentDay: _int(json, 'current_day'),
+      completedDays: days,
+      daysCompleted: _int(json, 'days_completed'),
+      daysTotal: _int(json, 'days_total'),
+      completionRate: (json['completion_rate'] as num?)?.toDouble() ?? 0,
+      completions: _list(json['completions'])
+          .map(TrialDayCompletion.fromJson)
+          .toList(growable: false),
+      funnel: funnel,
+    );
+  }
 }
 
 /// Persisted trial lifecycle state and current entitlement projection.

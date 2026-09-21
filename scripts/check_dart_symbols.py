@@ -162,6 +162,133 @@ check(
     "final bool entitled;" in models_src,
 )
 
+# PHASE 41: the journey is measured, and each day states what it teaches.
+# Without the engagement read the trial could be displayed but not counted,
+# and without intent/flags a client can only guess which surface a day wants.
+check(
+    "getSubscriptionsTrialEngagement is on the typed client",
+    "getSubscriptionsTrialEngagement" in declared_endpoints,
+)
+check(
+    "SubscriptionRepository.trialEngagement exists",
+    "trialEngagement" in subscription_methods,
+)
+check("TrialEngagement model is declared", "final class TrialEngagement" in models_src)
+check(
+    "TrialEngagement has a fromJson factory",
+    "factory TrialEngagement.fromJson" in models_src,
+)
+check(
+    "TrialEngagement counts completed days, not elapsed ones",
+    "final int daysCompleted;" in models_src and "final int daysTotal;" in models_src,
+)
+check(
+    "TrialEngagement carries the funnel behind the numbers",
+    "final Map<String, int> funnel;" in models_src,
+)
+check(
+    "TrialDayCompletion names the session that completed the day",
+    "final class TrialDayCompletion" in models_src and "final String sessionId;" in models_src,
+)
+for field in ["final String intent;", "final List<String> categories;", "final int duration;"]:
+    check(f"TrialDay carries {field.split()[-1].rstrip(';')}", field in models_src)
+for flag in ["sessionCount", "personalized", "premiumVoice", "custom", "summary"]:
+    check(f"TrialDay exposes the {flag} flag", f"this.{flag}" in models_src)
+check(
+    "trial engagement is wired in IA",
+    "GET /subscriptions/trial/engagement" in trial_ia,
+)
+
+# The paywall renders the measured journey. The call to action was declared on
+# the client and never sent by the server, so every journey row rendered
+# without one; and a tick must mean a session was finished, not that a day
+# elapsed on the clock.
+premium_screen_src = read(MOBILE / "src/features/premium/premium_screen.dart")
+premium_providers_src = read(MOBILE / "src/features/premium/premium_providers.dart")
+check(
+    "the paywall renders each day's call to action",
+    "day.cta" in premium_screen_src,
+)
+check(
+    "the paywall has a measured-journey provider",
+    "trialEngagementProvider" in premium_providers_src,
+)
+check(
+    "the paywall marks completed days from the engagement read",
+    "completed.contains(day.day)" in premium_screen_src,
+)
+
+# PHASE 42: moderation completeness. Reporting, blocking and appeals are one
+# system seen from the listener's side, and the typed client had none of them -
+# not even POST /reports, so a client could not file the report an appeal is
+# the answer to.
+for required in [
+    "postReports",
+    "getMeBlocks",
+    "postMeBlocks",
+    "deleteMeBlocksByUserId",
+    "getMeAppeals",
+    "postMeAppeals",
+]:
+    check(f"{required} is on the typed client", required in declared_endpoints)
+
+check("ModerationRepository is declared", "final class ModerationRepository" in repo_src)
+moderation_methods = method_names("ModerationRepository", repo_src)
+for required in ["report", "blocks", "block", "unblock", "appeals", "appeal"]:
+    check(f"ModerationRepository.{required} exists", required in moderation_methods)
+
+check("UserBlock model is declared", "final class UserBlock" in models_src)
+check("UserBlock has a fromJson factory", "factory UserBlock.fromJson" in models_src)
+check("ModerationAppeal model is declared", "final class ModerationAppeal" in models_src)
+check(
+    "ModerationAppeal has a fromJson factory",
+    "factory ModerationAppeal.fromJson" in models_src,
+)
+check(
+    "ModerationAppeal can tell a decided appeal from a pending one",
+    "bool get isDecided" in models_src,
+)
+check(
+    "ModerationAppeal can tell an overturn from an uphold",
+    "bool get wasOverturned" in models_src,
+)
+
+# A block is a boundary, not a punishment: the client carries the blocked
+# account's id and nothing about them, because a block is never shown to them.
+check(
+    "UserBlock carries no identity for the blocked account beyond the id",
+    "final String blockedId;" in models_src and "final String blockedName;" not in models_src,
+)
+
+# Two mistakes this sandbox cannot compile-check, and both were made once
+# already. A List<String> field decoded through the shared _list helper yields
+# one entry per map and drops every slug, because _list only returns maps. And
+# AsyncValue has no valueOrNull in Riverpod 3 - the codebase reads
+# `.asData?.value.valueOrNull`, which is AsyncValue then Loadable.
+check(
+    "TrialDay.categories decodes a string list, not _list's maps",
+    re.search(r"categories:\s*\(json\['categories'\] as List\?\)\?\.whereType<String>\(\)", models_src)
+    is not None,
+)
+check(
+    "no List<String> field is decoded through _list",
+    re.search(r"_list\([^)]*\)\s*\.map\(\(\w+\) => \w+\.toString\(\)\)", models_src) is None,
+)
+check(
+    "the paywall reads AsyncValue through asData, not a nonexistent valueOrNull",
+    "engagementAsync.asData?.value.valueOrNull" in premium_screen_src
+    and "engagementAsync.valueOrNull" not in premium_screen_src,
+)
+
+for endpoint in [
+    "GET /me/blocks",
+    "POST /me/blocks",
+    "DELETE /me/blocks/{userId}",
+    "GET /me/appeals",
+    "POST /me/appeals",
+]:
+    check(f"moderation endpoint {endpoint} is wired in IA", endpoint in trial_ia)
+
 
 # ---------------------------------------------------------------------------
 # Every path the typed client calls must be a real server route
@@ -515,9 +642,17 @@ check(
     "collection detail reorders with a ReorderableListView",
     "ReorderableListView.builder" in library_screen_src,
 )
+# The row itself navigates, so the whole-row drag handle must be off and an
+# explicit grip must own the drag. Flutter's delayed variant is the one in use:
+# a long-press starts the drag so a tap on the grip cannot be swallowed as one.
 check(
     "rows expose an explicit drag handle (rows also navigate)",
-    "ReorderableDragStartListener" in library_screen_src,
+    "ReorderableDragStartListener" in library_screen_src
+    or "ReorderableDelayedDragStartListener" in library_screen_src,
+)
+check(
+    "the whole-row drag handle is off, because the row navigates",
+    "buildDefaultDragHandles: false" in library_screen_src,
 )
 check(
     "the cover dialog exists and is wired to the menu",

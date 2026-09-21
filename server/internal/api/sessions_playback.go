@@ -214,6 +214,13 @@ func (h *Handler) completeSession(w http.ResponseWriter, r *http.Request) {
 		Skipped:         false,
 	})
 
+	// A real completion is the only thing that can complete a trial journey
+	// day. It is derived here rather than accepted from a client, so the
+	// conversion funnel measures playback instead of assertion. Best effort:
+	// an account that is not on a trial has nothing to record, and analytics
+	// must never fail a completion the listener actually earned.
+	h.recordTrialDayCompletion(r.Context(), sess.UserID, sess.ID)
+
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{
 		"status":          sess.Status,
 		"session":         sess,

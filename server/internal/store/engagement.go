@@ -228,13 +228,41 @@ func (s *EngagementStore) ListUserConfessions(ctx context.Context, userID string
 // author identity — that is enforced by the handler projecting away user_id.
 // Ordered by published_at DESC so the newest testimony appears first.
 func (s *EngagementStore) ListPublishedUserConfessions(ctx context.Context, limit int) ([]models.UserConfession, error) {
+	return s.listPublishedUserConfessions(ctx, limit, nil)
+}
+
+// ListPublishedUserConfessionsExcluding is the public reader with a block
+// filter applied in SQL rather than in Go.
+//
+// The distinction is not cosmetic. Filtering after the read means a limit of 20
+// can return 14 rows because six were dropped in memory, and the client renders
+// a shorter feed with no way to tell whether the filter worked or the platform
+// ran out of content. Excluding in the WHERE clause makes the limit mean 20
+// rows the listener is actually allowed to see.
+func (s *EngagementStore) ListPublishedUserConfessionsExcluding(ctx context.Context, limit int, blocked []string) ([]models.UserConfession, error) {
+	return s.listPublishedUserConfessions(ctx, limit, blocked)
+}
+
+func (s *EngagementStore) listPublishedUserConfessions(ctx context.Context, limit int, blocked []string) ([]models.UserConfession, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 20
 	}
-	rows, err := s.db.QueryContext(ctx,
-		`SELECT `+ucColumns+` FROM user_confessions
-		 WHERE visibility = 'public' AND status = 'published'
-		 ORDER BY COALESCE(published_at, created_at) DESC LIMIT ?`, limit)
+	query := `SELECT ` + ucColumns + ` FROM user_confessions
+		 WHERE visibility = 'public' AND status = 'published'`
+	args := []any{}
+	// Placeholder numbering is positional and the driver rewrites ? for
+	// PostgreSQL, so the exclusion list is built with ? and appended in order.
+	for range blocked {
+		query += ` AND user_id <> ?`
+	}
+	if len(blocked) > 0 {
+		for _, id := range blocked {
+			args = append(args, id)
+		}
+	}
+	query += ` ORDER BY COALESCE(published_at, created_at) DESC LIMIT ?`
+	args = append(args, limit)
+	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

@@ -18,3 +18,12 @@ final entitlementsProvider = FutureProvider<Loadable<Entitlements>>((ref) {
 final trialProvider = FutureProvider<Loadable<List<TrialDay>>>((ref) {
   return ref.watch(subscriptionRepositoryProvider).trial();
 });
+
+/// The measured journey: which days were actually completed.
+///
+/// Kept separate from [trialProvider] on purpose. The journey is the same for
+/// everyone and can be cached; the completion count is this listener's
+/// progress and is the evidence the paywall shows, so it is fetched fresh.
+final trialEngagementProvider = FutureProvider<Loadable<TrialEngagement>>((ref) {
+  return ref.watch(subscriptionRepositoryProvider).trialEngagement();
+});
