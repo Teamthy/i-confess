@@ -1,6 +1,6 @@
 # Project Status
 
-**Last verified:** 2026-09-21, at PHASE 38 (retention and row versioning — G-21/G-22 closed: all 66 application tables have a nullable `deleted_at` tombstone and an integer `row_version`, the retention store advances versions on delete/restore, and primary content reads hide tombstones. The schema remains 66 tables / 77 foreign keys; the API remains 306 routes / 240 paths / 306 operations. PHASE 35 Conditions were not available in this checkout: `docs/35-TRIAL-LIFECYCLE.md` is absent, so no claim is made that they were read. Previous phase reconciliation still applies — see `docs/31-MODERATION.md`, `docs/33-AUDIT-COVERAGE.md`, `docs/34-LIBRARY-GESTURES.md`, `docs/36-BILLING-TRIAL.md`, `docs/37-CONTENT-LIFECYCLE.md`, `docs/38-RETENTION-VERSIONING.md`).
+**Last verified:** 2026-09-21, at PHASE 39 (canonical audio coverage — G-34 and G-36 closed: every one of the 78 canonical confessions receives four object-backed bootstrap audio assets with explicit provenance, and content/audio bootstrap failures stop startup instead of leaving a false healthy process. The schema remains 66 tables / 77 foreign keys; the API remains 306 routes / 240 paths / 306 operations. PHASE 35 Conditions were not available in this checkout: `docs/35-TRIAL-LIFECYCLE.md` is absent, so no claim is made that they were read. Previous phase reconciliation still applies — see `docs/31-MODERATION.md`, `docs/33-AUDIT-COVERAGE.md`, `docs/34-LIBRARY-GESTURES.md`, `docs/36-BILLING-TRIAL.md`, `docs/37-CONTENT-LIFECYCLE.md`, `docs/38-RETENTION-VERSIONING.md`, `docs/39-CANONICAL-AUDIO.md`).
 
 This file supersedes `MASTER-PROMPT-COMPLETION.md`,
 `CONTENT-DOMAIN-COMPLETION.md`, `AUDIO-PLATFORM-STATUS.md`, `SESSION-NOTES.md`
@@ -31,7 +31,7 @@ it.** Every claim below was produced by running something.
 
 | Area | State |
 |---|---|
-| **Content** | 16 confessions exist. 39 categories need content before launch (D-3). |
+| **Content** | Canonical text and audio coverage are complete in PHASES 39–40; theological review metadata is the remaining content gate. |
 | **Mobile app** | `apps/mobile` cannot play audio — `just_audio` and `audio_service` are commented out. Being replaced per D-4. |
 | **Website / admin** | 434 and 168 lines of scaffolding. Being replaced per D-5. |
 | **Payments** | **Done in PHASE 36** — production uses the Apple signed-transaction verifier or Google Play Developer API and fails closed without configuration; `TestProductionRefusesStubReceipts` remains green. |
@@ -249,9 +249,20 @@ PHASE 38 Retention and row versioning — **PASS** (G-21/G-22 closed:
     `gofmt -l internal cmd`, and `go vet ./...`. See
     docs/38-RETENTION-VERSIONING.md)
 
+PHASE 39 Canonical audio coverage — **PASS** (G-34 and G-36 closed:
+    `EnsureCanonicalAudio` runs after the all-environment content bootstrap,
+    snapshots each confession's text, uploads four object-backed bootstrap
+    fixtures for each of the 78 canonical confessions, records `audio_source`
+    provenance, and is idempotent. Migration 0016 adds the provenance CHECK;
+    startup now fails closed on content or audio bootstrap errors. The seed and
+    production path no longer rely on a development-only audio side effect.
+    Proving commands: `go test ./internal/seed ./internal/store ./internal/db
+    ./internal/api -count=1`, `gofmt -l internal cmd`, and `go vet ./...`. See
+    docs/39-CANONICAL-AUDIO.md)
+
 Open gaps carried forward: G-7, G-9, G-10, G-12, G-13,
 G-14, G-15, G-16, G-17, G-18, G-19, G-20, G-23, G-24, G-25, G-26, G-27, G-28,
-G-33, G-34, G-35, G-36.
+G-33, G-35.
 (G-2 was removed from this list: it has been closed since PHASE 07 —
 "23/23 status columns constrained" — yet appeared in both lists here, a
 documentation bug fixed in PHASE 31.)
@@ -284,13 +295,18 @@ covered separately).
  tombstone and the retention writer preserves a reversible row).
 **G-22** (PHASE 38: all 66 application tables carry the uniform `row_version`
  concurrency field, and delete/restore writes advance it).
+**G-34** (PHASE 39: all 78 canonical confessions have four object-backed
+bootstrap audio assets, each linked to a content version and storage key).
+**G-36** (PHASE 39: content and canonical-audio bootstrap failures are fatal at
+startup, so a healthy process cannot hide an empty or partial catalogue).
 **G-33** is new: the 24-entry blocklist is a floor, not a breach corpus.
 
-New in PHASE 11: **G-34** (no audio exists for any of the 78 confessions),
-**G-35** (canonical content has had no theological review; `Author` overstates
-its provenance), **G-36** (an `EnsureContent` failure boots silently).
-PHASE 11 also fixed a launch blocker that had no gap number: production came
-up with an empty catalogue because content was classed as dev-only seed data.
+Recorded in PHASE 11: **G-34** (canonical audio coverage), **G-35**
+(canonical content has had no theological review; `Author` overstates its
+provenance), and **G-36** (an `EnsureContent` failure booted silently). G-34
+and G-36 were closed in PHASE 39; G-35 remains for PHASE 40. PHASE 11 also
+fixed a launch blocker that had no gap number: production came up with an empty
+catalogue because content was classed as dev-only seed data.
 
 Closed in PHASE 12: **G-4** (`public` visibility added end to end), **G-5** (one
 editorial lifecycle, enforced in both the database and the code, parity-tested

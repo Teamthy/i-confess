@@ -2,11 +2,15 @@ package seed
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 
 	"github.com/Teamthy/i-confess/internal/db"
+	"github.com/Teamthy/i-confess/internal/media"
 	"github.com/Teamthy/i-confess/internal/models"
+	"github.com/Teamthy/i-confess/internal/storage"
 	"github.com/Teamthy/i-confess/internal/store"
 )
 
@@ -119,6 +123,127 @@ func EnsureContent(ctx context.Context, conn *db.DB) (categories, confessions in
 		log.Printf("content: ensured %d categories, %d confessions", categories, confessions)
 	}
 	return categories, confessions, nil
+}
+
+// EnsureCanonicalAudio guarantees one real object-storage asset for every
+// canonical confession variant. A fresh production database cannot depend on
+// the development-only Seed path: the catalogue would otherwise contain text
+// rows with no playable audio, which is G-34. Missing renders are deterministic
+// bootstrap fixtures, explicitly labeled as such, and can later be replaced by
+// the normal rights-gated generation pipeline without changing the key shape.
+//
+// The object is uploaded before the database row is upserted. If a deployment
+// is interrupted, the next boot retries the upload; a row is never marked ready
+// for an object that has not successfully reached storage.
+func EnsureCanonicalAudio(ctx context.Context, conn *db.DB, objects storage.ObjectStorage) (int, error) {
+	if objects == nil {
+		return 0, fmt.Errorf("canonical audio requires object storage")
+	}
+	content := store.NewContentStore(conn)
+	audio := store.NewAudioStore(conn)
+
+	voices, err := audio.ListVoices(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("list canonical voices: %w", err)
+	}
+	var voice *models.Voice
+	for i := range voices {
+		if voices[i].Name == "Grace" && voices[i].Status == "active" {
+			voice = &voices[i]
+			break
+		}
+	}
+	if voice == nil {
+		return 0, fmt.Errorf("canonical voice Grace is missing or inactive")
+	}
+
+	categories, err := content.ListCategories(ctx, true)
+	if err != nil {
+		return 0, fmt.Errorf("list canonical categories: %w", err)
+	}
+	categoryIDs := make(map[string]string, len(categories))
+	for _, category := range categories {
+		categoryIDs[category.Name] = category.ID
+	}
+
+	storedConfessions, err := content.ListConfessions(ctx, false)
+	if err != nil {
+		return 0, fmt.Errorf("list canonical confessions: %w", err)
+	}
+	byKey := make(map[string]models.Confession, len(storedConfessions))
+	for _, confession := range storedConfessions {
+		byKey[confession.CategoryID+"\x00"+confession.Title] = confession
+	}
+
+	created := 0
+	for _, canonical := range CanonicalConfessions {
+		categoryID := categoryIDs[canonical.Category]
+		if categoryID == "" {
+			return created, fmt.Errorf("canonical category %q is missing", canonical.Category)
+		}
+		confession, ok := byKey[categoryID+"\x00"+canonical.Title]
+		if !ok {
+			return created, fmt.Errorf("canonical confession %q is missing", canonical.Title)
+		}
+		variants, err := content.Variants(ctx, confession.ID)
+		if err != nil {
+			return created, fmt.Errorf("list variants for %q: %w", canonical.Title, err)
+		}
+		if len(variants) == 0 {
+			return created, fmt.Errorf("canonical confession %q has no duration variants", canonical.Title)
+		}
+		version, err := content.EnsureVersion(ctx, confession.ID, confession.Title,
+			confession.ShortText, confession.MediumText, confession.LongText, confession.Language,
+			"canonical-audio-bootstrap")
+		if err != nil {
+			return created, fmt.Errorf("snapshot %q: %w", canonical.Title, err)
+		}
+		for _, variant := range variants {
+			key := storage.AudioKeyFor(confession.ID, variant.ID, voice.ID, confession.Language, version.VersionNumber)
+			var assetID, storedKey string
+			err := conn.QueryRowContext(ctx,
+				`SELECT id, storage_key FROM audio_assets
+				 WHERE content_id=? AND content_version_id=? AND voice_id=? AND variant_id=?
+				   AND asset_type='stream' AND quality_tier='standard' AND deleted_at IS NULL`,
+				confession.ID, version.ID, voice.ID, variant.ID).Scan(&assetID, &storedKey)
+			if err == nil {
+				exists, existsErr := objects.Exists(ctx, storedKey)
+				if existsErr != nil {
+					return created, fmt.Errorf("check canonical audio %q: %w", canonical.Title, existsErr)
+				}
+				if exists && storedKey == key {
+					continue
+				}
+			} else if !errors.Is(err, sql.ErrNoRows) {
+				return created, fmt.Errorf("find canonical audio %q: %w", canonical.Title, err)
+			}
+
+			seconds := variant.DurationSeconds
+			if seconds <= 0 {
+				seconds = 1
+			}
+			data := media.ToneBytes(seconds)
+			if err := objects.Upload(ctx, key, data, map[string]string{
+				"confession_id":      confession.ID,
+				"content_version_id": version.ID,
+				"voice_id":           voice.ID,
+				"audio_source":       "bootstrap_fixture",
+			}); err != nil {
+				return created, fmt.Errorf("upload canonical audio %q: %w", canonical.Title, err)
+			}
+			asset := &models.AudioAsset{
+				ID: assetID, ConfessionID: confession.ID, VariantID: variant.ID,
+				VoiceID: voice.ID, URL: key, DurationSeconds: variant.DurationSeconds,
+				SizeBytes: int64(len(data)), Status: "ready", ContentVersionID: version.ID,
+				AudioSource: "bootstrap_fixture",
+			}
+			if err := audio.UpsertAsset(ctx, asset); err != nil {
+				return created, fmt.Errorf("record canonical audio %q: %w", canonical.Title, err)
+			}
+			created++
+		}
+	}
+	return created, nil
 }
 
 // slugFor maps a canonical category name to its slug. The corpus stores names

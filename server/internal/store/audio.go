@@ -66,6 +66,9 @@ func (s *AudioStore) UpsertAsset(ctx context.Context, a *models.AudioAsset) erro
 	if a.Status == "" {
 		a.Status = "ready"
 	}
+	if a.AudioSource == "" {
+		a.AudioSource = "generated"
+	}
 	if a.ConfessionID == "" {
 		return errors.New("confession_id is required")
 	}
@@ -101,9 +104,9 @@ func (s *AudioStore) UpsertAsset(ctx context.Context, a *models.AudioAsset) erro
 			id, content_id, content_version_id, voice_id, variant_id,
 			asset_type, quality_tier, storage_provider, storage_key, cdn_path,
 			format, codec, container,
-			duration_seconds, file_size_bytes, status,
+			duration_seconds, file_size_bytes, status, audio_source,
 			created_at, updated_at
-		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(content_id, content_version_id, voice_id, variant_id, asset_type, quality_tier) DO UPDATE SET
 			content_id = excluded.content_id,
 			voice_id = excluded.voice_id,
@@ -117,6 +120,9 @@ func (s *AudioStore) UpsertAsset(ctx context.Context, a *models.AudioAsset) erro
 			duration_seconds = excluded.duration_seconds,
 			file_size_bytes = excluded.file_size_bytes,
 			status = excluded.status,
+			audio_source = excluded.audio_source,
+			deleted_at = NULL,
+			row_version = audio_assets.row_version + 1,
 			-- A new render invalidates the previous review: the bytes a
 			-- reviewer approved are no longer the bytes being served.
 			qa_reviewed_by = NULL,
@@ -142,6 +148,7 @@ func (s *AudioStore) UpsertAsset(ctx context.Context, a *models.AudioAsset) erro
 		a.DurationSeconds,
 		a.SizeBytes,
 		a.Status,
+		a.AudioSource,
 		a.CreatedAt,
 		a.UpdatedAt,
 	).Scan(&a.ID)
@@ -154,13 +161,13 @@ func (s *AudioStore) UpsertAsset(ctx context.Context, a *models.AudioAsset) erro
 const assetColumns = `id, content_id, COALESCE(variant_id,''), voice_id,
 	COALESCE(cdn_path, storage_key), COALESCE(duration_seconds,0), COALESCE(file_size_bytes,0),
 	status, COALESCE(content_version_id,''), COALESCE(qa_reviewed_by,''), COALESCE(qa_reviewed_at,''),
-	COALESCE(qa_note,''), created_at, updated_at`
+	COALESCE(qa_note,''), COALESCE(audio_source,'generated'), created_at, updated_at`
 
 func scanAsset(row interface{ Scan(...any) error }) (models.AudioAsset, error) {
 	var a models.AudioAsset
 	err := row.Scan(&a.ID, &a.ConfessionID, &a.VariantID, &a.VoiceID, &a.URL, &a.DurationSeconds,
 		&a.SizeBytes, &a.Status, &a.ContentVersionID, &a.QAReviewedBy, &a.QAReviewedAt, &a.QANote,
-		&a.CreatedAt, &a.UpdatedAt)
+		&a.AudioSource, &a.CreatedAt, &a.UpdatedAt)
 	return a, err
 }
 

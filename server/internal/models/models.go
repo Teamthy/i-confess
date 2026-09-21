@@ -115,6 +115,9 @@ type AudioAsset struct {
 	QAReviewedBy string `json:"qa_reviewed_by,omitempty"`
 	QAReviewedAt string `json:"qa_reviewed_at,omitempty"`
 	QANote       string `json:"qa_note,omitempty"`
+	// AudioSource distinguishes a real generated/recorded render from the
+	// deterministic bootstrap fixture used to guarantee catalogue coverage.
+	AudioSource string `json:"audio_source,omitempty"`
 }
 
 // AudioJob is one generation request and its outcome.
