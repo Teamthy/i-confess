@@ -16,7 +16,7 @@ export default function RegisterPage() {
       <noscript>
         <p style={{ position: "fixed", inset: "auto 0 0 0", background: "#212927", color: "#E9EDEC", padding: "16px", textAlign: "center" }}>
           Enable JavaScript to create an account — or{" "}
-          <Link href="/explore" style={{ color: "#74C9AB" }}>explore the public library</Link> first.
+          <Link href="/explore" style={{ color: "#7288C4" }}>explore the public library</Link> first.
         </p>
       </noscript>
     </>

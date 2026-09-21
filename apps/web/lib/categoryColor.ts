@@ -1,21 +1,21 @@
 /**
  * Deterministic per-category colour.
  *
- * A pure function of the slug over the design system's green ramp and neutral
+ * A pure function of the slug over the design system's navy ramp and neutral
  * ink tones, so every category is visually identifiable without inventing a
  * second palette. Server-safe: shared by the category rail (client) and the
  * card components (server).
  */
 
 const TONES = [
-  "#0C3325", // brand-900
-  "#124A37", // brand-800
-  "#186248", // brand-700
+  "#00072D", // brand-900 deepest navy
+  "#051650", // brand-800 dark navy
+  "#081D61", // brand-700
+  "#0A2472", // brand-600 primary blue
+  "#123499", // brand-500 secondary blue
   "#141918", // neutral-900
   "#0A0E0D", // neutral-950
-  "#1F7E5E", // brand-600
-  "#212927", // neutral-800
-  "#333C3A", // neutral-700
+  "#051650", // brand-800 repeat for better distribution
 ];
 
 export function railColor(slug: string): string {

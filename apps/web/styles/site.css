@@ -43,14 +43,14 @@
   color: var(--ic-color-neutral-100);
 }
 
-/* A faint, green-cast field so ink sections read as depth, not flat black. */
+/* A faint, navy-cast field so ink sections read as depth, not flat black. */
 .ic-section--ink::before {
   content: "";
   position: absolute;
   inset: 0;
   pointer-events: none;
   background:
-    radial-gradient(52rem 30rem at 82% -8%, rgba(42, 157, 118, 0.13), transparent 64%),
+    radial-gradient(52rem 30rem at 82% -8%, rgba(18, 52, 153, 0.13), transparent 64%),
     radial-gradient(40rem 26rem at 6% 108%, rgba(33, 41, 39, 0.85), transparent 60%);
 }
 
@@ -479,8 +479,8 @@
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(60rem 36rem at 78% -12%, rgba(42, 157, 118, 0.16), transparent 62%),
-    radial-gradient(44rem 30rem at -8% 100%, rgba(18, 74, 55, 0.35), transparent 58%);
+    radial-gradient(60rem 36rem at 78% -12%, rgba(18, 52, 153, 0.16), transparent 62%),
+    radial-gradient(44rem 30rem at -8% 100%, rgba(5, 22, 80, 0.35), transparent 58%);
 }
 
 .ic-hero::after {
@@ -1313,7 +1313,7 @@
   content: "";
   position: absolute;
   inset: 0;
-  background: radial-gradient(48rem 24rem at 88% 0%, rgba(42, 157, 118, 0.08), transparent 60%);
+  background: radial-gradient(48rem 24rem at 88% 0%, rgba(18, 52, 153, 0.08), transparent 60%);
   pointer-events: none;
 }
 
@@ -1402,7 +1402,7 @@
   content: "";
   position: absolute;
   inset: 0;
-  background: radial-gradient(52rem 28rem at 80% -20%, rgba(42, 157, 118, 0.14), transparent 62%);
+  background: radial-gradient(52rem 28rem at 80% -20%, rgba(18, 52, 153, 0.14), transparent 62%);
 }
 
 .ic-page-hero > * {
