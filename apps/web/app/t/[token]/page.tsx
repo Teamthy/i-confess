@@ -1,61 +1,87 @@
-// Shareable template — https://iconfess.app/t/{token}
-// Public if template is_public, otherwise 403.
+import { notFound } from "next/navigation";
 
-type Params = { params: { token: string } };
-
-export const metadata = {
-  title: "Shared session — I CONFESS",
-};
-
-export default async function SharedTemplatePage({ params }: Params) {
-  const token = params.token;
-  // In production, fetch from API: GET /v1/t/{token}
-  const api = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
-  let template: any = null;
-  let error = "";
+/**
+ * Shareable template — /t/{token}.
+ *
+ * Kept from the retired scaffold because live share links exist in the wild,
+ * rebuilt against the new client: server fetch, human error state, no
+ * crawlable output (robots.ts disallows /t/). GET /t/{token} resolves the
+ * template server-side; unauthenticated visitors see exactly what the token
+ * permits and nothing more.
+ */
+async function getTemplate(token: string) {
   try {
-    const res = await fetch(`${api}/v1/t/${token}`, { cache: "no-store" });
-    if (res.ok) template = await res.json();
-    else error = `Template not found or private (${res.status})`;
-  } catch (e: any) {
-    error = "Unable to load template";
-  }
-
-  if (error || !template) {
-    return (
-      <main className="min-h-screen bg-[#0f1220] text-[#e8eaf6] flex items-center justify-center px-6">
-        <div className="max-w-xl w-full bg-[#1c2138] border border-[#2d3350] rounded-2xl p-8 text-center">
-          <p className="text-[#9aa1c0] text-sm">{error || "Not found"}</p>
-          <a href="/" className="text-[#7c8cf8] underline text-sm mt-4 inline-block">
-            Back to I CONFESS
-          </a>
-        </div>
-      </main>
+    const res = await fetch(
+      `${process.env.IC_API_URL || "http://127.0.0.1:8080"}/t/${encodeURIComponent(token)}`,
+      { cache: "no-store" },
     );
+    if (!res.ok) return null;
+    return (await res.json()) as {
+      id?: string;
+      title?: string;
+      description?: string;
+      duration_minutes?: number;
+    };
+  } catch {
+    return null;
   }
+}
 
-  const deepLink = `iconfess://t/${token}`;
+export default async function SharedTemplatePage({
+  params,
+}: {
+  params: Promise<{ token: string }>;
+}) {
+  const { token } = await params;
+  const template = await getTemplate(token);
+
   return (
-    <main className="min-h-screen bg-[#0f1220] text-[#e8eaf6] flex items-center justify-center px-6">
-      <div className="max-w-xl w-full bg-[#1c2138] border border-[#2d3350] rounded-2xl p-8">
-        <p className="text-[11px] tracking-[0.14em] uppercase text-[#9aa1c0]">Shared session</p>
-        <h1 className="font-serif text-2xl mt-2">{template.name}</h1>
-        {template.description && <p className="text-[#9aa1c0] mt-2 text-sm">{template.description}</p>}
-        <p className="text-xs text-[#6b7280] mt-3">
-          {template.category_ids?.join(" • ")} {template.voice_id ? `· ${template.voice_id}` : ""}
-        </p>
-        <div className="mt-6 flex flex-col gap-3">
-          <a href={deepLink} className="bg-[#7c8cf8] text-[#0b0e1c] font-semibold rounded-lg px-5 py-3 text-sm text-center">
-            Open in I CONFESS
-          </a>
-          <a
-            href={`${api}/v1/templates/${template.id}/start`}
-            className="border border-[#2d3350] rounded-lg px-5 py-3 text-sm text-center"
-          >
-            Preview session
-          </a>
-        </div>
-        <script dangerouslySetInnerHTML={{ __html: `setTimeout(function(){ window.location.href=${JSON.stringify(deepLink)}; }, 600);` }} />
+    <main
+      id="main"
+      style={{
+        minHeight: "100vh",
+        display: "grid",
+        placeItems: "center",
+        background: "var(--ic-color-neutral-950)",
+        color: "var(--ic-color-neutral-100)",
+        padding: "var(--ic-spacing-6)",
+      }}
+      className="on-ink"
+    >
+      <div
+        className="ic-card"
+        style={{ maxWidth: "28rem", width: "100%", padding: "var(--ic-spacing-8)", textAlign: "center" }}
+      >
+        {template ? (
+          <>
+            <p className="ic-eyebrow" style={{ justifyContent: "center" }}>Shared session</p>
+            <h1 style={{ fontFamily: "var(--ic-font-family-serif)", fontSize: "var(--ic-web-title)", marginTop: "var(--ic-spacing-4)" }}>
+              {template.title || "A shared session"}
+            </h1>
+            {template.description && (
+              <p className="ic-lede" style={{ margin: "var(--ic-spacing-4) auto 0" }}>
+                {template.description}
+              </p>
+            )}
+            <a href="/register" className="ic-btn ic-btn--primary" style={{ marginTop: "var(--ic-spacing-6)" }}>
+              Start your experience
+            </a>
+          </>
+        ) : (
+          <>
+            <p className="ic-eyebrow" style={{ justifyContent: "center" }}>Link not valid</p>
+            <h1 style={{ fontFamily: "var(--ic-font-family-serif)", fontSize: "var(--ic-web-title)", marginTop: "var(--ic-spacing-4)" }}>
+              This shared session isn't available.
+            </h1>
+            <p className="ic-lede" style={{ margin: "var(--ic-spacing-4) auto 0" }}>
+              The link may have been revoked or mistyped. Everything public is on
+              the explore page.
+            </p>
+            <a href="/explore" className="ic-btn ic-btn--secondary" style={{ marginTop: "var(--ic-spacing-6)" }}>
+              Explore confessions
+            </a>
+          </>
+        )}
       </div>
     </main>
   );
