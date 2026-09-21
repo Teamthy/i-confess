@@ -133,6 +133,35 @@ check(
     re.search(r"getMeFavorites\(\{String\? type\}\)", endpoints_src) is not None,
 )
 
+# PHASE 36 / G-29: the trial lifecycle is a typed client surface, not a
+# paywall-only visual. Keep the three mutations/reads and their status model
+# tied to the server routes so a future trial UI cannot silently call a 404.
+check("TrialStatus model is declared", "final class TrialStatus" in models_src)
+check("TrialStatus has a fromJson factory", "factory TrialStatus.fromJson" in models_src)
+for required in [
+    "postSubscriptionsTrial",
+    "getSubscriptionsTrialStatus",
+    "postSubscriptionsTrialConvert",
+]:
+    check(f"{required} is on the typed client", required in declared_endpoints)
+
+subscription_methods = method_names("SubscriptionRepository", repo_src)
+for required in ["startTrial", "trialStatus", "convertTrial"]:
+    check(f"SubscriptionRepository.{required} exists", required in subscription_methods)
+
+trial_ia = (ROOT / "design/ia.json").read_text()
+for endpoint in [
+    "POST /subscriptions/trial",
+    "GET /subscriptions/trial/status",
+    "POST /subscriptions/trial/convert",
+]:
+    check(f"trial endpoint {endpoint} is wired in IA", endpoint in trial_ia)
+
+check(
+    "TrialStatus distinguishes the entitled projection",
+    "final bool entitled;" in models_src,
+)
+
 
 # ---------------------------------------------------------------------------
 # Every path the typed client calls must be a real server route

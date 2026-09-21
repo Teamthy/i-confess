@@ -1061,7 +1061,6 @@ class _CollectionItemRow extends ConsumerWidget {
   const _CollectionItemRow({
     required this.collectionId,
     required this.item,
-    super.key,
     this.dragIndex,
   });
 

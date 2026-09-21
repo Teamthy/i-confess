@@ -11,6 +11,7 @@ import (
 	"github.com/Teamthy/i-confess/internal/httpx"
 	"github.com/Teamthy/i-confess/internal/models"
 	"github.com/Teamthy/i-confess/internal/store"
+	trialdomain "github.com/Teamthy/i-confess/internal/trial"
 )
 
 // plans returns the subscription catalog with regional pricing.
@@ -44,23 +45,113 @@ func (h *Handler) listPlans(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// trial returns the 7-day journey and the caller's current day.
+// getTrial returns the deterministic journey and the persisted trial state.
+//
+// The trial start is never inferred from users.created_at. An account can be
+// eligible for months before choosing to try Premium, and inferring a start
+// from registration would silently spend the trial before the customer asks
+// for it.
 func (h *Handler) getTrial(w http.ResponseWriter, r *http.Request) {
 	userID := h.userID(r)
-	// Trial start is the user's created_at; fallback to now if not found
-	var start time.Time
-	if u, err := h.users.ByID(r.Context(), userID); err == nil {
-		if t, perr := time.Parse(time.RFC3339, u.CreatedAt); perr == nil {
-			start = t
-		}
+	current, err := h.trials.Current(r.Context(), userID)
+	if err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, "failed to load trial")
+		return
 	}
-	dayNum := billing.DayFor(start, time.Now())
-	day := billing.Day(dayNum)
+	dayNum := trialDay(current, time.Now().UTC())
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{
 		"journey":     billing.TrialJourney,
 		"current_day": dayNum,
-		"today":       day,
+		"today":       billing.Day(dayNum),
+		"state":       current.State,
+		"trial":       current,
 	})
+}
+
+// startTrial is the only HTTP entry point that can begin a catalogue trial.
+// TrialStore performs the state transition and writes the premium/trial
+// projection atomically; the handler never writes plan truth itself.
+func (h *Handler) startTrial(w http.ResponseWriter, r *http.Request) {
+	current, err := h.trials.Start(r.Context(), h.userID(r), time.Now().UTC())
+	if err != nil {
+		switch {
+		case errors.Is(err, store.ErrTrialNotEligible):
+			httpx.WriteError(w, http.StatusConflict, "trial is no longer available")
+		case errors.Is(err, store.ErrNotFound):
+			httpx.WriteError(w, http.StatusNotFound, "account not found")
+		default:
+			log.Printf("trial: start failed: %v", err)
+			httpx.WriteError(w, http.StatusInternalServerError, "failed to start trial")
+		}
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{
+		"state":       current.State,
+		"trial":       current,
+		"plan":        entitlements.PlanPremium,
+		"current_day": trialDay(current, time.Now().UTC()),
+	})
+}
+
+// getTrialStatus advances clock-derived states through the same store method
+// used by workers. Reads therefore cannot report ACTIVE after its expiry.
+func (h *Handler) getTrialStatus(w http.ResponseWriter, r *http.Request) {
+	current, err := h.trials.Refresh(r.Context(), h.userID(r), time.Now().UTC())
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			httpx.WriteError(w, http.StatusNotFound, "trial has not been created")
+			return
+		}
+		httpx.WriteError(w, http.StatusInternalServerError, "failed to load trial status")
+		return
+	}
+	plan, planErr := h.users.Subscription(r.Context(), h.userID(r))
+	if planErr != nil {
+		plan = entitlements.PlanFree
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{
+		"state":       current.State,
+		"trial":       current,
+		"current_day": trialDay(current, time.Now().UTC()),
+		"today":       billing.Day(trialDay(current, time.Now().UTC())),
+		"plan":        plan,
+		"entitled":    plan == entitlements.PlanPremium,
+	})
+}
+
+// convertTrial is intentionally not a billing shortcut. It records the trial
+// terminal state and removes the temporary projection; a paid subscription is
+// created only by POST /subscriptions/verify after a real store verdict.
+func (h *Handler) convertTrial(w http.ResponseWriter, r *http.Request) {
+	current, err := h.trials.Convert(r.Context(), h.userID(r), time.Now().UTC())
+	if err != nil {
+		switch {
+		case errors.Is(err, store.ErrNotFound):
+			httpx.WriteError(w, http.StatusNotFound, "trial has not been created")
+		case errors.Is(err, store.ErrTrialTransition):
+			httpx.WriteError(w, http.StatusConflict, "trial cannot be converted from its current state")
+		default:
+			httpx.WriteError(w, http.StatusInternalServerError, "failed to convert trial")
+		}
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{
+		"state": current.State,
+		"trial": current,
+		"plan":  entitlements.PlanFree,
+	})
+}
+
+func trialDay(current *store.Trial, now time.Time) int {
+	if current == nil || current.State == trialdomain.Eligible || current.State == trialdomain.Expired || current.State == trialdomain.Converted {
+		return 0
+	}
+	start, startErr := time.Parse(time.RFC3339, current.StartedAt)
+	expires, expiresErr := time.Parse(time.RFC3339, current.ExpiresAt)
+	if startErr != nil || expiresErr != nil {
+		return 0
+	}
+	return trialdomain.DayFor(start, expires, now)
 }
 
 // verifySubscriptionV2 verifies a store receipt and records the entitlement

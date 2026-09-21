@@ -1379,6 +1379,28 @@ final class TrialDay {
       );
 }
 
+/// Persisted trial lifecycle state and current entitlement projection.
+final class TrialStatus {
+  const TrialStatus({
+    this.state = 'ELIGIBLE',
+    this.plan = 'free',
+    this.entitled = false,
+    this.currentDay = 0,
+  });
+
+  final String state;
+  final String plan;
+  final bool entitled;
+  final int currentDay;
+
+  factory TrialStatus.fromJson(Map<String, dynamic> json) => TrialStatus(
+        state: _str(json, 'state', 'ELIGIBLE'),
+        plan: _str(json, 'plan', 'free'),
+        entitled: _bool(json, 'entitled'),
+        currentDay: _int(json, 'current_day'),
+      );
+}
+
 /// Parses a list endpoint, tolerating both a bare array and a wrapped one.
 List<T> parseList<T>(Object? source, T Function(Map<String, dynamic>) fromJson) {
   if (source is List) return _list(source).map(fromJson).toList();

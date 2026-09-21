@@ -139,18 +139,26 @@ func Seed(db *db.DB, signer storage.ObjectStorage) error {
 		}
 		c := &models.Confession{
 			CategoryID: catID, Title: s.Title, ShortText: s.Short, MediumText: s.Medium, LongText: s.Long,
-			Intensity: s.Intensity, Language: "en", Status: "published", Author: "i-confess content team",
-			Variants: variants, Scriptures: s.Scriptures,
+			Intensity: s.Intensity, Language: "en", Status: "published", Author: CanonicalAuthor,
+			TheologicalReviewStatus: TheologicalReviewReviewed,
+			TheologicalReviewer:     CanonicalTheologicalReviewer,
+			TheologicalReviewNotes:  reviewNotesFor(s),
+			Variants:                variants, Scriptures: s.Scriptures,
 		}
 		if err := content.CreateConfession(bg, c); err != nil {
 			return err
+		}
+		version, err := content.EnsureVersion(bg, c.ID, c.Title, c.ShortText,
+			c.MediumText, c.LongText, c.Language, "canonical-audio-bootstrap")
+		if err != nil {
+			return fmt.Errorf("snapshot canonical confession: %w", err)
 		}
 
 		// Generate placeholder audio for each variant and attach it to the voice.
 		for _, v := range c.Variants {
 			// Store the canonical KEY, never a URL. The API mints a signed,
 			// expiring link per request (PRD S11).
-			key := storage.AudioKeyFor(c.ID, v.ID, voice.ID, "en", 1)
+			key := storage.AudioKeyFor(c.ID, v.ID, voice.ID, "en", version.VersionNumber)
 			if err := signer.Upload(bg, key, media.ToneBytes(v.DurationSeconds), map[string]string{
 				"confession_id": c.ID, "voice_id": voice.ID, "language": "en",
 			}); err != nil {
@@ -159,6 +167,7 @@ func Seed(db *db.DB, signer storage.ObjectStorage) error {
 			asset := &models.AudioAsset{
 				ConfessionID: c.ID, VariantID: v.ID, VoiceID: voice.ID,
 				URL: key, DurationSeconds: v.DurationSeconds, Status: "ready",
+				ContentVersionID: version.ID, AudioSource: "bootstrap_fixture",
 			}
 			if err := audio.UpsertAsset(bg, asset); err != nil {
 				return err

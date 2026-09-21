@@ -167,6 +167,9 @@ func extractPurchaseToken(receipt string) (string, error) {
 
 // evaluate turns Google's answer into a grant or a refusal.
 func (v *GooglePlayVerifier) evaluate(p *playapi.Subscription) (Verification, error) {
+	if p == nil {
+		return Verification{}, fmt.Errorf("%w: Play returned an empty subscription", ErrProviderError)
+	}
 	now := v.cfg.now()
 
 	// The line item that runs furthest into the future decides the plan: an

@@ -25,6 +25,29 @@ The status column records what the store last said. It is not the entitlement,
 because nothing rewrites it at the instant a paid period ends — a row that still
 reads `active` can be months out of date. That mistake is IC-003.
 
+## Trial authority
+
+The trial journey is persisted separately in `trials` (migration `0014`) with
+exactly these states: `ELIGIBLE`, `STARTED`, `ACTIVE`, `EXPIRING`, `EXPIRED`,
+and `CONVERTED`. It is never inferred from `users.created_at`.
+
+`TrialStore` is the only trial-specific writer of the subscription projection:
+starting a trial changes a free row to `plan=premium,status=trial` with a
+seven-day `ends_at`; expiry or conversion removes that temporary projection only
+when the row is still `premium/trial`. It cannot overwrite a paid subscription.
+`models.Subscription.Entitled(now)` is the only place that decides whether the
+stored projection is live, including a running trial. This keeps the answer the
+same for audio, sessions, downloads, and bootstrap responses. The conversion
+endpoint records a terminal trial state; it does not grant paid Premium. A real
+store purchase must still pass through `POST /subscriptions/verify`.
+
+Proving commands:
+
+```sh
+go test ./internal/trial ./internal/store ./internal/api -run 'TestTrial' -count=1
+go test ./internal/models -run 'TestSubscription' -count=1
+```
+
 ## Request and response
 
 ```

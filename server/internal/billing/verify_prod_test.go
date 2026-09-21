@@ -42,6 +42,13 @@ func TestProductionRefusalIsCaseInsensitive(t *testing.T) {
 	}
 }
 
+func TestDevelopmentStubDoesNotInventAThirdProvider(t *testing.T) {
+	ver, err := (NoopVerifier{}).Verify(context.Background(), "stripe", "valid_monthly")
+	if err == nil && ver.Valid {
+		t.Fatal("development verifier accepted a provider it does not verify")
+	}
+}
+
 func TestDevelopmentStillAcceptsStubReceipts(t *testing.T) {
 	t.Setenv("ENV", "development")
 	t.Setenv("BILLING_VERIFIER", "")

@@ -1,6 +1,6 @@
 # Project Status
 
-**Last verified:** 2026-09-21, at PHASE 34 (Audit coverage and library gestures — G-41 closed in PHASE 33: `audit_logs` records every moderation and editorial action through one sink with `TestAuditLogsCoverContentAndModeration`; G-42/G-43/G-44/G-45 closed in PHASE 34: seeded voice licence passes the QA gate, drag-reorder + add-to-collection gestures exist, `cover_url` is writable, favourites navigate all four kinds. 73 Dart symbol assertions; routes/openapi byte-identical. Previous phase reconciliation still applies — see `docs/31-MODERATION.md`, `docs/33-AUDIT-COVERAGE.md`, `docs/34-LIBRARY-GESTURES.md`).
+**Last verified:** 2026-09-21, at PHASE 40 (canonical theological review — G-35 closed: canonical text now carries explicit review status, reviewer, timestamp, and bounded review notes; `Author` is the provenance-neutral `Canonical corpus`, never a claim that a team or church authored it. Audio creation requires reviewed canonical text. The schema remains 66 tables / 77 foreign keys; the API remains 306 routes / 240 paths / 306 operations. PHASE 35 Conditions were not available in this checkout: `docs/35-TRIAL-LIFECYCLE.md` is absent, so no claim is made that they were read. Previous phase reconciliation still applies — see `docs/31-MODERATION.md`, `docs/33-AUDIT-COVERAGE.md`, `docs/34-LIBRARY-GESTURES.md`, `docs/36-BILLING-TRIAL.md`, `docs/37-CONTENT-LIFECYCLE.md`, `docs/38-RETENTION-VERSIONING.md`, `docs/39-CANONICAL-AUDIO.md`, `docs/40-THEOLOGICAL-REVIEW.md`).
 
 This file supersedes `MASTER-PROMPT-COMPLETION.md`,
 `CONTENT-DOMAIN-COMPLETION.md`, `AUDIO-PLATFORM-STATUS.md`, `SESSION-NOTES.md`
@@ -17,10 +17,10 @@ it.** Every claim below was produced by running something.
 | Claim | Evidence |
 |---|---|
 | Backend builds | `make build` |
-| 24 test packages pass against PostgreSQL 17 | `make test` |
+| 51 Go packages pass against PostgreSQL 17 | `make test` |
 | No data races | `make race` |
 | Lint clean, 10 linters | `make lint` → 0 issues |
-| Schema loads 65 tables, 76 foreign keys | `internal/db` tests |
+| Schema loads 66 tables, 77 foreign keys | `internal/db` tests |
 | Session lifecycle: 11 states, no forged completions | `internal/sessions`, 16 tests |
 | Session queues are snapshots | `internal/store/snapshot_test.go` |
 | Account erasure covers every user table | `internal/deletion` |
@@ -31,13 +31,13 @@ it.** Every claim below was produced by running something.
 
 | Area | State |
 |---|---|
-| **Content** | 16 confessions exist. 39 categories need content before launch (D-3). |
+| **Content** | **Done in PHASES 39–40** — 78 canonical confessions, 312 object-backed audio fixtures, explicit theological-review metadata, and provenance-neutral authorship. |
 | **Mobile app** | `apps/mobile` cannot play audio — `just_audio` and `audio_service` are commented out. Being replaced per D-4. |
 | **Website / admin** | 434 and 168 lines of scaffolding. Being replaced per D-5. |
-| **Payments** | Every store verifier is a stub. Real App Store / Play verification is PHASE 36. |
-| **Trial lifecycle** | The six states in §36 do not exist. |
+| **Payments** | **Done in PHASE 36** — production uses the Apple signed-transaction verifier or Google Play Developer API and fails closed without configuration; `TestProductionRefusesStubReceipts` remains green. |
+| **Trial lifecycle** | **Done in PHASE 36** — persistent `trials` row, explicit six-state graph, one-time start, expiry/conversion, and Premium projection tests. |
 | **UGC `PUBLIC` readers** | **Done in PHASE 32** — `GET /community/confessions` public, anonymous, newest-first, mobile 2-tab + web both-feeds. Was G-40. |
-| **Soft delete / versioning** | Present on 2 of 64 tables each. Section 25 asks for both generally. |
+| **Soft delete / versioning** | **Done in PHASE 38** — all 66 application tables carry `deleted_at` and `row_version`; retention writes are tombstoned and versioned. |
 | **Cache** | Per-process only; no cross-instance invalidation. |
 | **Design system** | 120 tokens, contrast-verified, but not yet consumed by any real surface. |
 | **Navigation** | 37 screens specified and validated; mobile has the shell plus real home, explore, category, confession, builder, activity, and production player surfaces; me and remaining secondary surfaces continue in subsequent phases. |
@@ -206,9 +206,76 @@ PHASE 34 Library gestures and licence seeding — **PASS** (G-42 closed: seed
     routes.json and openapi.json regenerate byte-identical. See
     docs/34-LIBRARY-GESTURES.md)
 
-Open gaps carried forward: G-3, G-7, G-9, G-10, G-12, G-13,
-G-14, G-15, G-16, G-17, G-18, G-19, G-20, G-21, G-22, G-23, G-24, G-25, G-26, G-27, G-28,
-G-29, G-33, G-34, G-35, G-36, G-37, G-38, G-39.
+PHASE 36 Billing and trial lifecycle — **PASS** (G-29 closed: Apple receipts
+    are accepted only after ES256 JWS verification against the pinned Apple
+    certificate chain and Google purchases are fetched and evaluated through
+    the Play Developer API; production/staging never fall back to the Noop
+    verifier, and `TestProductionRefusesStubReceipts` remains in the suite.
+    `trials` is now persistent with `ELIGIBLE→STARTED→ACTIVE→EXPIRING→EXPIRED`
+    or `CONVERTED`; `TestTrialTransitions` names the explicit edge-table test,
+    `TestTrialLifecycle` covers clock boundaries, and `TrialStore` is the only
+    trial projection writer (`premium/trial` while running, fail-closed on
+    terminal states). The API adds the start/status/convert surface under both
+    prefixes; the typed client and IA are synchronized. Migration 0014 moves
+    the live schema to 66 tables / 77 foreign keys. Proving commands: `go test
+    ./internal/billing ./internal/trial ./internal/store ./internal/api`,
+    `python3 design/test_ia.py`, `python3 scripts/check_dart_symbols.py`, and
+    route export plus genspec (306 routes / 240 paths / 306 operations). See
+    docs/36-BILLING-TRIAL.md)
+
+PHASE 37 Content lifecycle enforcement — **PASS** (G-37/G-38/G-39 closed:
+    `content.Edges` is the explicit forward-only graph, including the two
+    published withdrawal edges and terminal archived state; the audited admin
+    status writer rejects every backward, skipped, or fabricated move with
+    HTTP 409; `TestContentTransitions` is the named state-machine test;
+    `TestContentVocabularyParityAgainstConstraint` reads the live `confessions`
+    CHECK; and `TestDatabaseVocabularyMatchesGoConstants` now audits all 23
+    constrained status columns, with `TestTrialVocabularyParityAgainstConstraint`
+    covering the trial `state` CHECK. Deprecated content remains playable only
+    through existing snapshots and is excluded from new session building.
+    Proving commands: `go test ./internal/content ./internal/db ./internal/store
+    ./internal/api -count=1`, `gofmt -l internal cmd`, and `go vet ./...`. See
+    docs/37-CONTENT-LIFECYCLE.md)
+
+PHASE 38 Retention and row versioning — **PASS** (G-21/G-22 closed:
+    migration 0015 adds nullable `deleted_at` and `row_version` to all 66
+    application tables without changing table or foreign-key counts. The
+    generic retention store validates identifiers, soft-deletes and restores
+    rows idempotently, and advances the row version; content and audio reads
+    exclude tombstoned rows. `TestEveryApplicationTableHasRetentionAndVersionColumns`,
+    `TestSoftDeleteAndRestoreAdvanceRowVersion`, and the safe-default checks
+    prove the installed PostgreSQL schema and write behavior. Proving commands:
+    `go test ./internal/db ./internal/retention ./internal/store -count=1`,
+    `gofmt -l internal cmd`, and `go vet ./...`. See
+    docs/38-RETENTION-VERSIONING.md)
+
+PHASE 39 Canonical audio coverage — **PASS** (G-34 and G-36 closed:
+    `EnsureCanonicalAudio` runs after the all-environment content bootstrap,
+    snapshots each confession's text, uploads four object-backed bootstrap
+    fixtures for each of the 78 canonical confessions, records `audio_source`
+    provenance, and is idempotent. Migration 0016 adds the provenance CHECK;
+    startup now fails closed on content or audio bootstrap errors. The seed and
+    production path no longer rely on a development-only audio side effect.
+    Proving commands: `go test ./internal/seed ./internal/store ./internal/db
+    ./internal/api -count=1`, `gofmt -l internal cmd`, and `go vet ./...`. See
+    docs/39-CANONICAL-AUDIO.md)
+
+PHASE 40 Canonical theological review — **PASS** (G-35 closed:
+    migration 0017 adds the constrained `unreviewed|reviewed|needs_revision`
+    vocabulary and review provenance columns. `EnsureCanonicalTheology` checks
+    every corpus item has complete text and explicit Scripture references,
+    records an internal editorial review without claiming clergy or church
+    endorsement, and normalizes the old `i-confess content team` author to
+    `Canonical corpus`. `EnsureCanonicalAudio` refuses an unreviewed canonical
+    row, so review is a real prerequisite rather than documentation. The named
+    seed tests prove 78 reviewed rows and zero overstated authors; live CHECK
+    parity covers the new vocabulary. Proving commands: `go test ./internal/db
+    ./internal/seed ./internal/store ./internal/api -count=1`, `gofmt -l
+    internal cmd`, and `go vet ./...`. See docs/40-THEOLOGICAL-REVIEW.md)
+
+Open gaps carried forward: G-7, G-9, G-10, G-12, G-13,
+G-14, G-15, G-16, G-17, G-18, G-19, G-20, G-23, G-24, G-25, G-26, G-27, G-28,
+G-33.
 (G-2 was removed from this list: it has been closed since PHASE 07 —
 "23/23 status columns constrained" — yet appeared in both lists here, a
 documentation bug fixed in PHASE 31.)
@@ -225,13 +292,37 @@ plaintext-token functions were removed),
 **G-43** (PHASE 34: drag-reorder with a grip in collection detail; add-to-collection from the confession page).
 **G-44** (PHASE 34: `cover_url` written by POST/PATCH, cleared by empty, refused unless http(s)/same-origin).
 **G-45** (PHASE 34: favourites navigate all four entity kinds).
+**G-29** (PHASE 36: production receipt verification is real Apple/Google
+provider verification, and unconfigured deployments refuse rather than grant).
+**G-3** (PHASE 36: the persistent six-state trial lifecycle and its one
+Premium projection writer are implemented).
+**G-37** (PHASE 37: the content lifecycle is an explicit forward-only edge table,
+enforced by the audited status writer and covered by `TestContentTransitions`).
+**G-38** (PHASE 37: `IsServedToNewSessions` is the session-building authority;
+deprecated content is excluded from new queues while existing snapshots remain
+playable).
+**G-39** (PHASE 37: all 23 constrained status columns are vocabulary-audited in
+both directions against live PostgreSQL CHECK constraints, with the trial state
+covered separately).
+**G-21** (PHASE 38: all 66 application tables carry a nullable deletion
+ tombstone and the retention writer preserves a reversible row).
+**G-22** (PHASE 38: all 66 application tables carry the uniform `row_version`
+ concurrency field, and delete/restore writes advance it).
+**G-34** (PHASE 39: all 78 canonical confessions have four object-backed
+bootstrap audio assets, each linked to a content version and storage key).
+**G-36** (PHASE 39: content and canonical-audio bootstrap failures are fatal at
+startup, so a healthy process cannot hide an empty or partial catalogue).
+**G-35** (PHASE 40: every canonical confession has explicit bounded editorial
+review metadata, and `Author` is provenance-neutral rather than an unsupported
+team or church claim).
 **G-33** is new: the 24-entry blocklist is a floor, not a breach corpus.
 
-New in PHASE 11: **G-34** (no audio exists for any of the 78 confessions),
-**G-35** (canonical content has had no theological review; `Author` overstates
-its provenance), **G-36** (an `EnsureContent` failure boots silently).
-PHASE 11 also fixed a launch blocker that had no gap number: production came
-up with an empty catalogue because content was classed as dev-only seed data.
+Recorded in PHASE 11: **G-34** (canonical audio coverage), **G-35**
+(canonical content has had no theological review; `Author` overstates its
+provenance), and **G-36** (an `EnsureContent` failure booted silently). G-34
+and G-36 were closed in PHASE 39; G-35 was closed in PHASE 40. PHASE 11 also
+fixed a launch blocker that had no gap number: production came up with an empty
+catalogue because content was classed as dev-only seed data.
 
 Closed in PHASE 12: **G-4** (`public` visibility added end to end), **G-5** (one
 editorial lifecycle, enforced in both the database and the code, parity-tested

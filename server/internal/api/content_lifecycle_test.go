@@ -61,6 +61,24 @@ func TestAdminCanMoveAConfessionThroughTheWholeLifecycle(t *testing.T) {
 	}
 }
 
+// TestAdminRejectsABackwardContentTransition exercises the graph at the HTTP
+// boundary. A status can be valid in isolation and still be an illegal move.
+func TestAdminRejectsABackwardContentTransition(t *testing.T) {
+	h, srv, token := adminClient(t)
+	catID := newTestCategory(t, h, "lifecycle-backward")
+	confID := newTestConfession(t, h, catID, "Lifecycle Backward")
+	if _, err := h.db.ExecContext(context.Background(),
+		`UPDATE confessions SET status='published' WHERE id=$1`, confID); err != nil {
+		t.Fatalf("seed published confession: %v", err)
+	}
+
+	status, resp := adminPatch(t, srv, "/admin/confessions/"+confID, token,
+		`{"status":"draft","reason":"cannot reopen published content"}`)
+	if status != http.StatusConflict {
+		t.Fatalf("published -> draft returned %d, want 409: %s", status, resp)
+	}
+}
+
 // TestAdminRejectsAnUnknownStatusWithABadRequest checks the handler fails
 // cleanly. A vocabulary violation is a client error; before this phase the
 // ones the database caught surfaced as 500s.
@@ -136,7 +154,7 @@ func newTestConfession(t *testing.T, h *Handler, catID, title string) string {
 	t.Helper()
 	c := &models.Confession{
 		CategoryID: catID, Title: title, ShortText: "a", MediumText: "ab", LongText: "abc",
-		Status: "published", Language: "en", Intensity: 1,
+		Status: "draft", Language: "en", Intensity: 1,
 	}
 	if err := h.cont.CreateConfession(context.Background(), c); err != nil {
 		t.Fatalf("create confession: %v", err)

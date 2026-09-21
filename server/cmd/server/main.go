@@ -91,15 +91,21 @@ func main() {
 	// confessions are the product's inventory, not demo data.
 	//
 	// It is idempotent: after Seed has populated a dev database this is a
-	// no-op. It creates no audio - audio comes from the generation pipeline
-	// behind the rights gate, never from a bootstrap.
-	//
-	// Failure is logged loudly but not fatal: auth, profile and admin still
-	// work with an empty catalogue, and a crash loop is the worse outcome. It
-	// does mean a boot can succeed with no content, which is why the log line
-	// is an error rather than an info.
+	// no-op for the text rows. A content bootstrap failure is fatal: serving an
+	// empty or partial catalogue is worse than refusing readiness, and makes a
+	// launch appear healthy while every content request fails.
 	if _, _, err := seed.EnsureContent(context.Background(), conn); err != nil {
-		log.Printf("content: FAILED to ensure the canonical library: %v", err)
+		log.Fatalf("content: failed to ensure the canonical library: %v", err)
+	}
+	if reviewed, err := seed.EnsureCanonicalTheology(context.Background(), conn); err != nil {
+		log.Fatalf("content: failed to record canonical theological review: %v", err)
+	} else if reviewed > 0 {
+		log.Printf("content: recorded %d canonical theological reviews", reviewed)
+	}
+	if created, err := seed.EnsureCanonicalAudio(context.Background(), conn, objStore); err != nil {
+		log.Fatalf("audio: failed to ensure canonical audio: %v", err)
+	} else if created > 0 {
+		log.Printf("audio: ensured %d canonical bootstrap assets", created)
 	}
 
 	h := api.NewHandler(api.Config{JWTSecret: cfg.JWTSecret, TokenTTL: cfg.TokenTTL}, conn)

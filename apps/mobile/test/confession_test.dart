@@ -140,6 +140,7 @@ void main() {
     api.respond('/me/collections/col-1/items', {'id': 'col-1', 'name': 'Morning mercies', 'items': []});
     await pumpConfession(tester, confessionId: 'conf1');
 
+    await tester.ensureVisible(find.byKey(const ValueKey('btn-add-to-collection')));
     await tester.tap(find.byKey(const ValueKey('btn-add-to-collection')));
     await tester.pumpAndSettle();
 

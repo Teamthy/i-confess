@@ -35,6 +35,7 @@ import (
 type Handler struct {
 	cfg       Config
 	users     *store.UserStore
+	trials    *store.TrialStore
 	cont      *store.ContentStore
 	audio     *store.AudioStore
 	sess      *store.SessionStore
@@ -139,6 +140,7 @@ func NewHandler(cfg Config, db *db.DB) *Handler {
 	return &Handler{
 		cfg:          cfg,
 		users:        store.NewUserStore(db),
+		trials:       store.NewTrialStore(db),
 		cont:         store.NewContentStore(db),
 		audio:        store.NewAudioStore(db),
 		sess:         store.NewSessionStore(db),

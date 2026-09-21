@@ -231,7 +231,7 @@ void main() {
         await tester.pumpAndSettle();
 
         // The library — and with it the row — is gone: navigation happened.
-        expect(find.byKey(const ValueKey(gone)), findsNothing);
+        expect(find.byKey(ValueKey(gone)), findsNothing);
       });
     }
 
@@ -493,8 +493,14 @@ void main() {
       });
       await pumpLibrary(tester, route: AppRoutes.collectionDetail('col-1'));
 
-      // 150px past a ~64px row clears the second slot decisively.
-      await tester.drag(find.byKey(const ValueKey('drag-c1')), const Offset(0, 150));
+      // 150px past a ~64px row clears the second slot decisively. Keep the
+      // handle in the viewport before starting the gesture: the collection
+      // header can consume enough height on a small CI surface to place the
+      // first row just below the fold.
+      final handle = find.byKey(const ValueKey('drag-c1'));
+      await tester.ensureVisible(handle);
+      await tester.pumpAndSettle();
+      await tester.drag(handle, const Offset(0, 150));
       await tester.pumpAndSettle();
 
       // The whole order, not the move: the server rewrites every position

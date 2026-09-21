@@ -92,6 +92,10 @@ const (
 )
 
 func (NoopVerifier) Verify(_ context.Context, provider, receipt string) (Verification, error) {
+	provider = strings.ToLower(strings.TrimSpace(provider))
+	if provider != "apple" && provider != "google" {
+		return Verification{}, fmt.Errorf("%w: development verifier does not handle provider %q", ErrInvalidReceipt, provider)
+	}
 	receipt = strings.TrimSpace(receipt)
 	if receipt == "" {
 		return Verification{}, ErrInvalidReceipt

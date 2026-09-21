@@ -974,6 +974,27 @@
   },
   {
     "method": "POST",
+    "path": "/subscriptions/trial",
+    "auth": "user",
+    "summary": "Start the one-time Premium trial",
+    "tag": "subscription"
+  },
+  {
+    "method": "POST",
+    "path": "/subscriptions/trial/convert",
+    "auth": "user",
+    "summary": "Finish the trial before store verification",
+    "tag": "subscription"
+  },
+  {
+    "method": "GET",
+    "path": "/subscriptions/trial/status",
+    "auth": "user",
+    "summary": "Current trial lifecycle state",
+    "tag": "subscription"
+  },
+  {
+    "method": "POST",
     "path": "/subscriptions/verify",
     "auth": "user",
     "summary": "Verify store receipt (server-side, billing.Verifier)",
@@ -2013,6 +2034,27 @@
     "path": "/v1/subscriptions/trial",
     "auth": "user",
     "summary": "Trial journey (Day1..Day7)",
+    "tag": "subscription"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/subscriptions/trial",
+    "auth": "user",
+    "summary": "Start the one-time Premium trial",
+    "tag": "subscription"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/subscriptions/trial/convert",
+    "auth": "user",
+    "summary": "Finish the trial before store verification",
+    "tag": "subscription"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/subscriptions/trial/status",
+    "auth": "user",
+    "summary": "Current trial lifecycle state",
     "tag": "subscription"
   },
   {
