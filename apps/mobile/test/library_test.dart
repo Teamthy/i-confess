@@ -207,6 +207,52 @@ void main() {
       expect(find.byKey(const ValueKey('unfavorite-gone')), findsOneWidget);
     });
 
+    // G-45: every kind the tab lists navigates. Before this, only
+    // confessions did, and a favourited session, category or voice was a
+    // dead row that rendered and could be removed but went nowhere.
+    for (final (type, id, gone) in [
+      ('session', 's-9', 'tab-favorites'),
+      ('category', 'cat-9', 'tab-favorites'),
+      ('voice', 'v-9', 'tab-favorites'),
+    ]) {
+      testWidgets('a favourited $type navigates instead of doing nothing',
+          (tester) async {
+        seedEmpty();
+        api.respond('/me/favorites', {
+          'data': [
+            {'id': 'f1', 'entity_type': type, 'entity_id': id, 'title': 'Saved'},
+          ],
+        });
+        await pumpLibrary(tester);
+        await openFavorites(tester);
+
+        expect(find.text('Saved'), findsOneWidget);
+        await tester.tap(find.byKey(ValueKey('favorite-$id')));
+        await tester.pumpAndSettle();
+
+        // The library — and with it the row — is gone: navigation happened.
+        expect(find.byKey(const ValueKey(gone)), findsNothing);
+      });
+    }
+
+    testWidgets('a favourite whose target is gone still navigates nowhere',
+        (tester) async {
+      seedEmpty();
+      api.respond('/me/favorites', {
+        'data': [
+          {'id': 'f1', 'entity_type': 'session', 'entity_id': 's-9', 'missing': true},
+        ],
+      });
+      await pumpLibrary(tester);
+      await openFavorites(tester);
+
+      await tester.tap(find.byKey(const ValueKey('favorite-s-9')));
+      await tester.pumpAndSettle();
+
+      // Still on the library: no route is offered into an unresolvable id.
+      expect(find.byKey(const ValueKey('tab-favorites')), findsOneWidget);
+    });
+
     testWidgets('unfavouriting sends the entity type of the row', (tester) async {
       seedEmpty();
       api.respond('/me/favorites', {
@@ -421,6 +467,91 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(api.callCount('/me/collections/col-1/items/c1'), 1);
+    });
+
+    // G-43: the order is editable in-app. The reorder endpoint had existed
+    // since the library shipped with a typed client method and no gesture,
+    // which made curation an API-only activity.
+    testWidgets('dragging a row past another sends the complete new order',
+        (tester) async {
+      seedEmpty();
+      api.respond('/me/collections/col-1', {
+        'id': 'col-1',
+        'name': 'Morning',
+        'items': [
+          {'id': 'i1', 'confession_id': 'c1', 'title': 'First', 'position': 0},
+          {'id': 'i2', 'confession_id': 'c2', 'title': 'Second', 'position': 1},
+        ],
+      });
+      api.respond('/me/collections/col-1/reorder', {
+        'id': 'col-1',
+        'name': 'Morning',
+        'items': [
+          {'id': 'i2', 'confession_id': 'c2', 'title': 'Second', 'position': 0},
+          {'id': 'i1', 'confession_id': 'c1', 'title': 'First', 'position': 1},
+        ],
+      });
+      await pumpLibrary(tester, route: AppRoutes.collectionDetail('col-1'));
+
+      // 150px past a ~64px row clears the second slot decisively.
+      await tester.drag(find.byKey(const ValueKey('drag-c1')), const Offset(0, 150));
+      await tester.pumpAndSettle();
+
+      // The whole order, not the move: the server rewrites every position
+      // from the array, so a partial patch would renumber rows the drag
+      // never touched.
+      expect(api.bodyOf('/me/collections/col-1/reorder', method: 'PATCH'),
+          {'confession_ids': ['c2', 'c1']});
+    });
+
+    // G-44: cover_url is rendered everywhere and was writable from nowhere.
+    testWidgets('the cover dialog patches cover_url, and empty clears it',
+        (tester) async {
+      seedEmpty();
+      api.respond('/me/collections/col-1', {
+        'id': 'col-1',
+        'name': 'Morning',
+        'cover_url': '',
+        'items': <Map<String, dynamic>>[],
+      });
+      await pumpLibrary(tester, route: AppRoutes.collectionDetail('col-1'));
+
+      await tester.tap(find.byKey(const ValueKey('collection-menu')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Set cover image'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+          find.byKey(const ValueKey('field-cover-url')), 'https://example.org/grace.jpg');
+      await tester.tap(find.byKey(const ValueKey('button-confirm-cover')));
+      await tester.pumpAndSettle();
+
+      expect(api.bodyOf('/me/collections/col-1', method: 'PATCH'),
+          {'cover_url': 'https://example.org/grace.jpg'});
+
+      // A link that is not http(s) or same-origin is refused in the field,
+      // before the server has to say so with a 400.
+      await tester.tap(find.byKey(const ValueKey('collection-menu')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Set cover image'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const ValueKey('field-cover-url')), 'javascript:alert(1)');
+      await tester.tap(find.byKey(const ValueKey('button-confirm-cover')));
+      await tester.pumpAndSettle();
+      expect(find.text('Use an http(s) link or a path like /media/…'), findsOneWidget);
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+
+      // And the empty string is a decision, not an omission.
+      await tester.tap(find.byKey(const ValueKey('collection-menu')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Set cover image'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const ValueKey('field-cover-url')), '');
+      await tester.tap(find.byKey(const ValueKey('button-confirm-cover')));
+      await tester.pumpAndSettle();
+      expect(find.text('Cover removed'), findsOneWidget);
+      expect(api.bodyOf('/me/collections/col-1', method: 'PATCH'), containsPair('cover_url', ''));
     });
 
     testWidgets('deleting is confirmed, and says the confessions survive',

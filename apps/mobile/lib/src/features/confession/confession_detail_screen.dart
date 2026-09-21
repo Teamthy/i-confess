@@ -10,6 +10,7 @@ import '../../core/theme/tokens.dart';
 import '../../core/widgets/screen.dart';
 import '../../core/widgets/states.dart';
 import 'confession_providers.dart';
+import '../library/library_providers.dart';
 import '../../core/di/providers.dart';
 
 /// The confession experience — where a listener reads, reflects and acts.
@@ -465,7 +466,123 @@ class _Actions extends StatelessWidget {
               : Icons.favorite_border_rounded),
           label: Text(isFavorite ? 'Remove from favourites' : 'Add to favourites'),
         ),
+        const SizedBox(height: IConfess.space3),
+        _AddToCollectionButton(confessionId: confession.id),
       ],
+    );
+  }
+}
+
+/// Offers the listener's collections as destinations for this confession
+/// (G-43).
+///
+/// The POST endpoint and the typed client method had existed since the
+/// library shipped; what did not exist was any way to reach them from the app.
+/// Filing happens where the item is - while reading it - not on the screen
+/// the item is filed into, which is why this control lives here rather than
+/// only in the collection.
+class _AddToCollectionButton extends ConsumerWidget {
+  const _AddToCollectionButton({required this.confessionId});
+
+  final String confessionId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return OutlinedButton.icon(
+      key: const ValueKey('btn-add-to-collection'),
+      onPressed: () => showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        builder: (_) => _AddToCollectionSheet(confessionId: confessionId),
+      ),
+      icon: const Icon(Icons.playlist_add_rounded),
+      label: const Text('Add to a collection'),
+    );
+  }
+}
+
+class _AddToCollectionSheet extends ConsumerWidget {
+  const _AddToCollectionSheet({required this.confessionId});
+
+  final String confessionId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final async = ref.watch(libraryCollectionsProvider);
+    final surfaces = AppSurfaces.of(context);
+
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+            IConfess.space4, IConfess.space4, IConfess.space4, IConfess.space2),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Add to a collection',
+                style: IConfess.subheading.copyWith(color: surfaces.textPrimary)),
+            const SizedBox(height: IConfess.space3),
+            Flexible(
+              child: async.when(
+                loading: () => const Padding(
+                  padding: EdgeInsets.all(IConfess.space6),
+                  child: Center(child: CircularProgressIndicator()),
+                ),
+                // A failure here is usually "there is no session": the sheet
+                // says what to do about it instead of spinning or vanishing.
+                error: (_, _) => const Padding(
+                  padding: EdgeInsets.all(IConfess.space6),
+                  child: Text('Sign in to organise your collections.'),
+                ),
+                data: (loadable) => switch (loadable) {
+                  LoadFailed() => const Padding(
+                      padding: EdgeInsets.all(IConfess.space6),
+                      child: Text('Sign in to organise your collections.'),
+                    ),
+                  LoadLoaded(:final value) when value.isEmpty => const Padding(
+                      padding: EdgeInsets.all(IConfess.space6),
+                      child: Text(
+                        'No collections yet. Create one in the Library and '
+                        'this list fills up.',
+                      ),
+                    ),
+                  LoadLoaded(:final value) => ListView(
+                      shrinkWrap: true,
+                      children: [
+                        for (final collection in value)
+                          ListTile(
+                            key: ValueKey('pick-collection-${collection.id}'),
+                            leading: const Icon(Icons.collections_bookmark_rounded),
+                            title: Text(collection.name),
+                            subtitle: Text(collection.itemCount == 1
+                                ? '1 confession'
+                                : '${collection.itemCount} confessions'),
+                            onTap: () => _add(context, ref, collection.id),
+                          ),
+                      ],
+                    ),
+                  _ => const SizedBox.shrink(),
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _add(BuildContext context, WidgetRef ref, String collectionId) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final result =
+        await ref.read(libraryActionsProvider).addToCollection(collectionId, confessionId);
+    if (context.mounted) Navigator.of(context).pop();
+    result.when(
+      success: (_) => messenger.showSnackBar(
+        const SnackBar(content: Text('Added to collection')),
+      ),
+      failure: (error) => messenger.showSnackBar(
+        SnackBar(content: Text(ErrorMapper.describe(error).message)),
+      ),
     );
   }
 }

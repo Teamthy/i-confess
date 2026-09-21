@@ -36,6 +36,7 @@ func (h *Handler) createCollection(w http.ResponseWriter, r *http.Request) {
 		Name        string `json:"name"`
 		Description string `json:"description"`
 		Visibility  string `json:"visibility"`
+		CoverURL    string `json:"cover_url"`
 	}
 	if err := httpx.DecodeJSON(r, &req); err != nil {
 		writeCode(w, http.StatusBadRequest, "PROFILE_INVALID", "invalid request body")
@@ -50,6 +51,12 @@ func (h *Handler) createCollection(w http.ResponseWriter, r *http.Request) {
 		writeCode(w, http.StatusBadRequest, "PROFILE_INVALID", "description must be 500 characters or fewer")
 		return
 	}
+	req.CoverURL = strings.TrimSpace(req.CoverURL)
+	if req.CoverURL != "" && !validCollectionCover(req.CoverURL) {
+		writeCode(w, http.StatusBadRequest, "PROFILE_INVALID",
+			"cover_url must be an http(s) or same-origin URL of 2048 characters or fewer")
+		return
+	}
 	// An unspecified or unrecognised visibility becomes private, never public.
 	visibility := models.VisibilityPrivate
 	if v := req.Visibility; validVisibility(v) {
@@ -59,6 +66,7 @@ func (h *Handler) createCollection(w http.ResponseWriter, r *http.Request) {
 	c := &models.UserCollection{
 		UserID: h.userID(r), Name: name,
 		Description: strings.TrimSpace(req.Description), Visibility: visibility,
+		CoverURL: req.CoverURL,
 	}
 	if err := h.library.CreateCollection(r.Context(), c); err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to create collection")
@@ -81,6 +89,7 @@ func (h *Handler) updateCollection(w http.ResponseWriter, r *http.Request) {
 		Name        *string `json:"name"`
 		Description *string `json:"description"`
 		Visibility  *string `json:"visibility"`
+		CoverURL    *string `json:"cover_url"`
 	}
 	if err := httpx.DecodeJSON(r, &req); err != nil {
 		writeCode(w, http.StatusBadRequest, "PROFILE_INVALID", "invalid request body")
@@ -99,13 +108,40 @@ func (h *Handler) updateCollection(w http.ResponseWriter, r *http.Request) {
 			"visibility must be private, unlisted or public")
 		return
 	}
+	if req.CoverURL != nil {
+		c := strings.TrimSpace(*req.CoverURL)
+		// The empty string is a decision, not an omission: it clears the
+		// cover so the collection falls back to the monogram.
+		if c != "" && !validCollectionCover(c) {
+			writeCode(w, http.StatusBadRequest, "PROFILE_INVALID",
+				"cover_url must be an http(s) or same-origin URL of 2048 characters or fewer")
+			return
+		}
+		req.CoverURL = &c
+	}
 
 	if err := h.library.UpdateCollection(r.Context(), h.userID(r), r.PathValue("id"),
-		req.Name, req.Description, req.Visibility); err != nil {
+		req.Name, req.Description, req.Visibility, req.CoverURL); err != nil {
 		writeCollectionError(w, err)
 		return
 	}
 	h.getCollection(w, r)
+}
+
+// validCollectionCover bounds what a client can put into an <img src> via the
+// collection editor. It is the same posture as everywhere else the platform
+// stores a remote URL: absolute http(s) or a same-origin path, nothing else -
+// no javascript:, no data:, no length that will blow up a query string.
+func validCollectionCover(u string) bool {
+	if utf8.RuneCountInString(u) > 2048 {
+		return false
+	}
+	switch {
+	case strings.HasPrefix(u, "https://"), strings.HasPrefix(u, "http://"),
+		strings.HasPrefix(u, "/"):
+		return true
+	}
+	return false
 }
 
 func (h *Handler) deleteCollection(w http.ResponseWriter, r *http.Request) {

@@ -659,27 +659,34 @@ final class LibraryRepository extends Repository {
     String name, {
     String description = '',
     String? visibility,
+    String? coverUrl,
   }) =>
       _invalidatingWrite(
         () => api.postMeCollections({
           'name': name,
           if (description.isNotEmpty) 'description': description,
           if (visibility != null && visibility.isNotEmpty) 'visibility': visibility,
+          if (coverUrl != null && coverUrl.isNotEmpty) 'cover_url': coverUrl,
         }),
         UserCollection.fromJson,
       );
 
+  /// Patches a collection. Each parameter is optional, and a null one is
+  /// omitted rather than sent; an empty [coverUrl] is sent deliberately, as
+  /// the instruction to clear the artwork back to the monogram (G-44).
   Future<WriteResult<UserCollection>> updateCollection(
     String id, {
     String? name,
     String? description,
     String? visibility,
+    String? coverUrl,
   }) =>
       _invalidatingWrite(
         () => api.patchMeCollectionsById(id, {
           if (name != null) 'name': name,
           if (description != null) 'description': description,
           if (visibility != null) 'visibility': visibility,
+          if (coverUrl != null) 'cover_url': coverUrl,
         }),
         UserCollection.fromJson,
       );

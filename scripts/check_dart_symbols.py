@@ -73,10 +73,13 @@ repo_src = read(CLIENT / "repository.dart")
 
 def method_names(class_name, source):
     """Method names declared on one class, up to the next top-level class."""
-    start = source.index(f"final class {class_name}")
+    m = re.search(rf"^(?:final )?class {class_name}\b", source, re.M)
+    if m is None:
+        raise SystemExit(f"check_dart_symbols: class {class_name} is not declared")
+    start = m.start()
     rest = source[start + 1:]
-    end = rest.find("\nfinal class ")
-    body = rest if end == -1 else rest[:end]
+    end = re.search(r"^(?:final )?class \w+", rest, re.M)
+    body = rest if end is None else rest[: end.start()]
     return set(re.findall(r"(?:Future<[^>]*(?:>>)?>|void)\s+(\w+)\s*\(", body)) | set(
         re.findall(r"\b(\w+)\s*\([^)]*\)\s*(?:async\s*)?[{=]", body)
     )
@@ -469,6 +472,62 @@ ia_src = (ROOT / "design/ia.json").read_text()
 check(
     "community screen declares GET /community/confessions in IA",
     "GET /community/confessions" in ia_src,
+)
+
+# ---------------------------------------------------------------------------
+# Library gestures (G-43, G-44, G-45) — PHASE 34
+# ---------------------------------------------------------------------------
+
+library_screen_src = read(MOBILE / "src/features/library/library_screen.dart")
+library_providers_src = read(MOBILE / "src/features/library/library_providers.dart")
+confession_detail_src = read(MOBILE / "src/features/confession/confession_detail_screen.dart")
+
+check(
+    "collection detail reorders with a ReorderableListView",
+    "ReorderableListView.builder" in library_screen_src,
+)
+check(
+    "rows expose an explicit drag handle (rows also navigate)",
+    "ReorderableDragStartListener" in library_screen_src,
+)
+check(
+    "the cover dialog exists and is wired to the menu",
+    "_CoverUrlDialog" in library_screen_src and "'cover'" in library_screen_src,
+)
+
+library_actions = method_names("LibraryActions", library_providers_src)
+for required in ["reorderCollection", "addToCollection", "updateCover", "removeFromCollection"]:
+    check(f"LibraryActions.{required} exists", required in library_actions)
+
+check(
+    "LibraryRepository.updateCollection carries cover_url through",
+    "'cover_url': coverUrl" in repo_src,
+)
+
+# G-45: the favourites tab navigates every kind it lists, not only
+# confessions; a dead row is the defect this phase closed.
+for route in [
+    "AppRoutes.confessionDetail",
+    "AppRoutes.categoryDetail",
+    "AppRoutes.playerWithId",
+    "AppRoutes.builderVoice",
+]:
+    check(
+        f"favourite rows reach {route.split('.')[-1]}",
+        route in library_screen_src,
+    )
+
+# G-43: the add gesture lives on the confession page itself.
+check(
+    "confession detail offers add-to-collection",
+    "_AddToCollectionButton" in confession_detail_src
+    and "addToCollection(" in confession_detail_src,
+)
+check(
+    "confession detail reaches the library actions",
+    "library/library_providers.dart" in read(
+        MOBILE / "src/features/confession/confession_detail_screen.dart"
+    ),
 )
 
 # ---------------------------------------------------------------------------

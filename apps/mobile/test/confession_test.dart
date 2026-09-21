@@ -123,6 +123,35 @@ void main() {
     expect(find.byKey(const ValueKey('btn-build-session')), findsOneWidget);
     expect(find.byKey(const ValueKey('btn-toggle-fav')), findsOneWidget);
     expect(find.byKey(const ValueKey('btn-favorite')), findsOneWidget);
+    // G-43: filing into a collection starts here, on the item's own page.
+    expect(find.byKey(const ValueKey('btn-add-to-collection')), findsOneWidget);
+  });
+
+  testWidgets('add to a collection lists the listener’s collections and posts membership',
+      (tester) async {
+    api.respond('/confessions/conf1', confessionPayload());
+    api.respond('/me/favorites', {'data': []});
+    api.respond('/me/collections', {
+      'data': [
+        {'id': 'col-1', 'name': 'Morning mercies', 'item_count': 2, 'visibility': 'private'},
+        {'id': 'col-2', 'name': 'Hard weeks', 'item_count': 0, 'visibility': 'private'},
+      ],
+    });
+    api.respond('/me/collections/col-1/items', {'id': 'col-1', 'name': 'Morning mercies', 'items': []});
+    await pumpConfession(tester, confessionId: 'conf1');
+
+    await tester.tap(find.byKey(const ValueKey('btn-add-to-collection')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Morning mercies'), findsOneWidget);
+    expect(find.text('2 confessions'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('pick-collection-col-1')));
+    await tester.pumpAndSettle();
+
+    expect(api.bodyOf('/me/collections/col-1/items', method: 'POST'),
+        containsPair('confession_id', 'conf1'));
+    expect(find.text('Added to collection'), findsOneWidget);
   });
 
   testWidgets('tapping a confession in category opens its detail', (tester) async {

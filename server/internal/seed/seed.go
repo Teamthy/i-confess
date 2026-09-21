@@ -94,6 +94,27 @@ func Seed(db *db.DB, signer storage.ObjectStorage) error {
 		return err
 	}
 
+	// G-42: a voice without a licence row fails its own platform gate. The
+	// §75 QA checklist refuses to approve any render whose voice has no
+	// active voice_rights row, so before this seed line a development database
+	// could never walk a seeded confession through audio_qa -> approved
+	// without hand-inserting a licence. Grace is an in-house voice, so the
+	// honest licence is exactly that: our own, active, worldwide, for TTS.
+	rights := store.NewVoiceRightsStore(db)
+	if err := rights.Create(bg, &models.VoiceRights{
+		VoiceID:       voice.ID,
+		RightsHolder:  "i-confess studio",
+		AllowedUse:    "tts",
+		Territories:   "GLOBAL",
+		StartDate:     "2026-01-01",
+		Status:        "active",
+		LicenseStatus: "active",
+		Provider:      voice.Provider,
+		Notes:         "seeded in-house licence: the demo catalogue must pass the voices_licensed gate it enforces",
+	}); err != nil {
+		return err
+	}
+
 	// ---- Confessions ----
 	// The library comes from the canonical corpus, which is the same source
 	// EnsureContent installs in production. There is deliberately no second

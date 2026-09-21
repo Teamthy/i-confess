@@ -492,7 +492,11 @@ class _FavoriteRow extends ConsumerWidget {
 
     // A favourite whose target is gone is still listed, so it can be cleared,
     // but it must not offer navigation into content that no longer resolves.
-    final canOpen = !favorite.missing && favorite.isConfession;
+    // G-45 closed: every entity kind the favourites tab lists now has a
+    // destination. Before this, a favourited session, category or voice
+    // rendered and could be removed but did nothing when tapped, because the
+    // row only knew how to open confessions.
+    final canOpen = !favorite.missing;
 
     return Material(
       color: surfaces.surfaceRaised,
@@ -500,9 +504,7 @@ class _FavoriteRow extends ConsumerWidget {
       child: InkWell(
         key: ValueKey('favorite-${favorite.entityId}'),
         borderRadius: BorderRadius.circular(IConfess.radiusMd),
-        onTap: canOpen
-            ? () => context.go(AppRoutes.confessionDetail(favorite.entityId))
-            : null,
+        onTap: canOpen ? () => _openFavorite(context) : null,
         child: Padding(
           padding: const EdgeInsets.symmetric(
             horizontal: IConfess.space4,
@@ -573,6 +575,22 @@ class _FavoriteRow extends ConsumerWidget {
         SnackBar(content: Text(ErrorMapper.describe(error).message)),
       ),
     );
+  }
+
+  /// Where a favourite row leads, one route per entity kind.
+  ///
+  /// Voices have no detail screen of their own — the builder's voice step is
+  /// where a voice is chosen and auditioned, so that is the surface a
+  /// favourited voice should open, not a dead row.
+  void _openFavorite(BuildContext context) {
+    final path = switch (favorite.entityType) {
+      'confession' => AppRoutes.confessionDetail(favorite.entityId),
+      'category' => AppRoutes.categoryDetail(favorite.entityId),
+      'session' => AppRoutes.playerWithId(favorite.entityId),
+      'voice' => AppRoutes.builderVoice,
+      _ => null,
+    };
+    if (path != null) context.go(path);
   }
 
   static IconData _iconFor(String entityType) => switch (entityType) {
@@ -770,11 +788,13 @@ class CollectionDetailScreen extends ConsumerWidget {
             key: const ValueKey('collection-menu'),
             onSelected: (value) => switch (value) {
               'rename' => _rename(context, ref, async.asData!.value.valueOrNull!),
+              'cover' => _setCover(context, ref, async.asData!.value.valueOrNull!),
               'delete' => _confirmDelete(context, ref),
               _ => null,
             },
             itemBuilder: (_) => const [
               PopupMenuItem(value: 'rename', child: Text('Rename')),
+              PopupMenuItem(value: 'cover', child: Text('Set cover image')),
               PopupMenuItem(value: 'delete', child: Text('Delete collection')),
             ],
           ),
@@ -817,14 +837,31 @@ class CollectionDetailScreen extends ConsumerWidget {
                       actionLabel: 'Find confessions',
                       onAction: () => context.go(AppRoutes.explore),
                     )
-                  : ListView.separated(
+                  // G-43: the order a listener curated is now curatable in
+                  // the app. ReorderableListView rather than a custom gesture
+                  // because the drag proxy, the list reflow and the a11y
+                  // announcements are all already correct here. The default
+                  // whole-row drag handles are off: the row itself navigates,
+                  // and a tap that both opened the confession and started a
+                  // drag would be unusable. A grip icon owns the drag.
+                  : ReorderableListView.builder(
+                      key: const ValueKey('collection-items'),
                       padding: const EdgeInsets.only(bottom: IConfess.space6),
+                      buildDefaultDragHandles: false,
                       itemCount: collection.items.length,
-                      separatorBuilder: (_, _) =>
-                          const SizedBox(height: IConfess.space2),
-                      itemBuilder: (context, i) => _CollectionItemRow(
-                        collectionId: collectionId,
-                        item: collection.items[i],
+                      onReorder: (oldIndex, newIndex) =>
+                          _reorder(context, ref, collection.items, oldIndex, newIndex),
+                      itemBuilder: (context, i) => Padding(
+                        // ReorderableListView requires the key on the direct
+                        // child, and needs no separators - the padding is
+                        // what this list had before, kept on the row.
+                        key: ValueKey('item-${collection.items[i].confessionId}'),
+                        padding: const EdgeInsets.only(bottom: IConfess.space2),
+                        child: _CollectionItemRow(
+                          collectionId: collectionId,
+                          item: collection.items[i],
+                          dragIndex: i,
+                        ),
                       ),
                     ),
             ),
@@ -851,6 +888,60 @@ class CollectionDetailScreen extends ConsumerWidget {
         await ref.read(libraryActionsProvider).renameCollection(collectionId, name);
     result.when(
       success: (_) {},
+      failure: (error) => messenger.showSnackBar(
+        SnackBar(content: Text(ErrorMapper.describe(error).message)),
+      ),
+    );
+  }
+
+  /// Saves a new item order after a drag (G-43).
+  ///
+  /// The payload is the complete order, not the move: the server rewrites
+  /// every position from the array, which keeps a half-applied reorder
+  /// impossible. On success the detail view is invalidated rather than kept
+  /// at the optimistic order - if a row moved underneath the drag, the server
+  /// is right and the screen should show it.
+  Future<void> _reorder(BuildContext context, WidgetRef ref,
+      List<CollectionItem> items, int oldIndex, int newIndex) async {
+    // ReorderableListView hands over the insertion index into the list that
+    // still contains the picked row; past the old position it is one too far.
+    final target = newIndex > oldIndex ? newIndex - 1 : newIndex;
+    final ordered = [...items];
+    ordered.insert(target, ordered.removeAt(oldIndex));
+
+    final messenger = ScaffoldMessenger.of(context);
+    final result = await ref.read(libraryActionsProvider).reorderCollection(
+          collectionId,
+          [for (final item in ordered) item.confessionId],
+        );
+    result.when(
+      success: (_) {},
+      failure: (error) => messenger.showSnackBar(
+        SnackBar(content: Text(ErrorMapper.describe(error).message)),
+      ),
+    );
+  }
+
+  /// Sets, replaces or clears the collection cover (G-44).
+  ///
+  /// The field is a URL, not a file picker, because the platform has no image
+  /// upload route yet; pretending otherwise would end in a picker that
+  /// discards what it picks. What this closes is the actual gap: cover_url
+  /// was rendered by every row since PHASE 27 and written by nothing, so the
+  /// monogram was permanent.
+  Future<void> _setCover(BuildContext context, WidgetRef ref, UserCollection collection) async {
+    final cover = await showDialog<String>(
+      context: context,
+      builder: (_) => _CoverUrlDialog(initial: collection.coverUrl),
+    );
+    if (cover == null || !context.mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    final result = await ref.read(libraryActionsProvider).updateCover(collectionId, cover);
+    result.when(
+      success: (_) => messenger.showSnackBar(SnackBar(
+        content: Text(cover.isEmpty ? 'Cover removed' : 'Cover updated'),
+      )),
       failure: (error) => messenger.showSnackBar(
         SnackBar(content: Text(ErrorMapper.describe(error).message)),
       ),
@@ -895,11 +986,92 @@ class CollectionDetailScreen extends ConsumerWidget {
   }
 }
 
+/// A cover-URL field for a collection (G-44).
+///
+/// Unlike the name dialog, an empty value is a valid submission: it means
+/// "remove the cover". The hint says so, because a field that quietly
+/// swallows the empty string teaches users that nothing they do here sticks.
+class _CoverUrlDialog extends StatefulWidget {
+  const _CoverUrlDialog({this.initial = ''});
+
+  final String initial;
+
+  @override
+  State<_CoverUrlDialog> createState() => _CoverUrlDialogState();
+}
+
+class _CoverUrlDialogState extends State<_CoverUrlDialog> {
+  late final TextEditingController _controller =
+      TextEditingController(text: widget.initial);
+  String? _error;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final value = _controller.text.trim();
+    // Mirrors the server's validCollectionCover; the 400 is still the
+    // authority, but a field that can say this inline should.
+    if (value.isNotEmpty &&
+        !(value.startsWith('https://') || value.startsWith('http://') || value.startsWith('/'))) {
+      setState(() => _error = 'Use an http(s) link or a path like /media/…');
+      return;
+    }
+    if (value.length > 2048) {
+      setState(() => _error = 'That link is too long (2048 characters at most).');
+      return;
+    }
+    Navigator.of(context).pop(value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Cover image'),
+      content: TextField(
+        key: const ValueKey('field-cover-url'),
+        controller: _controller,
+        autofocus: true,
+        keyboardType: TextInputType.url,
+        decoration: InputDecoration(
+          hintText: 'https://example.org/grace.jpg, or empty to remove',
+          errorText: _error,
+        ),
+        onSubmitted: (_) => _submit(),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const ValueKey('button-confirm-cover'),
+          onPressed: _submit,
+          child: const Text('Save'),
+        ),
+      ],
+    );
+  }
+}
+
 class _CollectionItemRow extends ConsumerWidget {
-  const _CollectionItemRow({required this.collectionId, required this.item});
+  const _CollectionItemRow({
+    required this.collectionId,
+    required this.item,
+    super.key,
+    this.dragIndex,
+  });
 
   final String collectionId;
   final CollectionItem item;
+
+  /// The row's position in a ReorderableListView, when it is inside one.
+  /// Detail surfaces that list items without reordering pass nothing and get
+  /// no grip, because a handle that does nothing is worse than no handle.
+  final int? dragIndex;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -909,7 +1081,7 @@ class _CollectionItemRow extends ConsumerWidget {
       color: surfaces.surfaceRaised,
       borderRadius: BorderRadius.circular(IConfess.radiusMd),
       child: InkWell(
-        key: ValueKey('item-${item.confessionId}'),
+        key: ValueKey('row-${item.confessionId}'),
         borderRadius: BorderRadius.circular(IConfess.radiusMd),
         onTap: item.resolved
             ? () => context.go(AppRoutes.confessionDetail(item.confessionId))
@@ -921,6 +1093,18 @@ class _CollectionItemRow extends ConsumerWidget {
           ),
           child: Row(
             children: [
+              if (dragIndex != null)
+                ReorderableDragStartListener(
+                  index: dragIndex!,
+                  child: Icon(
+                    Icons.drag_indicator_rounded,
+                    key: ValueKey('drag-${item.confessionId}'),
+                    size: 18,
+                    color: surfaces.textSecondary,
+                    semanticLabel: 'Reorder ${item.resolved ? item.title : 'this row'}',
+                  ),
+                ),
+              if (dragIndex != null) const SizedBox(width: IConfess.space2),
               Expanded(
                 child: Text(
                   // An unresolved join means the confession behind this item
