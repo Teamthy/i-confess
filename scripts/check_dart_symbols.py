@@ -515,9 +515,17 @@ check(
     "collection detail reorders with a ReorderableListView",
     "ReorderableListView.builder" in library_screen_src,
 )
+# The row itself navigates, so the whole-row drag handle must be off and an
+# explicit grip must own the drag. Flutter's delayed variant is the one in use:
+# a long-press starts the drag so a tap on the grip cannot be swallowed as one.
 check(
     "rows expose an explicit drag handle (rows also navigate)",
-    "ReorderableDragStartListener" in library_screen_src,
+    "ReorderableDragStartListener" in library_screen_src
+    or "ReorderableDelayedDragStartListener" in library_screen_src,
+)
+check(
+    "the whole-row drag handle is off, because the row navigates",
+    "buildDefaultDragHandles: false" in library_screen_src,
 )
 check(
     "the cover dialog exists and is wired to the menu",
