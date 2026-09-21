@@ -273,7 +273,7 @@
       "title": "Premium",
       "depth": 1,
       "parents": ["profile", "home", "confess/voice", "library"],
-      "endpoints": ["GET /subscriptions/plans", "GET /entitlements", "GET /subscriptions/trial", "GET /subscription", "POST /subscriptions/verify"],
+      "endpoints": ["GET /subscriptions/plans", "GET /entitlements", "GET /subscriptions/trial", "GET /subscriptions/trial/lifecycle", "POST /subscriptions/trial/start", "PATCH /subscriptions/trial", "GET /subscription", "POST /subscriptions/verify"],
       "notes": "Prices come from the server in the user's currency. Nothing is hardcoded. Verification is server-side - see the PHASE 04 payment bypass."
     },
     {

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:iconfess_api/iconfess_api.dart';
 
+import '../../core/di/providers.dart';
 import '../../core/theme/theme.dart';
 import '../../core/theme/tokens.dart';
 import '../../core/widgets/screen.dart';
@@ -72,6 +73,12 @@ class PremiumScreen extends ConsumerWidget {
               },
             ),
             const SizedBox(height: IConfess.space5),
+            // Trial status (§36, G-3): the record, not a guess. Eligible gets
+            // a real claim button; running gets the day; finished states get
+            // the truth and no button — the paywall never re-offers a used
+            // trial, because the server will not hand one out either.
+            _TrialCard(),
+            const SizedBox(height: IConfess.space4),
             Text('Unlock the full practice',
                 style: IConfess.heading.copyWith(color: surfaces.textPrimary)),
             const SizedBox(height: IConfess.space2),
@@ -155,6 +162,81 @@ class PremiumScreen extends ConsumerWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// The trial row of the paywall. It renders the server's lifecycle record and
+/// nothing else — no local countdowns, no "trial ends in" arithmetic on the
+/// client clock, which is exactly the device whose user has an incentive to
+/// set the date back.
+class _TrialCard extends ConsumerWidget {
+  const _TrialCard();
+
+  Future<void> _start(BuildContext context, WidgetRef ref) async {
+    final result = await ref.read(subscriptionRepositoryProvider).startTrial();
+    // Invalidate before reporting: any message we show must describe the
+    // state the card will then display, not the state we left behind.
+    ref.invalidate(trialLifecycleProvider);
+    ref.invalidate(trialProvider);
+    await result.when(
+      success: (trial) => ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Trial started — day ${trial.day} of 7.')),
+      ),
+      failure: (error) => ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message)),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final surfaces = AppSurfaces.of(context);
+    final trialAsync = ref.watch(trialLifecycleProvider);
+    return trialAsync.when(
+      loading: () => const SizedBox.shrink(),
+      error: (_, _) => const SizedBox.shrink(),
+      data: (loadable) {
+        final trial = loadable.valueOrNull;
+        if (trial == null) return const SizedBox.shrink();
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(IConfess.space4),
+          decoration: BoxDecoration(
+            color: trial.isConverted ? surfaces.surfaceRaised : IConfess.colorBrand50,
+            borderRadius: BorderRadius.circular(IConfess.radiusLg),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                trial.isConverted
+                    ? Icons.verified_rounded
+                    : trial.isRunning
+                        ? Icons.timer_outlined
+                        : trial.isExpired
+                            ? Icons.hourglass_empty
+                            : Icons.card_giftcard_rounded,
+                color: IConfess.colorBrand700,
+              ),
+              const SizedBox(width: IConfess.space3),
+              Expanded(
+                child: Text(trial.label,
+                    style: IConfess.body.copyWith(color: surfaces.textPrimary)),
+              ),
+              if (trial.canStart)
+                TextButton(
+                  onPressed: () => _start(context, ref),
+                  child: const Text('Start free trial'),
+                ),
+              if (trial.isRunning && trial.endsAt != null)
+                Text(
+                  'Ends ${trial.endsAt!.toLocal().toString().split(' ').first}',
+                  style: IConfess.caption.copyWith(color: surfaces.textSecondary),
+                ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

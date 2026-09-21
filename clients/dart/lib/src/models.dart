@@ -1379,6 +1379,63 @@ final class TrialDay {
       );
 }
 
+/// The §36 trial record (G-3).
+///
+/// `day` and `status` come from the server's record, not from the account's
+/// age: this is the object that tells the paywall whether there is a trial to
+/// show at all. The status vocabulary is the server's CHECK constraint,
+/// mirrored here as getters rather than an enum, because an unknown status
+/// from a newer server must degrade to "no known state" instead of throwing
+/// in model parsing.
+final class Trial {
+  const Trial({
+    this.id = '',
+    this.status = 'eligible',
+    this.day = 0,
+    this.startedAt,
+    this.endsAt,
+    this.convertedAt,
+  });
+
+  final String id;
+  final String status;
+  final int day;
+  final DateTime? startedAt;
+  final DateTime? endsAt;
+  final DateTime? convertedAt;
+
+  bool get isEligible => status == 'eligible';
+  bool get isRunning => status == 'started' || status == 'active' || status == 'expiring';
+  bool get isExpiring => status == 'expiring';
+  bool get isExpired => status == 'expired';
+  bool get isConverted => status == 'converted';
+
+  /// Whether the paywall may offer the claim button at all: only an eligible
+  /// account, never an expired or converted one.
+  bool get canStart => isEligible;
+
+  /// A one-line label for the trial card. Unknown states render as the raw
+  /// string — an invented server state should be visible, not silent.
+  String get label => switch (status) {
+        'eligible' => 'Trial available',
+        'started' => 'Trial started',
+        'active' => day > 0 ? 'Day $day of 7' : 'Trial active',
+        'expiring' => 'Trial ends today',
+        'expired' => 'Trial ended',
+        'converted' => 'Trial converted',
+        _ => status,
+      };
+
+  factory Trial.fromJson(Map<String, dynamic> json) => Trial(
+        id: _str(json, 'id'),
+        status: _str(json, 'status', 'eligible'),
+        day: _int(json, 'day'),
+        startedAt: _time(json, 'started_at'),
+        endsAt: _time(json, 'ends_at'),
+        convertedAt: _time(json, 'converted_at'),
+      );
+}
+
 /// Parses a list endpoint, tolerating both a bare array and a wrapped one.
 List<T> parseList<T>(Object? source, T Function(Map<String, dynamic>) fromJson) {
   if (source is List) return _list(source).map(fromJson).toList();

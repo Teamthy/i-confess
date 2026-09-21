@@ -178,6 +178,25 @@ const (
 	SubscriptionSuspended = "suspended"
 )
 
+// Trial is the §36 trial record: one per account, carrying its own clock so
+// "where is this account in its trial?" is a read, not a subtraction from
+// signup date. Day is derived from the timestamps on every response and is
+// not a column: a stored day number is a second clock that can disagree with
+// the first.
+type Trial struct {
+	ID     string `json:"id"`
+	UserID string `json:"user_id,omitempty"`
+	Status string `json:"status"`
+	Day    int    `json:"day"`
+	// Timestamps are omitted while the state has not reached them, which is
+	// the same contract the JSON columns elsewhere keep: absent, not zero.
+	StartedAt   string `json:"started_at,omitempty"`
+	EndsAt      string `json:"ends_at,omitempty"`
+	ConvertedAt string `json:"converted_at,omitempty"`
+	CreatedAt   string `json:"created_at"`
+	UpdatedAt   string `json:"updated_at"`
+}
+
 type Subscription struct {
 	ID        string `json:"id"`
 	UserID    string `json:"user_id"`

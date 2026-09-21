@@ -88,6 +88,11 @@ var Policies = []TablePolicy{
 	{Table: "user_collection_items", Action: Erase, Column: "collection_id",
 		Reason: "removed via their parent collection"},
 	{Table: "user_collections", Action: Erase},
+	// The trial record is behavioural and account-scoped: when it ran, and
+	// whether it converted. The financial fact of a conversion survives in
+	// subscriptions (retained below); the countdown itself belongs to the
+	// person and leaves with them.
+	{Table: "trials", Action: Erase},
 	{Table: "user_confessions", Action: Erase},
 	{Table: "favorites", Action: Erase},
 	{Table: "schedules", Action: Erase},

@@ -973,6 +973,27 @@
     "tag": "subscription"
   },
   {
+    "method": "PATCH",
+    "path": "/subscriptions/trial",
+    "auth": "user",
+    "summary": "Advance the trial record along the graph (worker/ops; legacy path)",
+    "tag": "subscription"
+  },
+  {
+    "method": "GET",
+    "path": "/subscriptions/trial/lifecycle",
+    "auth": "user",
+    "summary": "Trial state machine snapshot (§36)",
+    "tag": "subscription"
+  },
+  {
+    "method": "POST",
+    "path": "/subscriptions/trial/start",
+    "auth": "user",
+    "summary": "Claim the trial offer (eligible→started, seven-day clock)",
+    "tag": "subscription"
+  },
+  {
     "method": "POST",
     "path": "/subscriptions/verify",
     "auth": "user",
@@ -2013,6 +2034,27 @@
     "path": "/v1/subscriptions/trial",
     "auth": "user",
     "summary": "Trial journey (Day1..Day7)",
+    "tag": "subscription"
+  },
+  {
+    "method": "PATCH",
+    "path": "/v1/subscriptions/trial",
+    "auth": "user",
+    "summary": "Advance the trial record along the graph (worker/ops; legacy path)",
+    "tag": "subscription"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/subscriptions/trial/lifecycle",
+    "auth": "user",
+    "summary": "Trial state machine snapshot (§36)",
+    "tag": "subscription"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/subscriptions/trial/start",
+    "auth": "user",
+    "summary": "Claim the trial offer (eligible→started, seven-day clock)",
     "tag": "subscription"
   },
   {

@@ -60,6 +60,13 @@ and hides a deployment fault behind a client bug.
 
 ## Lifecycle states
 
+The app's own seven-day offer is not in this vocabulary: since PHASE 35 it is
+a `trials` row with its own six-state graph (`eligible … converted`,
+`docs/35-TRIAL-LIFECYCLE.md`), which this table's `trial` row describes only
+as a store-reported payment state. The two clocks merge when the real
+verifier lands (PHASE 36); until then a running app trial grants no
+entitlements, and that is stated, not implied.
+
 The vocabulary is `active | trial | grace | cancelled | expired | refunded |
 suspended`, and it maps onto the stores like this:
 

@@ -286,6 +286,54 @@ check(
     f"unknown: {unknown_routes}",
 )
 
+# ---------------------------------------------------------------------------
+# §36 subscriptions and the trial lifecycle (G-3)
+# ---------------------------------------------------------------------------
+
+# Every endpoint the premium feature calls must exist on ApiClient; every
+# repository method the providers call must exist on SubscriptionRepository.
+# (This catches what cost a red CI in PHASE 04: a screen calling a method
+# nobody declared.)
+ep_src = read(CLIENT / "endpoints.dart")
+repo_src = read(CLIENT / "repository.dart")
+premium_screen_src = read(MOBILE / "src/features/premium/premium_screen.dart")
+premium_providers_src = read(MOBILE / "src/features/premium/premium_providers.dart")
+
+for m in (
+    "getSubscriptionsTrial",
+    "getSubscriptionsTrialLifecycle",
+    "postSubscriptionsTrialStart",
+    "patchSubscriptionsTrial",
+    "postSubscriptionsVerify",
+):
+    check(
+        f"endpoints.dart declares {m}",
+        f"Future<Map<String, dynamic>> {m}(" in ep_src,
+    )
+
+for m in ("trial", "trialLifecycle", "startTrial", "verifyReceipt"):
+    check(
+        f"SubscriptionRepository declares {m}",
+        re.search(rf"\b{m}\(", repo_src) is not None,
+    )
+
+check(
+    "Trial lifecycle model is declared",
+    "final class Trial " in models_src
+    and re.search(r"factory Trial\.fromJson", models_src) is not None,
+)
+
+check(
+    "premium providers watch the trial lifecycle",
+    "trialLifecycleProvider" in premium_providers_src
+    and ".trialLifecycle()" in premium_providers_src,
+)
+check(
+    "premium screen claims the trial through the repository, not the API",
+    "startTrial()" in premium_screen_src
+    and "trialLifecycleProvider" in premium_screen_src,
+)
+
 # A screen that imports nothing it uses will not compile; check the imports
 # that carry the symbols this file depends on.
 for symbol, module in [

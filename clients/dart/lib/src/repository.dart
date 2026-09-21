@@ -1064,4 +1064,24 @@ final class SubscriptionRepository extends Repository {
         }),
         Subscription.fromVerification,
       );
+
+  /// The §36 trial record (G-3): which state, which day, which clock.
+  ///
+  /// Never cached. The one thing a trial state may not be is stale: a
+  /// five-minute-old "expiring" shown today, or a "converted" from before a
+  /// purchase, misleads the paywall at exactly the moment it is asking the
+  /// user for a decision.
+  Future<Loadable<Trial>> trialLifecycle() async {
+    try {
+      return Loadable.loaded(Trial.fromJson(await api.getSubscriptionsTrialLifecycle()));
+    } on ApiException catch (e) {
+      return Loadable.failed(e);
+    }
+  }
+
+  /// Claims the trial. The server decides eligibility; a refusal (a used or
+  /// converted account) arrives as a failure carrying the API error, and the
+  /// caller shows it rather than guessing from its own local state.
+  Future<WriteResult<Trial>> startTrial() =>
+      write(() => api.postSubscriptionsTrialStart(), Trial.fromJson);
 }

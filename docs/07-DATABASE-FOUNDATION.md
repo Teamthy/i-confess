@@ -144,9 +144,14 @@ fails loudly if it extracts zero values rather than passing vacuously.
   PHASE 04 payment bypass went through. The constraint means an invalid state
   cannot be written even by a bug — but it does not fix the signature, which is
   PHASE 36's job.
-- **§36's trial lifecycle is not in the vocabulary.** `ELIGIBLE`, `STARTED`,
-  `EXPIRING` and `CONVERTED` do not exist as states (G-3). Adding them is a new
-  migration, and that migration is the record that PHASE 37 happened.
+- **§36's trial lifecycle is its own table, added in PHASE 35.** The six
+  states — `eligible`, `started`, `active`, `expiring`, `expired`, `converted`
+  — live in `trials.status`, CHECK-constrained and parity-tested against
+  `billing.TrialStatuses` (G-3 closed). They are deliberately *not* part of the
+  subscription vocabulary above: the subscription row records what a store
+  says about payment; the trial row records the offer and its clock. Whether a
+  running trial grants Premium entitlements is decided together with the real
+  verifier, in PHASE 36 — one place that writes plan truth, not two.
 - Migrations run at boot with the application's credentials. There is no separate
   migration role, which is acceptable while §47 keeps infrastructure simple and
   is worth revisiting before multi-instance deploys.

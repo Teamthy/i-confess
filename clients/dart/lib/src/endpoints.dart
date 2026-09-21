@@ -414,6 +414,18 @@ extension IConfessEndpoints on ApiClient {
           [Map<String, dynamic>? body]) =>
       post('/subscriptions/verify', body);
 
+  /// Trial lifecycle state-machine snapshot (§36, G-3)
+  Future<Map<String, dynamic>> getSubscriptionsTrialLifecycle() =>
+      get('/subscriptions/trial/lifecycle');
+
+  /// Claim the seven-day trial (eligible -> started)
+  Future<Map<String, dynamic>> postSubscriptionsTrialStart() =>
+      post('/subscriptions/trial/start');
+
+  /// Advance the trial record along the lifecycle graph (worker/ops)
+  Future<Map<String, dynamic>> patchSubscriptionsTrial([Map<String, dynamic>? body]) =>
+      patch('/subscriptions/trial', body);
+
   // ---- session queue & progress ----
   /// Get session queue (snapshot)
   Future<Map<String, dynamic>> getSessionsByIdQueue(String id) =>

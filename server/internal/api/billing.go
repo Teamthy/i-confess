@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/Teamthy/i-confess/internal/billing"
@@ -45,22 +46,138 @@ func (h *Handler) listPlans(w http.ResponseWriter, r *http.Request) {
 }
 
 // trial returns the 7-day journey and the caller's current day.
+//
+// The day is read from the trial record when one exists — a claim, a clock and
+// an end — and falls back to the account's age only for a legacy reader with
+// no record yet. The fallback keeps PHASE 30's contract while the record
+// below makes the journey answerable honestly for the states age cannot
+// express: used, expiring, converted.
 func (h *Handler) getTrial(w http.ResponseWriter, r *http.Request) {
 	userID := h.userID(r)
-	// Trial start is the user's created_at; fallback to now if not found
-	var start time.Time
-	if u, err := h.users.ByID(r.Context(), userID); err == nil {
-		if t, perr := time.Parse(time.RFC3339, u.CreatedAt); perr == nil {
-			start = t
+	dayNum := 0
+	if t, err := h.trials.Current(r.Context(), userID, time.Now()); err == nil {
+		dayNum = t.Day
+	} else {
+		// Trial start is the user's created_at; fallback to now if not found
+		var start time.Time
+		if u, err := h.users.ByID(r.Context(), userID); err == nil {
+			if t, perr := time.Parse(time.RFC3339, u.CreatedAt); perr == nil {
+				start = t
+			}
 		}
+		dayNum = billing.DayFor(start, time.Now())
 	}
-	dayNum := billing.DayFor(start, time.Now())
 	day := billing.Day(dayNum)
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{
 		"journey":     billing.TrialJourney,
 		"current_day": dayNum,
 		"today":       day,
 	})
+}
+
+// getTrialLifecycle is the §36 record itself: where the account stands in the
+// trial, and from the state, what the client should be showing.
+func (h *Handler) getTrialLifecycle(w http.ResponseWriter, r *http.Request) {
+	t, err := h.trials.Current(r.Context(), h.userID(r), time.Now())
+	if err != nil {
+		log.Printf("trial: cannot read lifecycle for %s: %v", h.userID(r), err)
+		httpx.WriteError(w, http.StatusInternalServerError, "could not load the trial state")
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, t)
+}
+
+// startTrial claims the offer: eligible→started, seven-day clock set.
+// Everything else is a refusal with a reason a client can act on.
+func (h *Handler) startTrial(w http.ResponseWriter, r *http.Request) {
+	userID := h.userID(r)
+	if userID == "" {
+		httpx.WriteError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+	// A premium account does not get a trial countdown: the offer exists to
+	// convert, and a paying subscriber is past that question. (Restoring an
+	// old purchase lands here too, which is correct — restoring is not
+	// re-offering.) The plan test is load-bearing: every account carries an
+	// active FREE subscription row, and a guard that only looked at status
+	// would deny the trial to everyone.
+	if rec, err := h.users.SubscriptionRecord(r.Context(), userID); err == nil && rec != nil &&
+		rec.Status == models.SubscriptionActive && rec.Plan == entitlements.PlanPremium {
+		httpx.WriteJSON(w, http.StatusConflict, map[string]any{
+			"error":  "this account already has an active subscription; there is no trial to start",
+			"code":   "TRIAL_UNAVAILABLE",
+			"status": string(billing.TrialConverted),
+		})
+		return
+	}
+	// Deliberate scope note, recorded in docs/35-TRIAL-LIFECYCLE.md as a
+	// condition: STARTING a trial is now a real, once-per-account event, but
+	// an ACTIVE trial does not yet flip entitlements to premium — that gate
+	// belongs to the store-verification phase (PHASE 36), which rewrites how
+	// plan state is decided. Granting it here would decide entitlements twice,
+	// in two places, which is the bug pattern this project keeps closing.
+	t, err := h.trials.Start(r.Context(), userID, time.Now())
+	var trans *billing.TrialTransitionError
+	switch {
+	case errors.As(err, &trans):
+		// The honest 409 G-3 was about: the trial is not a countdown to be
+		// re-armed, it is a consumed offer.
+		httpx.WriteJSON(w, http.StatusConflict, map[string]any{
+			"error":   trans.Error(),
+			"code":    "TRIAL_ALREADY_USED",
+			"status":  string(trans.From),
+			"allowed": billing.TrialAllowedFrom(trans.From),
+		})
+	case err != nil:
+		log.Printf("trial: cannot start for %s: %v", userID, err)
+		httpx.WriteError(w, http.StatusInternalServerError, "could not start the trial")
+	default:
+		httpx.WriteJSON(w, http.StatusOK, t)
+	}
+}
+
+// patchTrial moves the record along the graph explicitly. Marked legacy:
+// reads advance the clock on their own and verification converts, so nothing
+// in the app should need this — it exists for the worker, for ops, and for
+// tests that want to fast-forward without sleeping. It cannot jump backwards
+// or invent an edge: same graph, same CAS.
+func (h *Handler) patchTrial(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Status string `json:"status"`
+	}
+	if err := httpx.DecodeJSON(r, &req); err != nil {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	to := billing.TrialStatus(strings.TrimSpace(req.Status))
+	if !billing.ValidTrialStatus(to) {
+		writeCode(w, http.StatusBadRequest, "TRIAL_INVALID",
+			"status must be one of: "+joinTrialStatuses())
+		return
+	}
+	t, err := h.trials.SetStatus(r.Context(), h.userID(r), to, time.Now())
+	var trans *billing.TrialTransitionError
+	switch {
+	case errors.As(err, &trans):
+		httpx.WriteJSON(w, http.StatusConflict, map[string]any{
+			"error":   trans.Error(),
+			"status":  string(trans.From),
+			"allowed": billing.TrialAllowedFrom(trans.From),
+		})
+	case err != nil:
+		log.Printf("trial: cannot move to %s for %s: %v", to, h.userID(r), err)
+		httpx.WriteError(w, http.StatusInternalServerError, "could not move the trial")
+	default:
+		httpx.WriteJSON(w, http.StatusOK, t)
+	}
+}
+
+func joinTrialStatuses() string {
+	names := make([]string, 0, 6)
+	for _, s := range billing.TrialStatuses() {
+		names = append(names, string(s))
+	}
+	return strings.Join(names, ", ")
 }
 
 // verifySubscriptionV2 verifies a store receipt and records the entitlement
@@ -189,6 +306,21 @@ func (h *Handler) verifySubscriptionV2(w http.ResponseWriter, r *http.Request) {
 		log.Printf("billing: failed to record verified subscription for user %s: %v", userID, err)
 		httpx.WriteError(w, http.StatusInternalServerError, "could not record the subscription")
 		return
+	}
+
+	// The purchase the offer existed to produce: if this account is inside —
+	// or just outside — its trial, that trial is now converted. Best effort
+	// and logged, never fatal: the subscription is already recorded, and
+	// failing the customer's receipt over a trial bookkeeping row would
+	// punish the paying party for our own housekeeping.
+	if _, cerr := h.trials.Convert(r.Context(), userID, time.Now()); cerr != nil {
+		// Two silences are correct here: a graph refusal (no running trial,
+		// or none at all) is the ordinary case for direct purchasers, and any
+		// other failure is ours, logged but never fatal to the receipt.
+		var trans *billing.TrialTransitionError
+		if !errors.As(cerr, &trans) && !errors.Is(cerr, store.ErrNoTrial) {
+			log.Printf("billing: could not mark trial converted for %s: %v", userID, cerr)
+		}
 	}
 
 	acknowledged := false

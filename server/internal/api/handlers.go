@@ -76,6 +76,8 @@ type Handler struct {
 	verifiers map[string]oauth.Verifier
 	// library owns collections, devices and notification preferences.
 	library *store.LibraryStore
+	// trials owns the §36 trial record and its clock (G-3).
+	trials *store.TrialsStore
 	// deletion performs account erasure under an explicit retention policy.
 	deletion *deletion.Service
 	// dispatcher delivers scheduled-session reminders (S19, S47).
@@ -155,6 +157,7 @@ func NewHandler(cfg Config, db *db.DB) *Handler {
 		profiles:     store.NewProfileStore(db),
 		verifiers:    map[string]oauth.Verifier{},
 		library:      store.NewLibraryStore(db),
+		trials:       store.NewTrialsStore(db),
 		deletion:     deletion.NewService(db),
 		downloads:    store.NewDownloadStore(db),
 		idem:         store.NewIdempotencyStore(db),

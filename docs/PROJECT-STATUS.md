@@ -1,6 +1,6 @@
 # Project Status
 
-**Last verified:** 2026-09-21, at PHASE 34 (Audit coverage and library gestures — G-41 closed in PHASE 33: `audit_logs` records every moderation and editorial action through one sink with `TestAuditLogsCoverContentAndModeration`; G-42/G-43/G-44/G-45 closed in PHASE 34: seeded voice licence passes the QA gate, drag-reorder + add-to-collection gestures exist, `cover_url` is writable, favourites navigate all four kinds. 73 Dart symbol assertions; routes/openapi byte-identical. Previous phase reconciliation still applies — see `docs/31-MODERATION.md`, `docs/33-AUDIT-COVERAGE.md`, `docs/34-LIBRARY-GESTURES.md`).
+**Last verified:** 2026-09-21, at PHASE 35 (Trial lifecycle — G-3 closed in PHASE 35: the six §36 states are a CHECK-constrained `trials` row with server-clock days, a once-per-account claim, a forward-only graph parity-tested against the live constraint, and conversion only by verified receipt; two real bugs caught by the tests before commit. 85 Dart symbol assertions; routes.json (306) and openapi.json (102 paths) regenerate byte-identical. Prior phases: PHASE 34 closed G-42–G-45 and PHASE 33 closed G-41 — previous phase reconciliation still applies, see `docs/31-MODERATION.md`, `docs/33-AUDIT-COVERAGE.md`, `docs/34-LIBRARY-GESTURES.md`, `docs/35-TRIAL-LIFECYCLE.md`).
 
 This file supersedes `MASTER-PROMPT-COMPLETION.md`,
 `CONTENT-DOMAIN-COMPLETION.md`, `AUDIO-PLATFORM-STATUS.md`, `SESSION-NOTES.md`
@@ -17,10 +17,10 @@ it.** Every claim below was produced by running something.
 | Claim | Evidence |
 |---|---|
 | Backend builds | `make build` |
-| 24 test packages pass against PostgreSQL 17 | `make test` |
+| 32 test packages pass against PostgreSQL 17 | `make test` (count re-verified at PHASE 35) |
 | No data races | `make race` |
 | Lint clean, 10 linters | `make lint` → 0 issues |
-| Schema loads 65 tables, 76 foreign keys | `internal/db` tests |
+| Schema loads 66 tables, 77 foreign keys | `internal/db` tests |
 | Session lifecycle: 11 states, no forged completions | `internal/sessions`, 16 tests |
 | Session queues are snapshots | `internal/store/snapshot_test.go` |
 | Account erasure covers every user table | `internal/deletion` |
@@ -35,9 +35,9 @@ it.** Every claim below was produced by running something.
 | **Mobile app** | `apps/mobile` cannot play audio — `just_audio` and `audio_service` are commented out. Being replaced per D-4. |
 | **Website / admin** | 434 and 168 lines of scaffolding. Being replaced per D-5. |
 | **Payments** | Every store verifier is a stub. Real App Store / Play verification is PHASE 36. |
-| **Trial lifecycle** | The six states in §36 do not exist. |
+| **Trial lifecycle** | **Done in PHASE 35** — `trials` record, six CHECK-constrained states, server-clock day, once-per-account claim, conversion only via verified receipt. Was G-3. An active trial does not yet grant Premium entitlements; that is stated as a condition in `docs/35-TRIAL-LIFECYCLE.md` and lands with PHASE 36's plan-state rewrite. |
 | **UGC `PUBLIC` readers** | **Done in PHASE 32** — `GET /community/confessions` public, anonymous, newest-first, mobile 2-tab + web both-feeds. Was G-40. |
-| **Soft delete / versioning** | Present on 2 of 64 tables each. Section 25 asks for both generally. |
+| **Soft delete / versioning** | Present on 2 of 66 tables each. Section 25 asks for both generally. |
 | **Cache** | Per-process only; no cross-instance invalidation. |
 | **Design system** | 120 tokens, contrast-verified, but not yet consumed by any real surface. |
 | **Navigation** | 37 screens specified and validated; mobile has the shell plus real home, explore, category, confession, builder, activity, and production player surfaces; me and remaining secondary surfaces continue in subsequent phases. |
@@ -206,12 +206,34 @@ PHASE 34 Library gestures and licence seeding — **PASS** (G-42 closed: seed
     routes.json and openapi.json regenerate byte-identical. See
     docs/34-LIBRARY-GESTURES.md)
 
-Open gaps carried forward: G-3, G-7, G-9, G-10, G-12, G-13,
+PHASE 35 Trial lifecycle — **PASS** (G-3 closed: §36's six states become a
+    `trials` table — `user_id` UNIQUE, status CHECK, `ends_at > started_at`
+    CHECK, 66 tables/77 FKs — driven by `billing.TrialTransitions`, a
+    forward-only graph whose vocabulary is parity-tested against the live
+    `pg_get_constraintdef`. Reads repair the clock (`store.TrialsStore.advance`);
+    `Sweep` moves whole rows to a fixpoint; `SetStatus` cannot jump the graph.
+    API: `GET /subscriptions/trial/lifecycle` (lazy `eligible`, `allowed[]`),
+    `POST /subscriptions/trial/start` (409 `TRIAL_ALREADY_USED`; premium
+    refusal checks the PLAN — every account holds an active FREE row, and a
+    status-only guard refused new users; caught by test), `PATCH
+    /subscriptions/trial` (400 vocab/409 edge/200 no-op). Journey day is
+    record-derived: 0 for converted/expired (`liveTrialDay`; second bug the
+    tests caught). Conversion happens only inside `POST /subscriptions/verify`
+    — best-effort, silent for direct purchasers, and never fails a receipt;
+    there is no convert route and no un-expire. `deletion` erases trials;
+    `subscriptions` vocabulary untouched by design — plan truth merges with
+    the PHASE 36 verifier. 3 new test files (billing/store/api);
+    `check_dart_symbols.py` 73→85; IA paywall screen 5→8 endpoints, 107
+    wired; routes.json 300→306, openapi 102 paths, both regenerated
+    byte-identical. See docs/35-TRIAL-LIFECYCLE.md)
+
+Open gaps carried forward: G-7, G-9, G-10, G-12, G-13,
 G-14, G-15, G-16, G-17, G-18, G-19, G-20, G-21, G-22, G-23, G-24, G-25, G-26, G-27, G-28,
 G-29, G-33, G-34, G-35, G-36, G-37, G-38, G-39.
 (G-2 was removed from this list: it has been closed since PHASE 07 —
 "23/23 status columns constrained" — yet appeared in both lists here, a
-documentation bug fixed in PHASE 31.)
+documentation bug fixed in PHASE 31. G-3 left this list in PHASE 35: the trial
+lifecycle is now a record, a clock and a tested graph — docs/35-TRIAL-LIFECYCLE.md.)
 
 Closed: **G-1** (queues are snapshots), **G-2** (23/23 status columns constrained),
 **G-8** (route parity), **G-11** (clients/dart is not a Flutter app),
@@ -225,6 +247,7 @@ plaintext-token functions were removed),
 **G-43** (PHASE 34: drag-reorder with a grip in collection detail; add-to-collection from the confession page).
 **G-44** (PHASE 34: `cover_url` written by POST/PATCH, cleared by empty, refused unless http(s)/same-origin).
 **G-45** (PHASE 34: favourites navigate all four entity kinds).
+**G-3** (PHASE 35: six trial states as a constrained record + graph; once-per-account claim; server-clock day; conversion only by verified receipt).
 **G-33** is new: the 24-entry blocklist is a floor, not a breach corpus.
 
 New in PHASE 11: **G-34** (no audio exists for any of the 78 confessions),
