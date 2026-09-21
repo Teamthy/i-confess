@@ -505,7 +505,14 @@ void main() {
       final start = tester.getCenter(handle);
       final secondBottom = tester.getBottomRight(secondRow).dy;
       final end = Offset(start.dx, secondBottom + 20);
-      await tester.dragFrom(start, end - start);
+      final gesture = await tester.startGesture(start);
+      // The mobile handle intentionally uses delayed drag start so a casual
+      // tap does not reorder. Hold past Flutter's long-press threshold before
+      // moving the pointer below the second row.
+      await tester.pump(const Duration(milliseconds: 600));
+      await gesture.moveTo(end, time: const Duration(milliseconds: 300));
+      await tester.pump();
+      await gesture.up();
       await tester.pumpAndSettle();
 
       // The whole order, not the move: the server rewrites every position
