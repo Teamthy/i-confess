@@ -512,7 +512,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 600));
       await tester.pumpAndSettle();
       await gesture.moveTo(end);
-      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pumpAndSettle();
       await gesture.up();
       await tester.pumpAndSettle();
 
