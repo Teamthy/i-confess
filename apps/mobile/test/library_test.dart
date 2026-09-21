@@ -493,14 +493,19 @@ void main() {
       });
       await pumpLibrary(tester, route: AppRoutes.collectionDetail('col-1'));
 
-      // 150px past a ~64px row clears the second slot decisively. Keep the
-      // handle in the viewport before starting the gesture: the collection
-      // header can consume enough height on a small CI surface to place the
-      // first row just below the fold.
+      // End just below the second row rather than relying on a fixed screen
+      // offset. The collection header can consume different amounts of the
+      // viewport on CI, and an offset that leaves the list cancels the drag
+      // instead of calling onReorder.
       final handle = find.byKey(const ValueKey('drag-c1'));
+      final secondRow = find.byKey(const ValueKey('row-c2'));
+      await tester.ensureVisible(secondRow);
       await tester.ensureVisible(handle);
       await tester.pumpAndSettle();
-      await tester.drag(handle, const Offset(0, 150));
+      final start = tester.getCenter(handle);
+      final secondBottom = tester.getBottomRight(secondRow).dy;
+      final end = Offset(start.dx, secondBottom + 20);
+      await tester.dragFrom(start, end - start);
       await tester.pumpAndSettle();
 
       // The whole order, not the move: the server rewrites every position
