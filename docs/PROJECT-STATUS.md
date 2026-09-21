@@ -1,4 +1,28 @@
-**Last verified:** 2026-09-21, at PHASE 43 (personalization — the seven
+**Last verified:** 2026-09-21, at ledger 45 (master-plan PHASE 38 — the
+public marketing website. `apps/web` was rebuilt in place against the PHASE 05
+design system: `styles/tokens.css` is a symlink to `design/generated/tokens.css`,
+so the site consumes the generated tokens directly and cannot drift. All 20
+public pages plus the 5 auth screens (real `/auth/*` endpoints through a
+same-origin `/api` proxy) render from server components with ISR; the homepage
+follows the PAUSE→FEEL→UNDERSTAND→EXPERIENCE→BELIEVE→BEGIN journey with all 12
+required sections; the category bookcase rail is the signature interaction
+(desktop accordion spines, keyboard-walkable, mobile snap carousel). Real 404
+statuses on dynamic routes, sitemap/robots/JSON-LD generated from the live
+API, and zero fabricated content — the hero quotes a real confession, pricing
+comes from `GET /subscriptions/plans`, and the download page admits the store
+listings are pending. Recorded finding: the repository's only "logo" files are
+the unmodified Flutter template icons, so the site ships a restrained
+typographic wordmark fallback pending an approved brand asset. Proving
+commands: `npm run build` (71 routes, clean), `npx tsc --noEmit`, a DOM audit
+of 20 pages (single h1, landmarks, alt/aria, canonical/OG present),
+`python3 design/test_ia.py` (113 wired), `python3 design/test_design.py`,
+`design/generate.py --check`, `gofmt -l` + `go vet`, `go test ./internal/api
+./internal/seed`, `scripts/check_dart_symbols.py` (133/133), and the live
+preview (Go API on :8080, site on :3000, both 0.0.0.0). Browser screenshot QA
+was NOT runnable — the Chrome download CDNs are unreachable from this sandbox;
+the DOM audit stands in and visual browser QA is owed to CI/local. See
+`docs/44-WEB-PLATFORM-AUDIT.md` (the entry-gate audit) and
+`docs/45-PHASE-38-MARKETING-SITE.md`). At PHASE 43 (personalization — the seven
 listener signals of master-plan item 34. `GET /recommendations` ranked on
 explicit interests alone and claimed `personalized: true` for it; it now reads
 what the listener did — categories listened to, completion rate, time of day in

@@ -48,3 +48,10 @@ FIX_*.ps1
 __pycache__/
 *.pyc
 apps/mobile/test/failures/
+
+# Web/admin app artifacts — dependencies and build output are reproducible
+# from package.json + lockfile; the lockfile itself IS committed (an
+# application is a deployment artefact and must build the same tree twice).
+node_modules/
+.next/
+tsconfig.tsbuildinfo

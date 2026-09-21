@@ -1,63 +1,111 @@
-"use client";
-import { useCallback, useEffect, useState } from "react";
+import type { Metadata } from "next";
+import Link from "next/link";
+import { SiteHeader } from "@/components/SiteHeader";
+import { SiteFooter } from "@/components/SiteFooter";
+import { SectionHead } from "@/components/Sections";
+import { api } from "@/lib/api";
 
-type Post = { id: string; body: string; created_at: string };
-type Confession = { id: string; title: string; text: string; published_at?: string; created_at: string };
-const api = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+export const metadata: Metadata = {
+  title: "Community",
+  description:
+    "Write confessions of your own — private by default, reviewed before public. The iCONFESS community model.",
+  alternates: { canonical: "/community" },
+};
 
-export default function CommunityPage() {
-  const [posts, setPosts] = useState<Post[]>([]);
-  const [confessions, setConfessions] = useState<Confession[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const load = useCallback(async () => {
-    setLoading(true); setError("");
-    try {
-      const [feedRes, confRes] = await Promise.all([
-        fetch(`${api}/v1/community/feed`, { cache: "no-store" }),
-        fetch(`${api}/v1/community/confessions`, { cache: "no-store" }),
-      ]);
-      if (!feedRes.ok) throw new Error(`feed HTTP ${feedRes.status}`);
-      if (!confRes.ok) throw new Error(`confessions HTTP ${confRes.status}`);
-      const feedPayload = await feedRes.json();
-      const confPayload = await confRes.json();
-      setPosts(Array.isArray(feedPayload.posts) ? feedPayload.posts : []);
-      setConfessions(Array.isArray(confPayload.confessions) ? confPayload.confessions : []);
-    } catch (_) { setError("Community stories could not be loaded."); }
-    finally { setLoading(false); }
-  }, []);
-  useEffect(() => { void load(); }, [load]);
+export default async function CommunityPage() {
+  const res = await api.communityConfessions();
+  const published = res.ok ? res.data.confessions : [];
+  const recent = published.slice(0, 6) as {
+    id: string;
+    title: string;
+    text?: string;
+    published_at?: string;
+  }[];
 
-  return <main className="min-h-screen bg-[#0f1220] text-[#e8eaf6] px-6 py-12">
-    <div className="max-w-3xl mx-auto">
-      <p className="text-xs uppercase tracking-widest text-[#9aa1c0]">Moderated · Anonymous by design</p>
-      <h1 className="font-serif text-4xl mt-2 text-[#e8c67a]">Community stories</h1>
-      <p className="text-[#9aa1c0] mt-3">Only posts approved for public sharing appear here. Author account identifiers are never returned by this API. Published user confessions (G-40) are now readable anonymously.</p>
-      {loading && <div role="status" className="mt-10">Loading community stories…</div>}
-      {error && <div role="alert" className="mt-10 text-[#ffb4b4]">{error} <button className="underline" onClick={() => void load()}>Try again</button></div>}
-      {!loading && !error && posts.length === 0 && confessions.length === 0 && <p className="mt-10">No approved stories yet.</p>}
-
-      {!loading && !error && confessions.length > 0 && (
-        <section className="mt-10">
-          <h2 className="text-xl font-semibold text-[#e8c67a]">Testimonies</h2>
-          <p className="text-sm text-[#9aa1c0] mt-1">Published confessions shared publicly by the community — anonymous, moderated, newest first.</p>
-          <div className="mt-4 grid gap-4">{confessions.map(c => <article key={c.id} className="rounded-xl border border-[#2d3350] bg-[#1c2138] p-5">
-            {c.title && <h3 className="font-semibold text-[#e8eaf6]">{c.title}</h3>}
-            <p className="leading-relaxed whitespace-pre-wrap mt-2">{c.text}</p>
-            <time className="block mt-4 text-xs text-[#9aa1c0]" dateTime={c.published_at || c.created_at}>{new Date(c.published_at || c.created_at).toLocaleDateString()}</time>
-          </article>)}</div>
+  return (
+    <div>
+      <SiteHeader />
+      <main id="main">
+        <section className="ic-page-hero on-ink">
+          <div className="ic-container">
+            <p className="ic-eyebrow">Community</p>
+            <h1 style={{ marginTop: "var(--ic-spacing-4)" }}>Your words matter too.</h1>
+            <p className="ic-lede" style={{ marginTop: "var(--ic-spacing-5)" }}>
+              Every account can write confessions in its own words — keep them
+              private, share them deliberately, or offer them to the community.
+              Reviewed before publication, always.
+            </p>
+            <div className="ic-btn-row" style={{ marginTop: "var(--ic-spacing-6)" }}>
+              <Link href="/register" className="ic-btn ic-btn--on-dark">Create your confession</Link>
+            </div>
+          </div>
         </section>
-      )}
 
-      {!loading && !error && posts.length > 0 && (
-        <section className="mt-10">
-          <h2 className="text-xl font-semibold text-[#e8c67a]">Stories</h2>
-          <div className="mt-4 grid gap-4">{posts.map(post => <article key={post.id} className="rounded-xl border border-[#2d3350] bg-[#1c2138] p-5">
-            <p className="leading-relaxed whitespace-pre-wrap">{post.body}</p>
-            <time className="block mt-4 text-xs text-[#9aa1c0]" dateTime={post.created_at}>{new Date(post.created_at).toLocaleDateString()}</time>
-          </article>)}</div>
+        <section className="ic-section">
+          <div className="ic-container">
+            <SectionHead
+              eyebrow="How sharing works"
+              title="Privacy is the default, not the upgrade."
+              lede="Three states, and you choose. Nothing becomes public without a person reading it first."
+            />
+            <div className="ic-grid ic-grid--3">
+              {[
+                ["Private", "Only you", "A confession you write is private the moment it exists. No feed, no exposure, no exceptions."],
+                ["Shared", "People you choose", "Shared content is visible only to the people you explicitly include. You can change your mind later."],
+                ["Community", "Reviewed, then public", "Offer a confession for review. A person reads it before anything is published — and you always know its state."],
+              ].map(([t, k, b]) => (
+                <div key={t} className="ic-card ic-card--hover" style={{ padding: "var(--ic-spacing-6)", display: "grid", gap: "var(--ic-spacing-3)" }}>
+                  <span className="ic-frame__kicker" style={{ color: "var(--ic-color-brand-600)" }}>{k}</span>
+                  <h3 style={{ fontSize: "var(--ic-font-size-subheading)", fontWeight: "var(--ic-font-weight-semibold)" }}>{t}</h3>
+                  <p style={{ fontSize: "var(--ic-font-size-bodySm)", color: "var(--ic-color-neutral-600)", lineHeight: "var(--ic-font-lineHeight-relaxed)" }}>{b}</p>
+                </div>
+              ))}
+            </div>
+          </div>
         </section>
-      )}
+
+        <section className="ic-section ic-section--mist" aria-labelledby="stories-title">
+          <div className="ic-container">
+            <SectionHead
+              id="stories-title"
+              eyebrow="From the community"
+              title="Testimonies, offered deliberately."
+              lede="Published community confessions — each one reviewed by a person before it appeared here."
+            />
+            {res.ok && recent.length > 0 ? (
+              <div className="ic-grid ic-grid--3">
+                {recent.map((t) => (
+                  <article key={t.id} className="ic-card ic-confession-card">
+                    <span className="ic-confession-card__kicker">Community</span>
+                    <h3>{t.title}</h3>
+                    <p>{t.text}</p>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="ic-state">
+                <h3>No published testimonies yet</h3>
+                <p>The community is young. Yours could be among the first — written, reviewed, and published with your name on the choice, not ours.</p>
+                <Link href="/register" className="ic-btn ic-btn--secondary">Create your confession</Link>
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section className="ic-section">
+          <div className="ic-container">
+            <SectionHead
+              eyebrow="Safety"
+              title="Moderation is a duty, not a feature."
+              lede="Reports are read. Decisions are recorded. Rejected content is explained, and appeals exist. Read the guidelines to see exactly where the lines are."
+            />
+            <Link href="/community-guidelines" className="ic-btn ic-btn--secondary">
+              Read the community guidelines
+            </Link>
+          </div>
+        </section>
+      </main>
+      <SiteFooter />
     </div>
-  </main>;
+  );
 }
