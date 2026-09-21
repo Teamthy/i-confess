@@ -1,20 +1,27 @@
-**Last verified:** 2026-09-21, at PHASE 42 (moderation completeness — user
-blocking and appeals. A block is now a real server-enforced boundary in both
-directions, and a dismissed report or rejected confession can be appealed
-through an explicit four-state lifecycle that is heard once; overturning
-reopens the work rather than granting the opposite decision. Gaps G-50 and G-51
-closed. Two real defects were found and fixed on the way: the deletion package
-misattributed one table's bug to another because a tolerated error left the
-transaction aborted, and the appeal reopen wrote an `updated_at` column that
-`reports` does not have. The schema moves to 70 tables / 83 foreign keys; the
-API moves to 320 routes / 250 paths / 320 operations. PHASE 35 Conditions
+**Last verified:** 2026-09-21, at PHASE 43 (personalization — the seven
+listener signals of master-plan item 34. `GET /recommendations` ranked on
+explicit interests alone and claimed `personalized: true` for it; it now reads
+what the listener did — categories listened to, completion rate, time of day in
+the listener's own timezone, session duration, favourites, skips and repeat
+listening as a count — through a read-only `SignalStore` and ranks with
+deterministic constants in a pure `internal/personalization` package, each
+signal proven on its own to move the result. The response keeps its v1 shape
+and adds `signals`, `reasons`, `listen_again` and `suggested_duration_seconds`;
+both listener switches are enforced server-side. Gap G-55 closed; no route,
+schema or contract change. Note on provenance: this phase was first built in a
+previous session as commits `e32fb2c`/`3c878f0` with `docs/HANDOFF-AFTER-43.md`,
+none of which reached the remote; it was rebuilt from the plan and the code.
+PHASE 42 (moderation completeness — user blocking and appeals, G-50 and G-51
+closed) stands as verified. The schema stays at 70 tables / 83 foreign keys; the
+API stays at 320 routes / 250 paths / 320 operations. PHASE 35 Conditions
 remain unavailable in this checkout: `docs/35-TRIAL-LIFECYCLE.md` is absent, so
 no claim is made that they were read. Previous phase reconciliation still
 applies — see `docs/31-MODERATION.md`, `docs/33-AUDIT-COVERAGE.md`,
 `docs/34-LIBRARY-GESTURES.md`, `docs/36-BILLING-TRIAL.md`,
 `docs/37-CONTENT-LIFECYCLE.md`, `docs/38-RETENTION-VERSIONING.md`,
 `docs/39-CANONICAL-AUDIO.md`, `docs/40-THEOLOGICAL-REVIEW.md`,
-`docs/41-TRIAL-ENGAGEMENT.md`, `docs/42-MODERATION-BLOCKING-APPEALS.md`).
+`docs/41-TRIAL-ENGAGEMENT.md`, `docs/42-MODERATION-BLOCKING-APPEALS.md`,
+`docs/43-PERSONALIZATION-SIGNALS.md`).
 
 This file supersedes `MASTER-PROMPT-COMPLETION.md`,
 `CONTENT-DOMAIN-COMPLETION.md`, `AUDIO-PLATFORM-STATUS.md`, `SESSION-NOTES.md`
@@ -31,7 +38,7 @@ it.** Every claim below was produced by running something.
 | Claim | Evidence |
 |---|---|
 | Backend builds | `make build` |
-| 34 Go packages with tests pass against PostgreSQL 17 | `go test -modfile=/tmp/local.mod -count=1 ./...` → zero FAIL |
+| 35 Go packages with tests pass against PostgreSQL 17 | `go test -race -count=1 ./...` → zero FAIL |
 | No data races | `make race` |
 | Lint clean, 10 linters | `make lint` → 0 issues |
 | Schema loads 70 tables, 83 foreign keys | `internal/db` tests (`TestPostgresSchemaLoads`, retention audit) |
@@ -343,9 +350,43 @@ PHASE 42 Moderation completeness: blocking and appeals — **PASS** (master-plan
     (320/250/320). Schema 70 tables / 83 foreign keys. See
     docs/42-MODERATION-BLOCKING-APPEALS.md)
 
+PHASE 43 Personalization: the seven listener signals — **PASS** (master-plan
+    34; G-55 closed. `recommendations` in `home.go` ranked on explicit interests
+    and left the behavioural signals as a comment about "future versions";
+    `grep -rn repeat server/internal/api server/internal/store` returned
+    nothing. `internal/personalization` is a pure package: `Signals` is the
+    evidence, `Rank` applies named constants — categories listened to (+1 per
+    completion, capped), completion rate over ≥3 items (steps the suggested
+    duration up at ≥0.9, down and halves category boosts at <0.5), time of day
+    as a listener-local daypart, session duration snapped to the 5–60 minute
+    ladder, favourites by kind, skips as a capped penalty with a two-skip sink,
+    and repeat listening as the number of distinct completed sessions per
+    confession, ≥2, feeding a `listen_again` rail with the count. Every tie
+    breaks on catalogue order then id. `store.SignalStore` reads session_items ⋈
+    live sessions ⋈ confessions, only COMPLETED/SKIPPED after
+    `NormalizeItemStatus`, the last 200 completed durations and the favourites;
+    it writes nothing, so there is no second ledger to drift. The endpoint moves
+    to `internal/api/recommendations.go`, keeps the v1 shape, reports
+    `personalized` true only when a behavioural signal had evidence, and adds
+    `signals` (present list plus quantities), per-id `reasons`, `listen_again`,
+    `suggested_duration_seconds`, `daypart` and `preferences`;
+    `personalization_enabled=false` means the signals are not read at all and
+    `recommendations_enabled=false` means catalogue order with no reasons. Proving
+    commands: `go test -race -count=1 ./...` (35 ok, zero FAIL),
+    `TestSevenListenerSignalsAreTheProductContract` (each signal alone moves the
+    ranking), `TestRankingIsDeterministic`,
+    `TestSignalStoreReadsDecidedItemsOfLiveSessions`,
+    `TestRecommendationsRankOnWhatTheListenerDid` (three real completions, one
+    skip, one favourite through the playback endpoints → Healing overtakes Peace,
+    `completion_rate` 0.75, `repeat_listening` 1, `times` 3, and the switch
+    empties `present`), `python3 scripts/check_dart_symbols.py` (133/133), route
+    export plus genspec unchanged at 320/250/320. Typed client decodes the new
+    fields and still decodes a v1 payload. See
+    docs/43-PERSONALIZATION-SIGNALS.md)
+
 Open gaps carried forward: G-7, G-9, G-10, G-12, G-13,
 G-14, G-15, G-16, G-17, G-18, G-19, G-20, G-23, G-24, G-25, G-26, G-27, G-28,
-G-33, G-48, G-49, G-52, G-53, G-54.
+G-33, G-48, G-49, G-52, G-53, G-54, G-56.
 (G-2 was removed from this list: it has been closed since PHASE 07 —
 "23/23 status columns constrained" — yet appeared in both lists here, a
 documentation bug fixed in PHASE 31.)
@@ -427,6 +468,20 @@ whole surface (`ModerationRepository`) and the symbol check gates it, but no
 screen renders it. Both are gestures a listener needs in the moment - blocking
 while being harassed, appealing while reading a rejection - so an API-only
 surface is not the feature.
+
+New in PHASE 43: **G-55** (the recommendations endpoint read explicit interests
+only and claimed `personalized: true` for it; none of the seven behavioural
+signals of master-plan 34 was read and repeat listening did not exist in the
+server). **Closed in PHASE 43.**
+
+Raised in PHASE 43 and carried open:
+
+**G-56 — The home screen does not render why.** The server now returns
+`reasons`, `listen_again` and `suggested_duration_seconds` and the typed client
+decodes them, but the mobile home still shows the two ranked lists as before. A
+recommendation whose reason is never shown is indistinguishable from an
+arbitrary one to the listener, which is the complaint personalization exists to
+answer.
 
 **G-54 — A report still cannot name a user.** `ReportableEntityTypes` remains
 `{confession, community_post}`. Blocking now covers the harassment case that

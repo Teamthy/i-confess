@@ -48,7 +48,11 @@ type Handler struct {
 	analytics *store.AnalyticsStore
 	// blocks owns listener-set boundaries. Separate from mod because a block is
 	// not a moderation action: no moderator takes it and none can see it.
-	blocks    *store.BlockStore
+	blocks *store.BlockStore
+	// signals reads the seven listener signals personalization ranks on
+	// (master-plan 34). Read-only: it derives evidence from tables other
+	// features write, so there is no second bookkeeping to drift.
+	signals   *store.SignalStore
 	engn      *engine.Engine
 	search    *search.SearchStore
 	templates *store.TemplateStore
@@ -149,6 +153,7 @@ func NewHandler(cfg Config, db *db.DB) *Handler {
 		users:     store.NewUserStore(db),
 		analytics: store.NewAnalyticsStore(db),
 		blocks:    store.NewBlockStore(db),
+		signals:   store.NewSignalStore(db),
 		// The trial store writes its own funnel events: expiry is a clock fact
 		// that no single handler reliably observes, so the transition records it.
 		trials:       store.NewTrialStore(db).WithAnalytics(store.NewAnalyticsStore(db)),
