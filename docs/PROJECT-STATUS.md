@@ -1,6 +1,6 @@
 # Project Status
 
-**Last verified:** 2026-09-21, at PHASE 37 (content lifecycle — G-37/G-38/G-39 closed: audited confession status updates now use an explicit forward-only edge table, deprecated content is excluded by the served-status authority, and every constrained `status` vocabulary is compared with its live PostgreSQL CHECK. The 66-table / 77-FK schema and 306-route / 240-path / 306-operation contract remain unchanged. PHASE 35 Conditions were not available in this checkout: `docs/35-TRIAL-LIFECYCLE.md` is absent, so no claim is made that they were read. Previous phase reconciliation still applies — see `docs/31-MODERATION.md`, `docs/33-AUDIT-COVERAGE.md`, `docs/34-LIBRARY-GESTURES.md`, `docs/36-BILLING-TRIAL.md`, `docs/37-CONTENT-LIFECYCLE.md`).
+**Last verified:** 2026-09-21, at PHASE 38 (retention and row versioning — G-21/G-22 closed: all 66 application tables have a nullable `deleted_at` tombstone and an integer `row_version`, the retention store advances versions on delete/restore, and primary content reads hide tombstones. The schema remains 66 tables / 77 foreign keys; the API remains 306 routes / 240 paths / 306 operations. PHASE 35 Conditions were not available in this checkout: `docs/35-TRIAL-LIFECYCLE.md` is absent, so no claim is made that they were read. Previous phase reconciliation still applies — see `docs/31-MODERATION.md`, `docs/33-AUDIT-COVERAGE.md`, `docs/34-LIBRARY-GESTURES.md`, `docs/36-BILLING-TRIAL.md`, `docs/37-CONTENT-LIFECYCLE.md`, `docs/38-RETENTION-VERSIONING.md`).
 
 This file supersedes `MASTER-PROMPT-COMPLETION.md`,
 `CONTENT-DOMAIN-COMPLETION.md`, `AUDIO-PLATFORM-STATUS.md`, `SESSION-NOTES.md`
@@ -37,7 +37,7 @@ it.** Every claim below was produced by running something.
 | **Payments** | **Done in PHASE 36** — production uses the Apple signed-transaction verifier or Google Play Developer API and fails closed without configuration; `TestProductionRefusesStubReceipts` remains green. |
 | **Trial lifecycle** | **Done in PHASE 36** — persistent `trials` row, explicit six-state graph, one-time start, expiry/conversion, and Premium projection tests. |
 | **UGC `PUBLIC` readers** | **Done in PHASE 32** — `GET /community/confessions` public, anonymous, newest-first, mobile 2-tab + web both-feeds. Was G-40. |
-| **Soft delete / versioning** | Present on 2 of 64 tables each. Section 25 asks for both generally. |
+| **Soft delete / versioning** | **Done in PHASE 38** — all 66 application tables carry `deleted_at` and `row_version`; retention writes are tombstoned and versioned. |
 | **Cache** | Per-process only; no cross-instance invalidation. |
 | **Design system** | 120 tokens, contrast-verified, but not yet consumed by any real surface. |
 | **Navigation** | 37 screens specified and validated; mobile has the shell plus real home, explore, category, confession, builder, activity, and production player surfaces; me and remaining secondary surfaces continue in subsequent phases. |
@@ -237,8 +237,20 @@ PHASE 37 Content lifecycle enforcement — **PASS** (G-37/G-38/G-39 closed:
     ./internal/api -count=1`, `gofmt -l internal cmd`, and `go vet ./...`. See
     docs/37-CONTENT-LIFECYCLE.md)
 
+PHASE 38 Retention and row versioning — **PASS** (G-21/G-22 closed:
+    migration 0015 adds nullable `deleted_at` and `row_version` to all 66
+    application tables without changing table or foreign-key counts. The
+    generic retention store validates identifiers, soft-deletes and restores
+    rows idempotently, and advances the row version; content and audio reads
+    exclude tombstoned rows. `TestEveryApplicationTableHasRetentionAndVersionColumns`,
+    `TestSoftDeleteAndRestoreAdvanceRowVersion`, and the safe-default checks
+    prove the installed PostgreSQL schema and write behavior. Proving commands:
+    `go test ./internal/db ./internal/retention ./internal/store -count=1`,
+    `gofmt -l internal cmd`, and `go vet ./...`. See
+    docs/38-RETENTION-VERSIONING.md)
+
 Open gaps carried forward: G-7, G-9, G-10, G-12, G-13,
-G-14, G-15, G-16, G-17, G-18, G-19, G-20, G-21, G-22, G-23, G-24, G-25, G-26, G-27, G-28,
+G-14, G-15, G-16, G-17, G-18, G-19, G-20, G-23, G-24, G-25, G-26, G-27, G-28,
 G-33, G-34, G-35, G-36.
 (G-2 was removed from this list: it has been closed since PHASE 07 —
 "23/23 status columns constrained" — yet appeared in both lists here, a
@@ -268,6 +280,10 @@ playable).
 **G-39** (PHASE 37: all 23 constrained status columns are vocabulary-audited in
 both directions against live PostgreSQL CHECK constraints, with the trial state
 covered separately).
+**G-21** (PHASE 38: all 66 application tables carry a nullable deletion
+ tombstone and the retention writer preserves a reversible row).
+**G-22** (PHASE 38: all 66 application tables carry the uniform `row_version`
+ concurrency field, and delete/restore writes advance it).
 **G-33** is new: the 24-entry blocklist is a floor, not a breach corpus.
 
 New in PHASE 11: **G-34** (no audio exists for any of the 78 confessions),

@@ -31,7 +31,7 @@ func (s *AudioStore) CreateVoice(ctx context.Context, v *models.Voice) error {
 func (s *AudioStore) ListVoices(ctx context.Context) ([]models.Voice, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT id,name,COALESCE(description,''),type,COALESCE(provider,''),COALESCE(gender,''),language,premium,status,COALESCE(sample_url,''),created_at,updated_at
-		 FROM voices ORDER BY premium, name`)
+		 FROM voices WHERE deleted_at IS NULL ORDER BY premium, name`)
 	if err != nil {
 		return nil, err
 	}
@@ -51,7 +51,7 @@ func (s *AudioStore) VoiceByID(ctx context.Context, id string) (*models.Voice, e
 	var v models.Voice
 	err := s.db.QueryRowContext(ctx,
 		`SELECT id,name,COALESCE(description,''),type,COALESCE(provider,''),COALESCE(gender,''),language,premium,status,COALESCE(sample_url,''),created_at,updated_at
-		 FROM voices WHERE id = ?`, id).
+		 FROM voices WHERE id = ? AND deleted_at IS NULL`, id).
 		Scan(&v.ID, &v.Name, &v.Description, &v.Type, &v.Provider, &v.Gender, &v.Language, &v.Premium, &v.Status, &v.SampleURL, &v.CreatedAt, &v.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
@@ -167,7 +167,7 @@ func scanAsset(row interface{ Scan(...any) error }) (models.AudioAsset, error) {
 // AssetByID returns one audio asset with its QA record.
 func (s *AudioStore) AssetByID(ctx context.Context, id string) (models.AudioAsset, error) {
 	a, err := scanAsset(s.db.QueryRowContext(ctx,
-		`SELECT `+assetColumns+` FROM audio_assets WHERE id = ?`, id))
+		`SELECT `+assetColumns+` FROM audio_assets WHERE id = ? AND deleted_at IS NULL`, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return models.AudioAsset{}, ErrNotFound
 	}
@@ -184,7 +184,7 @@ func (s *AudioStore) AssetsFor(ctx context.Context, confessionID, voiceID string
 	             COALESCE(a.duration_seconds,0), COALESCE(a.file_size_bytes,0), a.status, a.created_at, a.updated_at
 	      FROM audio_assets a
 	      LEFT JOIN content_versions cv ON cv.id = a.content_version_id
-	      WHERE a.content_id = ? AND a.status IN (` + placeholders(len(served)) + `)`
+	      WHERE a.content_id = ? AND a.deleted_at IS NULL AND a.status IN (` + placeholders(len(served)) + `)`
 	args := []any{confessionID}
 	for _, st := range served {
 		args = append(args, string(st))
@@ -232,7 +232,7 @@ func (s *AudioStore) ConfessionIDsWithVoice(ctx context.Context, voiceID string)
 		args = append(args, string(st))
 	}
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT DISTINCT content_id FROM audio_assets WHERE voice_id = ? AND status IN (`+placeholders(len(served))+`)`,
+		`SELECT DISTINCT content_id FROM audio_assets WHERE voice_id = ? AND deleted_at IS NULL AND status IN (`+placeholders(len(served))+`)`,
 		args...)
 	if err != nil {
 		return nil, err
