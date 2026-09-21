@@ -1,24 +1,40 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { AuthCard } from "@/components/AuthCard";
 import { authFetch } from "@/lib/auth-client";
+import { useAuth } from "@/lib/auth-context";
 
 /**
- * Sign in. Talks to POST /auth/login through the same-origin /api proxy.
- * MFA-capable accounts receive `mfa_required` — the second step comes with
- * the full authenticated shell in PHASE 39; until then the server's message
- * is shown verbatim rather than a fake success.
+ * Sign in. Talks to POST /auth/login through the same-origin /api proxy and,
+ * on success, hands {token, user} to AuthProvider — which is what every /app
+ * page uses to authenticate its own calls. Before this existed the form
+ * "signed in" by redirecting home without ever storing the session, and the
+ * authenticated app could never see one.
+ *
+ * MFA accounts get `mfa_required` back; the same form then asks for the code
+ * and re-submits. The server accepts {email, password, code} in one round
+ * trip, so this is a second step, not a second flow.
  */
-export function LoginForm() {
+function safeNext(raw: string | null): string {
+  // Only same-origin paths into the app; never an absolute URL.
+  if (raw && /^\/(app|welcome)([/?#].*)?$/.test(raw)) return raw;
+  return "/app";
+}
+
+function LoginFormInner() {
   const router = useRouter();
+  const search = useSearchParams();
+  const { setToken } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [code, setCode] = useState("");
   const [showPw, setShowPw] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [mfaStep, setMfaStep] = useState(false);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -27,16 +43,28 @@ export function LoginForm() {
       setError("Enter your email and password.");
       return;
     }
-    setBusy(true);
-    const res = await authFetch("/auth/login", { email: email.trim(), password });
-    setBusy(false);
-    if (res.ok) {
-      // Session establishment for the /app shell lands in PHASE 39; direct
-      // sign-ins there once it exists. Until then, confirm and return home.
-      router.push("/?signed-in=1");
+    if (mfaStep && code.trim().length < 6) {
+      setError("Enter the 6-digit code from your authenticator app.");
       return;
     }
-    setError(res.message);
+    setBusy(true);
+    const res = await authFetch("/auth/login", {
+      email: email.trim(),
+      password,
+      ...(mfaStep ? { code: code.trim() } : {}),
+    });
+    setBusy(false);
+    if (res.code === "mfa_required" && !mfaStep) {
+      setMfaStep(true);
+      setError(res.message ?? "");
+      return;
+    }
+    if (res.ok && res.token && res.user) {
+      setToken(res.token, res.user);
+      router.push(safeNext(search.get("next")));
+      return;
+    }
+    setError(res.message ?? "That didn't work. Please check the details and try again.");
   }
 
   return (
@@ -86,13 +114,30 @@ export function LoginForm() {
             </button>
           </div>
         </div>
+        {mfaStep && (
+          <div className="ic-field">
+            <label htmlFor="login-code">Authentication code</label>
+            <input
+              id="login-code"
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              pattern="[0-9]{6}"
+              maxLength={10}
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              required
+            />
+            <p className="ic-field__hint">Six digits from your authenticator app, or a recovery code.</p>
+          </div>
+        )}
         {error && (
           <div role="alert" style={{ fontSize: "var(--ic-font-size-bodySm)", color: "var(--ic-color-semantic-danger-light)" }}>
             {error}
           </div>
         )}
         <button type="submit" className="ic-btn ic-btn--primary" disabled={busy} style={{ width: "100%" }}>
-          {busy ? "Signing in…" : "Continue"}
+          {busy ? "Signing in…" : mfaStep ? "Verify & sign in" : "Continue"}
         </button>
         <p style={{ textAlign: "center" }}>
           <Link href="/forgot-password" className="ic-btn--text" style={{ fontSize: "var(--ic-font-size-bodySm)" }}>
@@ -101,5 +146,18 @@ export function LoginForm() {
         </p>
       </form>
     </AuthCard>
+  );
+}
+
+/**
+ * The page is statically rendered, and reading `?next` is a dynamic operation;
+ * Next requires a Suspense boundary around that read. Wrapping here keeps the
+ * boundary next to the code that needs it.
+ */
+export function LoginForm() {
+  return (
+    <Suspense fallback={null}>
+      <LoginFormInner />
+    </Suspense>
   );
 }

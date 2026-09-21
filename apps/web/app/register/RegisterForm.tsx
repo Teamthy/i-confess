@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { AuthCard } from "@/components/AuthCard";
 import { authFetch } from "@/lib/auth-client";
+import { useAuth } from "@/lib/auth-context";
 
 /**
  * Create an account. Talks to POST /auth/register through the same-origin
@@ -11,11 +12,13 @@ import { authFetch } from "@/lib/auth-client";
  * its public shape (length) only as a courtesy hint, never as the authority.
  */
 export function RegisterForm() {
+  const { setToken } = useAuth();
   const [fields, setFields] = useState({ name: "", email: "", password: "", confirm: "" });
   const [issues, setIssues] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
+  const [signedIn, setSignedIn] = useState(false);
 
   function validate() {
     const next: Record<string, string> = {};
@@ -32,17 +35,28 @@ export function RegisterForm() {
     setError("");
     if (!validate()) return;
     setBusy(true);
+    const tz =
+      typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone : "";
     const res = await authFetch("/auth/register", {
       email: fields.email.trim(),
       password: fields.password,
       display_name: fields.name.trim(),
+      ...(tz ? { timezone: tz } : {}),
     });
     setBusy(false);
     if (res.ok) {
+      // A brand-new account gets a session immediately (the verification mail
+      // then upgrades the flag, not the login). An address that already exists
+      // gets the identical "check your email" response with no session — the
+      // form shows the same state either way, because the server does.
+      if (res.token && res.user) {
+        setToken(res.token, res.user);
+        setSignedIn(true);
+      }
       setDone(true);
       return;
     }
-    setError(res.message);
+    setError(res.message ?? "That didn't work. Please check the details and try again.");
   }
 
   const set = (k: keyof typeof fields) => (e: React.ChangeEvent<HTMLInputElement>) =>
@@ -69,7 +83,11 @@ export function RegisterForm() {
             We sent a verification link to {fields.email}. Verify to finish —
             and welcome.
           </p>
-          <Link href="/" className="ic-btn ic-btn--primary">Back to iCONFESS</Link>
+          {signedIn ? (
+            <Link href="/welcome" className="ic-btn ic-btn--primary">Go to your experience</Link>
+          ) : (
+            <Link href="/login" className="ic-btn ic-btn--primary">Sign in to continue</Link>
+          )}
         </div>
       ) : (
         <form onSubmit={onSubmit} noValidate style={{ display: "grid", gap: "var(--ic-spacing-4)" }}>

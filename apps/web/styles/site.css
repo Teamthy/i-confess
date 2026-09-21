@@ -1944,3 +1944,346 @@
     transition: none;
   }
 }
+
+/* ==========================================================================
+   APP — wired surfaces (profile / settings / session builder / player /
+   community / daily). Hand-authored like the rest of this file; all colours,
+   spacing, radii and type come from the generated tokens. Nothing here
+   invents a second visual system.
+   ========================================================================== */
+
+/* Toggle tracks are real buttons; strip the UA chrome so the pill geometry
+   defined above is exact, and keep a visible focus ring for keyboards. */
+button.ia-toggle__track {
+  border: none;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+button.ia-toggle__track:focus-visible {
+  outline: 2px solid var(--ic-color-brand-600);
+  outline-offset: 2px;
+}
+
+button.ia-toggle__track[disabled] {
+  opacity: 0.55;
+  cursor: progress;
+}
+
+/* Explicit "reduce motion" control from settings/accessibility — the same
+   restraint the OS media query provides, selectable per browser on top of it. */
+html[data-ic-reduce-motion="1"] *,
+html[data-ic-reduce-motion="1"] *::before,
+html[data-ic-reduce-motion="1"] *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
+}
+
+/* Session builder category chips: a toggle-button grid, not a select. */
+.ic-chipgrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ic-spacing-2);
+}
+
+.ic-chipgrid__chip {
+  appearance: none;
+  border: 1px solid var(--ic-color-neutral-300);
+  background: var(--ic-color-neutral-0);
+  color: var(--ic-color-neutral-800);
+  border-radius: var(--ic-radius-full);
+  padding: var(--ic-spacing-2) var(--ic-spacing-4);
+  font-size: var(--ic-font-size-bodySm);
+  font-family: inherit;
+  min-height: 2.5rem;
+  cursor: pointer;
+  transition: background-color var(--ic-motion-duration-fast) var(--ic-motion-easing-standard),
+    border-color var(--ic-motion-duration-fast) var(--ic-motion-easing-standard);
+}
+
+.ic-chipgrid__chip[aria-pressed="true"] {
+  background: var(--ic-color-brand-600);
+  border-color: var(--ic-color-brand-600);
+  color: var(--ic-color-neutral-0);
+}
+
+.ic-chipgrid__chip:focus-visible {
+  outline: 2px solid var(--ic-color-brand-600);
+  outline-offset: 2px;
+}
+
+/* Immersive player surface. */
+.ip-shell {
+  display: grid;
+  gap: var(--ic-spacing-6);
+  justify-items: center;
+  max-width: 34rem;
+  margin: 0 auto;
+  padding: var(--ic-spacing-6) 0 var(--ic-spacing-8);
+}
+
+.ip-art {
+  width: min(100%, 22rem);
+  aspect-ratio: 1;
+  border-radius: var(--ic-radius-xl);
+  display: grid;
+  place-items: center;
+  color: var(--ic-color-neutral-0);
+  font-family: var(--ic-font-family-serif);
+  font-size: var(--ic-font-size-display, 2.5rem);
+  letter-spacing: 0.04em;
+}
+
+.ip-now {
+  text-align: center;
+}
+
+.ip-now__title {
+  font-family: var(--ic-font-family-serif);
+  font-size: var(--ic-font-size-heading, 1.5rem);
+  line-height: var(--ic-font-lineHeight-tight, 1.2);
+  margin: 0;
+}
+
+.ip-now__meta {
+  font-size: var(--ic-font-size-bodySm);
+  color: var(--ic-color-neutral-600);
+  margin: var(--ic-spacing-2) 0 0;
+}
+
+.ip-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ic-spacing-4);
+}
+
+.ip-btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--ic-color-neutral-900);
+  width: 44px;
+  height: 44px;
+  border-radius: var(--ic-radius-full);
+  font-size: 1.1rem;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+
+.ip-btn[disabled] {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.ip-btn:focus-visible {
+  outline: 2px solid var(--ic-color-brand-600);
+  outline-offset: 2px;
+}
+
+.ip-btn--play {
+  width: 64px;
+  height: 64px;
+  background: var(--ic-color-brand-600);
+  color: var(--ic-color-neutral-0);
+  font-size: 1.5rem;
+}
+
+.ip-btn--play:hover {
+  background: var(--ic-color-brand-500);
+}
+
+.ip-seek {
+  width: 100%;
+  display: grid;
+  gap: var(--ic-spacing-1);
+}
+
+.ip-seek input[type="range"] {
+  width: 100%;
+  accent-color: var(--ic-color-brand-600);
+  min-height: 32px;
+}
+
+.ip-seek__times {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--ic-font-size-caption);
+  color: var(--ic-color-neutral-600);
+  font-variant-numeric: tabular-nums;
+}
+
+.ip-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ic-spacing-3);
+  flex-wrap: wrap;
+  font-size: var(--ic-font-size-bodySm);
+}
+
+.ip-row select {
+  border: 1px solid var(--ic-color-neutral-300);
+  border-radius: var(--ic-radius-md);
+  background: var(--ic-color-neutral-0);
+  padding: var(--ic-spacing-1) var(--ic-spacing-2);
+  font: inherit;
+  min-height: 2rem;
+}
+
+.ip-queue {
+  width: 100%;
+  display: grid;
+  gap: var(--ic-spacing-2);
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.ip-queue__item {
+  display: flex;
+  align-items: baseline;
+  gap: var(--ic-spacing-3);
+  padding: var(--ic-spacing-3) var(--ic-spacing-4);
+  border: 1px solid var(--ic-color-neutral-200);
+  border-radius: var(--ic-radius-lg);
+  font-size: var(--ic-font-size-bodySm);
+}
+
+.ip-queue__item[data-current="1"] {
+  border-color: var(--ic-color-brand-600);
+  background: var(--ic-color-brand-50, #EBF2FA);
+}
+
+.ip-queue__item[data-state="COMPLETED"],
+.ip-queue__item[data-state="SKIPPED"] {
+  color: var(--ic-color-neutral-500);
+}
+
+.ip-queue__num {
+  font-variant-numeric: tabular-nums;
+  color: var(--ic-color-neutral-400);
+  min-width: 1.5rem;
+}
+
+.ip-queue__title {
+  flex: 1;
+}
+
+.ip-status {
+  font-size: var(--ic-font-size-caption);
+  color: var(--ic-color-neutral-600);
+  text-align: center;
+  min-height: 1.2em;
+}
+
+/* Transcript panel inside the player. */
+.ip-transcript {
+  width: 100%;
+  background: var(--ic-color-neutral-50, #F7FAFD);
+  border: 1px solid var(--ic-color-neutral-200);
+  border-radius: var(--ic-radius-lg);
+  padding: var(--ic-spacing-5);
+  font-family: var(--ic-font-family-serif);
+  font-size: var(--ic-font-size-body);
+  line-height: var(--ic-font-lineHeight-relaxed, 1.65);
+  white-space: pre-wrap;
+  max-height: 18rem;
+  overflow: auto;
+}
+
+/* Community feed cards. */
+.ic-feed {
+  display: grid;
+  gap: var(--ic-spacing-4);
+}
+
+.ic-feed__post {
+  padding: var(--ic-spacing-5);
+  border-radius: var(--ic-radius-lg);
+  border: 1px solid var(--ic-color-neutral-200);
+  background: var(--ic-color-neutral-0);
+}
+
+.ic-feed__body {
+  font-family: var(--ic-font-family-serif);
+  font-size: var(--ic-font-size-body);
+  line-height: var(--ic-font-lineHeight-relaxed, 1.65);
+  white-space: pre-wrap;
+  margin: 0;
+}
+
+.ic-feed__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ic-spacing-3);
+  margin-top: var(--ic-spacing-4);
+  flex-wrap: wrap;
+}
+
+.ic-feed__reacts {
+  display: flex;
+  gap: var(--ic-spacing-2);
+}
+
+.ic-feed__react {
+  appearance: none;
+  border: 1px solid var(--ic-color-neutral-300);
+  background: transparent;
+  color: var(--ic-color-neutral-700);
+  border-radius: var(--ic-radius-full);
+  padding: var(--ic-spacing-1) var(--ic-spacing-3);
+  font-size: var(--ic-font-size-caption);
+  font-family: inherit;
+  min-height: 2.25rem;
+  cursor: pointer;
+}
+
+.ic-feed__react:hover {
+  border-color: var(--ic-color-brand-500);
+  color: var(--ic-color-brand-600);
+}
+
+.ic-feed__react:focus-visible {
+  outline: 2px solid var(--ic-color-brand-600);
+  outline-offset: 2px;
+}
+
+.ic-feed__react[disabled] {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.ic-feed__time {
+  font-size: var(--ic-font-size-caption);
+  color: var(--ic-color-neutral-500);
+}
+
+/* Today surface. */
+.ic-today {
+  border: 1px solid var(--ic-color-neutral-200);
+  border-radius: var(--ic-radius-xl);
+  padding: var(--ic-spacing-6);
+  background: linear-gradient(180deg, var(--ic-color-brand-50, #EBF2FA), var(--ic-color-neutral-0) 70%);
+  display: grid;
+  gap: var(--ic-spacing-4);
+}
+
+.ic-today__label {
+  font-size: var(--ic-font-size-caption);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ic-color-brand-600);
+  margin: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ic-chipgrid__chip,
+  .ip-btn--play {
+    transition: none;
+  }
+}

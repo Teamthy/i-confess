@@ -6,6 +6,7 @@ import "../styles/tokens.css";
 import "../styles/globals.css";
 import "../styles/site.css";
 import { SITE_URL, SITE_NAME } from "@/lib/site";
+import { AuthProvider } from "@/lib/auth-context";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -55,7 +56,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <a href="#main" className="ic-skip-link">
           Skip to content
         </a>
-        {children}
+        {/* Mounted here, not on /app alone: establishing the session happens on
+            /login and /register, and the /app shell consumes it. One provider
+            owns localStorage; a second instance would race the first. */}
+        <AuthProvider>{children}</AuthProvider>
       </body>
     </html>
   );
