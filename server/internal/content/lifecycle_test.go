@@ -45,6 +45,56 @@ func constraintValues(t *testing.T, table, column string) map[string]bool {
 	return out
 }
 
+// TestContentTransitions is the named state-machine test for G-37. It tests
+// the directed edge table rather than merely checking that statuses are valid:
+// a value can be in the vocabulary and still be an illegal movement.
+func TestContentTransitions(t *testing.T) {
+	allowed := map[[2]Status]bool{}
+	for _, edge := range Edges() {
+		if edge.From == edge.To {
+			t.Fatalf("self-edge %s -> %s", edge.From, edge.To)
+		}
+		allowed[[2]Status{edge.From, edge.To}] = true
+	}
+	for _, from := range All() {
+		for _, to := range All() {
+			want := allowed[[2]Status{from, to}]
+			if got := CanTransition(string(from), string(to)); got != want {
+				t.Errorf("CanTransition(%s,%s) = %v, want %v", from, to, got, want)
+			}
+			if err := Transition(string(from), string(to)); (err == nil) != want {
+				t.Errorf("Transition(%s,%s) error=%v, want allowed=%v", from, to, err, want)
+			}
+		}
+	}
+	for _, edge := range Edges() {
+		if edge.From == StatusPublished && edge.To != StatusDeprecated && edge.To != StatusArchived {
+			t.Errorf("published has unexpected forward edge to %s", edge.To)
+		}
+	}
+}
+
+// TestContentVocabularyParityAgainstConstraint is the live-database parity
+// guard for G-37/G-39. It reads PostgreSQL's installed CHECK, not migration
+// text, so a later migration cannot silently change what production accepts.
+func TestContentVocabularyParityAgainstConstraint(t *testing.T) {
+	dbValues := constraintValues(t, "confessions", "status")
+	codeValues := map[string]bool{}
+	for _, status := range All() {
+		codeValues[string(status)] = true
+	}
+	for value := range codeValues {
+		if !dbValues[value] {
+			t.Errorf("code accepts %q but the live CHECK rejects it", value)
+		}
+	}
+	for value := range dbValues {
+		if !codeValues[value] {
+			t.Errorf("live CHECK accepts %q but content does not declare it", value)
+		}
+	}
+}
+
 // TestLifecycleMatchesTheDatabase is the test that would have caught G-5.
 func TestLifecycleMatchesTheDatabase(t *testing.T) {
 	conn := dbtest.New(t)

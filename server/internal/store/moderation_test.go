@@ -595,7 +595,7 @@ func TestUpdateConfessionStatusAudited(t *testing.T) {
 	seedModCat(t, conn)
 	if _, err := conn.ExecContext(ctx,
 		`INSERT INTO confessions (id,category_id,title,intensity,language,status,author,version,created_at,updated_at)
-		 VALUES ('au-c1','modcat','t',1,'en','draft','test',1,'2026-01-01','2026-01-01')`); err != nil {
+		 VALUES ('au-c1','modcat','t',1,'en','approved','test',1,'2026-01-01','2026-01-01')`); err != nil {
 		t.Fatal(err)
 	}
 

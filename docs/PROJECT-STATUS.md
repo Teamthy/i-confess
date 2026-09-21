@@ -1,6 +1,6 @@
 # Project Status
 
-**Last verified:** 2026-09-21, at PHASE 36 (billing and trial lifecycle — G-29 closed: production selects real Apple JWS or Google Play Developer API verification and refuses unconfigured/stub receipts; the persisted six-state trial starts only on request, grants Premium through one `subscriptions` projection writer, and expires/converts fail closed. 85 Dart symbol assertions; 306 routes / 240 OpenAPI paths / 306 operations; routes/openapi regenerated from the live table. PHASE 35 Conditions were not available in this checkout: `docs/35-TRIAL-LIFECYCLE.md` is absent, so no claim is made that they were read. Previous phase reconciliation still applies — see `docs/31-MODERATION.md`, `docs/33-AUDIT-COVERAGE.md`, `docs/34-LIBRARY-GESTURES.md`, `docs/36-BILLING-TRIAL.md`).
+**Last verified:** 2026-09-21, at PHASE 37 (content lifecycle — G-37/G-38/G-39 closed: audited confession status updates now use an explicit forward-only edge table, deprecated content is excluded by the served-status authority, and every constrained `status` vocabulary is compared with its live PostgreSQL CHECK. The 66-table / 77-FK schema and 306-route / 240-path / 306-operation contract remain unchanged. PHASE 35 Conditions were not available in this checkout: `docs/35-TRIAL-LIFECYCLE.md` is absent, so no claim is made that they were read. Previous phase reconciliation still applies — see `docs/31-MODERATION.md`, `docs/33-AUDIT-COVERAGE.md`, `docs/34-LIBRARY-GESTURES.md`, `docs/36-BILLING-TRIAL.md`, `docs/37-CONTENT-LIFECYCLE.md`).
 
 This file supersedes `MASTER-PROMPT-COMPLETION.md`,
 `CONTENT-DOMAIN-COMPLETION.md`, `AUDIO-PLATFORM-STATUS.md`, `SESSION-NOTES.md`
@@ -223,9 +223,23 @@ PHASE 36 Billing and trial lifecycle — **PASS** (G-29 closed: Apple receipts
     route export plus genspec (306 routes / 240 paths / 306 operations). See
     docs/36-BILLING-TRIAL.md)
 
+PHASE 37 Content lifecycle enforcement — **PASS** (G-37/G-38/G-39 closed:
+    `content.Edges` is the explicit forward-only graph, including the two
+    published withdrawal edges and terminal archived state; the audited admin
+    status writer rejects every backward, skipped, or fabricated move with
+    HTTP 409; `TestContentTransitions` is the named state-machine test;
+    `TestContentVocabularyParityAgainstConstraint` reads the live `confessions`
+    CHECK; and `TestDatabaseVocabularyMatchesGoConstants` now audits all 23
+    constrained status columns, with `TestTrialVocabularyParityAgainstConstraint`
+    covering the trial `state` CHECK. Deprecated content remains playable only
+    through existing snapshots and is excluded from new session building.
+    Proving commands: `go test ./internal/content ./internal/db ./internal/store
+    ./internal/api -count=1`, `gofmt -l internal cmd`, and `go vet ./...`. See
+    docs/37-CONTENT-LIFECYCLE.md)
+
 Open gaps carried forward: G-7, G-9, G-10, G-12, G-13,
 G-14, G-15, G-16, G-17, G-18, G-19, G-20, G-21, G-22, G-23, G-24, G-25, G-26, G-27, G-28,
-G-33, G-34, G-35, G-36, G-37, G-38, G-39.
+G-33, G-34, G-35, G-36.
 (G-2 was removed from this list: it has been closed since PHASE 07 —
 "23/23 status columns constrained" — yet appeared in both lists here, a
 documentation bug fixed in PHASE 31.)
@@ -246,6 +260,14 @@ plaintext-token functions were removed),
 provider verification, and unconfigured deployments refuse rather than grant).
 **G-3** (PHASE 36: the persistent six-state trial lifecycle and its one
 Premium projection writer are implemented).
+**G-37** (PHASE 37: the content lifecycle is an explicit forward-only edge table,
+enforced by the audited status writer and covered by `TestContentTransitions`).
+**G-38** (PHASE 37: `IsServedToNewSessions` is the session-building authority;
+deprecated content is excluded from new queues while existing snapshots remain
+playable).
+**G-39** (PHASE 37: all 23 constrained status columns are vocabulary-audited in
+both directions against live PostgreSQL CHECK constraints, with the trial state
+covered separately).
 **G-33** is new: the 24-entry blocklist is a floor, not a breach corpus.
 
 New in PHASE 11: **G-34** (no audio exists for any of the 78 confessions),

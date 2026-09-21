@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Teamthy/i-confess/internal/content"
 	"github.com/Teamthy/i-confess/internal/db"
 	"github.com/Teamthy/i-confess/internal/models"
 	"github.com/Teamthy/i-confess/internal/moderation"
@@ -555,6 +556,11 @@ func (s *ModerationStore) UpdateConfessionStatusAudited(ctx context.Context, id,
 	}
 	if err != nil {
 		return "", err
+	}
+	if from != status {
+		if err := content.Transition(from, status); err != nil {
+			return from, err
+		}
 	}
 
 	ts := now()

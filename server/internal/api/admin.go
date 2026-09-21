@@ -159,6 +159,10 @@ func (h *Handler) adminUpdateConfessionStatus(w http.ResponseWriter, r *http.Req
 		httpx.WriteError(w, http.StatusNotFound, "confession not found")
 		return
 	}
+	if errors.Is(err, content.ErrInvalidTransition) {
+		httpx.WriteError(w, http.StatusConflict, "content lifecycle transition is not allowed")
+		return
+	}
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to update confession")
 		return
