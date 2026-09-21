@@ -1,0 +1,53 @@
+name: Golden update (apps/mobile)
+
+# Committed goldens are rendered output; they must be regenerated in the same
+# environment that compares them (ubuntu-latest + current stable Flutter), or
+# they drift for reasons that have nothing to do with the app. Dispatch this
+# workflow from a branch after a deliberate visual change; it re-renders the
+# goldens and commits the update back to the branch that dispatched it.
+#
+# The diff in that commit is the review: look at it. A golden that is updated
+# without being looked at is a snapshot of whatever the code happens to do
+# (see apps/mobile/test/welcome_golden_test.dart).
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    name: Re-render committed goldens
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/mobile
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v7
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Resolve dependencies
+        run: ../../scripts/ci-check.sh flutter pub get
+
+      - name: Re-render goldens
+        run: flutter test --update-goldens
+
+      - name: Commit back to the dispatching branch
+        working-directory: .
+        run: |
+          git config user.name "golden-update[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet -- apps/mobile/test/goldens; then
+            echo "goldens unchanged; nothing to commit"
+            exit 0
+          fi
+          git add apps/mobile/test/goldens
+          git commit -m "test(mobile): regenerate goldens via CI (golden-update)"
+          git push origin "HEAD:refs/heads/${{ github.ref_name }}"

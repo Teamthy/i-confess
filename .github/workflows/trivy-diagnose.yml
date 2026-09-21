@@ -1,0 +1,47 @@
+name: Trivy diagnose (temporary)
+
+# Temporary: reproduces the "Scan filesystem" step of the deployment job with
+# findings written as job annotations, because the raw log store is unreachable
+# from the development sandbox. Remove once the CRITICAL/HIGH findings the CI
+# gate reports have been identified and fixed.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    name: Report findings as annotations
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Scan filesystem (report only)
+        run: |
+          docker run --rm -v "$PWD:/scan" -w /scan aquasec/trivy:latest \
+            fs . --severity CRITICAL,HIGH --exit-code 0 --format json --output /scan/trivy.json
+          python3 - <<'PY'
+          import json
+          data = json.load(open('trivy.json'))
+          n = 0
+          for res in data.get('Results') or []:
+              for v in res.get('Vulnerabilities') or []:
+                  n += 1
+                  msg = "%s %s@%s in %s -> fixed %s (%s)" % (
+                      v.get('Severity'), v.get('PkgName'), v.get('InstalledVersion'),
+                      res.get('Target'), v.get('FixedVersion'), v.get('VulnerabilityID'))
+                  print('::error file=.trivy-report,line=1::' + msg.replace('%', '%25'))
+              for m in res.get('Misconfigurations') or []:
+                  n += 1
+                  msg = "MISCONF %s %s in %s: %s" % (
+                      m.get('Severity'), m.get('Type'), res.get('Target'), m.get('Message'))
+                  print('::error file=.trivy-report,line=2::' + msg.replace('%', '%25'))
+              for s in res.get('Secrets') or []:
+                  n += 1
+                  msg = "SECRET %s %s in %s line %s" % (
+                      s.get('Severity'), s.get('RuleID'), res.get('Target'), s.get('Match', {}).get('Line'))
+                  print('::error file=.trivy-report,line=3::' + msg.replace('%', '%25'))
+          print('TOTAL %d findings' % n)
+          PY
