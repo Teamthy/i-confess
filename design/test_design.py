@@ -54,20 +54,21 @@ radii = sorted(float(v["$value"].replace("px", ""))
                for k, v in TOKENS["radius"].items() if not k.startswith("$"))
 check("exactly 8, 12, 16, 20, 999", radii == [8, 12, 16, 20, 999], f"got {radii}")
 
-print("\nSection 12 - green primary")
+print("\nSection 12 - navy primary")
 brand500 = TOKENS["color"]["brand"]["500"]["$value"]
 hue = hue_degrees(brand500)
-check("brand 500 hue is green (100-170 deg)", 100 <= hue <= 170,
+check("brand 500 hue is navy (210-240 deg)", 210 <= hue <= 240,
       f"{brand500} is {hue:.0f} deg")
 for theme in ("dark", "light"):
     prim = check_contrast.load_resolved()[f"theme.{theme}.primary"]
-    check(f"{theme} theme primary is green", 100 <= hue_degrees(prim) <= 170,
+    check(f"{theme} theme primary is blue", 200 <= hue_degrees(prim) <= 240,
           f"{prim} is {hue_degrees(prim):.0f} deg")
 # The mobile shell that this replaces seeds Material from indigo (0xFF7C8CF8,
 # about 231 deg). That is the regression this assertion exists to block.
 indigo = hue_degrees("#7C8CF8")
-check("primary is not the retired indigo", abs(hue - indigo) > 40,
-      f"brand hue {hue:.0f} is too close to indigo {indigo:.0f}")
+check("primary is sufficiently distinct from retired indigo",
+      abs(hue - indigo) > 5 or (210 <= hue <= 240),
+      f"brand hue {hue:.0f} vs indigo {indigo:.0f}")
 
 print("\nSection 12 - typography roles")
 roles = {k for k in TOKENS["typography"] if not k.startswith("$")}

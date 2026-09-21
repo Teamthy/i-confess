@@ -27,16 +27,16 @@ abstract final class IConfess {
   static const double radiusFull = 999;
 
   // --- colour ---
-  static const Color colorBrand50 = Color(0xFFEAF7F1);
-  static const Color colorBrand100 = Color(0xFFCFEDE0);
-  static const Color colorBrand200 = Color(0xFFA3DDC6);
-  static const Color colorBrand300 = Color(0xFF74C9AB);
-  static const Color colorBrand400 = Color(0xFF4BB590);
-  static const Color colorBrand500 = Color(0xFF2A9D76);
-  static const Color colorBrand600 = Color(0xFF1F7E5E);
-  static const Color colorBrand700 = Color(0xFF186248);
-  static const Color colorBrand800 = Color(0xFF124A37);
-  static const Color colorBrand900 = Color(0xFF0C3325);
+  static const Color colorBrand50 = Color(0xFFEBF2FA);
+  static const Color colorBrand100 = Color(0xFFD3DDEF);
+  static const Color colorBrand200 = Color(0xFFA3B3DA);
+  static const Color colorBrand300 = Color(0xFF7288C4);
+  static const Color colorBrand400 = Color(0xFF425EAF);
+  static const Color colorBrand500 = Color(0xFF123499);
+  static const Color colorBrand600 = Color(0xFF0A2472);
+  static const Color colorBrand700 = Color(0xFF081D61);
+  static const Color colorBrand800 = Color(0xFF051650);
+  static const Color colorBrand900 = Color(0xFF00072D);
   static const Color colorAccentGold = Color(0xFFC9A227);
   static const Color colorNeutral0 = Color(0xFFFFFFFF);
   static const Color colorNeutral50 = Color(0xFFF5F7F6);
@@ -65,14 +65,14 @@ abstract final class IConfess {
   static const Color themeDarkTextPrimary = Color(0xFFE9EDEC);
   static const Color themeDarkTextSecondary = Color(0xFF8A9591);
   static const Color themeDarkTextDisabled = Color(0xFF4B5654);
-  static const Color themeDarkPrimary = Color(0xFF4BB590);
-  static const Color themeDarkPrimaryStrong = Color(0xFF2A9D76);
+  static const Color themeDarkPrimary = Color(0xFF7288C4);
+  static const Color themeDarkPrimaryStrong = Color(0xFFA3B3DA);
   static const Color themeDarkOnPrimary = Color(0xFF0A0E0D);
   static const Color themeDarkSuccess = Color(0xFF4BB590);
   static const Color themeDarkWarning = Color(0xFFD9A441);
   static const Color themeDarkDanger = Color(0xFFE8776E);
   static const Color themeDarkInfo = Color(0xFF7FAEDC);
-  static const Color themeDarkPlayerBackground = Color(0xFF0C3325);
+  static const Color themeDarkPlayerBackground = Color(0xFF00072D);
   static const Color themeLightBackground = Color(0xFFFFFFFF);
   static const Color themeLightSurface = Color(0xFFF5F7F6);
   static const Color themeLightSurfaceRaised = Color(0xFFFFFFFF);
@@ -80,14 +80,14 @@ abstract final class IConfess {
   static const Color themeLightTextPrimary = Color(0xFF141918);
   static const Color themeLightTextSecondary = Color(0xFF4B5654);
   static const Color themeLightTextDisabled = Color(0xFF8A9591);
-  static const Color themeLightPrimary = Color(0xFF1F7E5E);
-  static const Color themeLightPrimaryStrong = Color(0xFF186248);
+  static const Color themeLightPrimary = Color(0xFF0A2472);
+  static const Color themeLightPrimaryStrong = Color(0xFF081D61);
   static const Color themeLightOnPrimary = Color(0xFFFFFFFF);
   static const Color themeLightSuccess = Color(0xFF1F7E5E);
   static const Color themeLightWarning = Color(0xFF8A6114);
   static const Color themeLightDanger = Color(0xFFC0453C);
   static const Color themeLightInfo = Color(0xFF3A6EA5);
-  static const Color themeLightPlayerBackground = Color(0xFFEAF7F1);
+  static const Color themeLightPlayerBackground = Color(0xFFEBF2FA);
 
   // --- type scale ---
   static const TextStyle display = TextStyle(fontFamily: 'Inter', fontSize: 34, fontWeight: FontWeight.w700, height: 1.2, letterSpacing: -0.02);
@@ -115,14 +115,14 @@ abstract final class IConfessDark {
   static const Color textPrimary = Color(0xFFE9EDEC);
   static const Color textSecondary = Color(0xFF8A9591);
   static const Color textDisabled = Color(0xFF4B5654);
-  static const Color primary = Color(0xFF4BB590);
-  static const Color primaryStrong = Color(0xFF2A9D76);
+  static const Color primary = Color(0xFF7288C4);
+  static const Color primaryStrong = Color(0xFFA3B3DA);
   static const Color onPrimary = Color(0xFF0A0E0D);
   static const Color success = Color(0xFF4BB590);
   static const Color warning = Color(0xFFD9A441);
   static const Color danger = Color(0xFFE8776E);
   static const Color info = Color(0xFF7FAEDC);
-  static const Color playerBackground = Color(0xFF0C3325);
+  static const Color playerBackground = Color(0xFF00072D);
 }
 
 abstract final class IConfessLight {
@@ -133,12 +133,12 @@ abstract final class IConfessLight {
   static const Color textPrimary = Color(0xFF141918);
   static const Color textSecondary = Color(0xFF4B5654);
   static const Color textDisabled = Color(0xFF8A9591);
-  static const Color primary = Color(0xFF1F7E5E);
-  static const Color primaryStrong = Color(0xFF186248);
+  static const Color primary = Color(0xFF0A2472);
+  static const Color primaryStrong = Color(0xFF081D61);
   static const Color onPrimary = Color(0xFFFFFFFF);
   static const Color success = Color(0xFF1F7E5E);
   static const Color warning = Color(0xFF8A6114);
   static const Color danger = Color(0xFFC0453C);
   static const Color info = Color(0xFF3A6EA5);
-  static const Color playerBackground = Color(0xFFEAF7F1);
+  static const Color playerBackground = Color(0xFFEBF2FA);
 }

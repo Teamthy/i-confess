@@ -256,7 +256,7 @@ export default async function HomePage() {
           <section
             className="ic-section ic-section--ink on-ink"
             aria-labelledby="featured-cat-title"
-            style={{ ["--rail" as string]: "#0C3325" }}
+            style={{ ["--rail" as string]: "#00072D" }}
           >
             <div className="ic-container ic-section-head--split ic-section-head">
               <Reveal>
