@@ -1251,26 +1251,128 @@ final class SearchResult {
       );
 }
 
-/// Recommendations payload (deterministic v1).
+/// The seven listener signals behind a recommendation (PHASE 43), reported as
+/// quantities so a client can show *why* rather than a bare "personalized".
+///
+/// `present` names the signals that had evidence; the counters are zero when
+/// a signal is absent. Repeat listening is a count of confessions the listener
+/// has finished in more than one session — never collapsed to a flag.
+final class ListenerSignals {
+  const ListenerSignals({
+    this.present = const [],
+    this.categoriesListenedTo = 0,
+    this.completionRate = 0,
+    this.completionSample = 0,
+    this.preferredDaypart = '',
+    this.typicalDurationSeconds = 0,
+    this.favourites = 0,
+    this.skips = 0,
+    this.repeatListening = 0,
+  });
+
+  final List<String> present;
+  final int categoriesListenedTo;
+  final double completionRate;
+  final int completionSample;
+  final String preferredDaypart;
+  final int typicalDurationSeconds;
+  final int favourites;
+  final int skips;
+  final int repeatListening;
+
+  factory ListenerSignals.fromJson(Map<String, dynamic> json) =>
+      ListenerSignals(
+        present: (json['present'] is List)
+            ? (json['present'] as List).whereType<String>().toList()
+            : const [],
+        categoriesListenedTo: _int(json, 'categories_listened_to'),
+        completionRate: (json['completion_rate'] is num)
+            ? (json['completion_rate'] as num).toDouble()
+            : 0,
+        completionSample: _int(json, 'completion_sample'),
+        preferredDaypart: _str(json, 'preferred_daypart'),
+        typicalDurationSeconds: _int(json, 'typical_duration_seconds'),
+        favourites: _int(json, 'favourites'),
+        skips: _int(json, 'skips'),
+        repeatListening: _int(json, 'repeat_listening'),
+      );
+}
+
+/// A confession the listener has finished in more than one session, with how
+/// many times — the "listen again" rail.
+final class ListenAgain {
+  const ListenAgain({required this.confession, this.times = 0});
+
+  final Confession confession;
+  final int times;
+
+  factory ListenAgain.fromJson(Map<String, dynamic> json) {
+    final raw = json['confession'];
+    return ListenAgain(
+      confession: Confession.fromJson(
+          raw is Map<String, dynamic> ? raw : const <String, dynamic>{}),
+      times: _int(json, 'times'),
+    );
+  }
+}
+
+/// Recommendations payload. Ranked by deterministic rules over the seven
+/// listener signals (PHASE 43); `personalized` is true only when at least one
+/// signal had evidence. Reasons are keyed by category / confession id.
 final class Recommendations {
   const Recommendations({
     this.categories = const [],
     this.confessions = const [],
     this.personalized = false,
+    this.listenAgain = const [],
+    this.categoryReasons = const {},
+    this.confessionReasons = const {},
+    this.suggestedDurationSeconds = 0,
+    this.daypart = '',
+    this.signals = const ListenerSignals(),
   });
 
   final List<Category> categories;
   final List<Confession> confessions;
   final bool personalized;
+  final List<ListenAgain> listenAgain;
+  final Map<String, List<String>> categoryReasons;
+  final Map<String, List<String>> confessionReasons;
+  final int suggestedDurationSeconds;
+  final String daypart;
+  final ListenerSignals signals;
 
-  factory Recommendations.fromJson(Map<String, dynamic> json) =>
-      Recommendations(
-        categories:
-            _list(json['categories']).map(Category.fromJson).toList(),
-        confessions:
-            _list(json['confessions']).map(Confession.fromJson).toList(),
-        personalized: _bool(json, 'personalized'),
-      );
+  static Map<String, List<String>> _reasons(Object? v) {
+    if (v is! Map<String, dynamic>) return const {};
+    final out = <String, List<String>>{};
+    v.forEach((k, val) {
+      out[k] = (val is List) ? val.whereType<String>().toList() : <String>[];
+    });
+    return out;
+  }
+
+  factory Recommendations.fromJson(Map<String, dynamic> json) {
+    final rawReasons = json['reasons'];
+    final reasons = rawReasons is Map<String, dynamic>
+        ? rawReasons
+        : const <String, dynamic>{};
+    final rawSignals = json['signals'];
+    return Recommendations(
+      categories: _list(json['categories']).map(Category.fromJson).toList(),
+      confessions:
+          _list(json['confessions']).map(Confession.fromJson).toList(),
+      personalized: _bool(json, 'personalized'),
+      listenAgain:
+          _list(json['listen_again']).map(ListenAgain.fromJson).toList(),
+      categoryReasons: _reasons(reasons['categories']),
+      confessionReasons: _reasons(reasons['confessions']),
+      suggestedDurationSeconds: _int(json, 'suggested_duration_seconds'),
+      daypart: _str(json, 'daypart'),
+      signals: ListenerSignals.fromJson(rawSignals is Map<String, dynamic>
+          ? rawSignals
+          : const <String, dynamic>{}),
+    );
+  }
 }
 
 /// Subscription plan with regional pricing.
