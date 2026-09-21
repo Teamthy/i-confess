@@ -1094,13 +1094,17 @@ class _CollectionItemRow extends ConsumerWidget {
             children: [
               if (dragIndex != null)
                 ReorderableDragStartListener(
+                  key: ValueKey('drag-${item.confessionId}'),
                   index: dragIndex!,
-                  child: Icon(
-                    Icons.drag_indicator_rounded,
-                    key: ValueKey('drag-${item.confessionId}'),
-                    size: 18,
-                    color: surfaces.textSecondary,
-                    semanticLabel: 'Reorder ${item.resolved ? item.title : 'this row'}',
+                  child: SizedBox(
+                    width: 44,
+                    height: 44,
+                    child: Icon(
+                      Icons.drag_indicator_rounded,
+                      size: 18,
+                      color: surfaces.textSecondary,
+                      semanticLabel: 'Reorder ${item.resolved ? item.title : 'this row'}',
+                    ),
                   ),
                 ),
               if (dragIndex != null) const SizedBox(width: IConfess.space2),
