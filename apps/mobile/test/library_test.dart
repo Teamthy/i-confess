@@ -509,10 +509,10 @@ void main() {
       // The mobile handle intentionally uses delayed drag start so a casual
       // tap does not reorder. Hold past Flutter's long-press threshold before
       // moving the pointer below the second row.
-      await tester.pump(const Duration(milliseconds: 600));
-      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pump(kLongPressTimeout + kPressTimeout);
+      await tester.pumpAndSettle();
       await gesture.moveTo(end);
-      await tester.pump();
+      await tester.pump(kPressTimeout);
       await gesture.up();
       await tester.pumpAndSettle();
 
