@@ -96,7 +96,7 @@ func TestSevenListenerSignalsAreTheProductContract(t *testing.T) {
 		{SessionID: "s1", ConfessionID: "d", CategoryID: "cat-peace", Completed: false},
 	}}
 	fin, ab := rankWith(finisher, noon), rankWith(abandoner, noon)
-	if !(ab.SuggestedDurationSeconds < 30*60 && 30*60 < fin.SuggestedDurationSeconds) {
+	if ab.SuggestedDurationSeconds >= 30*60 || fin.SuggestedDurationSeconds <= 30*60 {
 		t.Errorf("signal 2 (completion rate) did not move the suggested duration: abandoner=%d finisher=%d",
 			ab.SuggestedDurationSeconds, fin.SuggestedDurationSeconds)
 	}
