@@ -499,8 +499,8 @@ void main() {
       // instead of calling onReorder.
       final handle = find.byKey(const ValueKey('drag-c1'));
       final secondRow = find.byKey(const ValueKey('row-c2'));
-      await tester.ensureVisible(handle);
       await tester.ensureVisible(secondRow);
+      await tester.ensureVisible(handle);
       await tester.pumpAndSettle();
       final start = tester.getCenter(handle);
       final secondBottom = tester.getBottomRight(secondRow).dy;
