@@ -273,8 +273,8 @@
       "title": "Premium",
       "depth": 1,
       "parents": ["profile", "home", "confess/voice", "library"],
-      "endpoints": ["GET /subscriptions/plans", "GET /entitlements", "GET /subscriptions/trial", "POST /subscriptions/trial", "GET /subscriptions/trial/status", "POST /subscriptions/trial/convert", "GET /subscription", "POST /subscriptions/verify"],
-      "notes": "Prices come from the server in the user's currency. Nothing is hardcoded. Verification is server-side - see the PHASE 04 payment bypass."
+      "endpoints": ["GET /subscriptions/plans", "GET /entitlements", "GET /subscriptions/trial", "POST /subscriptions/trial", "GET /subscriptions/trial/status", "GET /subscriptions/trial/engagement", "POST /subscriptions/trial/convert", "GET /subscription", "POST /subscriptions/verify"],
+      "notes": "Prices come from the server in the user's currency. Nothing is hardcoded. Verification is server-side - see the PHASE 04 payment bypass. The trial engagement read is on this screen because the completed-day progress is the evidence the paywall shows before asking for payment; days completed are counted from real session completions, never from a clock."
     },
     {
       "id": "settings",

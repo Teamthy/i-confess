@@ -146,6 +146,13 @@ var Policies = []TablePolicy{
 
 	// Trial state is personal lifecycle data and is erased with the account.
 	{Table: "trials", Action: Erase},
+	// The measured journey is personal in the same way the trial row is: it
+	// names which days this person listened. Erased with the account.
+	{Table: "trial_day_completions", Action: Erase},
+	// Analytics rows carry a user reference, so they go with the account.
+	// Aggregate reporting does not need the link: the counts survive as
+	// numbers, the attribution does not.
+	{Table: "analytics_events", Action: Erase},
 
 	// ---- Retained. Each states the obligation it satisfies.
 	{Table: "subscriptions", Action: Retain,

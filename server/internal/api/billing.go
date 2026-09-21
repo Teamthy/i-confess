@@ -1,17 +1,20 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"log"
 	"net/http"
 	"time"
 
+	"github.com/Teamthy/i-confess/internal/analytics"
 	"github.com/Teamthy/i-confess/internal/billing"
 	"github.com/Teamthy/i-confess/internal/entitlements"
 	"github.com/Teamthy/i-confess/internal/httpx"
 	"github.com/Teamthy/i-confess/internal/models"
 	"github.com/Teamthy/i-confess/internal/store"
 	trialdomain "github.com/Teamthy/i-confess/internal/trial"
+	"github.com/lib/pq"
 )
 
 // plans returns the subscription catalog with regional pricing.
@@ -59,12 +62,19 @@ func (h *Handler) getTrial(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	dayNum := trialDay(current, time.Now().UTC())
+	// Completed days come from persisted completion rows, so the journey list
+	// can mark a day done only if a session was actually finished on it.
+	completed, err := h.trials.CompletedDayNumbers(r.Context(), userID)
+	if err != nil {
+		completed = []int{}
+	}
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{
-		"journey":     billing.TrialJourney,
-		"current_day": dayNum,
-		"today":       billing.Day(dayNum),
-		"state":       current.State,
-		"trial":       current,
+		"journey":        h.personalizedJourney(r, userID),
+		"current_day":    dayNum,
+		"today":          billing.Day(dayNum),
+		"state":          current.State,
+		"trial":          current,
+		"completed_days": completed,
 	})
 }
 
@@ -375,4 +385,108 @@ func (h *Handler) adminUpsertPlan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{"plan": p})
+}
+
+// recordTrialDayCompletion derives a trial journey day from a completed
+// session. It is called only from the session completion path, so a day is
+// never completed by a client asserting it.
+//
+// Every outcome is deliberately silent to the caller: a listener who is not on
+// a trial, whose trial has expired, or who already completed today's day has
+// done nothing wrong, and a completion they earned must not fail because of
+// analytics bookkeeping.
+func (h *Handler) recordTrialDayCompletion(ctx context.Context, userID, sessionID string) {
+	rec, created, err := h.trials.CompleteDay(ctx, userID, sessionID, time.Now().UTC())
+	if err != nil || rec == nil || !created {
+		return
+	}
+	_ = h.analytics.Record(ctx, analytics.Event{
+		Name:   analytics.EventTrialDayCompleted,
+		UserID: userID,
+		Props: map[string]any{
+			"day":        rec.Day,
+			"session_id": sessionID,
+			"trial_id":   rec.TrialID,
+		},
+	})
+}
+
+// getTrialEngagement reports the measured journey: which days were actually
+// completed, the completion rate, and the funnel events behind it.
+//
+// Days completed is counted from persisted completion rows, so the number
+// cannot be produced by a clock. That is the difference between "the listener
+// is on day 5" — which is true of an account that never opened the app — and
+// "the listener finished four days", which is the only version that answers
+// whether the trial worked.
+func (h *Handler) getTrialEngagement(w http.ResponseWriter, r *http.Request) {
+	eng, err := h.trials.Engagement(r.Context(), h.userID(r), time.Now().UTC())
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			httpx.WriteError(w, http.StatusNotFound, "trial has not been created")
+			return
+		}
+		log.Printf("trial: engagement failed: %v", err)
+		httpx.WriteError(w, http.StatusInternalServerError, "failed to load trial engagement")
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, eng)
+}
+
+// personalizedJourney resolves Day 3 against the listener's own interests.
+//
+// Day 3 is the personalization day, so shipping it with a hard-coded category
+// would make the day's stated purpose false. The stored journey keeps a
+// fallback so the day is never empty; when the listener has stated interests,
+// their categories replace it. This is the only day that varies per account,
+// and the variation is a lookup rather than a model, so the journey stays
+// deterministic and testable.
+func (h *Handler) personalizedJourney(r *http.Request, userID string) []billing.TrialDay {
+	journey := make([]billing.TrialDay, len(billing.TrialJourney))
+	copy(journey, billing.TrialJourney)
+	for i := range journey {
+		if !journey[i].Personalized {
+			continue
+		}
+		if slugs := h.interestSlugs(r.Context(), userID); len(slugs) > 0 {
+			journey[i].Categories = slugs
+		}
+	}
+	return journey
+}
+
+// interestSlugs returns the listener's interest categories as slugs, strongest
+// weight first, capped so a day's session stays buildable.
+func (h *Handler) interestSlugs(ctx context.Context, userID string) []string {
+	interests, err := h.profiles.Interests(ctx, userID)
+	if err != nil || len(interests) == 0 {
+		return nil
+	}
+	ids := make([]string, 0, len(interests))
+	for _, i := range interests {
+		if i.CategoryID != "" {
+			ids = append(ids, i.CategoryID)
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	rows, err := h.db.QueryContext(ctx,
+		`SELECT slug FROM categories WHERE id = ANY(?) AND deleted_at IS NULL ORDER BY name`, pq.Array(ids))
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	out := []string{}
+	for rows.Next() {
+		var slug string
+		if err := rows.Scan(&slug); err != nil {
+			return nil
+		}
+		out = append(out, slug)
+	}
+	if len(out) > 4 {
+		out = out[:4]
+	}
+	return out
 }

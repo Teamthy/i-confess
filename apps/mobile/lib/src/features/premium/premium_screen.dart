@@ -20,6 +20,7 @@ class PremiumScreen extends ConsumerWidget {
     final subAsync = ref.watch(subscriptionProvider);
     final entAsync = ref.watch(entitlementsProvider);
     final trialAsync = ref.watch(trialProvider);
+    final engagementAsync = ref.watch(trialEngagementProvider);
     final surfaces = AppSurfaces.of(context);
 
     // Purchase outcomes arrive on their own stream, minutes after the tap when
@@ -136,17 +137,45 @@ class PremiumScreen extends ConsumerWidget {
               data: (loadable) {
                 final days = loadable.valueOrNull ?? [];
                 if (days.isEmpty) return const SizedBox.shrink();
+                // Completed days come from real session completions, so a tick
+                // here means the listener listened - not that a clock moved.
+                final completed = engagementAsync.valueOrNull?.valueOrNull
+                        ?.completedDays ??
+                    const <int>[];
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Your first week',
-                        style: IConfess.subheading.copyWith(color: surfaces.textPrimary)),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text('Your first week',
+                              style: IConfess.subheading
+                                  .copyWith(color: surfaces.textPrimary)),
+                        ),
+                        if (completed.isNotEmpty)
+                          Text('${completed.length}/7 done',
+                              style: IConfess.caption
+                                  .copyWith(color: surfaces.textSecondary)),
+                      ],
+                    ),
                     const SizedBox(height: IConfess.space3),
                     for (final day in days.take(7))
                       ListTile(
-                        leading: CircleAvatar(child: Text('${day.day}')),
+                        leading: CircleAvatar(
+                          backgroundColor: completed.contains(day.day)
+                              ? IConfess.colorBrand50
+                              : null,
+                          child: completed.contains(day.day)
+                              ? const Icon(Icons.check_rounded, size: 18)
+                              : Text('${day.day}'),
+                        ),
                         title: Text(day.title),
-                        subtitle: Text(day.description),
+                        // The call to action is the day's actual ask. It was
+                        // declared on the client and never sent, so every row
+                        // rendered without one.
+                        subtitle: Text(
+                            day.cta.isEmpty ? day.description : '${day.description}\n${day.cta}'),
+                        isThreeLine: day.cta.isNotEmpty,
                       ),
                   ],
                 );

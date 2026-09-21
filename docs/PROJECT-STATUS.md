@@ -1,6 +1,16 @@
-# Project Status
-
-**Last verified:** 2026-09-21, at PHASE 40 (canonical theological review — G-35 closed: canonical text now carries explicit review status, reviewer, timestamp, and bounded review notes; `Author` is the provenance-neutral `Canonical corpus`, never a claim that a team or church authored it. Audio creation requires reviewed canonical text. The schema remains 66 tables / 77 foreign keys; the API remains 306 routes / 240 paths / 306 operations. PHASE 35 Conditions were not available in this checkout: `docs/35-TRIAL-LIFECYCLE.md` is absent, so no claim is made that they were read. Previous phase reconciliation still applies — see `docs/31-MODERATION.md`, `docs/33-AUDIT-COVERAGE.md`, `docs/34-LIBRARY-GESTURES.md`, `docs/36-BILLING-TRIAL.md`, `docs/37-CONTENT-LIFECYCLE.md`, `docs/38-RETENTION-VERSIONING.md`, `docs/39-CANONICAL-AUDIO.md`, `docs/40-THEOLOGICAL-REVIEW.md`).
+**Last verified:** 2026-09-21, at PHASE 41 (trial engagement — the seven-day
+journey now states what each day teaches, day completion is derived from real
+session completions rather than asserted by a client, and analytics events are
+persisted instead of acknowledged and dropped. Gaps G-46 and G-47 closed; a
+backward-clock 500 in `TrialStore.Refresh` was found and fixed on the way. The
+schema moves to 68 tables / 81 foreign keys; the API moves to 308 routes / 242
+paths / 308 operations. PHASE 35 Conditions remain unavailable in this checkout:
+`docs/35-TRIAL-LIFECYCLE.md` is absent, so no claim is made that they were read.
+Previous phase reconciliation still applies — see `docs/31-MODERATION.md`,
+`docs/33-AUDIT-COVERAGE.md`, `docs/34-LIBRARY-GESTURES.md`,
+`docs/36-BILLING-TRIAL.md`, `docs/37-CONTENT-LIFECYCLE.md`,
+`docs/38-RETENTION-VERSIONING.md`, `docs/39-CANONICAL-AUDIO.md`,
+`docs/40-THEOLOGICAL-REVIEW.md`, `docs/41-TRIAL-ENGAGEMENT.md`).
 
 This file supersedes `MASTER-PROMPT-COMPLETION.md`,
 `CONTENT-DOMAIN-COMPLETION.md`, `AUDIO-PLATFORM-STATUS.md`, `SESSION-NOTES.md`
@@ -17,10 +27,10 @@ it.** Every claim below was produced by running something.
 | Claim | Evidence |
 |---|---|
 | Backend builds | `make build` |
-| 51 Go packages pass against PostgreSQL 17 | `make test` |
+| 34 Go packages with tests pass against PostgreSQL 17 | `go test -modfile=/tmp/local.mod -count=1 ./...` → zero FAIL |
 | No data races | `make race` |
 | Lint clean, 10 linters | `make lint` → 0 issues |
-| Schema loads 66 tables, 77 foreign keys | `internal/db` tests |
+| Schema loads 68 tables, 81 foreign keys | `internal/db` tests (`TestPostgresSchemaLoads`, retention audit) |
 | Session lifecycle: 11 states, no forged completions | `internal/sessions`, 16 tests |
 | Session queues are snapshots | `internal/store/snapshot_test.go` |
 | Account erasure covers every user table | `internal/deletion` |
@@ -273,9 +283,36 @@ PHASE 40 Canonical theological review — **PASS** (G-35 closed:
     ./internal/seed ./internal/store ./internal/api -count=1`, `gofmt -l
     internal cmd`, and `go vet ./...`. See docs/40-THEOLOGICAL-REVIEW.md)
 
+PHASE 41 Trial engagement and the seven-day journey — **PASS** (master-plan 37
+    remainder; G-46 and G-47 closed. The journey was six categories and a
+    summary, so it never showed the personalization, the Premium voice or the
+    custom builder that the paywall charges for: each day now carries an
+    `Intent` and the flags that make it true — Day 2 asks for two sessions,
+    Day 3 resolves the listener's own interests, Day 4 is the longest of the
+    week, Day 5 a Premium voice, Day 6 the builder, Day 7 the review — asserted
+    verbatim by `TestTrialJourneyMatchesSpec` against the seeded catalogue.
+    `trial_day_completions` makes a day completable only through a real session
+    completion: the sole writer is `TrialStore.CompleteDay`, called only from
+    `completeSession`, with the day number taken from the trial row rather than
+    the caller, and `trial_day_completed` is not on the batch allowlist
+    (`TestTrialDayCompletionCannotBeAssertedByAClient`). `analytics_events`
+    persists what `POST /analytics/batch` acknowledged — the handler's only sink
+    was a no-op, so `202 {"accepted": n}` was a receipt for data the system did
+    not hold. Expiry, conversion and cancellation funnel events are emitted by
+    the store, because expiry is a clock fact no handler reliably observes.
+    `GET /subscriptions/trial/engagement` reports days completed and the funnel;
+    the paywall renders the progress and each day's call to action, which the
+    typed client had declared and the server never sent. Schema 68 tables /
+    81 foreign keys; API 308 routes / 242 paths / 308 operations. A
+    backward-clock reading turned `Refresh` into a 500 and was fixed with a
+    regression test. Proving commands: `go test -modfile=/tmp/local.mod
+    -count=1 ./...` (34 ok, zero FAIL), `python3 design/test_ia.py` (108 wired),
+    `python3 scripts/check_dart_symbols.py` (105/105), route export plus
+    genspec. See docs/41-TRIAL-ENGAGEMENT.md)
+
 Open gaps carried forward: G-7, G-9, G-10, G-12, G-13,
 G-14, G-15, G-16, G-17, G-18, G-19, G-20, G-23, G-24, G-25, G-26, G-27, G-28,
-G-33.
+G-33, G-48, G-49.
 (G-2 was removed from this list: it has been closed since PHASE 07 —
 "23/23 status columns constrained" — yet appeared in both lists here, a
 documentation bug fixed in PHASE 31.)
@@ -316,6 +353,29 @@ startup, so a healthy process cannot hide an empty or partial catalogue).
 review metadata, and `Author` is provenance-neutral rather than an unsupported
 team or church claim).
 **G-33** is new: the 24-entry blocklist is a floor, not a breach corpus.
+
+New in PHASE 41: **G-46** (the trial could be displayed but not measured — no
+day-completion record, and `POST /analytics/batch` acknowledged events into a
+no-op sink, so a conversion funnel had no denominator), and **G-47** (the
+seven-day journey taught six categories and a summary, never the
+personalization, Premium voice or custom builder that the paywall charges for).
+Both were **closed in PHASE 41**.
+
+Raised in PHASE 41 and carried open:
+
+**G-48 — The journey declares behaviour it does not perform.** `TrialDay` now
+carries `PremiumVoice`, `Custom` and `SessionCount`, but no server code selects
+a Premium voice for Day 5, opens the builder for Day 6, or creates the second
+session Day 2 asks for; and nothing builds a session *for* a journey day at all
+— the engine is reached through the normal builder. The flags are contract for
+the client, which is a real improvement over advertising nothing, but it is not
+the same as the journey running itself.
+
+**G-49 — Trial expiry analytics depend on someone looking.** `trial_expired` is
+recorded when something next refreshes the trial, and there is no sweeper, so an
+account that never returns is never counted as churned. The churn side of the
+funnel is therefore a lower bound. Fixing it means a scheduled trial sweep,
+which belongs with the worker work rather than here.
 
 Recorded in PHASE 11: **G-34** (canonical audio coverage), **G-35**
 (canonical content has had no theological review; `Author` overstates its

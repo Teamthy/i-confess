@@ -162,6 +162,62 @@ check(
     "final bool entitled;" in models_src,
 )
 
+# PHASE 41: the journey is measured, and each day states what it teaches.
+# Without the engagement read the trial could be displayed but not counted,
+# and without intent/flags a client can only guess which surface a day wants.
+check(
+    "getSubscriptionsTrialEngagement is on the typed client",
+    "getSubscriptionsTrialEngagement" in declared_endpoints,
+)
+check(
+    "SubscriptionRepository.trialEngagement exists",
+    "trialEngagement" in subscription_methods,
+)
+check("TrialEngagement model is declared", "final class TrialEngagement" in models_src)
+check(
+    "TrialEngagement has a fromJson factory",
+    "factory TrialEngagement.fromJson" in models_src,
+)
+check(
+    "TrialEngagement counts completed days, not elapsed ones",
+    "final int daysCompleted;" in models_src and "final int daysTotal;" in models_src,
+)
+check(
+    "TrialEngagement carries the funnel behind the numbers",
+    "final Map<String, int> funnel;" in models_src,
+)
+check(
+    "TrialDayCompletion names the session that completed the day",
+    "final class TrialDayCompletion" in models_src and "final String sessionId;" in models_src,
+)
+for field in ["final String intent;", "final List<String> categories;", "final int duration;"]:
+    check(f"TrialDay carries {field.split()[-1].rstrip(';')}", field in models_src)
+for flag in ["sessionCount", "personalized", "premiumVoice", "custom", "summary"]:
+    check(f"TrialDay exposes the {flag} flag", f"this.{flag}" in models_src)
+check(
+    "trial engagement is wired in IA",
+    "GET /subscriptions/trial/engagement" in trial_ia,
+)
+
+# The paywall renders the measured journey. The call to action was declared on
+# the client and never sent by the server, so every journey row rendered
+# without one; and a tick must mean a session was finished, not that a day
+# elapsed on the clock.
+premium_screen_src = read(MOBILE / "src/features/premium/premium_screen.dart")
+premium_providers_src = read(MOBILE / "src/features/premium/premium_providers.dart")
+check(
+    "the paywall renders each day's call to action",
+    "day.cta" in premium_screen_src,
+)
+check(
+    "the paywall has a measured-journey provider",
+    "trialEngagementProvider" in premium_providers_src,
+)
+check(
+    "the paywall marks completed days from the engagement read",
+    "completed.contains(day.day)" in premium_screen_src,
+)
+
 
 # ---------------------------------------------------------------------------
 # Every path the typed client calls must be a real server route

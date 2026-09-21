@@ -1358,25 +1358,141 @@ final class Subscription {
 }
 
 /// Trial journey day.
+///
+/// Each day teaches one thing, and [intent] names it. The flags are not
+/// decoration: [sessionCount] is two on the morning-and-night day, [personalized]
+/// means the server substituted this listener's own interests, [premiumVoice]
+/// and [custom] select a different surface entirely. A client renders the right
+/// affordance from the flag rather than guessing at it from the prose.
 final class TrialDay {
   const TrialDay({
     this.day = 0,
+    this.intent = '',
     this.title = '',
     this.description = '',
     this.cta = '',
+    this.categories = const <String>[],
+    this.duration = 0,
+    this.sessionCount = 1,
+    this.personalized = false,
+    this.premiumVoice = false,
+    this.custom = false,
+    this.summary = false,
   });
 
   final int day;
+  final String intent;
   final String title;
   final String description;
   final String cta;
+  final List<String> categories;
+  final int duration;
+  final int sessionCount;
+  final bool personalized;
+  final bool premiumVoice;
+  final bool custom;
+  final bool summary;
 
   factory TrialDay.fromJson(Map<String, dynamic> json) => TrialDay(
         day: _int(json, 'day'),
+        intent: _str(json, 'intent'),
         title: _str(json, 'title'),
         description: _str(json, 'description'),
         cta: _str(json, 'cta'),
+        categories: _list(json['categories'])
+            .map((e) => e.toString())
+            .toList(growable: false),
+        duration: _int(json, 'duration'),
+        sessionCount: _int(json, 'session_count', 1),
+        personalized: _bool(json, 'personalized'),
+        premiumVoice: _bool(json, 'premium_voice'),
+        custom: _bool(json, 'custom'),
+        summary: _bool(json, 'summary'),
       );
+}
+
+/// One measured day of the trial journey.
+///
+/// [sessionId] is the evidence: the row exists because a real session reached
+/// COMPLETED, not because a client said the day was done.
+final class TrialDayCompletion {
+  const TrialDayCompletion({
+    this.id = '',
+    this.day = 0,
+    this.sessionId = '',
+    this.completedAt = '',
+  });
+
+  final String id;
+  final int day;
+  final String sessionId;
+  final String completedAt;
+
+  factory TrialDayCompletion.fromJson(Map<String, dynamic> json) =>
+      TrialDayCompletion(
+        id: _str(json, 'id'),
+        day: _int(json, 'day'),
+        sessionId: _str(json, 'session_id'),
+        completedAt: _str(json, 'completed_at'),
+      );
+}
+
+/// The measured trial: days actually completed, not days elapsed.
+///
+/// An account on day five that finished two sessions reports 2 of 7. The
+/// distinction is the whole point - a clock reading is true of a listener who
+/// never opened the app.
+final class TrialEngagement {
+  const TrialEngagement({
+    this.state = 'ELIGIBLE',
+    this.currentDay = 0,
+    this.completedDays = const <int>[],
+    this.daysCompleted = 0,
+    this.daysTotal = 0,
+    this.completionRate = 0,
+    this.completions = const <TrialDayCompletion>[],
+    this.funnel = const <String, int>{},
+  });
+
+  final String state;
+  final int currentDay;
+  final List<int> completedDays;
+  final int daysCompleted;
+  final int daysTotal;
+  final double completionRate;
+  final List<TrialDayCompletion> completions;
+  final Map<String, int> funnel;
+
+  factory TrialEngagement.fromJson(Map<String, dynamic> json) {
+    final days = <int>[];
+    if (json['completed_days'] is List) {
+      for (final d in json['completed_days'] as List) {
+        if (d is int) {
+          days.add(d);
+        } else if (d is num) {
+          days.add(d.toInt());
+        }
+      }
+    }
+    final funnel = <String, int>{};
+    if (json['funnel'] is Map) {
+      (json['funnel'] as Map).forEach((k, v) {
+        funnel[k.toString()] = v is num ? v.toInt() : 0;
+      });
+    }
+    return TrialEngagement(
+      state: _str(json, 'state', 'ELIGIBLE'),
+      currentDay: _int(json, 'current_day'),
+      completedDays: days,
+      daysCompleted: _int(json, 'days_completed'),
+      daysTotal: _int(json, 'days_total'),
+      completionRate: (json['completion_rate'] as num?)?.toDouble() ?? 0,
+      completions: _list(json['completions'])
+          .map(TrialDayCompletion.fromJson)
+          .toList(growable: false),
+      funnel: funnel,
+    );
+  }
 }
 
 /// Persisted trial lifecycle state and current entitlement projection.

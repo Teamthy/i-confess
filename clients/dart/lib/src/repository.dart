@@ -1055,6 +1055,21 @@ final class SubscriptionRepository extends Repository {
     }
   }
 
+  /// The measured trial: which days were actually completed, and the funnel
+  /// behind it.
+  ///
+  /// Deliberately not cached. A progress display is the evidence the paywall
+  /// shows before asking for payment, and a five-minute-old reading would let
+  /// it show a day as unfinished that the listener completed a moment ago.
+  Future<Loadable<TrialEngagement>> trialEngagement() async {
+    try {
+      return Loadable.loaded(
+          TrialEngagement.fromJson(await api.getSubscriptionsTrialEngagement()));
+    } on ApiException catch (e) {
+      return Loadable.failed(e);
+    }
+  }
+
   Future<WriteResult<TrialStatus>> startTrial() =>
       write(() => api.postSubscriptionsTrial(), TrialStatus.fromJson);
 

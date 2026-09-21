@@ -95,7 +95,9 @@ func replaceDatabaseName(url, name string) string {
 // silently fails to apply is caught here instead of by whatever query reaches
 // the missing table first. It moves by one with each new table - 0011 added
 // store_notifications, the ledger of store notifications applied to
-// subscriptions (IC-003, PR B).
+// subscriptions (IC-003, PR B); 0018 added trial_day_completions and
+// analytics_events, the measured trial journey and the persisted funnel
+// events (PHASE 41).
 func TestPostgresSchemaLoads(t *testing.T) {
 	ctx := context.Background()
 	d := newTestDB(t)
@@ -105,8 +107,8 @@ func TestPostgresSchemaLoads(t *testing.T) {
 		`SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public'`).Scan(&tables); err != nil {
 		t.Fatalf("count tables: %v", err)
 	}
-	if tables != 66 {
-		t.Errorf("expected 66 tables, got %d", tables)
+	if tables != 68 {
+		t.Errorf("expected 68 tables, got %d", tables)
 	}
 
 	var fks int
@@ -115,8 +117,8 @@ func TestPostgresSchemaLoads(t *testing.T) {
 		 WHERE constraint_type = 'FOREIGN KEY' AND table_schema = 'public'`).Scan(&fks); err != nil {
 		t.Fatalf("count foreign keys: %v", err)
 	}
-	if fks != 77 {
-		t.Errorf("expected 77 foreign keys, got %d", fks)
+	if fks != 81 {
+		t.Errorf("expected 81 foreign keys, got %d", fks)
 	}
 
 	var flags int

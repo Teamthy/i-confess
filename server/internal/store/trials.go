@@ -5,8 +5,11 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
+	"github.com/Teamthy/i-confess/internal/analytics"
+	"github.com/Teamthy/i-confess/internal/billing"
 	"github.com/Teamthy/i-confess/internal/db"
 	"github.com/Teamthy/i-confess/internal/trial"
 	"github.com/google/uuid"
@@ -39,9 +42,46 @@ type Trial struct {
 // TrialStore owns the trial row and the single projection writer that mirrors a
 // running trial into subscriptions. No handler writes plan=premium/status=trial
 // directly; this is the one place the trial can grant and revoke its projection.
-type TrialStore struct{ db *db.DB }
+//
+// It is also the only writer of trial funnel events. Expiry in particular is a
+// clock fact rather than a user action, and no caller reliably observes it —
+// the row moves to EXPIRED whenever the next request happens to refresh it. So
+// the event is emitted here, where the transition is known to have happened
+// exactly once, rather than in whichever handler noticed first.
+type TrialStore struct {
+	db *db.DB
+	// analytics records the funnel events. Optional: tests that exercise only
+	// the state machine leave it nil, and the store does not require it.
+	analytics analytics.Sink
+}
 
 func NewTrialStore(database *db.DB) *TrialStore { return &TrialStore{db: database} }
+
+// WithAnalytics attaches the funnel event writer and returns the store, so the
+// constructor signature stays unchanged for existing callers.
+func (s *TrialStore) WithAnalytics(sink analytics.Sink) *TrialStore {
+	s.analytics = sink
+	return s
+}
+
+// track records one funnel event. Analytics must never break a lifecycle
+// transition: the state change is the product fact and the event is a
+// measurement of it, so a sink failure is logged and swallowed rather than
+// rolled back into the caller.
+func (s *TrialStore) track(userID, name string, props map[string]any) {
+	if s.analytics == nil {
+		return
+	}
+	err := s.analytics.Track(analytics.Event{
+		Name:      name,
+		UserID:    userID,
+		Props:     props,
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+	})
+	if err != nil {
+		log.Printf("trial: analytics %s failed: %v", name, err)
+	}
+}
 
 // Current returns the row, creating an ELIGIBLE row for an existing user. An
 // absent row is not a reason to treat a user as active; it is the initial state.
@@ -159,6 +199,10 @@ func (s *TrialStore) Start(ctx context.Context, userID string, at time.Time) (*T
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
+	s.track(userID, analytics.EventTrialStarted, map[string]any{
+		"trial_id":   row.ID,
+		"days_total": len(billing.TrialJourney),
+	})
 	return row, nil
 }
 
@@ -190,15 +234,21 @@ func (s *TrialStore) Refresh(ctx context.Context, userID string, at time.Time) (
 	if desired == row.State {
 		return row, tx.Commit()
 	}
-
 	if row.State == trial.Active && desired == trial.Expired {
 		if err := s.transitionTx(ctx, tx, row, trial.Expiring, at); err != nil {
 			return nil, err
 		}
 		row.State = trial.Expiring
 	}
-	if err := trial.Transition(row.State, desired); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrTrialTransition, err)
+	// Time only ever moves a trial forward. A clock reading earlier than the one
+	// that already advanced the row — an NTP adjustment on a second instance, a
+	// replayed request carrying a stored timestamp, an operator replaying a past
+	// instant — must not become a backward edge. Attempting one would fail the
+	// explicit lifecycle and turn a harmless read into a 500, so the row keeps
+	// the state it has already earned. The check sits after the walk above
+	// because ACTIVE→EXPIRED is deliberately reached through EXPIRING.
+	if !trial.CanTransition(row.State, desired) {
+		return row, tx.Commit()
 	}
 	if err := s.transitionTx(ctx, tx, row, desired, at); err != nil {
 		return nil, err
@@ -209,13 +259,27 @@ func (s *TrialStore) Refresh(ctx context.Context, userID string, at time.Time) (
 		// Do not overwrite a paid subscription that arrived after the trial.
 		if _, err := tx.ExecContext(ctx,
 			`UPDATE subscriptions SET plan='free',status='expired',updated_at=?
-			 WHERE user_id=? AND plan='premium' AND status='trial'`,
+		 WHERE user_id=? AND plan='premium' AND status='trial'`,
 			at.Format(time.RFC3339), userID); err != nil {
 			return nil, err
 		}
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
+	}
+	if desired == trial.Expired {
+		// The funnel needs the churn side of the ledger: how many days the
+		// listener actually completed before the clock ran out is the whole
+		// question a trial expiry raises.
+		completed, err := s.CompletedDayNumbers(ctx, userID)
+		if err != nil {
+			completed = nil
+		}
+		s.track(userID, analytics.EventTrialExpired, map[string]any{
+			"trial_id":       row.ID,
+			"days_completed": len(completed),
+			"days_total":     len(billing.TrialJourney),
+		})
 	}
 	return row, nil
 }
@@ -264,6 +328,15 @@ func (s *TrialStore) Convert(ctx context.Context, userID string, at time.Time) (
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
+	completed, err := s.CompletedDayNumbers(ctx, userID)
+	if err != nil {
+		completed = nil
+	}
+	s.track(userID, analytics.EventTrialConverted, map[string]any{
+		"trial_id":       row.ID,
+		"days_completed": len(completed),
+		"days_total":     len(billing.TrialJourney),
+	})
 	return row, nil
 }
 

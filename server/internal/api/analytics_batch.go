@@ -37,6 +37,11 @@ func (h *Handler) analyticsBatch(w http.ResponseWriter, r *http.Request) {
 		analytics.EventTrialDayViewed, analytics.EventSubscriptionVerified, analytics.EventSubscriptionCancelled,
 		analytics.EventSearchPerformed, analytics.EventCategoryViewed, analytics.EventTemplateCreated,
 		analytics.EventPlaybackProgressSynced,
+		// Client-observed funnel events. Day *completion* is deliberately not
+		// here: it is written by the server from a real session completion, and
+		// accepting it from a client would make the conversion rate a number
+		// the app could set.
+		analytics.EventTrialStarted, analytics.EventTrialConverted, analytics.EventTrialExpired,
 	} {
 		allowed[n] = true
 	}
@@ -57,6 +62,20 @@ func (h *Handler) analyticsBatch(w http.ResponseWriter, r *http.Request) {
 			delete(req.Events[i].Props, "scripture_text")
 		}
 	}
-	// In prod: forward to OTel/Segment sink; here LogSink no-op preserves API contract
-	httpx.WriteJSON(w, http.StatusAccepted, map[string]any{"accepted": len(req.Events)})
+	// Persist. The endpoint used to answer 202 and hand the batch to a no-op
+	// LogSink, so a client was told its event was accepted and the server then
+	// had no record of it. An event that cannot be queried afterwards is not
+	// tracking; it is a receipt for data the system does not hold. A store
+	// failure is reported rather than acknowledged, because a silent drop is
+	// exactly the defect this replaces. In prod this store is additionally
+	// forwarded to an OTel/Segment sink behind the same writer.
+	accepted := 0
+	for _, ev := range req.Events {
+		if err := h.analytics.Record(r.Context(), ev); err != nil {
+			httpx.WriteError(w, http.StatusInternalServerError, "failed to record events")
+			return
+		}
+		accepted++
+	}
+	httpx.WriteJSON(w, http.StatusAccepted, map[string]any{"accepted": accepted})
 }

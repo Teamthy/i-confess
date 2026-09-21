@@ -33,15 +33,19 @@ import (
 
 // Handler bundles all stores and config needed by the API.
 type Handler struct {
-	cfg       Config
-	users     *store.UserStore
-	trials    *store.TrialStore
-	cont      *store.ContentStore
-	audio     *store.AudioStore
-	sess      *store.SessionStore
-	sched     *store.ScheduleStore
-	eng       *store.EngagementStore
-	mod       *store.ModerationStore
+	cfg    Config
+	users  *store.UserStore
+	trials *store.TrialStore
+	cont   *store.ContentStore
+	audio  *store.AudioStore
+	sess   *store.SessionStore
+	sched  *store.ScheduleStore
+	eng    *store.EngagementStore
+	mod    *store.ModerationStore
+	// analytics persists the funnel events. Trial day completion, conversion
+	// and cancellation are recorded here rather than in a client batch, so the
+	// server is the source of truth for the numbers it reports about itself.
+	analytics *store.AnalyticsStore
 	engn      *engine.Engine
 	search    *search.SearchStore
 	templates *store.TemplateStore
@@ -138,9 +142,12 @@ type Config struct {
 
 func NewHandler(cfg Config, db *db.DB) *Handler {
 	return &Handler{
-		cfg:          cfg,
-		users:        store.NewUserStore(db),
-		trials:       store.NewTrialStore(db),
+		cfg:       cfg,
+		users:     store.NewUserStore(db),
+		analytics: store.NewAnalyticsStore(db),
+		// The trial store writes its own funnel events: expiry is a clock fact
+		// that no single handler reliably observes, so the transition records it.
+		trials:       store.NewTrialStore(db).WithAnalytics(store.NewAnalyticsStore(db)),
 		cont:         store.NewContentStore(db),
 		audio:        store.NewAudioStore(db),
 		sess:         store.NewSessionStore(db),

@@ -988,6 +988,13 @@
   },
   {
     "method": "GET",
+    "path": "/subscriptions/trial/engagement",
+    "auth": "user",
+    "summary": "Measured trial journey: completed days and funnel",
+    "tag": "subscription"
+  },
+  {
+    "method": "GET",
     "path": "/subscriptions/trial/status",
     "auth": "user",
     "summary": "Current trial lifecycle state",
@@ -2048,6 +2055,13 @@
     "path": "/v1/subscriptions/trial/convert",
     "auth": "user",
     "summary": "Finish the trial before store verification",
+    "tag": "subscription"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/subscriptions/trial/engagement",
+    "auth": "user",
+    "summary": "Measured trial journey: completed days and funnel",
     "tag": "subscription"
   },
   {
