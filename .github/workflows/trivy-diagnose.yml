@@ -7,6 +7,8 @@ name: Trivy diagnose (temporary)
 
 on:
   workflow_dispatch:
+  push:
+    branches: [arena/01a0c621-i-confess]
 
 permissions:
   contents: read

@@ -12,6 +12,12 @@ name: Golden update (apps/mobile)
 
 on:
   workflow_dispatch:
+  # Also runnable from a development branch that cannot dispatch: a push whose
+  # latest commit message contains `[golden-update]` re-renders the goldens and
+  # commits them back. The bot commit does not carry the marker and, being made
+  # with the workflow token, does not trigger this workflow in a loop.
+  push:
+    branches: [arena/01a0c621-i-confess]
 
 permissions:
   contents: write
@@ -37,9 +43,11 @@ jobs:
         run: ../../scripts/ci-check.sh flutter pub get
 
       - name: Re-render goldens
+        if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[golden-update]')
         run: flutter test --update-goldens
 
       - name: Commit back to the dispatching branch
+        if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[golden-update]')
         working-directory: .
         run: |
           git config user.name "golden-update[bot]"
