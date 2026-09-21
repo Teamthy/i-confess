@@ -7,6 +7,7 @@ import (
 
 	"github.com/Teamthy/i-confess/internal/auth"
 	"github.com/Teamthy/i-confess/internal/httpx"
+	"github.com/Teamthy/i-confess/internal/models"
 	"github.com/Teamthy/i-confess/internal/moderation"
 	"github.com/Teamthy/i-confess/internal/ratelimit"
 	"github.com/Teamthy/i-confess/internal/store"
@@ -100,6 +101,13 @@ func (h *Handler) createReport(w http.ResponseWriter, r *http.Request) {
 	if already {
 		status = http.StatusOK
 	}
+	if !already {
+		// G-41: the admin-wide sink must see the moderation intake, not only
+		// the queue. A duplicate filing is deliberately not a second audit
+		// row: the queue holds one case and the trail says so too.
+		h.recordAudit(r, "report_created", "report", rep.ID,
+			req.Reason+" on "+req.EntityType+" "+req.EntityID, string(rep.Status))
+	}
 	// Same shape on both paths: a retry-safe client can treat a duplicate
 	// submission identically to a first filing.
 	httpx.WriteJSON(w, status, map[string]any{"report": rep, "already_reported": already})
@@ -125,6 +133,8 @@ func (h *Handler) submitUserConfession(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		httpx.WriteError(w, http.StatusInternalServerError, "could not submit the confession")
 	default:
+		h.recordAudit(r, "user_confession_submitted", "user_confession", uc.ID,
+			"visibility="+uc.Visibility, uc.Status)
 		httpx.WriteJSON(w, http.StatusOK, uc)
 	}
 }
@@ -182,6 +192,14 @@ func (h *Handler) adminReviewUserConfession(w http.ResponseWriter, r *http.Reque
 	case err != nil:
 		httpx.WriteError(w, http.StatusInternalServerError, "could not review the user confession")
 	default:
+		// The action names the decision, the result names the state that
+		// resulted: an approved public-intent confession lands published, and
+		// the trail must be able to tell that apart from a private approval.
+		action, detail := "user_confession_approved", req.Note
+		if req.Decision == string(moderation.UGCRejected) {
+			action, detail = "user_confession_rejected", req.RejectionReason
+		}
+		h.recordAudit(r, action, "user_confession", uc.ID, detail, uc.Status)
 		httpx.WriteJSON(w, http.StatusOK, uc)
 	}
 }
@@ -216,6 +234,9 @@ func (h *Handler) adminDecideReport(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		httpx.WriteError(w, http.StatusInternalServerError, "could not decide the report")
 	default:
+		// The audit action is the outcome, not the verb: "report_resolved"
+		// and "report_dismissed" are what an investigator searches for.
+		h.recordAudit(r, "report_"+req.Decision, "report", rep.ID, req.Note, rep.Status)
 		httpx.WriteJSON(w, http.StatusOK, rep)
 	}
 }
@@ -250,8 +271,29 @@ func (h *Handler) adminQAConfession(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		httpx.WriteError(w, http.StatusInternalServerError, "could not run the QA checklist")
 	case !report.Passed:
+		// The failed gate is audited with the names of the checks that kept
+		// it shut: the 422 body is transient, the trail is not.
+		h.recordAudit(r, "confession_qa_failed", "confession", r.PathValue("id"),
+			failedQAChecks(report), "audio_qa")
 		httpx.WriteJSON(w, http.StatusUnprocessableEntity, report)
 	default:
+		h.recordAudit(r, "confession_qa_passed", "confession", r.PathValue("id"),
+			req.Note, "approved")
 		httpx.WriteJSON(w, http.StatusOK, report)
 	}
+}
+
+// failedQAChecks names the checklist lines that did not pass, for the audit
+// detail column.
+func failedQAChecks(report models.QAReport) string {
+	names := make([]string, 0, len(report.Checks))
+	for _, c := range report.Checks {
+		if !c.Passed {
+			names = append(names, c.Name)
+		}
+	}
+	if len(names) == 0 {
+		return report.Note
+	}
+	return strings.Join(names, ", ")
 }

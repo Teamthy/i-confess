@@ -1,6 +1,6 @@
 # Project Status
 
-**Last verified:** 2026-09-20, at PHASE 32 (Community UGC reader — G-40 closed: published public user confessions now have a public anonymous reader in both mobile and web; `GET /community/confessions` filtered in SQL, anonymity tested, 2-tab community screen, 300 routes, 59 Dart symbol assertions; previous phase 31 reconciliation still applies — see `docs/31-MODERATION.md`).
+**Last verified:** 2026-09-21, at PHASE 34 (Audit coverage and library gestures — G-41 closed in PHASE 33: `audit_logs` records every moderation and editorial action through one sink with `TestAuditLogsCoverContentAndModeration`; G-42/G-43/G-44/G-45 closed in PHASE 34: seeded voice licence passes the QA gate, drag-reorder + add-to-collection gestures exist, `cover_url` is writable, favourites navigate all four kinds. 73 Dart symbol assertions; routes/openapi byte-identical. Previous phase reconciliation still applies — see `docs/31-MODERATION.md`, `docs/33-AUDIT-COVERAGE.md`, `docs/34-LIBRARY-GESTURES.md`).
 
 This file supersedes `MASTER-PROMPT-COMPLETION.md`,
 `CONTENT-DOMAIN-COMPLETION.md`, `AUDIO-PLATFORM-STATUS.md`, `SESSION-NOTES.md`
@@ -20,7 +20,7 @@ it.** Every claim below was produced by running something.
 | 24 test packages pass against PostgreSQL 17 | `make test` |
 | No data races | `make race` |
 | Lint clean, 10 linters | `make lint` → 0 issues |
-| Schema loads 64 tables, 76 foreign keys | `internal/db` tests |
+| Schema loads 65 tables, 76 foreign keys | `internal/db` tests |
 | Session lifecycle: 11 states, no forged completions | `internal/sessions`, 16 tests |
 | Session queues are snapshots | `internal/store/snapshot_test.go` |
 | Account erasure covers every user table | `internal/deletion` |
@@ -178,10 +178,37 @@ PHASE 32 Community UGC Reader — **PASS** (G-40 closed: `GET /community/confess
     `design/ia.json` extended, `design/routes.json` 300 routes, `contracts/openapi.json` regenerated;
     `scripts/check_dart_symbols.py` now 59 assertions; Go suite api+store+community PASS, vet/build clean)
 
+PHASE 33 Audit coverage for content and moderation — **PASS** (G-41 closed:
+    `audit_logs` now records every moderation and editorial action through the
+    one `Handler.recordAudit` sink — report_created (once per real filing, not
+    per retry), user_confession_submitted/_approved/_rejected (result carries
+    the state actually reached, published vs approved), report_resolved/_dismissed,
+    confession_qa_passed/_failed (fail records the failing check names), and
+    confession_status_{status} for the canonical PATCH.
+    `UpdateConfessionStatusAudited` returns the state read under its own lock
+    so `ok` vs `unchanged` cannot disagree with the history row; refusals
+    (400/404/409) leave no trail. `TestAuditLogsCoverContentAndModeration`;
+    see docs/33-AUDIT-COVERAGE.md)
+
+PHASE 34 Library gestures and licence seeding — **PASS** (G-42 closed: seed
+    writes an active `voice_rights` row for Grace, so the demo catalogue passes
+    the `voices_licensed` gate it enforces — `TestSeedVoicesAreLicensed`.
+    G-43 closed: `ReorderableListView.builder` with an explicit drag grip in
+    collection detail, sending the complete order to PATCH reorder; the
+    confession page gained `_AddToCollectionButton` → bottom sheet → POST
+    membership. G-44 closed: `cover_url` writable on POST/PATCH
+    (`validCollectionCover`: http(s) or same-origin path, ≤2048; empty
+    clears, omission preserves — `TestCollectionCoverUrlWriter`); menu
+    "Set cover image" dialog. G-45 closed: favourites navigate all four kinds
+    (confession→detail, category→category detail, session→player, voice→the
+    builder's voice step); a `missing` favourite still navigates nowhere.
+    `check_dart_symbols.py` 59→73 assertions; no routes/endpoints changed —
+    routes.json and openapi.json regenerate byte-identical. See
+    docs/34-LIBRARY-GESTURES.md)
+
 Open gaps carried forward: G-3, G-7, G-9, G-10, G-12, G-13,
 G-14, G-15, G-16, G-17, G-18, G-19, G-20, G-21, G-22, G-23, G-24, G-25, G-26, G-27, G-28,
-G-29, G-33, G-34, G-35, G-36, G-37, G-38, G-39, G-41, G-42, G-43, G-44,
-G-45.
+G-29, G-33, G-34, G-35, G-36, G-37, G-38, G-39.
 (G-2 was removed from this list: it has been closed since PHASE 07 —
 "23/23 status columns constrained" — yet appeared in both lists here, a
 documentation bug fixed in PHASE 31.)
@@ -193,6 +220,11 @@ Closed: **G-1** (queues are snapshots), **G-2** (23/23 status columns constraine
 plaintext-token functions were removed),
 **G-32** (all 44 admin routes asserted to reject a non-admin),
 **G-40** (published public UGC now has a public anonymous reader — `GET /community/confessions` + mobile 2-tab + web both-feeds).
+**G-41** (PHASE 33: `audit_logs` covers content/moderation — one sink, `recordAudit`, every moderation and status action; refusals record nothing).
+**G-42** (PHASE 34: the seed installs Grace's active licence; the demo catalogue passes its own `voices_licensed` gate).
+**G-43** (PHASE 34: drag-reorder with a grip in collection detail; add-to-collection from the confession page).
+**G-44** (PHASE 34: `cover_url` written by POST/PATCH, cleared by empty, refused unless http(s)/same-origin).
+**G-45** (PHASE 34: favourites navigate all four entity kinds).
 **G-33** is new: the 24-entry blocklist is a floor, not a breach corpus.
 
 New in PHASE 11: **G-34** (no audio exists for any of the 78 confessions),

@@ -72,6 +72,40 @@ func TestSeedInstallsEveryCanonicalCategory(t *testing.T) {
 	}
 }
 
+// TestSeedVoicesAreLicensed closes G-42 from the other end. The §75 QA gate
+// refuses any render whose voice has no active voice_rights row, so a seeded
+// catalogue that cannot pass the gate it advertises teaches developers that
+// the gate is decoration. This asserts the invariant Seed must keep: every
+// ready asset it installs is voiced under an active licence.
+func TestSeedVoicesAreLicensed(t *testing.T) {
+	d := dbtest.New(t)
+	if err := Seed(d, &nopStorage{}); err != nil {
+		t.Fatalf("Seed: %v", err)
+	}
+
+	var unlicensed int
+	if err := d.QueryRow(`
+		SELECT count(*) FROM audio_assets a
+		 WHERE a.status IN ('ready','published')
+		   AND NOT EXISTS (SELECT 1 FROM voice_rights vr
+		                    WHERE vr.voice_id = a.voice_id AND vr.status = 'active')`).Scan(&unlicensed); err != nil {
+		t.Fatalf("count unlicensed ready assets: %v", err)
+	}
+	if unlicensed != 0 {
+		t.Errorf("%d seeded render(s) fail the voices_licensed gate; the demo catalogue must be able to pass its own checklist", unlicensed)
+	}
+
+	var grace int
+	if err := d.QueryRow(`
+		SELECT count(*) FROM voices v JOIN voice_rights vr ON vr.voice_id = v.id
+		 WHERE v.name = 'Grace' AND vr.status = 'active' AND vr.allowed_use = 'tts'`).Scan(&grace); err != nil {
+		t.Fatalf("look up Grace licence: %v", err)
+	}
+	if grace != 1 {
+		t.Errorf("Grace has %d active tts licence row(s), want 1", grace)
+	}
+}
+
 // TestSeedConfessionsAllResolveToACategory is the guard for the D2 rename. Two
 // confession seeds referenced "Strength" and "Thanksgiving", which are not
 // canonical names; after the rename the lookup map no longer holds them, and an

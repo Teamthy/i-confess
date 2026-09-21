@@ -538,22 +538,23 @@ func recordModerationHistory(ctx context.Context, tx *db.Tx, confessionID, from,
 // sets published_at only when entering published (the old UPDATE overwrote it
 // with NULL on every other move, so re-publishing after a correction rewrote
 // the original publish date and unpublishing erased it), and it records the
-// transition in content_moderation_history.
-func (s *ModerationStore) UpdateConfessionStatusAudited(ctx context.Context, id, status, actor, reason string) error {
+// transition in content_moderation_history. It returns the state the row was
+// read in, which is what lets the caller tell a transition from a no-op
+// without racing its own second read against the write.
+func (s *ModerationStore) UpdateConfessionStatusAudited(ctx context.Context, id, status, actor, reason string) (from string, err error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer tx.Rollback()
 
-	var from string
 	err = tx.QueryRowContext(ctx,
 		`SELECT status FROM confessions WHERE id = ? FOR UPDATE`, id).Scan(&from)
 	if errors.Is(err, sql.ErrNoRows) {
-		return ErrNotFound
+		return "", ErrNotFound
 	}
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	ts := now()
@@ -563,15 +564,15 @@ func (s *ModerationStore) UpdateConfessionStatusAudited(ctx context.Context, id,
 		     published_at = CASE WHEN ? = 'published' THEN ? ELSE published_at END,
 		     updated_at = ?
 		 WHERE id = ?`, status, status, ts, ts, id); err != nil {
-		return err
+		return from, err
 	}
 	if from == status {
 		// A no-op PATCH must not fabricate history: nothing moved, so nothing
 		// is recorded.
-		return tx.Commit()
+		return from, tx.Commit()
 	}
 	if err := recordModerationHistory(ctx, tx, id, from, status, actor, reason); err != nil {
-		return err
+		return from, err
 	}
-	return tx.Commit()
+	return from, tx.Commit()
 }

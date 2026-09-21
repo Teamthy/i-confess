@@ -122,8 +122,11 @@ func (s *LibraryStore) collectionItems(ctx context.Context, collectionID string)
 	return out, rows.Err()
 }
 
-// UpdateCollection renames or re-scopes a collection.
-func (s *LibraryStore) UpdateCollection(ctx context.Context, userID, id string, name, description, visibility *string) error {
+// UpdateCollection renames, re-scopes or re-images a collection. A non-nil
+// coverURL writes the column; the empty string clears it (G-44: the reader
+// rendered cover_url since PHASE 27, but nothing could set it, so every
+// collection showed the monogram fallback forever).
+func (s *LibraryStore) UpdateCollection(ctx context.Context, userID, id string, name, description, visibility, coverURL *string) error {
 	if _, err := s.Collection(ctx, userID, id); err != nil {
 		return err
 	}
@@ -145,6 +148,13 @@ func (s *LibraryStore) UpdateCollection(ctx context.Context, userID, id string, 
 		if _, err := s.db.ExecContext(ctx,
 			`UPDATE user_collections SET visibility = ?, updated_at = ? WHERE id = ? AND user_id = ?`,
 			*visibility, now(), id, userID); err != nil {
+			return err
+		}
+	}
+	if coverURL != nil {
+		if _, err := s.db.ExecContext(ctx,
+			`UPDATE user_collections SET cover_url = ?, updated_at = ? WHERE id = ? AND user_id = ?`,
+			nullIfEmpty(*coverURL), now(), id, userID); err != nil {
 			return err
 		}
 	}

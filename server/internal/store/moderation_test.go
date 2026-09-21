@@ -599,7 +599,7 @@ func TestUpdateConfessionStatusAudited(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := s.UpdateConfessionStatusAudited(ctx, "au-c1", "published", "au-admin", "ship"); err != nil {
+	if _, err := s.UpdateConfessionStatusAudited(ctx, "au-c1", "published", "au-admin", "ship"); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
 	var publishedAt string
@@ -613,7 +613,7 @@ func TestUpdateConfessionStatusAudited(t *testing.T) {
 	firstPublish := publishedAt
 
 	// Moving off published must not erase when it first went live.
-	if err := s.UpdateConfessionStatusAudited(ctx, "au-c1", "archived", "au-admin", "superseded"); err != nil {
+	if _, err := s.UpdateConfessionStatusAudited(ctx, "au-c1", "archived", "au-admin", "superseded"); err != nil {
 		t.Fatalf("archive: %v", err)
 	}
 	if err := conn.QueryRowContext(ctx,
@@ -634,7 +634,7 @@ func TestUpdateConfessionStatusAudited(t *testing.T) {
 	}
 
 	// A no-op PATCH records nothing.
-	if err := s.UpdateConfessionStatusAudited(ctx, "au-c1", "archived", "au-admin", "again"); err != nil {
+	if _, err := s.UpdateConfessionStatusAudited(ctx, "au-c1", "archived", "au-admin", "again"); err != nil {
 		t.Fatal(err)
 	}
 	if err := conn.QueryRowContext(ctx,
@@ -645,7 +645,7 @@ func TestUpdateConfessionStatusAudited(t *testing.T) {
 		t.Errorf("a no-op PATCH must not fabricate history, found %d rows", histCount)
 	}
 
-	if err := s.UpdateConfessionStatusAudited(ctx, "missing", "published", "au-admin", ""); !errors.Is(err, ErrNotFound) {
+	if _, err := s.UpdateConfessionStatusAudited(ctx, "missing", "published", "au-admin", ""); !errors.Is(err, ErrNotFound) {
 		t.Errorf("missing id: got %v, want ErrNotFound (the old path returned a 500)", err)
 	}
 }

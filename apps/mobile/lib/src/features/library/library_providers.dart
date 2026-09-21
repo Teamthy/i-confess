@@ -104,6 +104,52 @@ class LibraryActions {
     return result;
   }
 
+  /// Adds a confession to a collection, from the confession's own page (G-43).
+  ///
+  /// The add gesture has to exist somewhere other than the collection: an
+  /// item is chosen while reading the confession, and a listener who has to
+  /// leave the page to file it will not file it.
+  Future<WriteResult<UserCollection>> addToCollection(
+      String collectionId, String confessionId) async {
+    final result = await _repo.addToCollection(collectionId, confessionId);
+    if (result.succeeded) {
+      _ref.invalidate(collectionDetailProvider(collectionId));
+      _ref.invalidate(libraryCollectionsProvider);
+    }
+    return result;
+  }
+
+  /// Persists a new item order for one collection (G-43).
+  ///
+  /// The client sends the complete order, not a move: the server rewrites
+  /// positions from the array, so a partial patch would silently renumber
+  /// everything the drag did not mention.
+  Future<WriteResult<UserCollection>> reorderCollection(
+      String collectionId, List<String> confessionIds) async {
+    final result = await _repo.reorderCollection(collectionId, confessionIds);
+    if (result.succeeded) {
+      // The detail view re-reads in the server's order rather than trusting
+      // the optimistic local one: if a row was removed while the drag was in
+      // flight, the server is right and the screen should say so.
+      _ref.invalidate(collectionDetailProvider(collectionId));
+      _ref.invalidate(libraryCollectionsProvider);
+    }
+    return result;
+  }
+
+  /// Sets or clears a collection's cover image (G-44).
+  ///
+  /// An empty string is a value, not an omission: it clears the cover and the
+  /// row falls back to the monogram.
+  Future<WriteResult<UserCollection>> updateCover(String collectionId, String coverUrl) async {
+    final result = await _repo.updateCollection(collectionId, coverUrl: coverUrl);
+    if (result.succeeded) {
+      _ref.invalidate(collectionDetailProvider(collectionId));
+      _ref.invalidate(libraryCollectionsProvider);
+    }
+    return result;
+  }
+
   /// Removes a favourite of any entity type.
   ///
   /// The library lists favourited categories and voices as well as
