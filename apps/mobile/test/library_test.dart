@@ -231,7 +231,7 @@ void main() {
         await tester.pumpAndSettle();
 
         // The library — and with it the row — is gone: navigation happened.
-        expect(find.byKey(const ValueKey(gone)), findsNothing);
+        expect(find.byKey(ValueKey(gone)), findsNothing);
       });
     }
 
