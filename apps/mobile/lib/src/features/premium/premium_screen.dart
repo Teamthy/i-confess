@@ -139,7 +139,10 @@ class PremiumScreen extends ConsumerWidget {
                 if (days.isEmpty) return const SizedBox.shrink();
                 // Completed days come from real session completions, so a tick
                 // here means the listener listened - not that a clock moved.
-                final completed = engagementAsync.valueOrNull?.valueOrNull
+                // AsyncValue exposes asData in Riverpod 3, and Loadable is
+                // what carries the value - the same two-step the activity
+                // providers use.
+                final completed = engagementAsync.asData?.value.valueOrNull
                         ?.completedDays ??
                     const <int>[];
                 return Column(

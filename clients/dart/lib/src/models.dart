@@ -1472,9 +1472,11 @@ final class TrialDay {
         title: _str(json, 'title'),
         description: _str(json, 'description'),
         cta: _str(json, 'cta'),
-        categories: _list(json['categories'])
-            .map((e) => e.toString())
-            .toList(growable: false),
+        // Categories are category slugs, so this is a string list. The shared
+        // _list helper only yields maps, which would have decoded every slug
+        // into the string form of an empty map.
+        categories: (json['categories'] as List?)?.whereType<String>().toList() ??
+            const <String>[],
         duration: _int(json, 'duration'),
         sessionCount: _int(json, 'session_count', 1),
         personalized: _bool(json, 'personalized'),

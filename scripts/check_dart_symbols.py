@@ -260,6 +260,26 @@ check(
     "final String blockedId;" in models_src and "final String blockedName;" not in models_src,
 )
 
+# Two mistakes this sandbox cannot compile-check, and both were made once
+# already. A List<String> field decoded through the shared _list helper yields
+# one entry per map and drops every slug, because _list only returns maps. And
+# AsyncValue has no valueOrNull in Riverpod 3 - the codebase reads
+# `.asData?.value.valueOrNull`, which is AsyncValue then Loadable.
+check(
+    "TrialDay.categories decodes a string list, not _list's maps",
+    re.search(r"categories:\s*\(json\['categories'\] as List\?\)\?\.whereType<String>\(\)", models_src)
+    is not None,
+)
+check(
+    "no List<String> field is decoded through _list",
+    re.search(r"_list\([^)]*\)\s*\.map\(\(\w+\) => \w+\.toString\(\)\)", models_src) is None,
+)
+check(
+    "the paywall reads AsyncValue through asData, not a nonexistent valueOrNull",
+    "engagementAsync.asData?.value.valueOrNull" in premium_screen_src
+    and "engagementAsync.valueOrNull" not in premium_screen_src,
+)
+
 for endpoint in [
     "GET /me/blocks",
     "POST /me/blocks",
