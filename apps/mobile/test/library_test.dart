@@ -503,7 +503,8 @@ void main() {
       await tester.ensureVisible(secondRow);
       await tester.pumpAndSettle();
       final start = tester.getCenter(handle);
-      final end = tester.getCenter(secondRow) + const Offset(0, 30);
+      final secondBottom = tester.getBottomRight(secondRow).dy;
+      final end = Offset(start.dx, secondBottom + 20);
       await tester.dragFrom(start, end - start);
       await tester.pumpAndSettle();
 
