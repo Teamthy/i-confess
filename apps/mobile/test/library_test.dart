@@ -510,7 +510,8 @@ void main() {
       // tap does not reorder. Hold past Flutter's long-press threshold before
       // moving the pointer below the second row.
       await tester.pump(const Duration(milliseconds: 600));
-      await gesture.moveTo(end, time: const Duration(milliseconds: 300));
+      await tester.pump(const Duration(milliseconds: 300));
+      await gesture.moveTo(end);
       await tester.pump();
       await gesture.up();
       await tester.pumpAndSettle();
