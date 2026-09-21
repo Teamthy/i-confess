@@ -1,51 +1,26 @@
-**Last verified:** 2026-09-21, at ledger 45 (master-plan PHASE 38 — the
-public marketing website. `apps/web` was rebuilt in place against the PHASE 05
-design system: `styles/tokens.css` is a symlink to `design/generated/tokens.css`,
-so the site consumes the generated tokens directly and cannot drift. All 20
-public pages plus the 5 auth screens (real `/auth/*` endpoints through a
-same-origin `/api` proxy) render from server components with ISR; the homepage
-follows the PAUSE→FEEL→UNDERSTAND→EXPERIENCE→BELIEVE→BEGIN journey with all 12
-required sections; the category bookcase rail is the signature interaction
-(desktop accordion spines, keyboard-walkable, mobile snap carousel). Real 404
-statuses on dynamic routes, sitemap/robots/JSON-LD generated from the live
-API, and zero fabricated content — the hero quotes a real confession, pricing
-comes from `GET /subscriptions/plans`, and the download page admits the store
-listings are pending. Recorded finding: the repository's only "logo" files are
-the unmodified Flutter template icons, so the site ships a restrained
-typographic wordmark fallback pending an approved brand asset. Proving
-commands: `npm run build` (71 routes, clean), `npx tsc --noEmit`, a DOM audit
-of 20 pages (single h1, landmarks, alt/aria, canonical/OG present),
-`python3 design/test_ia.py` (113 wired), `python3 design/test_design.py`,
-`design/generate.py --check`, `gofmt -l` + `go vet`, `go test ./internal/api
-./internal/seed`, `scripts/check_dart_symbols.py` (133/133), and the live
-preview (Go API on :8080, site on :3000, both 0.0.0.0). Browser screenshot QA
-was NOT runnable — the Chrome download CDNs are unreachable from this sandbox;
-the DOM audit stands in and visual browser QA is owed to CI/local. See
-`docs/44-WEB-PLATFORM-AUDIT.md` (the entry-gate audit) and
-`docs/45-PHASE-38-MARKETING-SITE.md`). At PHASE 43 (personalization — the seven
-listener signals of master-plan item 34. `GET /recommendations` ranked on
-explicit interests alone and claimed `personalized: true` for it; it now reads
-what the listener did — categories listened to, completion rate, time of day in
-the listener's own timezone, session duration, favourites, skips and repeat
-listening as a count — through a read-only `SignalStore` and ranks with
-deterministic constants in a pure `internal/personalization` package, each
-signal proven on its own to move the result. The response keeps its v1 shape
-and adds `signals`, `reasons`, `listen_again` and `suggested_duration_seconds`;
-both listener switches are enforced server-side. Gap G-55 closed; no route,
-schema or contract change. Note on provenance: this phase was first built in a
-previous session as commits `e32fb2c`/`3c878f0` with `docs/HANDOFF-AFTER-43.md`,
-none of which reached the remote; it was rebuilt from the plan and the code.
-PHASE 42 (moderation completeness — user blocking and appeals, G-50 and G-51
-closed) stands as verified. The schema stays at 70 tables / 83 foreign keys; the
-API stays at 320 routes / 250 paths / 320 operations. PHASE 35 Conditions
-remain unavailable in this checkout: `docs/35-TRIAL-LIFECYCLE.md` is absent, so
-no claim is made that they were read. Previous phase reconciliation still
-applies — see `docs/31-MODERATION.md`, `docs/33-AUDIT-COVERAGE.md`,
-`docs/34-LIBRARY-GESTURES.md`, `docs/36-BILLING-TRIAL.md`,
-`docs/37-CONTENT-LIFECYCLE.md`, `docs/38-RETENTION-VERSIONING.md`,
-`docs/39-CANONICAL-AUDIO.md`, `docs/40-THEOLOGICAL-REVIEW.md`,
-`docs/41-TRIAL-ENGAGEMENT.md`, `docs/42-MODERATION-BLOCKING-APPEALS.md`,
-`docs/43-PERSONALIZATION-SIGNALS.md`).
+**Last verified:** 2026-09-21, at ledger 46 (master-plan PHASE 39 — the
+authenticated web experience, navy palette migration, and80-route build. The
+design system green palette (#2A9D76) was replaced with the brief's navy palette
+(#051650/#00072D/#0A2472/#123499/#EBF2FA) through `design/tokens.json`, with
+dark theme primary bumped to brand-300 for WCAG AA compliance on dark surfaces
+(navy blues are less luminous than greens). All 30 contrast pairings pass.
+`design/test_design.py` updated from green-hue to navy-hue assertions. The
+authenticated shell (`AppShell` — sidebar + bottom nav + auth context) wraps
+38 routes at `/app/*`: home, explore, categories, category detail, confession
+detail, sessions, session detail, session builder, voices, voice profile,
+history, favorites, downloads, community, community create, community detail,
+notifications, search, profile, player, recommendations, daily, settings (5
+sub-pages), subscription, subscription manage, routines, streaks, achievements,
+shared/[token], invite, referrals, feedback, support.12 new public routes
+were added: /confessions (library index), /confessions/[slug] (public detail),
+/faq, /help, /mission, /stories, /stories/[slug], /content-policy, /welcome,
+/verify-phone, /maintenance, /offline. Total: 80 routes (79 required). Build
+clean, TypeScript clean. For the first time, the Go suite (build, vet, test
+-race) ran in CI against this PR and PASSED. Two pre-existing CI failures are
+unrelated: Flutter `auth_flow_test.dart` (2 auth flow tests) and Trivy
+filesystem scan (dependency vulnerability). Browser screenshot QA was NOT
+runnable — Chrome download CDNs unreachable from the sandbox. See
+docs/46-PHASE-39-AUTHENTICATED-WEB.md and PR #64.
 
 This file supersedes `MASTER-PROMPT-COMPLETION.md`,
 `CONTENT-DOMAIN-COMPLETION.md`, `AUDIO-PLATFORM-STATUS.md`, `SESSION-NOTES.md`
@@ -78,13 +53,13 @@ it.** Every claim below was produced by running something.
 |---|---|
 | **Content** | **Done in PHASES 39–40** — 78 canonical confessions, 312 object-backed audio fixtures, explicit theological-review metadata, and provenance-neutral authorship. |
 | **Mobile app** | `apps/mobile` cannot play audio — `just_audio` and `audio_service` are commented out. Being replaced per D-4. |
-| **Website / admin** | 434 and 168 lines of scaffolding. Being replaced per D-5. |
+| **Website / admin** | 80 routes, build clean, TypeScript clean. Admin still scaffolding (PHASE 40 in brief). |
 | **Payments** | **Done in PHASE 36** — production uses the Apple signed-transaction verifier or Google Play Developer API and fails closed without configuration; `TestProductionRefusesStubReceipts` remains green. |
 | **Trial lifecycle** | **Done in PHASE 36** — persistent `trials` row, explicit six-state graph, one-time start, expiry/conversion, and Premium projection tests. |
 | **UGC `PUBLIC` readers** | **Done in PHASE 32** — `GET /community/confessions` public, anonymous, newest-first, mobile 2-tab + web both-feeds. Was G-40. |
 | **Soft delete / versioning** | **Done in PHASE 38** — all 66 application tables carry `deleted_at` and `row_version`; retention writes are tombstoned and versioned. |
 | **Cache** | Per-process only; no cross-instance invalidation. |
-| **Design system** | 120 tokens, contrast-verified, but not yet consumed by any real surface. |
+| **Design system** | 120 tokens, contrast-verified, navy palette. Consumed by web + admin + mobile via symlinks. |
 | **Navigation** | 37 screens specified and validated; mobile has the shell plus real home, explore, category, confession, builder, activity, and production player surfaces; me and remaining secondary surfaces continue in subsequent phases. |
 | **Observability** | No cache hit-rate metric; runtime dependency failure untested. |
 
@@ -407,6 +382,22 @@ PHASE 43 Personalization: the seven listener signals — **PASS** (master-plan
     export plus genspec unchanged at 320/250/320. Typed client decodes the new
     fields and still decodes a v1 payload. See
     docs/43-PERSONALIZATION-SIGNALS.md)
+
+PHASE 39 (web) Authenticated web experience, navy palette, 80 routes — **PASS**
+    (design/tokens.json green→navy: #051650/#00072D/#0A2472/#123499/#EBF2FA.
+    Dark theme primary=brand-300 (navy 400 fails WCAG on dark surfaces). 30/30
+    contrast pairings pass. AppShell: sidebar + bottom nav + AuthProvider. 38
+    authenticated routes at /app/*: home, explore, categories, category detail,
+    confession detail, sessions, session builder, voices, voice profile, history,
+    favorites, downloads, community, notifications, search, profile, settings (5
+    sub-pages), subscription, recommendations, daily, player, routines, streaks,
+    achievements, shared/[token], invite, referrals, feedback, support. 12 new
+    public routes: /confessions, /confessions/[slug], /faq, /help, /mission,
+    /stories, /stories/[slug], /content-policy, /welcome, /verify-phone,
+    /maintenance, /offline. Total: 80 routes. Build clean, TypeScript clean.
+    Go build/vet/test PASSED in CI for the first time. Flutter has 2 pre-existing
+    failures (auth_flow_test.dart, unrelated). Trivy scan pre-existing.
+    See docs/46-PHASE-39-AUTHENTICATED-WEB.md, PR #64.)
 
 Open gaps carried forward: G-7, G-9, G-10, G-12, G-13,
 G-14, G-15, G-16, G-17, G-18, G-19, G-20, G-23, G-24, G-25, G-26, G-27, G-28,
