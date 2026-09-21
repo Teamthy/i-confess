@@ -153,7 +153,7 @@ func (h *Handler) adminUpdateConfessionStatus(w http.ResponseWriter, r *http.Req
 		httpx.WriteError(w, http.StatusBadRequest, "invalid status")
 		return
 	}
-	err := h.mod.UpdateConfessionStatusAudited(r.Context(), r.PathValue("id"), req.Status,
+	from, err := h.mod.UpdateConfessionStatusAudited(r.Context(), r.PathValue("id"), req.Status,
 		actor(r), strings.TrimSpace(req.Reason))
 	if errors.Is(err, store.ErrNotFound) {
 		httpx.WriteError(w, http.StatusNotFound, "confession not found")
@@ -163,6 +163,16 @@ func (h *Handler) adminUpdateConfessionStatus(w http.ResponseWriter, r *http.Req
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to update confession")
 		return
 	}
+	// G-41: content_moderation_history records that a state moved; the
+	// admin-wide sink records who moved it. The state the store read under its
+	// lock decides the result, so the audit line cannot disagree with the
+	// history row written by the same transaction.
+	result := "ok"
+	if from == req.Status {
+		result = "unchanged"
+	}
+	h.recordAudit(r, "confession_status_"+req.Status, "confession", r.PathValue("id"),
+		strings.TrimSpace(req.Reason), result)
 	httpx.WriteJSON(w, http.StatusOK, map[string]string{"status": req.Status})
 }
 
