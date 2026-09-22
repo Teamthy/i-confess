@@ -222,6 +222,40 @@ function sessionView(sess, { fresh = true } = {}) {
   return out;
 }
 
+// Shape parity with models.Favorite as ListFavoritesDetailed serves it: the
+// display title is resolved at read time against the corpus, a session
+// favourite reads its own title/status, and a row whose target no longer
+// resolves comes back with missing=true — still returned, never dropped.
+function favoriteView(fav) {
+  const out = { ...fav, user_id: state.user.id };
+  let title = "";
+  let subtitle = "";
+  let missing = false;
+  if (fav.entity_type === "confession") {
+    const c = CONFS.find((x) => x.id === fav.entity_id);
+    if (c) {
+      title = c.title;
+      subtitle = (CATS.find((x) => x.id === c.category_id) || {}).name || "";
+    } else missing = true;
+  } else if (fav.entity_type === "category") {
+    const c = CATS.find((x) => x.id === fav.entity_id);
+    if (c) { title = c.name; subtitle = c.description || ""; } else missing = true;
+  } else if (fav.entity_type === "voice") {
+    const v = VOICES.find((x) => x.id === fav.entity_id);
+    if (v) { title = v.name; subtitle = v.description || ""; } else missing = true;
+  } else if (fav.entity_type === "session") {
+    const s = state.sessions.get(fav.entity_id);
+    if (s) {
+      title = s.title || `${Math.round((s.actual_duration || s.duration_seconds || 0) / 60)}-minute session`;
+      subtitle = s.status;
+    } else missing = true;
+  } else missing = true;
+  if (title) out.title = title;
+  if (subtitle) out.subtitle = subtitle;
+  if (missing) out.missing = true;
+  return out;
+}
+
 // --------------------------------------------------------------- router
 
 const server = http.createServer(async (req, res) => {
@@ -377,7 +411,18 @@ const server = http.createServer(async (req, res) => {
     if (verb === "start") sess.started_at = sess.started_at || NOW();
     if (verb === "complete") {
       sess.completed_at = NOW();
-      state.history.unshift({ session_id: sess.id, confession_id: sess.items[0]?.confession_id || "", duration_seconds: sess.actual_duration, completed: true, skipped: false, at: NOW() });
+      // PlaybackRecord shape (models.PlaybackRecord): the real handler stores
+      // rows the history endpoint serves verbatim.
+      state.history.unshift({
+        id: `ph-${randomUUID()}`,
+        user_id: state.user.id,
+        session_id: sess.id,
+        confession_id: sess.items[0]?.confession_id || "",
+        duration_seconds: sess.actual_duration,
+        completed: true,
+        skipped: false,
+        listened_at: NOW(),
+      });
     }
     if (verb === "start" || verb === "resume") {
       const q = sess.items.find((it) => it.status === "QUEUED" || it.status === "PLAYING");
@@ -406,19 +451,32 @@ const server = http.createServer(async (req, res) => {
   }
   if (method === "GET" && p === "/sessions") return json(res, 200, [...state.sessions.values()].map((s) => sessionView(s, { fresh: false })));
 
-  if (method === "GET" && p === "/me/favorites") return json(res, 200, [...state.favorites.values()]);
+  if (method === "GET" && p === "/me/favorites") {
+    // Shape parity with ListFavoritesDetailed: titles resolved at read time,
+    // unknown targets returned with missing=true rather than dropped, and a
+    // `type` filter validated against the real vocabulary.
+    const t = url.searchParams.get("type") || "";
+    if (t && !["confession", "category", "session", "voice"].includes(t)) {
+      return json(res, 400, { error: "type must be one of confession, category, session, voice", code: "VALIDATION_FAILED" });
+    }
+    return json(res, 200, [...state.favorites.values()].map(favoriteView));
+  }
   if (method === "POST" && p === "/me/favorites") {
     const key = `${body.entity_type}:${body.entity_id}`;
     if (state.favorites.has(key)) return json(res, 409, { error: "already saved" });
     const fav = { id: `fav-${randomUUID()}`, entity_type: body.entity_type, entity_id: body.entity_id, created_at: NOW() };
     state.favorites.set(key, fav);
-    return json(res, 201, fav);
+    return json(res, 201, favoriteView(fav));
   }
   if (method === "DELETE" && p === "/me/favorites") {
     state.favorites.delete(`${body.entity_type}:${body.entity_id}`);
     return json(res, 200, { ok: true });
   }
-  if (method === "GET" && p === "/me/history") return json(res, 200, { items: state.history });
+  if (method === "GET" && p === "/me/history") return json(res, 200, state.history);
+  // The fixture models a free account: no download entitlement, an empty
+  // licence list, and the limit fields the real handler reports.
+  if (method === "GET" && p === "/me/downloads")
+    return json(res, 200, { downloads: [], limit: 0, used: 0, offline_hours_allowed: 0 });
 
   if (method === "GET" && p === "/me/confessions") return json(res, 200, []);
   if (method === "POST" && p === "/me/confessions") {

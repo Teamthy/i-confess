@@ -1,18 +1,16 @@
-/** One session with playback and progress. */
+/** One session — its queue and state, from GET /sessions/{id}. Playback lives in the player. */
 import Link from "next/link";
+import { SessionDetailClient } from "@/components/SessionDetailClient";
+
 export default async function SessionDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  // The id is resolved on the server so the client island needs no dynamic
+  // read of its own (same shape as the player page).
   const { id } = await params;
+
   return (
     <div className="ia-page">
       <Link href="/app/sessions" className="ic-backlink" style={{ color: "var(--ic-color-neutral-500)" }}>← Sessions</Link>
-      <div className="ia-page__head" style={{ textAlign: "center" }}>
-        <h1>Session</h1>
-        <p>This session is loading from the API. The immersive player surface will render here.</p>
-      </div>
-      <div className="ic-state">
-        <h3>Session loading</h3>
-        <p>Session ID: {id}</p>
-      </div>
+      <SessionDetailClient sessionId={id} />
     </div>
   );
 }

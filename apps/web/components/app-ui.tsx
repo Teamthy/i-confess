@@ -87,6 +87,24 @@ export function SignedOut({ next }: { next?: string }) {
   );
 }
 
+/**
+ * The server answered 402: this surface needs a plan the account is not on.
+ * The decision is the server's — this block only renders it, with the route
+ * that does something about it. Never used where the API contract does not
+ * document a 402, and never pre-empted by a client-side plan check.
+ */
+export function PremiumOffer({ body }: { body: string }) {
+  return (
+    <div className="ic-state">
+      <h3>That&rsquo;s part of Premium</h3>
+      <p>{body}</p>
+      <a href="/app/subscription" className="ic-btn ic-btn--primary">
+        See Premium
+      </a>
+    </div>
+  );
+}
+
 /** Inline note shown under a field group after a successful save. */
 export function SavedNote({ children }: { children: ReactNode }) {
   return (
