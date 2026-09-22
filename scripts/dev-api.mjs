@@ -478,7 +478,53 @@ const server = http.createServer(async (req, res) => {
   if (method === "GET" && p === "/me/downloads")
     return json(res, 200, { downloads: [], limit: 0, used: 0, offline_hours_allowed: 0 });
 
-  if (method === "GET" && p === "/me/confessions") return json(res, 200, []);
+  if (method === "GET" && p === "/me/confessions") return json(res, 200, state.userConfessions || []);
+
+  // ---- schedules (in-memory; shape parity with models.Schedule)
+  if (method === "GET" && p === "/schedules") return json(res, 200, state.schedules || []);
+  if (method === "POST" && p === "/schedules") {
+    if (!body?.label || !body?.time) return json(res, 400, { error: "label and time are required" });
+    if (!/^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(String(body.time))) return json(res, 400, { error: "time must be HH:MM" });
+    const sc = {
+      id: "sch-" + randomUUID(), user_id: state.user.id, label: String(body.label).slice(0, 80),
+      time: body.time, days_of_week: Array.isArray(body.days_of_week) ? body.days_of_week : [],
+      timezone: body.timezone || "UTC", duration_seconds: body.duration_seconds || 1800,
+      voice_id: body.voice_id || "", category_ids: body.category_ids || [],
+      enabled: body.enabled !== false, created_at: NOW(), updated_at: NOW(),
+    };
+    state.schedules = state.schedules || [];
+    state.schedules.push(sc);
+    return json(res, 201, sc);
+  }
+  if ((m = p.match(/^\/schedules\/([^/]+)\/start$/)) && method === "POST") {
+    const sc = (state.schedules || []).find((x) => x.id === m[1]);
+    if (!sc) return json(res, 404, { error: "schedule not found" });
+    const built = buildSession({ category_ids: sc.category_ids, duration_seconds: sc.duration_seconds, voice_id: sc.voice_id });
+    if (built.planLimit) return json(res, 402, { error: "longer sessions are part of Premium", code: "PLAN_LIMIT" });
+    if (built.code) return json(res, 422, { error: built.reason, code: built.code });
+    const id = "sess-" + randomUUID();
+    const sess = {
+      id, user_id: state.user.id, type: "LISTEN", duration_seconds: built.total, target_duration: sc.duration_seconds,
+      actual_duration: built.total, strategy: "BALANCED", title: sc.label, description: "",
+      voice_id: sc.voice_id || "voice-grace", status: "DRAFT", created_at: NOW(),
+      items: built.items.map((it) => ({ ...it, session_id: id })),
+    };
+    state.sessions.set(id, sess);
+    return json(res, 201, sessionView(sess));
+  }
+  if ((m = p.match(/^\/schedules\/([^/]+)$/)) && method === "PATCH") {
+    const sc = (state.schedules || []).find((x) => x.id === m[1]);
+    if (!sc) return json(res, 404, { error: "schedule not found" });
+    for (const k of ["label", "time", "days_of_week", "timezone", "duration_seconds", "voice_id", "category_ids", "enabled"]) {
+      if (body && k in body) sc[k] = body[k];
+    }
+    sc.updated_at = NOW();
+    return json(res, 200, sc);
+  }
+  if ((m = p.match(/^\/schedules\/([^/]+)$/)) && method === "DELETE") {
+    state.schedules = (state.schedules || []).filter((x) => x.id !== m[1]);
+    return json(res, 200, { ok: true });
+  }
   if (method === "POST" && p === "/me/confessions") {
     if (!body?.title || !body?.text) return json(res, 400, { error: "title and text are required" });
     const uc = {

@@ -11,9 +11,9 @@ import { useAuth } from "@/lib/auth-context";
  * proxy. The password policy is enforced by the server; the client mirrors
  * its public shape (length) only as a courtesy hint, never as the authority.
  */
-export function RegisterForm() {
+export function RegisterForm({ initialEmail = "" }: { initialEmail?: string }) {
   const { setToken } = useAuth();
-  const [fields, setFields] = useState({ name: "", email: "", password: "", confirm: "" });
+  const [fields, setFields] = useState({ name: "", email: initialEmail, password: "", confirm: "" });
   const [issues, setIssues] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);

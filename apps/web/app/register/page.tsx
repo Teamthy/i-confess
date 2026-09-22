@@ -9,10 +9,17 @@ export const metadata: Metadata = {
   robots: { index: true, follow: true },
 };
 
-export default function RegisterPage() {
+export default async function RegisterPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ email?: string | string[] }>;
+}) {
+  const sp = await searchParams;
+  const raw = Array.isArray(sp.email) ? sp.email[0] : sp.email;
+  const initialEmail = raw && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(raw) ? raw : "";
   return (
     <>
-      <RegisterForm />
+      <RegisterForm initialEmail={initialEmail} />
       <noscript>
         <p style={{ position: "fixed", inset: "auto 0 0 0", background: "#212927", color: "#E9EDEC", padding: "16px", textAlign: "center" }}>
           Enable JavaScript to create an account — or{" "}

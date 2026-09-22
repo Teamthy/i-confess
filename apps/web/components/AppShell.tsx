@@ -21,6 +21,8 @@ const NAV_ITEMS = [
   { href: "/app/voices", label: "Voices", icon: "♫" },
   { href: "/app/history", label: "History", icon: "↻" },
   { href: "/app/favorites", label: "Favorites", icon: "♡" },
+  { href: "/app/routines", label: "Routines", icon: "◫" },
+  { href: "/app/schedule", label: "Schedule", icon: "◷" },
   { href: "/app/community", label: "Community", icon: "⌂" },
   { href: "/app/search", label: "Search", icon: "⌕" },
 ] as const;
