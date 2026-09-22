@@ -7,7 +7,7 @@ import 'package:iconfess/src/core/widgets/states.dart';
 import 'package:iconfess_api/iconfess_api.dart';
 
 /// Hue in degrees, matching design/test_design.py so the app and the design
-/// system cannot disagree about what "green" means.
+/// system cannot disagree about what "navy" means.
 double hueOf(Color c) {
   // Color.r/g/b are already normalised to 0..1 in current Flutter; the 0-255
   // .red/.green/.blue accessors are the deprecated ones.
@@ -26,14 +26,14 @@ double hueOf(Color c) {
 
 void main() {
   group('theme', () {
-    test('brand primary is green in both modes', () {
+    test('brand primary is navy in both modes', () {
       // The generated tokens are guarded by design/test_design.py in CI. This is
       // the same assertion on the app side, so a token change that breaks the
       // brand fails here too rather than only in the design build.
       final hue = hueOf(IConfess.colorBrand500);
-      expect(hue, greaterThanOrEqualTo(100));
-      expect(hue, lessThanOrEqualTo(170));
-      expect(IConfess.colorBrand500, const Color(0xFF2A9D76));
+      expect(hue, greaterThanOrEqualTo(210));
+      expect(hue, lessThanOrEqualTo(240));
+      expect(IConfess.colorBrand500, const Color(0xFF123499));
     });
 
     test('discovery theme takes its colours from the tokens', () {

@@ -1,12 +1,18 @@
 "use client";
 
 /**
- * Client-side auth state for the authenticated shell.
+ * Client-side auth state for the whole site.
  *
- * Token is held in memory (never in URL) and persisted to localStorage so a
- * page refresh survives. The provider exposes login/logout/token for the
- * app-shell layout and its children. Server components read the token from
- * the cookie set by login, so they never see localStorage directly.
+ * The token lives in memory and is mirrored to localStorage so a refresh
+ * survives; it is never placed in a URL and never read by a server component
+ * (server pages pass only through /api with a bearer header or render their
+ * signed-out state). Mounted in the root layout so /login and /register can
+ * establish the session that every /app page then consumes.
+ *
+ * Expiry is reactive, not speculative: when the API answers 401, callers
+ * render their re-sign-in state. There is no client-side "premium flag"
+ * anywhere in this provider, because the server decides entitlement and a
+ * client copy of that decision could only ever be wrong or misleading.
  */
 
 import {
@@ -18,22 +24,15 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { authFetch, type AuthUser } from "./auth-client";
 
-export type AuthUser = {
-  id: string;
-  email: string;
-  display_name: string;
-  timezone?: string;
-  status: string;
-  email_verified: boolean;
-  avatar_url?: string;
-};
+export type { AuthUser };
 
 type AuthState = {
   user: AuthUser | null;
   token: string | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<{ ok: boolean; error?: string; mfaRequired?: boolean }>;
+  login: (email: string, password: string, code?: string) => Promise<{ ok: boolean; error?: string; mfaRequired?: boolean }>;
   logout: () => void;
   setToken: (token: string, user: AuthUser) => void;
 };
@@ -84,6 +83,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(() => {
+    // Ask the server to revoke this session first, with the bearer token it
+    // requires; clearing local state then stands even if that request fails.
+    try {
+      const t = localStorage.getItem(TOKEN_KEY);
+      fetch(`/api/auth/logout`, {
+        method: "POST",
+        headers: t ? { authorization: `Bearer ${t}` } : {},
+      }).catch(() => {});
+    } catch {
+      // ignore — nothing local is left behind either way
+    }
     setTokenState(null);
     setUser(null);
     try {
@@ -92,38 +102,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       // ignore
     }
-    // Fire-and-forget server logout.
-    fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
   }, []);
 
   const login = useCallback(
-    async (email: string, password: string) => {
-      try {
-        const res = await fetch("/api/auth/login", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ email, password }),
-        });
-        const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-        if (!res.ok) {
-          if (res.status === 403 && data.code === "mfa_required") {
-            return { ok: false, mfaRequired: true };
-          }
-          return {
-            ok: false,
-            error:
-              typeof data.error === "string" && data.error.length < 200
-                ? data.error
-                : "That email and password don't match an account.",
-          };
-        }
-        const t = String(data.token ?? "");
-        const u = data.user as AuthUser;
-        if (t && u) setToken(t, u);
-        return { ok: true };
-      } catch {
-        return { ok: false, error: "We couldn't reach the service. Please try again shortly." };
-      }
+    async (email: string, password: string, code?: string) => {
+      const res = await authFetch("/auth/login", { email, password, ...(code ? { code } : {}) });
+      if (res.code === "mfa_required") return { ok: false, mfaRequired: true, error: res.message };
+      if (!res.ok) return { ok: false, error: res.message ?? "That didn't work." };
+      if (res.token && res.user) setToken(res.token, res.user);
+      return { ok: true };
     },
     [setToken],
   );
@@ -138,19 +125,4 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 export function useAuth() {
   return useContext(AuthCtx);
-}
-
-/** Authenticated fetch helper — adds Bearer token and handles 401. */
-export async function authedFetch(
-  token: string,
-  path: string,
-  init?: RequestInit,
-): Promise<Response> {
-  const headers = new Headers(init?.headers);
-  headers.set("Authorization", `Bearer ${token}`);
-  headers.set("Accept", "application/json");
-  if (init?.body && !headers.has("Content-Type")) {
-    headers.set("Content-Type", "application/json");
-  }
-  return fetch(`/api${path}`, { ...init, headers });
 }

@@ -1,17 +1,22 @@
-/** Standalone audio player wrapping the existing player component. */
+/** The immersive player. Opens a session built by POST /sessions, from a resume link, or from history. */
+import { PlayerClient } from "@/components/PlayerClient";
 
-export default function PlayerPage() {
+export default async function PlayerPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ session?: string }>;
+}) {
+  // The session id is resolved on the server (a page-level `await` of
+  // searchParams), so the client island needs no dynamic read of its own.
+  const sp = await searchParams;
+  const sessionId = typeof sp.session === "string" && sp.session.length > 0 ? sp.session : null;
+
   return (
     <div className="ia-page">
       <div className="ia-page__head" style={{ textAlign: "center" }}>
-        <h1>Player</h1>
-        <p>The immersive audio player will appear here when a confession is playing.</p>
+        <p className="ia-section-title">{sessionId ? "Now playing" : "Player"}</p>
       </div>
-      <div className="ic-state">
-        <h3>Nothing playing</h3>
-        <p>Choose a confession and press play to start the experience.</p>
-        <a href="/app/explore" className="ic-btn ic-btn--secondary">Find a confession</a>
-      </div>
+      <PlayerClient sessionId={sessionId} />
     </div>
   );
 }

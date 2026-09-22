@@ -1,17 +1,18 @@
-/** Today's experience — a confession chosen for this moment. */
+/**
+ * Today's experience — resume what's open, or start with what is suggested.
+ * Backed by GET /home and GET /recommendations; nothing here invents a
+ * daily pick the backend does not make.
+ */
+import { DailyClient } from "@/components/DailyClient";
 
 export default function DailyPage() {
   return (
     <div className="ia-page">
       <div className="ia-page__head">
         <h1>Today</h1>
-        <p>A confession chosen for this day. Return tomorrow for a new one.</p>
+        <p>What the practice already holds for this moment — and where to begin if it holds nothing yet.</p>
       </div>
-      <div className="ic-state">
-        <h3>Start your daily practice</h3>
-        <p>Your daily confession will appear here once you begin listening. One confession, once a day — a ritual, not a feed.</p>
-        <a href="/app/categories" className="ic-btn ic-btn--secondary">Choose a category</a>
-      </div>
+      <DailyClient />
     </div>
   );
 }

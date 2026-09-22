@@ -6,7 +6,6 @@
  */
 
 import type { Metadata } from "next";
-import { AuthProvider } from "@/lib/auth-context";
 import { AppShell } from "@/components/AppShell";
 
 export const metadata: Metadata = {
@@ -14,9 +13,7 @@ export const metadata: Metadata = {
 };
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <AuthProvider>
-      <AppShell>{children}</AppShell>
-    </AuthProvider>
-  );
+  // AuthProvider is mounted at the root layout (shared with /login, which
+  // establishes the session). Only the shell wraps these pages.
+  return <AppShell>{children}</AppShell>;
 }
