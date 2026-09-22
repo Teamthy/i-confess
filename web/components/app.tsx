@@ -8,6 +8,9 @@ import { TCard } from "./marketing";
 import { useApp, mutate, track } from "@/lib/store";
 import { useAudio, useToast, useSearch } from "@/lib/ui";
 import { CATEGORIES, CONFESSIONS, PLANS as PLANS_LOCAL, catBySlug, confBySlug, sessionsFor, ALL_SESSIONS, sessionBySlug, buildQueue, motifStyle, queueItem, CAT_IMAGES, MOMENTS, PACKS, type Session, type QueueItem } from "@/lib/data";
+import { VoiceCard, SoundPanel, VoiceOrb, VoicePreview } from "./voice-catalog";
+import { VOICE_CATALOG, effectiveVoices, searchVoices, voiceAvailable } from "@/lib/voices";
+import { logAE } from "@/lib/audio-engine";
 
 const SIDE: [string, string, string][] = [["/app", "home", "Home"], ["/app/explore", "compass", "Explore"], ["/app/categories", "book", "Categories"], ["/app/sessions", "clock", "Sessions"], ["/app/voices", "mic", "Voices"], ["/app/history", "clock", "History"], ["/app/journal", "edit", "Journal"], ["/app/memory", "ast", "Memory"], ["/app/favorites", "heart", "Favorites"], ["/app/routines", "spark", "Routines"], ["/app/schedule", "cal", "Schedule"]];
 const BOTTOM: [string, string, string][] = [["/app", "home", "Home"], ["/app/explore", "compass", "Explore"], ["/app/community/create", "plus", "Create"], ["/app/history", "chart", "Activity"], ["/app/profile", "user", "Profile"]];
@@ -65,8 +68,8 @@ export function AppPage({ kind, slug, token }: { kind: string; slug?: string; to
     case "session": return <AppSession slug={slug!} />;
     case "builder": return <Builder />;
     case "player": return <Player />;
-    case "voices": return <><Head title="Voices" sub="Licensed narration" /><div className="voice-grid" style={{ gridTemplateColumns: "repeat(4,1fr)" }}><Link className="v-card" href="/app/voices/grace"><img className="avatar" src="/assets/voice-grace.jpg" alt="" /><h3>Grace</h3><span className="v-style">Warm · Calm</span><VoicePrev /></Link>{[1, 2, 3].map((i) => <div className="v-card locked" key={i}><span className="avatar-slot"><Icon n="lock" s={18} /></span><h3>In curation</h3></div>)}</div></>;
-    case "voice": return <AppPage kind="voices" />;
+    case "voices": return <AppVoices />;
+    case "voice": return <AppVoiceDetail slug={slug!} />;
     case "journal": return <JournalApp />;
     case "memory": return <MemoryApp />;
     case "partners": return <PartnersApp />;
@@ -89,7 +92,7 @@ export function AppPage({ kind, slug, token }: { kind: string; slug?: string; to
     case "communityCreate": return <CreateConfession />;
     case "communityDetail": return <CommunityDetail slug={slug!} />;
     case "profile": return <Profile />;
-    case "settings": return <><Head title="Settings" /><div className="card-row snap">{[["/app/settings/account", "Account", "Name, email, password"], ["/app/settings/privacy", "Privacy", "Defaults and data"], ["/app/settings/notifications", "Notifications", "Nudges and reminders"], ["/app/settings/playback", "Playback", "Voice, speed, volume"], ["/app/settings/accessibility", "Accessibility", "Text, captions, motion"]].map(([h, t, s]) => <Link className="tile" href={h} key={h}><h4>{t}</h4><p>{s}</p><span className="textlink" style={{ marginTop: 6 }}>Open <Icon n="arrow" s={12} /></span></Link>)}</div></>;
+    case "settings": return <><Head title="Settings" /><div className="card-row snap">{[["/app/settings/account", "Account", "Name, email, password"], ["/app/settings/privacy", "Privacy", "Defaults and data"], ["/app/settings/notifications", "Notifications", "Nudges and reminders"], ["/app/settings/playback", "Playback", "Voice, speed, volume"], ["/app/settings/accessibility", "Accessibility", "Text, captions, motion"], ["/admin", "Audio Studio", "Internal · voices, rights, queue"]].map(([h, t, s]) => <Link className="tile" href={h} key={h}><h4>{t}</h4><p>{s}</p><span className="textlink" style={{ marginTop: 6 }}>Open <Icon n="arrow" s={12} /></span></Link>)}</div></>;
     case "settingsAccount": return <><Head title="Account" /><div className="form-card" style={{ maxWidth: 560 }}><div className="setting-row"><div><b>Name</b><span>{st.user!.name}</span></div></div><div className="setting-row"><div><b>Email</b><span>{st.user!.email}</span></div></div><div className="setting-row"><div><b>Password</b><span>••••••••</span></div><Link className="btn btn-ghost btn-sm" href="/reset-password">Change</Link></div></div></>;
     case "settingsPrivacy": return <><Head title="Privacy" /><div className="form-card" style={{ maxWidth: 560 }}><Switch title="Private by default" sub="New confessions start private" path="privacy.privateByDefault" /><Switch title="Show streak" sub="Let your streak be visible in your profile" path="privacy.showStreak" /><Switch title="Pause history" sub="Practise without recording anything. Streaks and charts pause too." path="privacy.pauseHistory" /><div className="setting-row"><div><b>Your data</b><span>Export or delete everything</span></div><ExportBtn /></div><Switch title="Monthly auto-export" sub="A human-readable backup of your journal and confessions, emailed to you on the 1st." path="notifications.autoExport" /><div className="field" style={{ marginTop: 12 }}><label>Export email</label><input type="email" defaultValue={st.settings.notifications.autoExportEmail} placeholder="you@example.com" onBlur={(e) => mutate((x) => { x.settings.notifications.autoExportEmail = e.target.value; })} /></div></div></>;
     case "settingsNotifications": return <AppPage kind="notifications" />;
@@ -112,7 +115,6 @@ export function AppPage({ kind, slug, token }: { kind: string; slug?: string; to
   }
 }
 
-function VoicePrev() { const audio = useAudio(); return <button className="btn btn-primary btn-sm" onClick={() => audio.play([{ slug: "voice-preview", title: "Grace — voice preview", category: "peace", text: "Peace beyond understanding. Speak it, hear it, and let the words return to you." }])}><Icon n="play" s={12} /> Preview</button>; }
 function ExportBtn() { const toast = useToast(); return <button className="btn btn-ghost btn-sm" onClick={() => toast("Export queued — you'll receive a download link (demo).")}>Export</button>; }
 
 function AppHome() {
@@ -220,20 +222,16 @@ function Player() {
   const [timer, setTimer] = useState(0);
   const tRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const [still, setStill] = useState(0);
-  const [ambient, setAmbient] = useState(false);
-  const ambRef = React.useRef<{ ctx: AudioContext; src: AudioBufferSourceNode } | null>(null);
+  const ambient = !!st.settings.ambienceId;
   const chime = () => { try { const C = window.AudioContext; const ctx = new C(); const o = ctx.createOscillator(); const g = ctx.createGain(); o.frequency.value = 528; g.gain.setValueAtTime(0.07, ctx.currentTime); g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 1.4); o.connect(g); g.connect(ctx.destination); o.start(); o.stop(ctx.currentTime + 1.5); } catch { } };
   React.useEffect(() => { if (audio.status === "completed") setStill(30); }, [audio.status]);
   React.useEffect(() => { if (still <= 0) return; if (still === 1) chime(); const t = setTimeout(() => setStill((v) => v - 1), 1000); return () => clearTimeout(t); }, [still]);
   const toggleAmbient = () => {
     if (st.user?.plan === "free") { toast("Ambient bed is a Premium feature"); return; }
-    if (ambient) { ambRef.current?.src.stop(); ambRef.current?.ctx.close(); ambRef.current = null; setAmbient(false); return; }
-    try {
-      const ctx = new window.AudioContext(); const len = ctx.sampleRate * 2; const buf = ctx.createBuffer(1, len, ctx.sampleRate); const d = buf.getChannelData(0); let last = 0;
-      for (let i = 0; i < len; i++) { const w = Math.random() * 2 - 1; last = (last + 0.02 * w) / 1.02; d[i] = last * 3.5; }
-      const src = ctx.createBufferSource(); src.buffer = buf; src.loop = true; const g = ctx.createGain(); g.gain.value = 0.05; src.connect(g); g.connect(ctx.destination); src.start();
-      ambRef.current = { ctx, src }; setAmbient(true);
-    } catch { toast("Audio not available"); }
+    const next = st.settings.ambienceId ? "" : "rain";
+    mutate((x) => { x.settings.ambienceId = next; });
+    if (next) toast("Ambience: rain — pick others in Sound"); else toast("Ambience off");
+    logAE("ambience_changed", { id: next });
   };
   const whisper = () => {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -265,7 +263,7 @@ function Player() {
   return (
     <div className="player-stage">
       {it && CAT_IMAGES[catSlug] && <img className="ps-canvas" src={`/assets/${CAT_IMAGES[catSlug]}`} alt="" aria-hidden="true" />}
-      <div className="ps-voice"><img src="/assets/voice-grace.jpg" alt="" /> Voice · Grace</div>
+      <Link className="ps-voice" href="/app/voices" style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><img src="/assets/voice-grace.jpg" alt="" style={{ display: "none" }} /> Voice · {audio.voiceName()} · change <Icon n="arrow" s={12} /></Link>
       <Link className="btn btn-ghost on-dark btn-sm ps-exit" href="/app"><Icon n="exit" s={14} /> Exit</Link>
       <span className="ps-cat">{it ? it.category : "—"}</span>
       <h1>{it ? it.title : "Nothing playing"}</h1>
@@ -298,6 +296,7 @@ function Player() {
           ))}
         </div>
       )}
+      <div style={{ maxWidth: 600, margin: "28px auto 0", width: "100%" }}><SoundPanel compact /></div>
       <div role="status" aria-live="polite" className="sr-only">{it ? `Now ${audio.status}: ${it.title}, ${it.category}` : "Nothing playing"}</div>
       {still > 0 && (
         <div className="still-veil" role="dialog" aria-label="Stillness">
@@ -430,25 +429,20 @@ function Profile() {
 }
 
 function Playback() {
-  const st = useApp(); const toast = useToast();
+  const st = useApp();
   return (
     <>
-      <Head title="Playback" />
-      <div className="form-card" style={{ maxWidth: 560 }}>
-        <div className="setting-row"><div><b>Narration voice</b><span>Grace — more voices as they license</span></div><span className="tag private">Grace</span></div>
-        <div className="setting-row"><div><b>Speed</b><span>Current: {st.settings.rate}×</span></div><SpeedChips /></div>
-        <div className="setting-row"><div><b>Volume</b><span>Browser speech volume</span></div><input type="range" min={0} max={1} step={0.1} defaultValue={st.settings.volume} style={{ width: 140 }} onChange={(e) => { mutate((s) => { s.settings.volume = Number(e.target.value); }); toast("Volume saved"); }} /></div>
-        <div className="setting-row"><div><b>Voice EQ</b><span>Tone shaping for Grace</span></div><div className="chip-row">{[["warm", "Warm"], ["bright", "Bright"], ["calm", "Calm"]].map(([v, l]) => <button className="chip" key={v} aria-pressed={st.settings.eq === v} onClick={() => { mutate((x) => { x.settings.eq = v; }); toast(l + " EQ"); }}>{l}</button>)}</div></div>
+      <Head title="Playback" sub="One sound, tuned to you — saved across this device" />
+      <div className="form-card" style={{ maxWidth: 560, marginBottom: 16 }}>
+        <div className="setting-row"><div><b>Narration voice</b><span>Curated catalog · rights-tracked</span></div><Link className="btn btn-ghost btn-sm" href="/app/voices">{st.settings.voiceId === "grace" ? "Grace" : (st.settings.voiceId.charAt(0).toUpperCase() + st.settings.voiceId.slice(1))} · change</Link></div>
         <Switch title="Loudness normalisation" sub="Even volume across every confession and session" path="normalize" />
-        <div className="setting-row"><div><b>Voice warmth preset</b><span>Premium · pace and tone per part of day</span></div><div className="chip-row">{[["dawn", "Calm dawn"], ["steady", "Steady midday"], ["night", "Soft night"]].map(([v, l]) => <button className="chip" key={v} aria-pressed={st.settings.preset === v} onClick={() => { if (st.user?.plan === "free") { toast("Presets are a Premium feature"); return; } mutate((x) => { x.settings.preset = v; x.settings.rate = v === "night" ? 0.9 : 1; }); toast(l + " preset on"); }}>{l}</button>)}</div></div>
-        <div className="setting-row"><div><b>Offline quality</b><span>Premium · lossless packs for saved sessions</span></div><div className="chip-row">{[["std", "Standard"], ["lossless", "Lossless"]].map(([v, l]) => <button className="chip" key={v} aria-pressed={st.settings.dlQuality === v} onClick={() => { if (st.user?.plan === "free") { toast("Lossless downloads are Premium"); return; } mutate((x) => { x.settings.dlQuality = v; }); toast(l + " quality"); }}>{l}</button>)}</div></div>
+        <div className="setting-row"><div><b>Voice EQ preset</b><span>Legacy tone shaping</span></div><div className="chip-row">{[["warm", "Warm"], ["bright", "Bright"], ["calm", "Calm"]].map(([v, l]) => <button className="chip" key={v} aria-pressed={st.settings.eq === v} onClick={() => { mutate((x) => { x.settings.eq = v; }); }}>{l}</button>)}</div></div>
+        <div className="setting-row"><div><b>Voice warmth preset</b><span>Premium · pace and tone per part of day</span></div><div className="chip-row">{[["dawn", "Calm dawn"], ["steady", "Steady midday"], ["night", "Soft night"]].map(([v, l]) => <button className="chip" key={v} aria-pressed={st.settings.preset === v} onClick={() => { mutate((x) => { x.settings.preset = v; x.settings.rate = v === "night" ? 0.9 : 1; }); }}>{l}</button>)}</div></div>
+        <div className="setting-row"><div><b>Offline quality</b><span>Premium · lossless packs for saved sessions</span></div><div className="chip-row">{[["std", "Standard"], ["lossless", "Lossless"]].map(([v, l]) => <button className="chip" key={v} aria-pressed={st.settings.dlQuality === v} onClick={() => { mutate((x) => { x.settings.dlQuality = v; }); }}>{l}</button>)}</div></div>
       </div>
+      <div style={{ maxWidth: 560 }}><SoundPanel compact /></div>
     </>
   );
-}
-function SpeedChips() {
-  const st = useApp();
-  return <div className="chip-row" style={{ marginTop: 10 }}>{[0.8, 1, 1.2].map((r) => <button className="chip" key={r} aria-pressed={st.settings.rate === r} onClick={() => mutate((s) => { s.settings.rate = r; })}>{r}×</button>)}</div>;
 }
 
 function Sub({ manage }: { manage?: boolean }) {
@@ -773,4 +767,57 @@ function WrappedApp() {
       </div>
     </>
   );
+}
+
+
+/* ---------- Audio + Voice Engine: in-app voice browser (§12–§15) ---------- */
+function AppVoices() {
+  const [q, setQ] = useState("");
+  const [region, setRegion] = useState("");
+  const [free, setFree] = useState(false);
+  const [voices, setVoices] = useState<ReturnType<typeof effectiveVoices>>(VOICE_CATALOG);
+  useEffect(() => { setVoices(effectiveVoices()); }, []);
+  const pool = voices.filter((v) => v.status !== "SUSPENDED" && v.rightsStatus !== "REVOKED");
+  const shown = searchVoices(pool, q, { region: region || undefined, free: free || undefined });
+  return <>
+    <Head title="Voices" sub="Curated, licensed, rights-tracked narration" />
+    <div className="form-card" style={{ maxWidth: 760, marginBottom: 20 }}>
+      <input type="search" aria-label="Search voices" placeholder="Search: Nigerian · Pidgin · calm · preacher · British…" value={q} onChange={(e) => setQ(e.target.value)} style={{ width: "100%" }} />
+      <div className="chip-row" style={{ marginTop: 10 }}>
+        {["", "Nigeria", "West Africa", "Europe", "North America", "Global"].map((r) => <button key={r || "all"} className="chip" aria-pressed={region === r} onClick={() => setRegion(r)}>{r || "All regions"}</button>)}
+        <button className="chip" aria-pressed={free} onClick={() => setFree(!free)}>Free</button>
+      </div>
+    </div>
+    {shown.length ? <div className="voice-grid vc-grid">{shown.map((v) => <VoiceCard key={v.id} v={v} />)}</div> : <EmptyState icon="mic" title="No voices match" sub="Clear a filter, or check back as new voices clear rights review." />}
+    <div className="form-card" style={{ maxWidth: 760, marginTop: 24 }}><SoundPanel /></div>
+  </>;
+}
+function AppVoiceDetail({ slug }: { slug: string }) {
+  const st = useApp(); const toast = useToast();
+  const [v, setV] = useState<ReturnType<typeof effectiveVoices>[number] | null>(() => VOICE_CATALOG.find((x) => x.slug === slug) || null);
+  useEffect(() => { setV(effectiveVoices().find((x) => x.slug === slug) || null); }, [slug]);
+  if (!v) return <EmptyState icon="mic" title="Voice not found" sub="It may have been retired — rights first, always." cta={<Link className="btn btn-primary" href="/app/voices">All voices</Link>} />;
+  const avail = voiceAvailable(v);
+  const cats = v.categories.map(catBySlug).filter(Boolean);
+  const featured = cats.flatMap((c) => CONFESSIONS.filter((x) => x.category === c!.name).slice(0, 2)).slice(0, 4);
+  return <>
+    <Link className="textlink" href="/app/voices"><Icon n="arrowL" s={12} /> Voices</Link>
+    <div className="form-card rv in" style={{ marginTop: 12, display: "flex", gap: 18, alignItems: "center", flexWrap: "wrap" }}>
+      <VoiceOrb v={v} size={92} />
+      <div style={{ flex: 1, minWidth: 220 }}>
+        <h3 style={{ margin: 0 }}>{v.displayName}</h3>
+        <p className="small">{v.description}</p>
+        <div className="chip-row" style={{ marginTop: 8 }}>{v.styles.map((x) => <span className="chip" key={x} style={{ pointerEvents: "none" }}>{x}</span>)}</div>
+      </div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <VoicePreview v={v} />
+        <button type="button" className="btn btn-primary btn-sm" onClick={() => {
+          if (!avail) { toast(v.displayName + " is not in production yet"); return; }
+          if (v.premium && st.user?.plan === "free") { toast("Premium voices unlock with a plan"); return; }
+          mutate((x) => { x.settings.voiceId = v.slug; }); logAE("voice_selected", { voiceId: v.id }); toast("Narration voice: " + v.displayName);
+        }}>Use this voice</button>
+      </div>
+    </div>
+    {featured.length > 0 && <div className="app-section"><div className="section-head"><h3>Curated for</h3></div><div className="grid4 snap">{featured.map((c) => <ConfTile key={c.slug} c={c} />)}</div></div>}
+  </>;
 }

@@ -1028,3 +1028,17 @@ html{scroll-behavior:smooth}
 [data-saver="on"] .t-photo img,[data-saver="on"] .blob img,[data-saver="on"] .dhero-bg,[data-saver="on"] .band>img,[data-saver="on"] .rec-band>img,[data-saver="on"] .ps-canvas,[data-saver="on"] .split-img img{display:none}
 [data-saver="on"] .t-photo{background:linear-gradient(140deg,var(--light),var(--n100))}
 [data-saver="on"] .band{background:var(--navy)}
+
+/* ---------- Audio + Voice Engine (v10) ---------- */
+.vc-grid { grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 18px; }
+.vc-2 { display: flex; flex-direction: column; gap: 4px; }
+.vc-2 .v-desc { flex: 1; }
+.vc-2[data-avail="0"] { opacity: .62; }
+.vc-toolbar { display: flex; flex-direction: column; gap: 14px; align-items: center; margin-top: 34px; }
+.vc-toolbar input[type="search"] { width: min(560px, 100%); padding: 14px 20px; border-radius: 999px; }
+.sound-panel .setting-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.sound-panel input[type="range"] { accent-color: var(--blue2, #123499); }
+.adm-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.adm-table th { text-align: left; font-size: 10px; letter-spacing: .14em; text-transform: uppercase; opacity: .6; padding: 8px 10px; border-bottom: 1px solid rgba(125,125,125,.25); }
+.adm-table td { padding: 10px; border-bottom: 1px solid rgba(125,125,125,.14); vertical-align: top; }
+@media (max-width: 720px) { .vc-toolbar input[type="search"] { width: 100%; } }

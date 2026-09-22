@@ -4,6 +4,7 @@ import { Icon, SessionTile, ArticleCard, SectionHead, PhoneMock, EmptyState, Log
 import { PlayChip, PlayBtn, PlaySessionBtn, FavBtn, ShareBtn, VoicePreviewBtn, ConfTile, ConfessionFilter, ConfDetailTabs, FaqList, NewsletterForm, ContactForm, RailScroll, SearchBtn, HeroCtas, StoryTabs, ReviewLog, RadioBtn, SnippetBtn, Annotations, SnippetAuto } from "./islands";
 import { CATEGORIES, CONFESSIONS, ARTICLES, VOICES, PLANS, FAQS, catBySlug, confBySlug, artBySlug, sessionsFor, ALL_SESSIONS, sessionBySlug, motifStyle, CAT_IMAGES } from "@/lib/data";
 import type { Category } from "@/lib/data";
+import { VoicesDiscovery, VoiceProfile } from "./voice-catalog";
 
 /* ================= HOME ================= */
 export function Home() {
@@ -446,39 +447,12 @@ export function SessionDetail({ slug }: { slug: string }) {
 }
 
 export function Voices() {
-  return (
-    <section className="section container" style={{ paddingTop: "calc(var(--header-h) + 56px)" }}>
-      <SectionHead eyebrow="Voice Library" title={<>Hear the words <span className="accent">differently.</span></>} lede="Every voice is licensed, reviewed and consistent — the same on the fortieth morning as the first." />
-      <div className="voice-grid" style={{ gridTemplateColumns: "repeat(4,1fr)" }}>
-        <Link className="v-card" href="/voices/grace"><img className="avatar" src="/assets/voice-grace.jpg" alt="" /><h3>Grace</h3><span className="v-style">Warm · Calm · Professional</span><p className="v-desc">English · Licensed for iCONFESS, worldwide.</p><span className="textlink">Explore voice <Icon n="arrow" s={12} /></span></Link>
-        {[1, 2, 3].map((i) => <div className="v-card locked" key={i}><span className="avatar-slot"><Icon n="lock" s={18} /></span><h3>In curation</h3><span className="v-style">Voice slot</span><p className="v-desc">Rights clearance in progress. We never ship an unlicensed voice.</p></div>)}
-      </div>
-      <PageStats items={[["1", "voice live today"], ["3", "slots in curation"], ["Licensed", "worldwide, for iCONFESS"], ["Consistent", "same voice, fortieth morning"]]} />
-      <CtaBand title="Hear a confession in Grace's voice right now." cta="Play a preview" href="/voices/grace" />
-    </section>
-  );
+  return <VoicesDiscovery />;
 }
 
 export function VoiceDetail({ slug }: { slug: string }) {
-  if (slug !== "grace") return <NotFoundBody />;
-  return (
-    <section className="container detail-hero">
-      <Link className="textlink" href="/voices"><Icon n="arrowL" s={12} /> Voices</Link>
-      <div style={{ display: "flex", gap: 28, alignItems: "center", marginTop: 28, flexWrap: "wrap" }}>
-        <img src="/assets/voice-grace.jpg" alt="Grace" style={{ width: 140, height: 140, borderRadius: "50%", objectFit: "cover" }} />
-        <div>
-          <h1 className="h1">Grace</h1>
-          <p className="lede" style={{ marginTop: 8 }}>Warm, calm professional narration voice. English.</p>
-          <div style={{ display: "flex", gap: 10, marginTop: 14 }}><span className="tag shared">Active</span><span className="tag private">Licensed · i-confess studio · global TTS</span></div>
-          <div style={{ marginTop: 18 }}><VoicePreviewBtn /></div>
-        </div>
-      </div>
-      <div className="app-section" style={{ marginTop: 64 }}>
-        <div className="section-head"><h3 className="h3">Narrated by Grace</h3></div>
-        <div className="grid4 snap">{CONFESSIONS.slice(0, 4).map((c) => <ConfTile key={c.slug} c={c} />)}</div>
-      </div>
-    </section>
-  );
+  if (!VOICES.some((v) => v.slug === slug)) return <NotFoundBody />;
+  return <VoiceProfile slug={slug} />;
 }
 
 export function HowItWorks() {

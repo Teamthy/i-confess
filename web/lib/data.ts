@@ -27,7 +27,13 @@ export const ARTICLES: Article[] = [
   { slug: "the-quiet-app", category: "Lifestyle", title: "Designing a quiet app on purpose", excerpt: "No badges, no noise, no anxiety mechanics. The design choices behind a product that wants to be part of your morning, not your scrolling.", author: "iCONFESS", date: "2026-07-07", readingTime: "4 min read", body: ["Most apps compete for attention. iCONFESS competes for a different resource: a few honest minutes. The design reflects that from the first screen — deep calm surfaces, one suggestion, one next step.", "We do not use streak guilt. If you miss a morning, the app does not punish you; it simply offers the words again at midday. Missing is part of being human, and the practice is designed to survive it.", "Motion is used sparingly, sound is never forced, and nothing autoplays. The loudest thing in iCONFESS should be the words themselves."] },
 ];
 
-export const VOICES: Voice[] = [{ slug: "grace", name: "Grace", description: "Warm, calm professional narration voice.", type: "professional", gender: "female", language: "en", premium: false, status: "active", rights: "Licensed — i-confess studio, global TTS" }];
+import { VOICE_CATALOG } from "./voices";
+export const VOICES: Voice[] = VOICE_CATALOG.map((v) => ({
+  slug: v.slug, name: v.displayName, description: v.description,
+  type: (v.styles[0] || "professional").toLowerCase(), gender: v.genderPresentation, language: v.locale,
+  premium: v.premium, status: v.status.toLowerCase(),
+  rights: v.rightsStatus === "APPROVED" ? `Licensed — ${v.rights.rightsOwner}, ${v.rights.territories}` : `Rights ${v.rightsStatus.toLowerCase()} — not in production`,
+}));
 
 export const PLANS: Plan[] = [
   { id: "monthly", name: "Premium Monthly", interval: "month", trialDays: 7, prices: { NGN: "₦1,500", USD: "$4.99", GBP: "£3.99", EUR: "€4.99", PHP: "₱299" }, features: ["premium_voices", "offline_downloads", "long_sessions"] },
