@@ -72,6 +72,30 @@ export default function SessionsPage() {
           </div>
         </section>
 
+        <section className="ic-section ic-section--mist">
+          <div className="ic-container">
+            <SectionHead
+              eyebrow="Session starters"
+              title="Begin from somewhere specific."
+              lede="Four prepared shapes — a category, a length, a reason. Each one opens in the builder, ready to make yours."
+            />
+            <div className="ic-grid ic-grid--3" style={{ marginTop: "var(--ic-spacing-6)" }}>
+              {[
+                { slug: "morning-peace", minutes: "5 minutes", title: "Morning peace", body: "Five unhurried minutes before the noise begins." },
+                { slug: "healing-at-midday", minutes: "10 minutes", title: "Healing at midday", body: "A ten-minute reset in the middle of everything." },
+                { slug: "evening-rest", minutes: "15 minutes", title: "Evening rest", body: "Fifteen minutes to release the day." },
+                { slug: "faith-for-the-week", minutes: "10 minutes", title: "Faith for the week", body: "Begin the week by saying what you believe out loud." },
+              ].map((s) => (
+                <Link key={s.slug} href={`/sessions/${s.slug}`} className="ic-card ic-card--hover" style={{ padding: "var(--ic-spacing-6)", textDecoration: "none", display: "grid", gap: "var(--ic-spacing-3)" }}>
+                  <span className="ic-frame__kicker">{s.minutes}</span>
+                  <h3 style={{ fontSize: "var(--ic-font-size-subheading)", fontWeight: "var(--ic-font-weight-semibold)" }}>{s.title}</h3>
+                  <p style={{ fontSize: "var(--ic-font-size-bodySm)", color: "var(--ic-color-neutral-600)" }}>{s.body}</p>
+                </Link>
+              ))}
+            </div>
+          </div>
+        </section>
+
         <section className="ic-section ic-section--ink on-ink" style={{ textAlign: "center" }}>
           <div className="ic-container ic-container--text">
             <h2 className="ic-display" style={{ marginInline: "auto" }}>

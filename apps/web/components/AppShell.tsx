@@ -12,6 +12,9 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { useAuth } from "@/lib/auth-context";
+import { usePlayer } from "@/lib/player-context";
+import { MiniPlayer } from "@/components/MiniPlayer";
+import { ConsentBanner } from "@/components/ConsentBanner";
 
 const NAV_ITEMS = [
   { href: "/app", label: "Home", icon: "◉" },
@@ -21,6 +24,8 @@ const NAV_ITEMS = [
   { href: "/app/voices", label: "Voices", icon: "♫" },
   { href: "/app/history", label: "History", icon: "↻" },
   { href: "/app/favorites", label: "Favorites", icon: "♡" },
+  { href: "/app/routines", label: "Routines", icon: "◫" },
+  { href: "/app/schedule", label: "Schedule", icon: "◷" },
   { href: "/app/community", label: "Community", icon: "⌂" },
   { href: "/app/search", label: "Search", icon: "⌕" },
 ] as const;
@@ -119,8 +124,9 @@ export function AppShell({ children }: { children: ReactNode }) {
         ))}
       </nav>
 
-      {/* Mini-player slot — filled by client-side player context */}
-      <div id="mini-player" aria-live="polite" />
+      {/* Persistent mini-player — reflects the single provider element. */}
+      <MiniPlayer />
+      <ConsentBanner />
     </div>
   );
 }

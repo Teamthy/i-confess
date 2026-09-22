@@ -27,3 +27,24 @@ export function railColor(slug: string): string {
 export function railStyle(slug: string): React.CSSProperties {
   return { ["--rail" as string]: railColor(slug) };
 }
+
+/**
+ * Category card motif: a two-stop navy gradient derived from the same tone.
+ * One visual system for all 39 categories — the ramp is the token ramp, so
+ * a card can never drift into a second palette.
+ */
+const MOTIF_PAIRS: Record<string, [string, string]> = {
+  "#00072D": ["#123499", "#00072D"],
+  "#051650": ["#425EAF", "#051650"],
+  "#081D61": ["#123499", "#081D61"],
+  "#0A2472": ["#7288C4", "#0A2472"],
+  "#123499": ["#A3B3DA", "#123499"],
+  "#141918": ["#425EAF", "#141918"],
+  "#0A0E0D": ["#123499", "#0A0E0D"],
+};
+
+export function motifStyle(slug: string): React.CSSProperties {
+  const base = railColor(slug);
+  const [from, to] = MOTIF_PAIRS[base] ?? ["#123499", "#00072D"];
+  return { background: `linear-gradient(135deg, ${from} 0%, ${to} 78%)` };
+}

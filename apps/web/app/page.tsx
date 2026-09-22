@@ -1,11 +1,16 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SiteFooter } from "@/components/SiteFooter";
 import { Reveal } from "@/components/Reveal";
-import { CategoryRail } from "@/components/CategoryRail";
-import { SectionHead, ConfessionCard } from "@/components/Sections";
+import { SectionHead } from "@/components/Sections";
+import { VoicePreview } from "@/components/VoicePreview";
+import { HomeExperienceCards, type CuratedCards } from "@/components/HomeExperienceCards";
+import { NewsletterForm } from "@/components/NewsletterForm";
+import { motifStyle } from "@/lib/categoryColor";
 import { api, type Category, type Confession, type Voice } from "@/lib/api";
+import { ARTICLES } from "@/content/articles";
 import { SITE_URL } from "@/lib/site";
 
 export const metadata: Metadata = {
@@ -13,331 +18,285 @@ export const metadata: Metadata = {
 };
 
 /**
- * The homepage journey: PAUSE → FEEL → UNDERSTAND → EXPERIENCE → BELIEVE →
- * BEGIN. All catalogue data is fetched from the Go API at request time with
- * ISR; nothing on the page is fabricated. If the API is down the page still
- * renders with its editorial content and honest error states in the
- * data-driven rails.
+ * Homepage — the reference rhythm (ledger 47, motifs M2–M12):
+ *
+ *   light editorial hero → overlapping cards → light story →
+ *   DARK category panel → light principles → immersive image →
+ *   light voices → mist community → light statement → light journal →
+ *   mist FAQ → newsletter split → light final CTA → DARK footer.
+ *
+ * All catalogue data (categories, confessions, voices, counts) is fetched
+ * from the Go API at request time with ISR; nothing is fabricated. If the
+ * API is down the page still renders its editorial content with honest
+ * error states in the data-driven rails.
  */
 
-// Real confession text fetched from the API, used inside the hero card.
-// The fallback line is the product's own positioning, not a fabricated quote.
-function heroText(
-  confession: Confession | undefined,
-  category: Category | undefined,
-): { kicker: string; text: string } {
-  if (confession) {
-    return {
-      kicker: `${category?.name ?? "Peace"} · spoken confession`,
-      text:
-        confession.long_text ||
-        confession.medium_text ||
-        confession.short_text ||
-        "A confession to speak over your life.",
-    };
-  }
-  return {
-    kicker: "Peace · spoken confession",
-    text: "Speak words that steady you. iCONFESS turns a few intentional minutes into something you return to.",
-  };
-}
+const FAQ: Array<[string, string]> = [
+  [
+    "What is iCONFESS?",
+    "iCONFESS is a daily confession practice. Choose an area of life, hear a confession spoken over you, and return to it until it becomes part of how you think and live.",
+  ],
+  [
+    "How does iCONFESS work?",
+    "Pick an area of life and how long you have. iCONFESS assembles a session of confessions and Scripture in a curated voice, and guides you through it. Sessions can be saved, scheduled, and repeated.",
+  ],
+  [
+    "What are categories?",
+    "Categories are the 39 areas of life the library is organised around — peace, healing, faith, provision, relationships, and more. Each one holds confessions written for that area, and sessions are built from them.",
+  ],
+  [
+    "Can I create my own confession?",
+    "Yes. Write confessions in your own words from your account. Keep them private, share them with people you choose, or offer them for review — nothing reaches the community without review.",
+  ],
+  [
+    "Can my confession remain private?",
+    "Yes. Private confessions are yours alone, and deletion tools are built in. Publication only ever happens to content you explicitly offer for review.",
+  ],
+  [
+    "How does audio work?",
+    "Every confession can be heard as well as read, in a curated voice you choose. Sessions stream with playback controls — play, pause, seek, speed — and the mobile app supports offline listening for saved sessions on Premium.",
+  ],
+  [
+    "What is Premium?",
+    "Premium unlocks the complete library, extended session lengths, premium voices, and personalised routines. The core experience — including a wide selection of categories — is free.",
+  ],
+  [
+    "Can I use iCONFESS on the web?",
+    "Yes. The full experience — sessions, audio, routines, schedules, community, settings — runs in the browser. Sign in once and your practice follows you.",
+  ],
+  [
+    "Can I use iCONFESS on mobile?",
+    "Yes. The iOS and Android apps carry the same practice with offline listening and reminders. See the download page for availability in your region.",
+  ],
+  [
+    "How do I manage my subscription?",
+    "From your subscription settings, at any time — upgrade, cancel, or restore a purchase. Your practice and history remain yours whatever you choose.",
+  ],
+  [
+    "How is my data handled?",
+    "Private content is never exposed publicly or to search engines. The privacy policy names exactly what is collected and why, and account deletion is self-serve.",
+  ],
+];
+
+const PRINCIPLES = [
+  {
+    n: "01",
+    t: "Intention",
+    b: "Every session begins with a choice — an area of life, a length, a voice. Nothing plays by accident.",
+    active: false,
+  },
+  {
+    n: "02",
+    t: "Presence",
+    b: "One confession at a time, spoken then rested. No feed, no queue of infinite nexts.",
+    active: true,
+  },
+  {
+    n: "03",
+    t: "Repetition",
+    b: "The words return daily until they stop being affirmations and start being descriptions.",
+    active: false,
+  },
+  {
+    n: "04",
+    t: "Personal experience",
+    b: "Your shelf, your routines, your schedule. The practice shapes around the life you have.",
+    active: false,
+  },
+];
+
+const JOURNAL_IMAGES = ["/images/story.jpg", "/images/newsletter.jpg", "/images/community.jpg"];
 
 export default async function HomePage() {
   const [categoriesRes, voicesRes] = await Promise.all([api.categories(), api.voices()]);
-  const categories = categoriesRes.ok ? categoriesRes.data : [];
-  const voices = voicesRes.ok ? voicesRes.data : [];
+  const categories: Category[] = categoriesRes.ok ? categoriesRes.data : [];
+  const voices: Voice[] = voicesRes.ok ? voicesRes.data.filter((v) => v.status === "active") : [];
 
-  // Featured category: Peace, per the homepage concept; falls back to the
-  // first published category if Peace is absent.
-  const peace =
-    categories.find((c) => c.slug === "peace") ?? categories[0];
+  const peace = categories.find((c) => c.slug === "peace") ?? categories[0];
   const peaceConfessionsRes = peace
     ? await api.categoryConfessions(peace.id)
     : ({ ok: false, status: 404, message: "" } as const);
-  const peaceConfessions = peaceConfessionsRes.ok ? peaceConfessionsRes.data : [];
+  const peaceConfessions: Confession[] = peaceConfessionsRes.ok ? peaceConfessionsRes.data : [];
 
   const featured = peaceConfessions[0];
-  const more = peaceConfessions.slice(1, 4);
-  const hero = heroText(featured, peace);
+  const featuredVoice = voices.find((v) => !v.premium) ?? voices[0];
+  const spotlight = categories.find((c) => c.slug === "healing") ?? categories[1] ?? peace;
+
+  const curated: CuratedCards = {
+    confession: featured
+      ? { id: featured.id, title: featured.title, categoryName: peace?.name ?? "Peace" }
+      : null,
+    category: spotlight
+      ? { slug: spotlight.slug, name: spotlight.name, description: spotlight.description ?? "" }
+      : null,
+    voice: featuredVoice
+      ? { id: featuredVoice.id, name: featuredVoice.name, description: featuredVoice.description ?? "" }
+      : null,
+    categoryCount: categories.length,
+  };
+
+  const statement = featured?.short_text || featured?.medium_text || featured?.long_text || "";
 
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "WebSite",
     name: "iCONFESS",
     url: SITE_URL,
-    description:
-      "Spoken confession and reflection, made a daily practice across 39 areas of life.",
+    description: "Spoken confession and reflection, made a daily practice across 39 areas of life.",
   };
 
   return (
     <div>
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
-      />
-      <SiteHeader />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+      <SiteHeader light />
 
       <main id="main">
-        {/* ------------------------------------------------ 01 · PAUSE (Hero) */}
-        <section className="ic-hero on-ink" aria-labelledby="hero-title">
-          <div className="ic-container ic-hero__inner">
-            <div>
-              <p className="ic-eyebrow">A new way to speak what you believe</p>
-              <h1 id="hero-title" style={{ marginTop: "var(--ic-spacing-5)" }}>
-                Experience words differently.
-              </h1>
-              <p className="ic-hero__sub">
-                iCONFESS turns spoken confession into an intentional daily
-                practice — choose an area of life, hear the words, and return
-                to them until they become part of you.
-              </p>
-              <div className="ic-hero__cta">
-                <Link href="/register" className="ic-btn ic-btn--on-dark">
-                  Start your experience
-                </Link>
-                <Link href="/explore" className="ic-btn ic-btn--secondary on-ink">
-                  Explore
-                </Link>
-              </div>
-            </div>
-
-            <Reveal delay={120}>
-              <div className="ic-hero-card">
-                <div className="ic-hero-card__eyebrow">
-                  <span>{hero.kicker}</span>
-                  <span className="ic-wave" aria-hidden="true">
-                    <span /><span /><span /><span /><span />
-                  </span>
-                </div>
-                <blockquote className="ic-scripture">
-                  {hero.text.length > 240 ? `${hero.text.slice(0, 240).trimEnd()}…` : hero.text}
-                </blockquote>
-                <div className="ic-hero-card__meta">
-                  <span>{featured ? "From the library" : "The iCONFESS practice"}</span>
-                  {featured && (
-                    <Link href={`/confessions/${featured.id}`} className="ic-btn--text" style={{ fontSize: "var(--ic-font-size-caption)" }}>
-                      Hear it
-                    </Link>
-                  )}
-                </div>
-              </div>
-            </Reveal>
-          </div>
-        </section>
-
-        {/* ------------------------------------------- 02 · FEEL (The idea) */}
-        <section className="ic-section" aria-labelledby="idea-title">
-          <div className="ic-container">
-            <Reveal>
-              <SectionHead
-                id="idea-title"
-                eyebrow="The idea"
-                title="Your words can become a daily practice."
-                lede="iCONFESS transforms spoken confession and reflection into an intentional experience. Not scrolling. Not skimming. Speaking words worth repeating, and hearing them again tomorrow."
-              />
-            </Reveal>
-            <div className="ic-grid ic-grid--3" style={{ marginTop: "var(--ic-spacing-6)" }}>
-              {[
-                {
-                  name: "Speak",
-                  body: "Choose an area of life and say the words out loud — written to be spoken, not skimmed.",
-                },
-                {
-                  name: "Hear",
-                  body: "Listen as the words come back to you in a curated voice, at a pace you choose.",
-                },
-                {
-                  name: "Repeat",
-                  body: "Return tomorrow. A ritual is not a moment; it is a return.",
-                },
-              ].map((block, i) => (
-                <Reveal key={block.name} delay={i * 90}>
-                  <article className="ic-step" style={{ border: "none", paddingBlock: 0 }}>
-                    <span className="ic-step__num" aria-hidden="true">
-                      {String(i + 1).padStart(2, "0")}
-                    </span>
-                    <div>
-                      <h3>{block.name}</h3>
-                      <p>{block.body}</p>
-                    </div>
-                  </article>
-                </Reveal>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* ------------------------------------- 03 · EXPERIENCE (Product) */}
-        <section className="ic-section ic-section--mist" aria-labelledby="experience-title">
-          <div className="ic-container">
-            <div className="ic-section-head--split ic-section-head" style={{ marginBottom: "var(--ic-spacing-8)" }}>
-              <Reveal>
-                <SectionHead
-                  id="experience-title"
-                  index="01"
-                  eyebrow="The experience"
-                  title="Turn a few intentional minutes into something you return to."
-                />
-              </Reveal>
-              <Reveal delay={100}>
-                <p className="ic-lede">
-                  A session is built for the time you actually have. Choose an
-                  area of life and a length; iCONFESS assembles the words and a
-                  voice, and guides you through.
-                </p>
-              </Reveal>
-            </div>
-            <Reveal>
-              <div className="ic-frame" role="img" aria-label="Preview of an iCONFESS session: the Peace category, a spoken confession, playback controls">
-                <div className="ic-frame__bar" aria-hidden="true">
-                  <span className="ic-frame__dot" />
-                  <span className="ic-frame__dot" />
-                  <span className="ic-frame__dot" />
-                  <span style={{ marginLeft: "auto" }}>iCONFESS · session</span>
-                </div>
-                <div className="ic-frame__body">
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "var(--ic-spacing-4)" }}>
-                    <span className="ic-frame__kicker">Category — {peace?.name ?? "Peace"}</span>
-                    <span style={{ fontSize: "var(--ic-font-size-caption)", color: "var(--ic-color-neutral-400)", fontVariantNumeric: "tabular-nums" }}>
-                      03:12 / 05:00
-                    </span>
-                  </div>
-                  <p className="ic-scripture" style={{ color: "var(--ic-color-neutral-100)" }}>
-                    {hero.text.length > 180 ? `${hero.text.slice(0, 180).trimEnd()}…` : hero.text}
-                  </p>
-                  <div>
-                    <div className="ic-player-line" aria-hidden="true">
-                      <i /><b />
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: "var(--ic-spacing-5)", marginTop: "var(--ic-spacing-5)" }}>
-                      <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 48, height: 48, borderRadius: "var(--ic-radius-full)", background: "var(--ic-color-brand-400)", color: "var(--ic-color-neutral-950)" }} aria-hidden="true">
-                        <svg width="18" height="18" viewBox="0 0 18 18"><path d="M5 3l10 6-10 6V3z" fill="currentColor" /></svg>
-                      </span>
-                      <span style={{ fontSize: "var(--ic-font-size-bodySm)", color: "var(--ic-color-neutral-300)" }}>Play</span>
-                      <span style={{ fontSize: "var(--ic-font-size-bodySm)", color: "var(--ic-color-neutral-300)", marginLeft: "auto" }}>Save · Share</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </Reveal>
-          </div>
-        </section>
-
-        {/* --------------------------------- 04 · UNDERSTAND (39 categories) */}
-        <section className="ic-section" aria-labelledby="categories-title">
-          <div className="ic-container">
-            <Reveal>
-              <SectionHead
-                id="categories-title"
-                index="02"
-                eyebrow="Explore your experience"
-                title="Find the words that meet you where you are."
-                lede={`${categories.length || 39} areas of life — from peace and healing to purpose and provision. Open a spine, or walk them with your arrow keys.`}
-                split
-              />
-            </Reveal>
-            {categoriesRes.ok ? (
-              <Reveal>
-                <CategoryRail categories={categories.slice(0, 12)} />
-              </Reveal>
-            ) : (
-              <ErrorStateInline />
-            )}
-            <div style={{ marginTop: "var(--ic-spacing-7)", display: "flex", justifyContent: "center" }}>
-              <Link href="/categories" className="ic-btn ic-btn--secondary">
-                See all {categories.length || 39} categories
+        {/* ------------------------------------------------ 01 · HERO (M2) */}
+        <section className="ic-edhero" aria-labelledby="hero-title">
+          <div className="ic-edhero__type">
+            <p className="ic-eyebrow">iCONFESS</p>
+            <h1 className="ic-edhero__title" id="hero-title">
+              Speak it. Hear&nbsp;it. Live&nbsp;it.
+            </h1>
+            <p className="ic-edhero__sub">
+              Turn the words you believe in into an experience you can return to
+              every day — spoken confession, guided sessions, and voices that
+              help the words land.
+            </p>
+            <div className="ic-edhero__cta">
+              <Link href="/register" className="ic-btn ic-btn--primary">
+                Start your experience
+              </Link>
+              <Link href="/explore" className="ic-btn ic-btn--secondary">
+                Explore iCONFESS
               </Link>
             </div>
           </div>
+          <div className="ic-container">
+            <div className="ic-edhero__media">
+              <Image
+                src="/images/hero.jpg"
+                alt="A woman listening to iCONFESS with headphones by a bright window at dawn"
+                fill
+                priority
+                sizes="(max-width: 76rem) 100vw, 76rem"
+              />
+            </div>
+          </div>
         </section>
 
-        {/* ------------------------------ 05 · EXPERIENCE (Featured band) */}
-        {peace && (
-          <section
-            className="ic-section ic-section--ink on-ink"
-            aria-labelledby="featured-cat-title"
-            style={{ ["--rail" as string]: "#00072D" }}
-          >
-            <div className="ic-container ic-section-head--split ic-section-head">
-              <Reveal>
-                <p className="ic-eyebrow">Featured area of life</p>
-                <h2 className="ic-display" id="featured-cat-title" style={{ marginTop: "var(--ic-spacing-4)" }}>
-                  {peace.name}
-                </h2>
-                <p className="ic-lede" style={{ marginTop: "var(--ic-spacing-4)" }}>
-                  {peace.description}
-                </p>
-                <div className="ic-btn-row" style={{ marginTop: "var(--ic-spacing-6)" }}>
-                  <Link href={`/categories/${peace.slug}`} className="ic-btn ic-btn--on-dark">
-                    Explore {peace.name}
-                  </Link>
-                  {featured && (
-                    <Link href={`/confessions/${featured.id}`} className="ic-btn ic-btn--secondary on-ink">
-                      Hear a confession
-                    </Link>
-                  )}
-                </div>
-              </Reveal>
-              {more.length > 0 && (
-                <Reveal delay={120}>
-                  <div style={{ display: "grid", gap: "var(--ic-spacing-3)" }}>
-                    {more.map((c) => (
-                      <Link
-                        key={c.id}
-                        href={`/confessions/${c.id}`}
-                        className="ic-card ic-confession-card"
-                        style={{ background: "var(--ic-color-neutral-900)", borderColor: "var(--ic-color-neutral-800)", textDecoration: "none" }}
-                      >
-                        <h3 style={{ color: "var(--ic-color-neutral-0)" }}>{c.title}</h3>
-                        <p style={{ color: "var(--ic-color-neutral-400)", WebkitLineClamp: 2 }}>{c.short_text || c.medium_text}</p>
-                      </Link>
-                    ))}
-                  </div>
-                </Reveal>
-              )}
-            </div>
-          </section>
-        )}
+        {/* ----------------------------------- 02 · FLOATING CARDS (M3) */}
+        <section className="ic-float" aria-label="Featured experiences">
+          <div className="ic-container">
+            <HomeExperienceCards curated={curated} />
+          </div>
+        </section>
 
-        {/* ------------------------------------------ 06 · DAILY RITUAL */}
-        <section className="ic-section ic-section--mist" aria-labelledby="ritual-title">
+        {/* ------------------------------------------ 03 · STORY (M4) */}
+        <section className="ic-section" aria-labelledby="story-title">
+          <div className="ic-container ic-story">
+            <Reveal>
+              <div>
+                <SectionHead
+                  id="story-title"
+                  eyebrow="Our philosophy"
+                  title="Words are more powerful when you return to them."
+                  lede="iCONFESS exists for one reason: the words you believe should be words you live with. Not scrolled past — spoken, heard, and repeated until they become part of you."
+                />
+                <div style={{ marginTop: "var(--ic-spacing-6)" }}>
+                  <Link href="/about" className="ic-btn ic-btn--secondary">
+                    Why iCONFESS exists
+                  </Link>
+                </div>
+                <dl className="ic-story__facts">
+                  <div className="ic-story__fact">
+                    <strong>{categories.length || 39}</strong>
+                    <span>areas of life</span>
+                  </div>
+                  <div className="ic-story__fact">
+                    <strong>{voices.length || 3}</strong>
+                    <span>curated voices</span>
+                  </div>
+                  <div className="ic-story__fact">
+                    <strong>5-min</strong>
+                    <span>starter session</span>
+                  </div>
+                </dl>
+              </div>
+            </Reveal>
+            <Reveal delay={120}>
+              <div className="ic-story__media">
+                <Image
+                  src="/images/story.jpg"
+                  alt="Hands holding an open book in soft window light"
+                  fill
+                  sizes="(max-width: 56rem) 100vw, 40vw"
+                />
+              </div>
+            </Reveal>
+          </div>
+        </section>
+
+        {/* --------------------------------- 04 · DARK CATEGORIES (M5) */}
+        <section className="ic-section" style={{ paddingTop: 0 }} aria-labelledby="categories-title">
+          <div className="ic-container">
+            <div className="ic-panel">
+              <Reveal>
+                <p className="ic-eyebrow">Explore your experience</p>
+                <h2 className="ic-panel__title" id="categories-title">
+                  Find the words that meet you where you are.
+                </h2>
+                <p className="ic-panel__lede">
+                  {categories.length || 39} areas of life — from peace and healing
+                  to purpose and provision. Open one, or walk them all.
+                </p>
+              </Reveal>
+              {categoriesRes.ok && categories.length > 0 ? (
+                <div className="ic-snap ic-snap--peek ic-snap--4" role="list" aria-label="Categories">
+                  {categories.slice(0, 8).map((c) => (
+                    <Link key={c.id} href={`/categories/${c.slug}`} className="ic-cat" role="listitem">
+                      <span className="ic-cat__visual" style={motifStyle(c.slug)} aria-hidden="true">
+                        <span className="ic-cat__orb" />
+                        <span className="ic-cat__initial">{c.name.charAt(0)}</span>
+                      </span>
+                      <span className="ic-cat__body">
+                        <h3>{c.name}</h3>
+                        {c.description && <p>{c.description}</p>}
+                        <span className="ic-cat__go">Explore →</span>
+                      </span>
+                    </Link>
+                  ))}
+                </div>
+              ) : (
+                <ErrorStateInline />
+              )}
+              <div style={{ marginTop: "var(--ic-spacing-6)", display: "flex", justifyContent: "center" }}>
+                <Link href="/categories" className="ic-btn ic-btn--on-dark">
+                  See all {categories.length || 39} categories
+                </Link>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* --------------------------------------- 05 · PRINCIPLES (M6) */}
+        <section className="ic-section" style={{ paddingTop: 0 }} aria-labelledby="principles-title">
           <div className="ic-container">
             <Reveal>
               <SectionHead
-                id="ritual-title"
-                index="03"
-                eyebrow="Make it part of your day"
-                title="Three quiet appointments with yourself."
-                lede="Morning, midday, night — the words meet the day you are actually having."
+                id="principles-title"
+                eyebrow="Our approach"
+                title="Designed around how you actually experience words."
+                split
               />
             </Reveal>
-            <div className="ic-ritual">
-              {[
-                {
-                  time: "6:00 AM",
-                  name: "Morning",
-                  body: "Start intentionally, before the noise begins.",
-                  sample: "“This is the day the Lord has made; I will rejoice and be glad in it.”",
-                },
-                {
-                  time: "12:30 PM",
-                  name: "Midday",
-                  body: "Reset your focus in the middle of everything.",
-                  sample: "“I am not anxious about anything; peace guards my heart and my mind.”",
-                },
-                {
-                  time: "10:00 PM",
-                  name: "Night",
-                  body: "Release the day, and rest.",
-                  sample: "“I lay down in peace and sleep, for the Lord keeps me safe.”",
-                },
-              ].map((slot, i) => (
-                <Reveal key={slot.name} delay={i * 90}>
-                  <article className="ic-ritual__slot">
-                    <time>{slot.time}</time>
-                    <h3>{slot.name}</h3>
-                    <p>{slot.body}</p>
-                    <p className="ic-ritual__sample">{slot.sample}</p>
+            <div className="ic-prin" style={{ marginTop: "var(--ic-spacing-7)" }}>
+              {PRINCIPLES.map((p, i) => (
+                <Reveal key={p.n} delay={i * 80}>
+                  <article className={`ic-prin__card${p.active ? " ic-prin__card--active" : ""}`}>
+                    <span className="ic-prin__num" aria-hidden="true">{p.n}</span>
+                    <h3>{p.t}</h3>
+                    <p>{p.b}</p>
                   </article>
                 </Reveal>
               ))}
@@ -345,39 +304,67 @@ export default async function HomePage() {
           </div>
         </section>
 
-        {/* --------------------------------------- 07 · VOICE EXPERIENCE */}
-        <section className="ic-section" aria-labelledby="voices-title">
+        {/* ---------------------------------------- 06 · IMMERSIVE (M7) */}
+        <section className="ic-section" style={{ paddingTop: 0 }} aria-labelledby="immersive-title">
+          <div className="ic-container">
+            <Reveal>
+              <div className="ic-immers">
+                <Image
+                  src="/images/immersive.jpg"
+                  alt="A lone figure walking a quiet coastal path at blue hour"
+                  fill
+                  sizes="(max-width: 76rem) 100vw, 76rem"
+                />
+                <div className="ic-immers__card">
+                  <p className="ic-eyebrow">For this moment</p>
+                  <h2 id="immersive-title">You&apos;ll find what you need for this moment.</h2>
+                  <p>
+                    Morning light or midnight quiet — choose the hour, and
+                    iCONFESS shapes the words around it.
+                  </p>
+                  <div>
+                    <Link href="/explore" className="ic-btn ic-btn--primary">
+                      Explore the experience
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            </Reveal>
+          </div>
+        </section>
+
+        {/* -------------------------------------------- 07 · VOICES (M8) */}
+        <section className="ic-section" style={{ paddingTop: 0 }} aria-labelledby="voices-title">
           <div className="ic-container">
             <Reveal>
               <SectionHead
                 id="voices-title"
-                index="04"
                 eyebrow="Hear the words differently"
                 title="Choose the voice that helps the words land."
-                lede="Every confession can be heard as well as read. The voices are curated and licensed — hear the difference they make."
+                lede="Every confession can be heard as well as read. The voices are curated and licensed — press play and hear the difference."
                 split
               />
             </Reveal>
             {voicesRes.ok && voices.length > 0 ? (
-              <div className="ic-grid ic-grid--3">
-                {voices.slice(0, 3).map((v, i) => (
-                  <Reveal key={v.id} delay={i * 90}>
-                    <article className="ic-card ic-card--hover" style={{ padding: "var(--ic-spacing-6)", display: "grid", gap: "var(--ic-spacing-4)" }}>
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                        <span className="ic-voice-avatar" aria-hidden="true">{v.name.charAt(0)}</span>
-                        {v.premium && <span className="ic-chip">Premium voice</span>}
-                      </div>
+              <div className="ic-snap" role="list" aria-label="Voices">
+                {voices.map((v) => (
+                  <article key={v.id} className="ic-voice" role="listitem">
+                    <div className="ic-voice__top">
+                      <span className="ic-voice__avatar" aria-hidden="true">{v.name.charAt(0)}</span>
                       <div>
-                        <h3 style={{ fontSize: "var(--ic-font-size-subheading)", fontWeight: "var(--ic-font-weight-semibold)" }}>{v.name}</h3>
-                        <p style={{ color: "var(--ic-color-neutral-600)", fontSize: "var(--ic-font-size-bodySm)", marginTop: "var(--ic-spacing-2)", lineHeight: "var(--ic-font-lineHeight-relaxed)" }}>
-                          {v.description}
+                        <h3 className="ic-voice__name">{v.name}</h3>
+                        <p className="ic-voice__style">
+                          {[v.gender, v.type].filter(Boolean).join(" · ") || "Narration"}
+                          {v.premium ? " · Premium" : ""}
                         </p>
                       </div>
-                      <Link href={`/voices/${v.id}`} className="ic-btn--text" style={{ fontSize: "var(--ic-font-size-bodySm)" }}>
-                        Meet {v.name}
-                      </Link>
-                    </article>
-                  </Reveal>
+                    </div>
+                    {v.description && <p className="ic-voice__desc">{v.description}</p>}
+                    <VoicePreview sampleUrl={v.sample_url} voiceName={v.name} />
+                    <Link href={`/voices/${v.id}`} className="ic-btn--text" style={{ fontSize: "var(--ic-font-size-bodySm)" }}>
+                      Explore {v.name} →
+                    </Link>
+                  </article>
                 ))}
               </div>
             ) : (
@@ -386,150 +373,153 @@ export default async function HomePage() {
           </div>
         </section>
 
-        {/* ------------------------------------------- 08 · HOW IT WORKS */}
-        <section className="ic-section ic-section--mist" aria-labelledby="how-title">
-          <div className="ic-container ic-section-head--split ic-section-head">
+        {/* ---------------------------------------- 08 · COMMUNITY (M9) */}
+        <section className="ic-section ic-section--mist" aria-labelledby="community-title">
+          <div className="ic-container ic-split">
             <Reveal>
-              <SectionHead
-                id="how-title"
-                index="05"
-                eyebrow="How it works"
-                title="Four steps, then it's yours."
-              />
+              <div className="ic-split__media">
+                <Image
+                  src="/images/community.jpg"
+                  alt="Two friends in quiet conversation over a table in warm evening light"
+                  fill
+                  sizes="(max-width: 56rem) 100vw, 45vw"
+                />
+              </div>
             </Reveal>
             <Reveal delay={100}>
-              <p className="ic-lede">
-                No feed to refresh. The practice is small on purpose: choose,
-                listen, repeat — until the words are part of how you live.
-              </p>
-            </Reveal>
-          </div>
-          <div className="ic-container">
-            <div>
-              {[
-                { n: "01", t: "Choose", b: "Choose an area of life, or let today's suggestion find you." },
-                { n: "02", t: "Listen", b: "Hear the confession spoken, with the Scripture it stands on." },
-                { n: "03", t: "Repeat", b: "Return to the words — tomorrow, or whenever the moment asks." },
-                { n: "04", t: "Live", b: "Make the experience part of your routine, at the pace you choose." },
-              ].map((s) => (
-                <div className="ic-step" key={s.n}>
-                  <span className="ic-step__num" aria-hidden="true">{s.n}</span>
-                  <div>
-                    <h3>{s.t}</h3>
-                    <p>{s.b}</p>
+              <div>
+                <SectionHead
+                  id="community-title"
+                  eyebrow="Your words matter too"
+                  title="Write confessions of your own."
+                  lede="Keep them private, share them intentionally, or offer them to the community. Reviewed by people before publication — always."
+                />
+                <div className="ic-state-row">
+                  <div className="ic-state-row__item">
+                    <strong>Private</strong>
+                    <span>Only you ever see it.</span>
+                  </div>
+                  <div className="ic-state-row__item">
+                    <strong>Shared</strong>
+                    <span>You decide who can hear it.</span>
+                  </div>
+                  <div className="ic-state-row__item">
+                    <strong>Public</strong>
+                    <span>Reviewed by people, then published.</span>
                   </div>
                 </div>
+                <div className="ic-btn-row" style={{ marginTop: "var(--ic-spacing-6)" }}>
+                  <Link href="/register" className="ic-btn ic-btn--primary">
+                    Create your confession
+                  </Link>
+                  <Link href="/community" className="ic-btn ic-btn--secondary">
+                    How community works
+                  </Link>
+                </div>
+              </div>
+            </Reveal>
+          </div>
+        </section>
+
+        {/* ----------------------------------------- 09 · STATEMENT (M10) */}
+        <section className="ic-section" aria-labelledby="statement-title">
+          <div className="ic-container">
+            <Reveal>
+              <p className="ic-eyebrow" id="statement-title">From the library</p>
+            </Reveal>
+            <div className="ic-quote" style={{ marginTop: "var(--ic-spacing-5)" }}>
+              <Reveal>
+                <blockquote>
+                  “{statement || "An experience I can actually return to every day."}”
+                  {featured && (
+                    <cite>— {featured.title}{peace ? `, ${peace.name}` : ""}</cite>
+                  )}
+                </blockquote>
+              </Reveal>
+              <Reveal delay={100}>
+                <p className="ic-quote__side">
+                  {peace?.name ?? "Peace"} is one of {categories.length || 39} areas
+                  of life in the library — every one with words reviewed before
+                  they are published.
+                </p>
+              </Reveal>
+            </div>
+          </div>
+        </section>
+
+        {/* ------------------------------------------- 10 · JOURNAL (M11) */}
+        <section className="ic-section" style={{ paddingTop: 0 }} aria-labelledby="journal-title">
+          <div className="ic-container">
+            <Reveal>
+              <SectionHead
+                id="journal-title"
+                eyebrow="Words to return to"
+                title="Hear directly from iCONFESS."
+                split
+              />
+            </Reveal>
+            <div className="ic-journal" style={{ marginTop: "var(--ic-spacing-7)" }}>
+              {ARTICLES.slice(0, 3).map((a, i) => (
+                <Reveal key={a.slug} delay={i * 80}>
+                  <Link href={`/journal/${a.slug}`} className="ic-journal__card">
+                    <span className="ic-journal__img" aria-hidden="true">
+                      <Image
+                        src={JOURNAL_IMAGES[i % JOURNAL_IMAGES.length]}
+                        alt=""
+                        fill
+                        sizes="(max-width: 56rem) 100vw, 33vw"
+                      />
+                    </span>
+                    <span className="ic-journal__body">
+                      <span className="ic-journal__cat">{a.category}</span>
+                      <h3>{a.title}</h3>
+                      <p>{a.excerpt}</p>
+                    </span>
+                  </Link>
+                </Reveal>
               ))}
             </div>
-            <div style={{ marginTop: "var(--ic-spacing-7)" }}>
-              <Link href="/how-it-works" className="ic-btn ic-btn--secondary">
-                See the full journey
+            <div style={{ marginTop: "var(--ic-spacing-6)" }}>
+              <Link href="/journal" className="ic-btn ic-btn--secondary">
+                Read the journal
               </Link>
             </div>
           </div>
         </section>
 
-        {/* ---------------------------------------- 09 · PERSONALIZATION */}
-        <section className="ic-section" aria-labelledby="personal-title">
-          <div className="ic-container">
-            <Reveal>
-              <SectionHead
-                id="personal-title"
-                index="06"
-                eyebrow="Made for your moment"
-                title="The words meet the season you are in."
-                lede="Tell iCONFESS what you are walking through and it shapes each session around it — your morning, your focus, your relationships, your peace. Signals come from what you choose to hear, not from a profile sold to anyone."
-                split
-              />
-            </Reveal>
-            <div className="ic-grid ic-grid--3">
-              {["For your morning", "For your current season", "For your focus", "For your relationships", "For your goals", "For your peace"].map((label, i) => (
-                <Reveal key={label} delay={(i % 3) * 80}>
-                  <div className="ic-card ic-card--hover" style={{ padding: "var(--ic-spacing-5)", display: "grid", gap: "var(--ic-spacing-3)" }}>
-                    <span className="ic-frame__kicker">{label}</span>
-                    <p style={{ fontSize: "var(--ic-font-size-bodySm)", color: "var(--ic-color-neutral-600)" }}>
-                      A session shaped by the interests you set and the moments you return to.
-                    </p>
-                  </div>
-                </Reveal>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* ---------------------------------------------- 10 · COMMUNITY */}
-        <section className="ic-section ic-section--mist" aria-labelledby="community-title">
-          <div className="ic-container ic-section-head--split ic-section-head">
-            <Reveal>
-              <SectionHead
-                id="community-title"
-                index="07"
-                eyebrow="Your words matter too"
-                title="Write confessions of your own."
-                lede="Every account can write personal confessions — keep them private, or offer them for review to appear in the community. Reviewed before publication, always."
-              />
-            </Reveal>
-            <Reveal delay={100}>
-              <div style={{ display: "grid", gap: "var(--ic-spacing-3)" }}>
-                {[
-                  ["Private", "Only you ever see it."],
-                  ["Shared", "You decide who can hear it."],
-                  ["Community", "Reviewed by people, then published."],
-                ].map(([name, body]) => (
-                  <div key={name} className="ic-card" style={{ padding: "var(--ic-spacing-5)" }}>
-                    <h3 style={{ fontSize: "var(--ic-font-size-body)", fontWeight: "var(--ic-font-weight-semibold)" }}>{name}</h3>
-                    <p style={{ fontSize: "var(--ic-font-size-bodySm)", color: "var(--ic-color-neutral-600)", marginTop: "var(--ic-spacing-1)" }}>{body}</p>
-                  </div>
-                ))}
-                <Link href="/community" className="ic-btn ic-btn--secondary" style={{ marginTop: "var(--ic-spacing-3)" }}>
-                  How community works
-                </Link>
-              </div>
-            </Reveal>
-          </div>
-        </section>
-
-        {/* ------------------------------------------------ 11 · PREMIUM */}
-        <section className="ic-section ic-section--ink on-ink" aria-labelledby="premium-title">
-          <div className="ic-container ic-section-head--split ic-section-head">
-            <Reveal>
-              <p className="ic-eyebrow">Premium</p>
-              <h2 className="ic-display" id="premium-title" style={{ marginTop: "var(--ic-spacing-4)" }}>
-                Go deeper.
-              </h2>
-            </Reveal>
-            <Reveal delay={100}>
-              <p className="ic-lede">
-                Longer sessions, premium voices, deeper categories, and the full
-                library — for the practice you keep, not the one you sample.
-              </p>
-              <div className="ic-btn-row" style={{ marginTop: "var(--ic-spacing-6)" }}>
-                <Link href="/premium" className="ic-btn ic-btn--on-dark">Explore Premium</Link>
-                <Link href="/pricing" className="ic-btn ic-btn--secondary on-ink">See plans</Link>
-              </div>
-            </Reveal>
-          </div>
-        </section>
-
-        {/* ------------------------------------------ 12 · SOCIAL PROOF */}
-        {featured && (
-          <section className="ic-section" aria-labelledby="proof-title">
-            <div className="ic-container ic-container--text" style={{ textAlign: "center" }}>
+        {/* ----------------------------------------------- 11 · FAQ (M12) */}
+        <section className="ic-section ic-section--mist" aria-labelledby="faq-title">
+          <div className="ic-container ic-faq2">
+            <div className="ic-faq2__head">
               <Reveal>
-                <p className="ic-eyebrow" style={{ justifyContent: "center" }}>From the library</p>
-                <blockquote className="ic-scripture" style={{ marginTop: "var(--ic-spacing-5)" }}>
-                  “{featured.short_text || featured.medium_text || featured.long_text}”
-                  <cite>— {featured.title}{peace ? `, ${peace.name}` : ""}</cite>
-                </blockquote>
-                <p style={{ marginTop: "var(--ic-spacing-6)", fontSize: "var(--ic-font-size-bodySm)", color: "var(--ic-color-neutral-500)" }}>
-                  {peace?.name ?? "Peace"} is one of {categories.length || 39} areas of life in the library — every one with words reviewed before they are published.
+                <p className="ic-eyebrow">Finally, some answers</p>
+                <h2 className="ic-display" id="faq-title" style={{ marginTop: "var(--ic-spacing-4)" }}>
+                  Questions about iCONFESS?
+                </h2>
+                <p className="ic-lede" style={{ marginTop: "var(--ic-spacing-4)" }}>
+                  The short version of everything people ask before they begin.
                 </p>
+                <div style={{ marginTop: "var(--ic-spacing-6)" }}>
+                  <Link href="/faq" className="ic-btn ic-btn--secondary">
+                    All questions
+                  </Link>
+                </div>
               </Reveal>
             </div>
-          </section>
-        )}
+            <Reveal>
+              <div className="ic-faq">
+                {FAQ.map(([q, a]) => (
+                  <details key={q}>
+                    <summary>{q}</summary>
+                    <p>{a}</p>
+                  </details>
+                ))}
+              </div>
+            </Reveal>
+          </div>
+        </section>
 
-        {/* ------------------------------------------- 13 · APP DOWNLOAD */}
+        {/* ------------------------------------------ 12 · DOWNLOAD */}
         <section className="ic-section ic-section--ink on-ink" aria-labelledby="download-title">
           <div className="ic-container ic-section-head--split ic-section-head" style={{ alignItems: "center" }}>
             <Reveal>
@@ -563,28 +553,40 @@ export default async function HomePage() {
           </div>
         </section>
 
-        {/* ------------------------------------------------------ 14 · FAQ */}
-        <section className="ic-section" aria-labelledby="faq-title">
+        {/* ----------------------------------------- 13 · NEWSLETTER (M12) */}
+        <section className="ic-section" aria-labelledby="news-title">
           <div className="ic-container">
             <Reveal>
-              <SectionHead
-                id="faq-title"
-                index="08"
-                eyebrow="Questions"
-                title="Asked, answered."
-              />
-            </Reveal>
-            <Reveal>
-              <Faq />
+              <div className="ic-news">
+                <div className="ic-news__body">
+                  <p className="ic-eyebrow">Latest from iCONFESS</p>
+                  <h2 id="news-title">The weekly words, in your inbox.</h2>
+                  <p>
+                    One confession, one reflection, one invitation to return —
+                    every week. It arrives with your account, and you can
+                    silence it any time from notification settings.
+                  </p>
+                  <NewsletterForm />
+                </div>
+                <div className="ic-news__img">
+                  <Image
+                    src="/images/newsletter.jpg"
+                    alt="An open journal and glasses in soft morning light"
+                    fill
+                    sizes="(max-width: 56rem) 100vw, 50vw"
+                  />
+                </div>
+              </div>
             </Reveal>
           </div>
         </section>
 
-        {/* --------------------------------------------- 15 · FINAL CTA */}
-        <section className="ic-section ic-section--ink on-ink" aria-labelledby="final-title" style={{ textAlign: "center" }}>
+        {/* ------------------------------------------ 14 · FINAL CTA */}
+        <section className="ic-section" style={{ paddingTop: 0, textAlign: "center" }} aria-labelledby="final-title">
           <div className="ic-container ic-container--text">
             <Reveal>
-              <h2 className="ic-display" id="final-title" style={{ marginInline: "auto" }}>
+              <p className="ic-eyebrow" style={{ justifyContent: "center" }}>Ready to begin?</p>
+              <h2 className="ic-display" id="final-title" style={{ margin: "var(--ic-spacing-4) auto 0" }}>
                 Start with one confession.
               </h2>
               <p className="ic-lede" style={{ margin: "var(--ic-spacing-5) auto 0" }}>
@@ -592,11 +594,11 @@ export default async function HomePage() {
                 decide.
               </p>
               <div className="ic-btn-row" style={{ justifyContent: "center", marginTop: "var(--ic-spacing-7)" }}>
-                <Link href="/register" className="ic-btn ic-btn--on-dark">
-                  Begin your experience
+                <Link href="/register" className="ic-btn ic-btn--primary">
+                  Start your experience
                 </Link>
-                <Link href="/explore" className="ic-btn ic-btn--secondary on-ink">
-                  Explore first
+                <Link href="/download" className="ic-btn ic-btn--secondary">
+                  Download the app
                 </Link>
               </div>
             </Reveal>
@@ -604,70 +606,16 @@ export default async function HomePage() {
         </section>
       </main>
 
-      {/* -------------------------------------------------- 16 · FOOTER */}
+      {/* -------------------------------------------------- 15 · FOOTER */}
       <SiteFooter />
-    </div>
-  );
-}
-
-function Faq() {
-  return (
-    <div className="ic-faq">
-      {[
-        [
-          "What is iCONFESS?",
-          "iCONFESS is a daily confession practice. Choose an area of life, hear a confession spoken over you, and return to it until it becomes part of how you think and live.",
-        ],
-        [
-          "How does iCONFESS work?",
-          "Pick an area of life and how long you have. iCONFESS assembles a session of confessions and Scripture in a curated voice, and guides you through it. Sessions can be scheduled, saved, and repeated.",
-        ],
-        [
-          "Is iCONFESS free?",
-          "The core experience is free, including a wide selection of categories and standard session lengths. Premium adds the full library, longer sessions, and premium voices.",
-        ],
-        [
-          "What are premium experiences?",
-          "Premium unlocks the complete library of 39 areas of life, extended session lengths, premium voices, and personalised routines.",
-        ],
-        [
-          "Can I create my own confession?",
-          "Yes. Write confessions in your own words. Keep them private, share them with people you choose, or offer them for review — nothing is published without review.",
-        ],
-        [
-          "Can my confession remain private?",
-          "Yes. Private confessions are yours alone, and deletion tools are built in. Publication only ever happens to content you explicitly offer for review.",
-        ],
-        [
-          "Can I listen offline?",
-          "The mobile app supports offline listening for saved sessions on Premium.",
-        ],
-        [
-          "What voices are available?",
-          "iCONFESS works with curated narration voices. Each has its own pace and character — choose the one that helps the words land.",
-        ],
-        [
-          "How do I cancel Premium?",
-          "From your subscription settings, at any time. Your practice and history remain yours.",
-        ],
-        [
-          "Is my content private?",
-          "Yes. Private content is never exposed publicly or to search engines, and public sharing only happens through explicit review and publication.",
-        ],
-      ].map(([q, a]) => (
-        <details key={q}>
-          <summary>{q}</summary>
-          <p>{a}</p>
-        </details>
-      ))}
     </div>
   );
 }
 
 function ErrorStateInline() {
   return (
-    <div className="ic-state" role="status">
-      <h3>We couldn't reach the library</h3>
+    <div className="ic-state" role="status" style={{ marginTop: "var(--ic-spacing-6)" }}>
+      <h3>We couldn&apos;t reach the library</h3>
       <p>Something went wrong while loading this experience. It will be back shortly.</p>
       <Link href="/categories" className="ic-btn ic-btn--secondary">
         Browse categories

@@ -15,7 +15,8 @@
  * renders unlinked rather than pointing somewhere that does not exist.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { ANALYTICS_EVENTS, track } from "@/lib/analytics";
 import { useAuth } from "@/lib/auth-context";
 import { useApiData } from "@/lib/app-api";
 import { ErrorBlock, LoadingBlock, SignedOut } from "@/components/app-ui";

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { api } from "@/lib/api";
 import { railStyle } from "@/lib/categoryColor";
+import { TrackCategoryView } from "@/components/TrackView";
 export default async function CategoryDetailPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const catRes = await api.category(slug);
@@ -13,6 +14,7 @@ export default async function CategoryDetailPage({ params }: { params: Promise<{
 
   return (
     <div className="ia-page">
+      <TrackCategoryView categoryId={cat.id} />
       <Link href="/app/categories" className="ic-backlink" style={{ color: "var(--ic-color-neutral-500)" }}>← Back to categories</Link>
       <div className="ia-page__head" style={{ padding: "var(--ic-spacing-6)", borderRadius: "var(--ic-radius-lg)", ...railStyle(cat.slug) as object, color: "var(--ic-color-neutral-0)" }}>
         <h1 style={{ color: "var(--ic-color-neutral-0)" }}>{cat.name}</h1>
