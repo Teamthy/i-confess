@@ -16,6 +16,11 @@
  * When the last item ends, the session is completed — never PATCHed by a
  * client "status" guess; the server's state machine owns the transition.
  *
+ * Transport (the audio element itself) lives in PlayerProvider, mounted in
+ * the /app layout, so playback survives navigation and the mini-player
+ * reflects this same session. This component owns the session, the queue,
+ * and all server narration — never an <audio> of its own.
+ *
  * States §31: idle (no session chosen), loading, playing, paused, completed,
  * error (network or an unplayable asset — audio errors say so and offer skip,
  * they never fail silently).
@@ -24,7 +29,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
+import { usePlayer, type PlayerTrack } from "@/lib/player-context";
 import { appApi, formatClock, newIdempotencyKey } from "@/lib/app-api";
+import { ANALYTICS_EVENTS, track } from "@/lib/analytics";
 import { ErrorBlock, LoadingBlock, SignedOut } from "@/components/app-ui";
 import { railColor } from "@/lib/categoryColor";
 
@@ -72,27 +79,30 @@ const PROGRESS_EVERY_MS = 10_000;
 export function PlayerClient({ sessionId }: { sessionId: string | null }) {
   const router = useRouter();
   const { token, loading: authLoading } = useAuth();
+  const player = usePlayer();
+  const playerRef = useRef(player);
+  playerRef.current = player;
 
   const [session, setSession] = useState<Session | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [index, setIndex] = useState(0);
-  const [playing, setPlaying] = useState(false);
-  const [posSec, setPosSec] = useState(0);
-  const [durSec, setDurSec] = useState(0);
-  const [rate, setRate] = useState<number>(1);
-  const [volume, setVolume] = useState(1);
   const [statusNote, setStatusNote] = useState("");
-  const [audioBroken, setAudioBroken] = useState(false);
+  const [playBlocked, setPlayBlocked] = useState(false);
   const [showTranscript, setShowTranscript] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  const audioRef = useRef<HTMLAudioElement | null>(null);
   const lastSync = useRef(0);
   const itemRef = useRef<SessionItem | null>(null);
   const sessionRef = useRef<Session | null>(null);
   sessionRef.current = session;
+  const indexRef = useRef(0);
+  indexRef.current = index;
   const started = useRef(false);
+  const lastEndedToken = useRef(player.endedToken);
+
+  const { playing, position: posSec, duration: durSec } = player;
+  const audioBroken = player.failed || playBlocked;
 
   const items = useMemo(() => {
     const list = [...(session?.items ?? [])];
@@ -140,8 +150,10 @@ export function PlayerClient({ sessionId }: { sessionId: string | null }) {
       method: "POST",
       idempotencyKey: newIdempotencyKey(),
     }).then((r) => {
-      if (r.ok) setStatusNote("");
-      else if (r.status !== 409) setStatusNote(r.message);
+      if (r.ok) {
+        setStatusNote("");
+        track(token, ANALYTICS_EVENTS.sessionStarted, { session_id: session.id });
+      } else if (r.status !== 409) setStatusNote(r.message);
     });
   }, [token, session]);
 
@@ -149,7 +161,6 @@ export function PlayerClient({ sessionId }: { sessionId: string | null }) {
     async (itemStatus?: "COMPLETED" | "SKIPPED") => {
       const s = sessionRef.current;
       const it = itemRef.current;
-      const a = audioRef.current;
       if (!token || !s || !it) return;
       await appApi(`/sessions/${s.id}/progress`, {
         token,
@@ -157,7 +168,7 @@ export function PlayerClient({ sessionId }: { sessionId: string | null }) {
         idempotencyKey: newIdempotencyKey(),
         body: {
           queue_item_id: it.id,
-          position_ms: Math.round((a?.currentTime ?? 0) * 1000),
+          position_ms: Math.round(playerRef.current.position * 1000),
           ...(itemStatus ? { item_status: itemStatus } : {}),
         },
       });
@@ -165,38 +176,49 @@ export function PlayerClient({ sessionId }: { sessionId: string | null }) {
     [token],
   );
 
-  // Wire the audio element to the current item.
+  function trackFor(item: SessionItem, sessionId: string): PlayerTrack {
+    return {
+      itemId: item.id,
+      sessionId,
+      title: item.title || "Untitled confession",
+      subtitle: `${item.category || "Session"}`,
+      src: item.audio_url ?? null,
+      durationHint: item.duration_seconds || 0,
+    };
+  }
+
+  // Bind the shared element to the current item. The provider dedupes by
+  // item, so remounts (navigation away and back) keep playing undisturbed.
   useEffect(() => {
-    const a = audioRef.current;
-    if (!a || !current) return;
-    setPosSec(0);
-    setDurSec(current.duration_seconds || 0);
-    setAudioBroken(false);
-    if (current.audio_url) {
-      a.src = current.audio_url;
-      a.load();
-      // Autoplay policy: the play() that follows `load` is user-initiated only
-      // through the play button; starting the element here would be blocked
-      // anyway, so the element is left armed and [playing] decides whether to
-      // call play().
-      if (playing) void a.play().catch(() => setPlaying(false));
-    } else {
-      a.removeAttribute("src");
-      setPlaying(false);
+    if (!current || !session) return;
+    setPlayBlocked(false);
+    playerRef.current.load(trackFor(current, session.id), playerRef.current.playing);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current?.id, current?.audio_url, session?.id]);
+
+  // Natural end of the loaded bytes → advance, but only when the ended
+  // track is this page's current item (another session may own the element).
+  useEffect(() => {
+    if (player.endedToken === lastEndedToken.current) return;
+    lastEndedToken.current = player.endedToken;
+    const t = playerRef.current.track;
+    if (t && current && t.itemId === current.id && t.sessionId === session?.id) {
+      advance("COMPLETED", indexRef.current);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [current?.id, current?.audio_url]);
+  }, [player.endedToken]);
 
+  // 10-second progress narration while playing.
   useEffect(() => {
-    const a = audioRef.current;
-    if (a) {
-      a.playbackRate = rate;
-      a.volume = volume;
+    const now = Date.now();
+    if (playing && now - lastSync.current > PROGRESS_EVERY_MS) {
+      lastSync.current = now;
+      void syncProgress();
     }
-  }, [rate, volume, current?.id]);
+  }, [playing, posSec, syncProgress]);
 
   // Pause/resume mirror the server when the user presses the big button; the
-  // audio element remains the local authority on position.
+  // shared element remains the local authority on position.
   const callLifecycle = useCallback(
     async (verb: "pause" | "resume") => {
       const s = sessionRef.current;
@@ -227,8 +249,9 @@ export function PlayerClient({ sessionId }: { sessionId: string | null }) {
           }).then((r) => {
             if (r.ok) {
               setSession((cur) => (cur ? { ...cur, status: "COMPLETED" } : cur));
-              setPlaying(false);
+              playerRef.current.pause();
               setStatusNote("Session complete.");
+              track(token, ANALYTICS_EVENTS.sessionCompleted, { session_id: s.id });
             } else setStatusNote(r.message);
           });
         }
@@ -253,42 +276,30 @@ export function PlayerClient({ sessionId }: { sessionId: string | null }) {
   };
 
   const togglePlay = useCallback(() => {
-    const a = audioRef.current;
-    if (!a || !current?.audio_url) return;
-    if (playing) {
-      a.pause();
-      setPlaying(false);
+    if (!current?.audio_url) return;
+    if (playerRef.current.playing) {
+      playerRef.current.pause();
       void syncProgress();
       void callLifecycle("pause");
     } else {
-      void a
-        .play()
-        .then(() => {
-          setPlaying(true);
-          void callLifecycle("resume");
-        })
-        .catch(() => {
-          setAudioBroken(true);
+      setPlayBlocked(false);
+      void playerRef.current.play().then((ok) => {
+        if (ok) void callLifecycle("resume");
+        else {
+          setPlayBlocked(true);
           setStatusNote("The browser blocked playback — press play once more if a prompt appears.");
-        });
+        }
+      });
     }
-  }, [playing, current, syncProgress, callLifecycle]);
+  }, [current, syncProgress, callLifecycle]);
 
   const seek = (toSec: number) => {
-    const a = audioRef.current;
-    if (!a) return;
-    a.currentTime = toSec;
-    setPosSec(toSec);
+    playerRef.current.seek(toSec);
   };
 
   const canSeekBack = posSec > 3 || index > 0;
-  const onEnded = useCallback(() => {
-    advance("COMPLETED", index);
-  }, [advance, index]);
-
   const prev = () => {
-    const a = audioRef.current;
-    if (a && a.currentTime > 3) {
+    if (playerRef.current.position > 3) {
       seek(0);
       return;
     }
@@ -363,27 +374,6 @@ export function PlayerClient({ sessionId }: { sessionId: string | null }) {
 
   return (
     <div className="ip-shell">
-      <audio
-        ref={audioRef}
-        onTimeUpdate={(e) => {
-          const el = e.currentTarget;
-          setPosSec(el.currentTime);
-          setDurSec(Number.isFinite(el.duration) && el.duration > 0 ? el.duration : current?.duration_seconds || 0);
-          const now = Date.now();
-          if (playing && now - lastSync.current > PROGRESS_EVERY_MS) {
-            lastSync.current = now;
-            void syncProgress();
-          }
-        }}
-        onEnded={onEnded}
-        onError={() => {
-          if (!current?.audio_url) return; // no source assigned yet / intentionally cleared
-          setAudioBroken(true);
-          setPlaying(false);
-        }}
-        preload="metadata"
-      />
-
       <div
         className="ip-art"
         aria-hidden="true"
@@ -434,13 +424,9 @@ export function PlayerClient({ sessionId }: { sessionId: string | null }) {
               type="button"
               className="ic-btn ic-btn--primary"
               onClick={() => {
-                setAudioBroken(false);
-                const a = audioRef.current;
-                if (a && current?.audio_url) {
-                  a.src = current.audio_url;
-                  a.load();
-                  void a.play().then(() => setPlaying(true)).catch(() => setAudioBroken(true));
-                }
+                if (!current || !session) return;
+                setPlayBlocked(false);
+                playerRef.current.load(trackFor(current, session.id), true);
               }}
             >
               Retry this item
@@ -498,7 +484,7 @@ export function PlayerClient({ sessionId }: { sessionId: string | null }) {
 
       <div className="ip-row">
         <label htmlFor="ip-rate">Speed</label>
-        <select id="ip-rate" value={rate} onChange={(e) => setRate(Number(e.target.value))}>
+        <select id="ip-rate" value={player.rate} onChange={(e) => player.setRate(Number(e.target.value))}>
           {SPEEDS.map((s) => (
             <option key={s} value={s}>
               {s}×
@@ -512,10 +498,10 @@ export function PlayerClient({ sessionId }: { sessionId: string | null }) {
           min={0}
           max={1}
           step={0.05}
-          value={volume}
-          onChange={(e) => setVolume(Number(e.target.value))}
+          value={player.volume}
+          onChange={(e) => player.setVolume(Number(e.target.value))}
           style={{ width: "7rem", accentColor: "var(--ic-color-brand-600)" }}
-          aria-valuetext={`${Math.round(volume * 100)} percent`}
+          aria-valuetext={`${Math.round(player.volume * 100)} percent`}
         />
         <button type="button" className="ic-btn ic-btn--text" onClick={() => void saveFavorite()} disabled={!current || saved}>
           {saved ? "Saved ✓" : "Save"}

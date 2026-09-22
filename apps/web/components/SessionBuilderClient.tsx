@@ -19,6 +19,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { appApi, useApiData } from "@/lib/app-api";
+import { ANALYTICS_EVENTS, track } from "@/lib/analytics";
 import type { Category, Voice } from "@/lib/api";
 import { ErrorBlock, LoadingBlock, SignedOut } from "@/components/app-ui";
 

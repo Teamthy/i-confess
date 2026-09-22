@@ -315,6 +315,18 @@ const server = http.createServer(async (req, res) => {
     if (String(body?.new_password || "").length < 8) return json(res, 400, { error: "password too short" });
     return json(res, 200, { message: "password changed; other sessions revoked" });
   }
+  if (method === "POST" && p === "/auth/consent") {
+    if (!authed(req)) return json(res, 401, { error: "authentication required" });
+    if (!body?.category) return json(res, 400, { error: "category and consent state are required" });
+    return json(res, 200, { message: "consent recorded" });
+  }
+  if (method === "POST" && p === "/analytics/batch") {
+    if (!authed(req)) return json(res, 401, { error: "authentication required" });
+    if (!Array.isArray(body?.events) || body.events.length === 0) return json(res, 400, { error: "events required" });
+    state.analytics = state.analytics || [];
+    for (const ev of body.events) state.analytics.push({ ...ev, user_id: state.user.id });
+    return json(res, 202, { accepted: body.events.length });
+  }
 
   // ---- everything below requires the fixture token
   const needsAuth =

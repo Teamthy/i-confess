@@ -3193,3 +3193,171 @@ a.ic-float-card:hover {
     transition: none;
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* Persistent mini-player + consent banner (§31, §51)                   */
+/* ------------------------------------------------------------------ */
+
+.ia-mini {
+  position: fixed;
+  z-index: var(--ic-zIndex-sticky);
+  left: var(--ic-spacing-4);
+  right: var(--ic-spacing-4);
+  bottom: calc(4.5rem + env(safe-area-inset-bottom, 0));
+  display: flex;
+  align-items: center;
+  gap: var(--ic-spacing-3);
+  background: var(--ic-color-brand-900);
+  color: var(--ic-color-neutral-0);
+  border-radius: var(--ic-radius-lg);
+  padding: var(--ic-spacing-3) var(--ic-spacing-4);
+  box-shadow: var(--ic-elevation-3);
+  overflow: hidden;
+}
+
+@media (min-width: 64rem) {
+  .ia-mini {
+    left: auto;
+    right: var(--ic-spacing-6);
+    bottom: var(--ic-spacing-6);
+    width: 24rem;
+  }
+}
+
+.ia-mini__fill {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 3px;
+  background: var(--ic-color-brand-400);
+  transition: width 1s linear;
+}
+
+.ia-mini__art {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: var(--ic-radius-md);
+  background: var(--ic-color-brand-600);
+  color: var(--ic-color-neutral-0);
+  font-family: var(--ic-font-family-serif);
+  font-size: 1.25rem;
+  text-decoration: none;
+  flex-shrink: 0;
+}
+
+.ia-mini__text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+  text-decoration: none;
+  color: inherit;
+}
+
+.ia-mini__text strong {
+  font-size: var(--ic-font-size-bodySm);
+  font-weight: var(--ic-font-weight-medium);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ia-mini__text span {
+  font-size: var(--ic-font-size-caption);
+  color: var(--ic-color-brand-200);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ia-mini__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  border-radius: var(--ic-radius-full);
+  background: var(--ic-color-neutral-0);
+  color: var(--ic-color-brand-900);
+  font-size: var(--ic-font-size-bodySm);
+  flex-shrink: 0;
+}
+
+.ia-mini__btn--ghost {
+  background: transparent;
+  color: var(--ic-color-brand-200);
+  min-width: 2.25rem;
+  min-height: 2.25rem;
+}
+
+/* Content clearance while the mini-player is mounted. */
+.ia-shell--mini .ia-main {
+  padding-bottom: 9rem;
+}
+
+@media (min-width: 64rem) {
+  .ia-shell--mini .ia-main {
+    padding-bottom: 7rem;
+  }
+}
+
+.ia-consent {
+  position: fixed;
+  z-index: var(--ic-zIndex-toast);
+  left: var(--ic-spacing-4);
+  right: var(--ic-spacing-4);
+  bottom: calc(4.5rem + env(safe-area-inset-bottom, 0));
+  background: var(--ic-color-neutral-0);
+  border: 1px solid var(--ic-color-neutral-200);
+  border-radius: var(--ic-radius-lg);
+  box-shadow: var(--ic-elevation-3);
+  padding: var(--ic-spacing-5);
+  display: grid;
+  gap: var(--ic-spacing-3);
+  max-width: 32rem;
+}
+
+@media (min-width: 64rem) {
+  .ia-consent {
+    left: auto;
+    right: var(--ic-spacing-6);
+    bottom: var(--ic-spacing-6);
+  }
+}
+
+.ia-consent p {
+  font-size: var(--ic-font-size-bodySm);
+  color: var(--ic-color-neutral-600);
+  line-height: var(--ic-font-lineHeight-relaxed);
+  margin: 0;
+}
+
+.ia-consent p strong {
+  color: var(--ic-color-neutral-950);
+}
+
+.ia-consent__actions {
+  display: flex;
+  gap: var(--ic-spacing-3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ia-mini__fill {
+    transition: none;
+  }
+}
+
+/* Two-column form grid that stacks on narrow screens. */
+.ic-form-grid-2 {
+  display: grid;
+  gap: var(--ic-spacing-4);
+}
+
+@media (min-width: 40rem) {
+  .ic-form-grid-2 {
+    grid-template-columns: 1fr 1fr;
+  }
+}

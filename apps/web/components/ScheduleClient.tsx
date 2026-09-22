@@ -17,6 +17,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { appApi, useApiData } from "@/lib/app-api";
+import { ANALYTICS_EVENTS, track } from "@/lib/analytics";
 import type { Category, Voice } from "@/lib/api";
 import { EmptyState, ErrorBlock, LoadingBlock, PremiumOffer, SignedOut } from "@/components/app-ui";
 
@@ -131,6 +132,7 @@ export function ScheduleClient() {
       setError(r.message);
       return;
     }
+    track(token, ANALYTICS_EVENTS.scheduleCreated, { schedule_id: r.data.id });
     setFormOpen(false);
     setLabel("");
     setCategoryIds([]);
@@ -199,7 +201,7 @@ export function ScheduleClient() {
               style={{ marginTop: "var(--ic-spacing-2)", width: "100%" }}
             />
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--ic-spacing-4)" }}>
+          <div className="ic-form-grid-2">
             <div>
               <label htmlFor="sch-time" style={{ display: "block", fontSize: "var(--ic-font-size-bodySm)", fontWeight: "var(--ic-font-weight-semibold)" }}>
                 Time
