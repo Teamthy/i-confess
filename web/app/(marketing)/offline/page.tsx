@@ -1,0 +1,2 @@
+export const metadata = { title: "Offline" };
+export default function Page() { return (<section className="section container" style={{ paddingTop: "calc(var(--header-h) + 80px)", textAlign: "center" }}><span className="eyebrow" style={{ justifyContent: "center" }}>Offline</span><h1 className="h-display" style={{ marginTop: 14 }}>No connection, <span className="accent">no noise.</span></h1><p className="lede" style={{ margin: "16px auto", maxWidth: "42ch" }}>You're offline. Downloaded sessions (mobile, Premium) still play.</p></section>); }

@@ -1,0 +1,12 @@
+{
+  "name": "iCONFESS — Speak it. Believe it. Live it.",
+  "short_name": "iCONFESS",
+  "description": "A quiet daily confession practice. Reviewed words, licensed voices, sessions sized to your day.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#00072D",
+  "theme_color": "#051650",
+  "icons": [
+    { "src": "/assets/logo-mark.jpg", "sizes": "512x512", "type": "image/jpeg", "purpose": "any" }
+  ]
+}

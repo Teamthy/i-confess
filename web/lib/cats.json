@@ -1,0 +1,275 @@
+[
+ {
+  "name": "Healing",
+  "slug": "healing",
+  "description": "Confessions for physical and emotional wholeness.",
+  "tagline": "Speak life over your health.",
+  "icon": "healing"
+ },
+ {
+  "name": "Health",
+  "slug": "health",
+  "description": "Declarations for the body you have been given.",
+  "tagline": "Honour the body you have been given.",
+  "icon": "health"
+ },
+ {
+  "name": "Finance",
+  "slug": "finance",
+  "description": "Biblical wisdom for provision and stewardship.",
+  "tagline": "Steward what is in your hands.",
+  "icon": "finance"
+ },
+ {
+  "name": "Wealth",
+  "slug": "wealth",
+  "description": "Declarations over abundance and its responsibilities.",
+  "tagline": "Declare God's provision and wisdom.",
+  "icon": "wealth"
+ },
+ {
+  "name": "Breakthrough",
+  "slug": "breakthrough",
+  "description": "Confessions for breaking through barriers.",
+  "tagline": "Name the wall, then speak through it.",
+  "icon": "breakthrough"
+ },
+ {
+  "name": "Marriage",
+  "slug": "marriage",
+  "description": "Confessions for a strong, God-centred marriage.",
+  "tagline": "Speak covenant over your home.",
+  "icon": "marriage"
+ },
+ {
+  "name": "Relationships",
+  "slug": "relationships",
+  "description": "Declarations over the people closest to you.",
+  "tagline": "Truth spoken over the people near you.",
+  "icon": "relationships"
+ },
+ {
+  "name": "Faith",
+  "slug": "faith",
+  "description": "Declarations that strengthen your faith.",
+  "tagline": "Say what you believe before you see it.",
+  "icon": "faith"
+ },
+ {
+  "name": "Peace",
+  "slug": "peace",
+  "description": "Declarations of calm and rest.",
+  "tagline": "Quiet the noise with a settled word.",
+  "icon": "peace"
+ },
+ {
+  "name": "Family",
+  "slug": "family",
+  "description": "Declarations over your household.",
+  "tagline": "Cover the people you love in prayer and truth.",
+  "icon": "family"
+ },
+ {
+  "name": "Purpose",
+  "slug": "purpose",
+  "description": "Declarations of calling and destiny.",
+  "tagline": "Speak with clarity about where you are going.",
+  "icon": "purpose"
+ },
+ {
+  "name": "Identity",
+  "slug": "identity",
+  "description": "Confessions of who you are in Christ.",
+  "tagline": "Answer the question of who you are.",
+  "icon": "identity"
+ },
+ {
+  "name": "Wisdom",
+  "slug": "wisdom",
+  "description": "Declarations for wisdom and clarity.",
+  "tagline": "Ask, then speak what you were given.",
+  "icon": "wisdom"
+ },
+ {
+  "name": "Protection",
+  "slug": "protection",
+  "description": "Confessions of safety and covering.",
+  "tagline": "Stand under a covering you did not build.",
+  "icon": "protection"
+ },
+ {
+  "name": "Career",
+  "slug": "career",
+  "description": "Declarations over your work and calling.",
+  "tagline": "Work as one who is sent.",
+  "icon": "career"
+ },
+ {
+  "name": "Business",
+  "slug": "business",
+  "description": "Confessions for work and enterprise.",
+  "tagline": "Build with integrity and courage.",
+  "icon": "business"
+ },
+ {
+  "name": "Leadership",
+  "slug": "leadership",
+  "description": "Declarations for those carrying weight.",
+  "tagline": "Carry weight without losing your soul.",
+  "icon": "leadership"
+ },
+ {
+  "name": "Favor",
+  "slug": "favor",
+  "description": "Confessions of grace and favour.",
+  "tagline": "Walk into rooms already prepared for you.",
+  "icon": "favor"
+ },
+ {
+  "name": "Provision",
+  "slug": "provision",
+  "description": "Declarations over daily supply.",
+  "tagline": "Name your need, then name your Provider.",
+  "icon": "provision"
+ },
+ {
+  "name": "Confidence",
+  "slug": "confidence",
+  "description": "Declarations against self-doubt.",
+  "tagline": "Speak from who you are, not what you have done.",
+  "icon": "confidence"
+ },
+ {
+  "name": "Discipline",
+  "slug": "discipline",
+  "description": "Confessions for consistency and self-control.",
+  "tagline": "Choose today what tomorrow will thank you for.",
+  "icon": "discipline"
+ },
+ {
+  "name": "Joy",
+  "slug": "joy",
+  "description": "Declarations of joy and gladness.",
+  "tagline": "Rejoice before the answer arrives.",
+  "icon": "joy"
+ },
+ {
+  "name": "Hope",
+  "slug": "hope",
+  "description": "Declarations for the long wait.",
+  "tagline": "Hold the promise when the room is quiet.",
+  "icon": "hope"
+ },
+ {
+  "name": "Freedom",
+  "slug": "freedom",
+  "description": "Confessions for deliverance and release.",
+  "tagline": "Speak over the chains that still feel real.",
+  "icon": "freedom"
+ },
+ {
+  "name": "Spiritual Growth",
+  "slug": "spiritual-growth",
+  "description": "Declarations for maturity and depth.",
+  "tagline": "Grow on purpose, not by accident.",
+  "icon": "spiritual-growth"
+ },
+ {
+  "name": "Prayer",
+  "slug": "prayer",
+  "description": "Confessions that teach you to pray.",
+  "tagline": "Learn to speak to God, and out loud.",
+  "icon": "prayer"
+ },
+ {
+  "name": "Children",
+  "slug": "children",
+  "description": "Declarations over your children.",
+  "tagline": "Speak destiny over the next generation.",
+  "icon": "children"
+ },
+ {
+  "name": "Parenting",
+  "slug": "parenting",
+  "description": "Confessions for those raising others.",
+  "tagline": "Lead your home with patience and truth.",
+  "icon": "parenting"
+ },
+ {
+  "name": "Direction",
+  "slug": "direction",
+  "description": "Declarations for decisions and crossroads.",
+  "tagline": "Ask for the next step, then take it.",
+  "icon": "direction"
+ },
+ {
+  "name": "Creativity",
+  "slug": "creativity",
+  "description": "Confessions for makers and builders.",
+  "tagline": "Make things with what you were given.",
+  "icon": "creativity"
+ },
+ {
+  "name": "Productivity",
+  "slug": "productivity",
+  "description": "Declarations for focus and follow-through.",
+  "tagline": "Finish what matters most first.",
+  "icon": "productivity"
+ },
+ {
+  "name": "Emotional Strength",
+  "slug": "emotional-strength",
+  "description": "Declarations for steady hearts.",
+  "tagline": "Stand steady when you feel unsteady.",
+  "icon": "emotional-strength"
+ },
+ {
+  "name": "Rest",
+  "slug": "rest",
+  "description": "Confessions for sabbath and stillness.",
+  "tagline": "Stop striving long enough to receive.",
+  "icon": "rest"
+ },
+ {
+  "name": "Gratitude",
+  "slug": "gratitude",
+  "description": "Declarations of thanksgiving.",
+  "tagline": "Name the good before you ask for more.",
+  "icon": "gratitude"
+ },
+ {
+  "name": "Forgiveness",
+  "slug": "forgiveness",
+  "description": "Confessions for releasing and receiving pardon.",
+  "tagline": "Release what you were never meant to carry.",
+  "icon": "forgiveness"
+ },
+ {
+  "name": "Love",
+  "slug": "love",
+  "description": "Declarations over how you love.",
+  "tagline": "Speak love until it becomes ordinary.",
+  "icon": "love"
+ },
+ {
+  "name": "Overcoming Fear",
+  "slug": "overcoming-fear",
+  "description": "Confessions against anxiety and dread.",
+  "tagline": "Say it out loud until fear loses its voice.",
+  "icon": "overcoming-fear"
+ },
+ {
+  "name": "Success",
+  "slug": "success",
+  "description": "Declarations for achievement without compromise.",
+  "tagline": "Succeed without losing your soul.",
+  "icon": "success"
+ },
+ {
+  "name": "Destiny",
+  "slug": "destiny",
+  "description": "Confessions over the future you are walking into.",
+  "tagline": "Speak the future you are walking into.",
+  "icon": "destiny"
+ }
+]
