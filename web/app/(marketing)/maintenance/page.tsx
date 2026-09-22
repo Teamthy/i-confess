@@ -1,0 +1,2 @@
+export const metadata = { title: "Maintenance" };
+export default function Page() { return (<section className="section container" style={{ paddingTop: "calc(var(--header-h) + 80px)", textAlign: "center" }}><span className="eyebrow" style={{ justifyContent: "center" }}>Maintenance</span><h1 className="h-display" style={{ marginTop: 14 }}>Back <span className="accent">shortly.</span></h1><p className="lede" style={{ margin: "16px auto", maxWidth: "42ch" }}>We're tuning the quiet. The library returns in a few minutes.</p></section>); }
