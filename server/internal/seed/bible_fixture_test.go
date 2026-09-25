@@ -142,4 +142,3 @@ func TestEveryCorpusCitationResolvesAgainstTheFixture(t *testing.T) {
 		t.Errorf("only %d citations checked; the corpus looks empty", checked)
 	}
 }
-
