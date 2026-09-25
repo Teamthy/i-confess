@@ -123,6 +123,14 @@ var Policies = []TablePolicy{
 	{Table: "idempotency_keys", Action: Erase},
 	{Table: "user_templates", Action: Erase},
 
+	// ---- Scripture (migration 0020). A highlight and a bookmark are the
+	// listener's own reading marks, and the marks say what they were reading
+	// when they made them. Erased with the account, not anonymised: the
+	// coordinates are the personal data, so a row stripped of its user
+	// reference would still be "this person read and marked John 3:16".
+	{Table: "verse_highlights", Action: Erase},
+	{Table: "verse_bookmarks", Action: Erase},
+
 	// ---- Moderation. The *records* outlive the account because safety and
 	// accountability reviews depend on them, but the identity of the person
 	// who filed a report or took a moderation action is personal data and is
