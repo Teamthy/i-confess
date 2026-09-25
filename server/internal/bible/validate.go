@@ -77,6 +77,12 @@ type Report struct {
 	// NonCanonical are divisions in the file that are not in the canon:
 	// front matter, apocrypha, glossaries.
 	NonCanonical []string `json:"non_canonical_divisions,omitempty"`
+	// EmptyDivisions are book divisions the file declared and left empty. They
+	// are not errors - a New Testament that carries empty Old Testament
+	// divisions is a New Testament - but they are reported, because a file
+	// that declares sixty-six books and fills in twenty-six is a partial
+	// source and the coverage label has to say so.
+	EmptyDivisions []string `json:"empty_divisions,omitempty"`
 	// DeclaredOmissions are the registry's omitted books and chapters that the
 	// file was in fact missing. They are reported so the reader can be told.
 	DeclaredOmissions []string `json:"declared_omissions,omitempty"`
@@ -131,6 +137,7 @@ func Validate(t *Translation, v Version) *Report {
 		VersionID: v.ID, Name: v.Name, Language: v.Language, LanguageName: v.LanguageName,
 		Licence: v.Licence, Coverage: v.Coverage, CoverageLabel: v.CoverageLabel(),
 		NonCanonical:   t.Skipped,
+		EmptyDivisions: t.EmptyDivisions,
 		Milestones:     t.Milestones,
 		Containers:     t.Containers,
 		DroppedVerses:  t.EmptyVerses,
@@ -273,6 +280,14 @@ func Validate(t *Translation, v Version) *Report {
 		}
 		r.errorf("text", "%d verses have no text after pruning (e.g. %s)", n, strings.Join(shown, ", "))
 	}
+	if n := len(r.EmptyDivisions); n > 0 {
+		shown := r.EmptyDivisions
+		if len(shown) > 6 {
+			shown = append(shown[:6:6], fmt.Sprintf("and %d more", n-6))
+		}
+		r.warnf("coverage", "%d book division(s) carry no text and were pruned: %s",
+			n, strings.Join(shown, ", "))
+	}
 	if r.DroppedVerses > 0 {
 		r.warnf("text", "%d empty verse placeholders pruned (e.g. %s)",
 			r.DroppedVerses, strings.Join(r.DroppedSamples, ", "))
@@ -310,6 +325,29 @@ func Validate(t *Translation, v Version) *Report {
 		}
 	}
 	return r
+}
+
+// AddError records a failure found by a caller that can see something the
+// validator cannot, and clears OK so the report and its summary cannot
+// disagree. The importer uses it for checks that depend on the registry entry
+// rather than on the parsed text.
+func (r *Report) AddError(subject, detail string) {
+	r.errorf(subject, "%s", detail)
+	r.OK = false
+}
+
+// OldTestamentBooksPresent counts canonical Old Testament books in a parsed
+// translation. The importer uses it to check that a version labelled New
+// Testament only really is one.
+func OldTestamentBooksPresent(t *Translation) []string {
+	var out []string
+	for i := range t.Books {
+		b, ok := BookByID(t.Books[i].ID)
+		if ok && b.Testament == Old {
+			out = append(out, b.Name)
+		}
+	}
+	return out
 }
 
 // requiredBooks is the book set a version promises: its coverage scope, minus

@@ -343,17 +343,34 @@ func verifyFile(path string, v bible.Version) (*bible.Report, error) {
 		return nil, err
 	}
 	rep := bible.Validate(t, v)
-	// The coverage label is a claim about the file. If the file turns out to
-	// contain the whole canon, saying "New Testament only" would make the
-	// reader hide books it actually has.
-	if rep.Coverage == bible.CoverageNewTestament && len(rep.MissingBooks) == 0 {
-		rep.Findings = append(rep.Findings, bible.Finding{
-			Severity: bible.SeverityError, Subject: "coverage",
-			Detail: "registry says New Testament only but every canonical book is present",
-		})
-		rep.OK = false
+	// The coverage label is a claim about the file. A New Testament that also
+	// carries the Old Testament is a complete Bible, and labelling it "New
+	// Testament" would hide two thirds of the text it actually has. The test is
+	// for Old Testament books being present, not for New Testament books being
+	// absent: a New Testament never lacks a New Testament book, so testing the
+	// absence made this check fail every correct file.
+	if rep.Coverage == bible.CoverageNewTestament {
+		if old := bible.OldTestamentBooksPresent(t); len(old) > 0 {
+			shown := old
+			if len(shown) > 3 {
+				shown = shown[:3]
+			}
+			rep.AddError("coverage", fmt.Sprintf(
+				"registry says New Testament only, but the file carries %d Old Testament book(s): %s",
+				len(old), strings.Join(shown, ", ")))
+		}
 	}
 	return rep, nil
+}
+
+// boolToInt renders a flag for a column the schema declares INTEGER, because
+// the driver sends a Go bool as the literal true/false and Postgres refuses it
+// for an integer column - a failure that only appears on the first real import.
+func boolToInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }
 
 // ---------- fixture ----------
@@ -633,7 +650,7 @@ func loadVersion(ctx context.Context, conn *db.DB, v bible.Version, t *bible.Tra
 			  updated_at=EXCLUDED.updated_at`,
 			v.ID, v.Name, v.Abbrev, v.Language, v.LanguageName, v.Format, rep.Coverage,
 			v.Year, v.Licence, v.LicenceURL, v.LicenceNote, v.Attribution, v.BlobURL(),
-			v.SHA256, v.Bytes, v.SortOrder, v.Default, rep.Books, rep.Chapters, rep.Verses,
+			v.SHA256, v.Bytes, v.SortOrder, boolToInt(v.Default), rep.Books, rep.Chapters, rep.Verses,
 			now, now, now,
 		); err != nil {
 			return fmt.Errorf("upsert version: %w", err)

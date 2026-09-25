@@ -58,6 +58,13 @@ type Translation struct {
 	// almost no text in it.
 	Milestones int
 	Containers int
+	// EmptyDivisions names book divisions the file declared and never filled
+	// in. Sources ship them: the Swahili New Testament carries a division for
+	// every Old Testament book with no chapters under it. They are pruned, so
+	// the reader cannot open a book that has no verses, and they are reported,
+	// so an operator can see the file is a partial one rather than guess from
+	// a book count.
+	EmptyDivisions []string
 	// EmptyVerses counts verse elements that carried no text. They are pruned
 	// rather than stored: several editions keep a numbered placeholder for a
 	// verse they do not have (the World English Bible against Luke 17:36) and
@@ -248,6 +255,18 @@ func (c *collector) start(el xml.StartElement, format string) error {
 			return c.startBook(el, FormatOSIS)
 		}
 	case "chapter":
+		// Zefania numbers its chapters in an attribute of its own
+		// (<CHAPTER cnumber="3">), so the OSIS reader - which looks for an
+		// osisID or a sID - finds nothing and opens no chapter. Every verse
+		// then has nowhere to go and the file parses as zero chapters, which
+		// is exactly the kind of silent emptiness the validator exists to
+		// catch but should never have to.
+		if format == FormatZefania {
+			if n, err := strconv.Atoi(strings.TrimSpace(attribute(el, "cnumber"))); err == nil {
+				c.startChapter(n)
+			}
+			break
+		}
 		c.startChapterFromOSIS(el)
 	case "c":
 		if format == FormatUSFX {
@@ -485,6 +504,9 @@ func (c *collector) flush() {
 
 func (c *collector) finish() {
 	c.flush()
+	// Compacting in place: kept never advances past the element being read, so
+	// the slice can be filtered without a second allocation.
+	kept := c.t.Books[:0]
 	for i := range c.t.Books {
 		b := &c.t.Books[i]
 		for j := range b.Chapters {
@@ -511,10 +533,14 @@ func (c *collector) finish() {
 		sort.SliceStable(chapters, func(x, y int) bool {
 			return chapters[x].Number < chapters[y].Number
 		})
-		if len(b.Chapters) > 0 {
-			c.t.byBook[b.ID] = b
+		if len(b.Chapters) == 0 {
+			c.t.EmptyDivisions = append(c.t.EmptyDivisions, b.ID)
+			continue
 		}
+		c.t.byBook[b.ID] = b
+		kept = append(kept, *b)
 	}
+	c.t.Books = kept
 }
 
 // sortBooks orders the translation canonically, so a reader and a diff of two

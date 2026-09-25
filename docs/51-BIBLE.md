@@ -53,20 +53,25 @@ distribution of 31,102 verses):
 | ID | Version | Lang | Fmt | Books | Chapters | Verses | vs reference | Notes |
 |---|---|---|---|---|---|---|---|---|
 | `kjv` | King James Version | en | OSIS | 66 | 1189 | 31102 | 0 | baseline; the translation the corpus cites |
-| `web` | World English Bible | en | USFX | 66 | 1189 | 31103 | +1 (0.016%) | Romans doxology at 14:24-26 rather than 16:25-27 |
+| `web` | World English Bible | en | USFX | 66 | 1189 | 31098 | 10 (0.03%) | Romans doxology at 14:24-26 rather than 16:25-27; 5 empty placeholders pruned (Luke 17:36, Acts 8:37, Acts 15:34, Acts 24:7, …) |
 | `asv` | American Standard Version | en | Zefania | 66 | 1189 | 31102 | 0 | exact |
-| `webbe` | World English Bible (British) | en | USFX | 66 | 1189 | 31103 | +1 (0.016%) | as WEB |
+| `webbe` | World English Bible (British) | en | USFX | 66 | 1189 | 31098 | 10 (0.03%) | as WEB, including the same five pruned placeholders |
 | `bsb` | Berean Standard Bible | en | USFX | 66 | 1189 | 31085 | −17 (0.055%) | omitted verses absent, not empty |
 | `ylt` | Young's Literal Translation | en | Zefania | 27 | 260 | 7957 | 0 | New Testament |
-| `swahili` | Swahili Bible | sw | OSIS | 26 | 255 | 7815 | +3 (0.038%) | no Philippians, no Matthew 23 — declared |
-| `rv1909` | Reina Valera 1909 | es | USFX | 66 | 1189 | 31102 | 0 | exact |
-| `almeida` | João Ferreira de Almeida | pt | USFX | 66 | 1189 | 31098 | −4 (0.039%) | |
-| `ostervald` | Ostervald Bible | fr | OSIS | 66 | 1189 | 31172 | +70 (0.404%) | largest variance shipped |
+| `swahili` | Swahili Bible | sw | OSIS | 26 | 255 | 7815 | 3 (0.04%) | no Philippians, no Matthew 23 — declared; 3 John 1:15 and Revelation 12:18 carry verses the reference does not |
+| `rv1909` | Reina Valera 1909 | es | USFX | 66 | 1189 | 31084 | 18 (0.058%) | 18 empty placeholders pruned |
+| `almeida` | João Ferreira de Almeida | pt | USFX | 66 | 1189 | 31098 | 12 (0.039%) | |
+| `ostervald` | Ostervald Bible | fr | OSIS | 66 | 1189 | 31172 | 126 (0.404%) | largest variance shipped |
 | `riveduta` | Italian Riveduta 1927 | it | OSIS | 66 | 1189 | 31102 | 0 | exact |
 | `tagalog` | Tagalog Bible (Ang Dating Biblia) | tl | OSIS | 66 | 1189 | 31102 | 0 | exact |
 
 Every file's last verse is Revelation 22:21, which is the cheapest end-to-end check that a parser
-read the whole document.
+read the whole document. The `var` column is the validator's own count of verses that differ from
+the reference distribution, not a percentage of a claimed total, and `dropped` is the number of
+empty placeholders pruned - a source that keeps a numbered line for a verse it does not have.
+
+**Total shipped text: 326,815 verses across twelve translations**, loaded into PostgreSQL in one
+`bible-import load` run and read back through the store layer in the tests.
 
 Six of the twelve reproduce the reference distribution exactly. The others differ by versification
 the way real editions do — the WEB family moves the Romans doxology, the BSB omits verses modern
@@ -149,6 +154,33 @@ one load each — the moment licensed text is available. Nothing in the feature 
 the reader, the reference normaliser, highlights, bookmarks and the confession cross-links all work
 per version, so a new language changes the picker and nothing else.
 
+## 5a. What the first real import found
+
+Verification is only worth what it catches. Running `bible-import verify` and then `load` against
+the twelve real files for the first time found four defects that no amount of reading the parser
+would have surfaced, and each is now impossible to reintroduce quietly:
+
+1. **Zefania files parsed as zero chapters.** `<CHAPTER cnumber="3">` numbers its chapters in an
+   attribute of its own, and the reader looked only for OSIS's `osisID`/`sID`. Every verse then had
+   no chapter to belong to, and the American Standard Version and Young's Literal Translation
+   "verified" as 66 books, 0 chapters, 0 verses — silent emptiness that the validator then reported
+   as 67 errors. Fixed, and `asv` now reproduces the reference distribution exactly.
+2. **Empty book divisions counted as present books.** The Swahili New Testament carries a division
+   for every Old Testament book with nothing under it, so a coverage check that counted divisions
+   concluded the file contained the whole canon and rejected it. Divisions with no text are now
+   pruned during parsing and reported (`EmptyDivisions`), so the reader cannot open a book with no
+   verses and an operator can see the source is a partial one.
+3. **The "New Testament only" check was wrong by construction.** It asked whether any required book
+   was missing, and a New Testament never lacks a New Testament book — so it failed every correct
+   file. It now asks whether the file carries Old Testament books, which is the actual claim:
+   a New Testament that also has the Old is a complete Bible and must not be labelled otherwise.
+4. **`is_default` bound a Go bool to an INTEGER column.** Postgres refuses `true` as an integer, so
+   the first real `load` failed on its first insert. A test with a stub database would not have
+   caught it; a real one did, immediately.
+
+The four are the reason the import is run end to end rather than trusted: the first two produce a
+Bible that looks plausible and is wrong, which is the failure mode this feature cannot have.
+
 ## 6. Data model
 
 Migration `0020_bible.sql`:
@@ -206,12 +238,9 @@ safe.
 
 Recorded plainly, because the feature is not done:
 
-1. **Store and API** — endpoints to list versions, read a chapter, read a verse with its confessions
-   and categories, and to create/delete highlights and bookmarks. Migration `0020` is the schema
-   underneath them.
-2. **The reader in the web app and the mobile app** — book/chapter/verse navigation with the version
+1. **The reader in the web app and the mobile app** — book/chapter/verse navigation with the version
    picker, highlight and bookmark affordances, and the coverage label ("New Testament, without
-   Philippians").
+   Philippians"). The API they read is built (`/bible/*`, `/me/bible/*`).
 3. **Speaking a confession** — synthesising the confession's text through the existing voice
    pipeline on demand, cached as an audio asset, triggered from the verse and the confession.
 4. **Admin surfacing** — the verification report for each imported version, so an operator can see
