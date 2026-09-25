@@ -99,7 +99,9 @@ func replaceDatabaseName(url, name string) string {
 // analytics_events, the measured trial journey and the persisted funnel
 // events (PHASE 41); 0019 added user_blocks and moderation_appeals, the
 // listener's self-service boundary and the answer to a moderation decision
-// (PHASE 42).
+// (PHASE 42); 0020 added bible_versions, bible_verses, verse_highlights and
+// verse_bookmarks, the imported Scripture, its registry and the two marks a
+// reader can leave on a verse.
 func TestPostgresSchemaLoads(t *testing.T) {
 	ctx := context.Background()
 	d := newTestDB(t)
@@ -109,8 +111,8 @@ func TestPostgresSchemaLoads(t *testing.T) {
 		`SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public'`).Scan(&tables); err != nil {
 		t.Fatalf("count tables: %v", err)
 	}
-	if tables != 70 {
-		t.Errorf("expected 70 tables, got %d", tables)
+	if tables != 74 {
+		t.Errorf("expected 74 tables, got %d", tables)
 	}
 
 	var fks int
@@ -119,8 +121,8 @@ func TestPostgresSchemaLoads(t *testing.T) {
 		 WHERE constraint_type = 'FOREIGN KEY' AND table_schema = 'public'`).Scan(&fks); err != nil {
 		t.Fatalf("count foreign keys: %v", err)
 	}
-	if fks != 83 {
-		t.Errorf("expected 83 foreign keys, got %d", fks)
+	if fks != 86 {
+		t.Errorf("expected 86 foreign keys, got %d", fks)
 	}
 
 	var flags int

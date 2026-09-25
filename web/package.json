@@ -1,7 +1,24 @@
 {
   "name": "iconfess-web",
   "private": true,
-  "scripts": { "dev": "next dev -H 0.0.0.0 -p 3000", "build": "next build", "start": "next start -H 0.0.0.0 -p 3000" },
-  "dependencies": { "next": "15.1.6", "react": "19.0.0", "react-dom": "19.0.0" },
-  "devDependencies": { "typescript": "5.7.3", "@types/node": "22.10.5", "@types/react": "19.0.4", "@types/react-dom": "19.0.2" }
+  "scripts": {
+    "dev": "next dev -H 0.0.0.0 -p 3000",
+    "build": "next build",
+    "start": "next start -H 0.0.0.0 -p 3000"
+  },
+  "dependencies": {
+    "next": "15.5.26",
+    "react": "19.0.0",
+    "react-dom": "19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "22.10.5",
+    "@types/react": "19.0.4",
+    "@types/react-dom": "19.0.2",
+    "typescript": "5.7.3"
+  },
+  "overrides": {
+    "postcss": "8.5.28",
+    "sharp": "0.35.4"
+  }
 }
