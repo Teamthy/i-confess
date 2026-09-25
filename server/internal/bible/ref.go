@@ -97,17 +97,23 @@ var aliases = func() map[string]string {
 		put(k, v)
 	}
 
-	// Roman-numeral prefixes, which older citations use ("II Timothy").
-	roman := map[string]string{
-		"i": "1", "ii": "2", "iii": "3", "iv": "4",
-	}
+	// Roman-numeral prefixes, which older citations use ("II Timothy", "I
+	// John"). The alias table is keyed by the modern form - the canon calls
+	// the book "2 Timothy" - so the number is what has to be rewritten, and
+	// the rewrite has to happen before the map is read.
+	roman := map[string]string{"1": "i", "2": "ii", "3": "iii"}
+	numbered := make([]struct{ key, id string }, 0, len(m))
 	for k, id := range m {
 		parts := strings.SplitN(k, " ", 2)
-		if len(parts) == 2 {
-			if n, ok := roman[parts[0]]; ok {
-				put(n+" "+parts[1], id)
-			}
+		if len(parts) != 2 {
+			continue
 		}
+		if r, ok := roman[parts[0]]; ok {
+			numbered = append(numbered, struct{ key, id string }{r + " " + parts[1], id})
+		}
+	}
+	for _, n := range numbered {
+		put(n.key, n.id)
 	}
 
 	// USFM codes, which is what USFX sources carry.
@@ -191,11 +197,13 @@ func ParseVerseSpec(spec string) ([]int, bool) {
 		p = strings.TrimRightFunc(p, func(r rune) bool {
 			return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')
 		})
+		// An empty part means the dash had nothing on one side of it
+		// ("-4", "3-"), which is not a verse.
 		if p == "" {
-			continue
+			return nil, false
 		}
 		n, err := strconv.Atoi(p)
-		if err != nil || n < 0 {
+		if err != nil || n < 1 {
 			return nil, false
 		}
 		nums = append(nums, n)
