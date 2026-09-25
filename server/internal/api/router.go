@@ -334,6 +334,11 @@ func (h *Handler) Routes() http.Handler {
 	h.route(mux, "GET /v1/categories/{id}/confessions", "public", "content", "Confessions in a category (cached SWR 2m)", nil, h.cachedCategoryConfessions)
 	h.route(mux, "GET /v1/confessions/{id}", "public", "content", "One confession", nil, h.getConfession)
 	h.route(mux, "GET /v1/voices", "public", "content", "Available voices (cached SWR 5m)", nil, h.cachedListVoices)
+	// The Bible reader (§ Scripture). Registered under both prefixes by one
+	// call, because every reader route exists twice and the parity test fails
+	// the build when only one copy is registered.
+	h.registerBibleRoutes(mux, authed)
+
 	// Health versioned
 	h.route(mux, "GET /v1/healthz", "public", "ops", "Liveness", nil, h.livez)
 	h.route(mux, "GET /v1/health/live", "public", "ops", "Liveness", nil, h.livez)

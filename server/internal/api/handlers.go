@@ -49,6 +49,10 @@ type Handler struct {
 	// blocks owns listener-set boundaries. Separate from mod because a block is
 	// not a moderation action: no moderator takes it and none can see it.
 	blocks *store.BlockStore
+	// bible owns the reader: imported translations, verses, and the marks a
+	// listener leaves on them. The registry says what ships; this store says
+	// what is loaded.
+	bible *store.BibleStore
 	// signals reads the seven listener signals personalization ranks on
 	// (master-plan 34). Read-only: it derives evidence from tables other
 	// features write, so there is no second bookkeeping to drift.
@@ -172,6 +176,7 @@ func NewHandler(cfg Config, db *db.DB) *Handler {
 		search:       search.NewSearchStore(db),
 		templates:    store.NewTemplateStore(db),
 		plans:        store.NewPlanStore(db),
+		bible:        store.NewBibleStore(db),
 		queue:        jobs.NewMemoryQueue(),
 		vrights:      store.NewVoiceRightsStore(db),
 		db:           db,

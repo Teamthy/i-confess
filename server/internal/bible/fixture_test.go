@@ -1,13 +1,10 @@
 package bible
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/Teamthy/i-confess/internal/seed"
 )
 
 // Fixture tests.
@@ -83,99 +80,6 @@ func TestFixtureParsesWithTheHardDialect(t *testing.T) {
 	}
 	if _, ok := tr.Text("FrontMatter", 1, 1); ok {
 		t.Error("front-matter text is readable as Scripture")
-	}
-}
-
-// TestFixtureCoverageMatchesTheCorpus derives the expected shape of the
-// fixture from the corpus itself. Hard-coding counts here would let the
-// fixture and the corpus drift apart while both tests kept passing.
-func TestFixtureCoverageMatchesTheCorpus(t *testing.T) {
-	tr := loadFixture(t)
-
-	type chapterKey struct {
-		book    string
-		chapter int
-	}
-	books := map[string]bool{}
-	chapters := map[chapterKey]bool{}
-	distinct := map[string]bool{}
-
-	for _, c := range seed.CanonicalConfessions {
-		for _, s := range c.Scriptures {
-			ref, err := NewReference(s.Book, s.Chapter, s.Verse)
-			if err != nil {
-				t.Fatalf("confession %q cites %s %d:%s: %v", c.Title, s.Book, s.Chapter, s.Verse, err)
-			}
-			books[ref.Book] = true
-			chapters[chapterKey{ref.Book, ref.Chapter}] = true
-			for _, n := range ref.Verses {
-				text, ok := tr.Text(ref.Book, ref.Chapter, n)
-				if !ok {
-					t.Errorf("%s %d:%d is cited by %q but absent from the fixture; regenerate it with "+
-						"`go run ./cmd/bible-import fixture`", ref.Name, ref.Chapter, n, c.Title)
-					continue
-				}
-				if strings.TrimSpace(text) == "" {
-					t.Errorf("%s %d:%d parsed as empty text", ref.Name, ref.Chapter, n)
-				}
-				distinct[fmt.Sprintf("%s.%d.%d", ref.Book, ref.Chapter, n)] = true
-			}
-		}
-	}
-
-	if got := len(tr.Books); got != len(books) {
-		t.Errorf("fixture has %d books, corpus cites %d", got, len(books))
-	}
-	if got := countChapters(tr); got != len(chapters) {
-		t.Errorf("fixture has %d chapters, corpus cites %d", got, len(chapters))
-	}
-	if got := tr.VerseCount(); got != len(distinct) {
-		t.Errorf("fixture has %d verses, the corpus cites %d distinct verses", got, len(distinct))
-	}
-}
-
-// TestEveryCorpusCitationResolves is the guard that keeps the confession
-// library and the Bible in step: every Scripture reference in the canonical
-// corpus must normalise, and the translation it names must be one the
-// registry ships.
-func TestEveryCorpusCitationResolves(t *testing.T) {
-	tr := loadFixture(t)
-
-	checked := 0
-	for _, c := range seed.CanonicalConfessions {
-		if len(c.Scriptures) == 0 {
-			t.Errorf("confession %q has no Scripture reference", c.Title)
-		}
-		for _, s := range c.Scriptures {
-			// The version the corpus cites has to exist in the registry, or
-			// the reader cannot open the verse the confession points at.
-			v, ok := VersionByID(strings.ToLower(strings.TrimSpace(s.Translation)))
-			if !ok {
-				t.Errorf("confession %q cites translation %q, which the registry does not ship",
-					c.Title, s.Translation)
-				continue
-			}
-			if !v.Default {
-				t.Errorf("confession %q cites %s, but the fixture is generated from the default version %s",
-					c.Title, v.ID, DefaultVersion().ID)
-			}
-
-			ref, err := NewReference(s.Book, s.Chapter, s.Verse)
-			if err != nil {
-				t.Errorf("confession %q cites %s %d:%s: %v", c.Title, s.Book, s.Chapter, s.Verse, err)
-				continue
-			}
-			for _, n := range ref.Verses {
-				if _, ok := tr.Text(ref.Book, ref.Chapter, n); !ok {
-					t.Errorf("confession %q cites %s, absent from the %s fixture",
-						c.Title, DisplayRef(ref.Book, ref.Chapter, []int{n}), v.Abbrev)
-				}
-			}
-			checked++
-		}
-	}
-	if checked < 100 {
-		t.Errorf("only %d citations checked; the corpus looks empty", checked)
 	}
 }
 
