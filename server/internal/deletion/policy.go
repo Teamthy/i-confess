@@ -90,6 +90,10 @@ var Policies = []TablePolicy{
 	{Table: "user_collections", Action: Erase},
 	{Table: "user_confessions", Action: Erase},
 	{Table: "favorites", Action: Erase},
+	// A highlight or a bookmark is the reader's own annotation of a verse, so
+	// it goes with the account like any other note.
+	{Table: "verse_highlights", Action: Erase},
+	{Table: "verse_bookmarks", Action: Erase},
 	{Table: "schedules", Action: Erase},
 	{Table: "session_items", Action: Erase, Column: "session_id",
 		Reason: "removed via their parent session"},
