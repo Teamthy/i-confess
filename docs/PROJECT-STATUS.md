@@ -1,4 +1,19 @@
-**Last verified:** 2026-09-21, at ledger 45 (master-plan PHASE 38 — the
+**Last verified:** 2026-09-25, at ledger 50 (`docs/50-CACHE-INVALIDATION.md`
+— the content caches now have an invalidation path, closing G-10. Two copies of
+the server binary over one PostgreSQL and one Redis 7.4: a category published on
+instance A was visible on instance B on its next request, in both directions,
+and a third instance with no `REDIS_ADDR` kept its cached copy, which is the
+control that shows the bus and not a cold cache is doing the work. The instance
+that handles the write also stopped serving its own stale copy, which was the
+half nobody had noticed. Proving commands: `go test -race ./... -count=1` with
+`TEST_DATABASE_URL` and `REDIS_ADDR` set (all `ok`), `go test ./internal/cache/
+-count=1 -v` (12/12), `go build`, `go vet`, `gofmt -l`, the live two-instance
+run above, and `GET /metrics` showing `cache.invalidations`. `make lint` could
+not run: the golangci-lint release CDN is unreachable from this sandbox, so that
+one is owed to CI. The ledger 45 record below is unchanged and still describes
+`apps/web`.)
+
+**Previously verified:** 2026-09-21, at ledger 45 (master-plan PHASE 38 — the
 public marketing website. `apps/web` was rebuilt in place against the PHASE 05
 design system: `styles/tokens.css` is a symlink to `design/generated/tokens.css`,
 so the site consumes the generated tokens directly and cannot drift. All 20
@@ -71,6 +86,8 @@ it.** Every claim below was produced by running something.
 | Account erasure covers every user table | `internal/deletion` |
 | All 39 categories seed | `internal/seed` |
 | Production refuses stub payment receipts | `internal/billing/verify_prod_test.go` |
+| Cache invalidation reaches every instance | `internal/api/cache_invalidation_test.go` (two Handlers, one database, shared bus), `internal/cache` Redis pub/sub tests, live two-instance run in `docs/50` |
+| Cache metrics are real, not just computable | `GET /metrics` → `cache.{hits,misses,stale,hit_rate,invalidations}`, asserted by `TestCacheInvalidationIsCountedForMetrics` |
 
 ## Not done
 
@@ -83,10 +100,10 @@ it.** Every claim below was produced by running something.
 | **Trial lifecycle** | **Done in PHASE 36** — persistent `trials` row, explicit six-state graph, one-time start, expiry/conversion, and Premium projection tests. |
 | **UGC `PUBLIC` readers** | **Done in PHASE 32** — `GET /community/confessions` public, anonymous, newest-first, mobile 2-tab + web both-feeds. Was G-40. |
 | **Soft delete / versioning** | **Done in PHASE 38** — all 66 application tables carry `deleted_at` and `row_version`; retention writes are tombstoned and versioned. |
-| **Cache** | Per-process only; no cross-instance invalidation. |
+| **Cache** | **Closed in ledger 50** — still per-process, but writes now invalidate locally and publish to every other instance over Redis pub/sub. Was G-10. |
 | **Design system** | 120 tokens, contrast-verified, but not yet consumed by any real surface. |
 | **Navigation** | 37 screens specified and validated; mobile has the shell plus real home, explore, category, confession, builder, activity, and production player surfaces; me and remaining secondary surfaces continue in subsequent phases. |
-| **Observability** | No cache hit-rate metric; runtime dependency failure untested. |
+| **Observability** | `cache.hit_rate` and `cache.invalidations` are exposed and asserted (ledger 50). The claim about a missing hit-rate metric was stale since PHASE 07. Runtime dependency failure remains untested outside the busy-path and reconnect cases. |
 
 ## Phase progress
 

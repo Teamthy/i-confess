@@ -103,6 +103,12 @@ type Handler struct {
 	catConfCache *cache.Cache[[]models.Confession]
 	voicesCache  *cache.Cache[[]models.Voice]
 	cacheMeter   *cache.Meter
+	// cacheBus carries invalidations to the other API instances, and
+	// cacheOwner identifies this instance so it ignores the echo of its own
+	// messages (G-10). A nil bus is a single-instance deployment: writes still
+	// invalidate this instance's own caches.
+	cacheBus   cache.Bus
+	cacheOwner string
 	// metrics counts security-relevant events for alerting (S83, S84).
 	metrics *AuthMetrics
 	// Store notification collaborators (IC-003, PR B). Nil means "resolve from

@@ -85,6 +85,12 @@ This is the substantive part of the phase.
 
 ### G-10 — The cache claims a Redis swap that does not exist
 
+> **Closed in ledger 50** (`docs/50-CACHE-INVALIDATION.md`, 2026-09-25): writes
+> now invalidate locally and publish a key invalidation over Redis pub/sub to
+> every other instance. The finding below is kept as written — it was accurate,
+> and it understated the problem: the instance that handled the write was stale
+> too, not only its peers.
+
 `internal/cache/cache.go` said:
 
 > This in-memory implementation satisfies the contract and is swapped for Redis
@@ -252,7 +258,7 @@ metric, so §43's "cache hit rate" cannot be reported. Assigned to PHASE 44.
 8. **Security considerations:** small dependency surface; recorded that caching entitlements would break invariant I-6.
 9. **Performance considerations:** SWR cache is correct at one instance; hit rate is not observable.
 10. **Known issues:** G-10 (per-process cache, no invalidation), G-11 (`clients/dart` is an API client, not the app), G-12 (mobile cannot play audio), G-13 (tooling reasoning in 4 files).
-11. **Remaining work:** G-10 (per-process cache) and G-13 (the mobile pubspec, fixed when PHASE 24 restores audio). D-5 imposes a sequencing constraint: PHASE 05 before PHASE 38/40.
+11. **Remaining work:** G-10 (per-process cache) and G-13 (the mobile pubspec, fixed when PHASE 24 restores audio). G-10 was closed in ledger 50; G-13 was closed by PHASE 24. D-5 imposes a sequencing constraint: PHASE 05 before PHASE 38/40.
 12. **Phase score:** 8/10. The stack choices are sound and unusually lean. Docked because three of them were documented with reasons that were not true, and because G-12 means the product's core capability is absent from its own client.
 13. **Decision:** **PASS**.
 14. **Recommended next phase:** **PHASE 04 — Repository Bootstrap**, which now has real work: retiring `apps/mobile`, and marking `apps/web` and `apps/admin` for replacement rather than extension.

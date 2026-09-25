@@ -225,9 +225,11 @@ func (c Config) Validate() error {
 		return errors.New("PUBLIC_BASE_URL must be https in production: links carry one-time tokens")
 	}
 	// Without Redis, each replica enforces its own limits, so N replicas allow
-	// N times the intended rate.
+	// N times the intended rate, and the content caches have no way to tell
+	// each other that an admin write happened (G-10) - a published confession
+	// would stay invisible on the other replicas for ttl+swr.
 	if c.RedisAddr == "" {
-		return errors.New("REDIS_ADDR is required in production so rate limits hold across replicas")
+		return errors.New("REDIS_ADDR is required in production so rate limits hold and cache invalidations reach every replica")
 	}
 	return nil
 }
