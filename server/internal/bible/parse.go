@@ -502,12 +502,14 @@ func (c *collector) finish() {
 				kept = append(kept, v)
 			}
 			b.Chapters[j].Verses = kept
-			sort.SliceStable(b.Chapters[j].Verses, func(a, b int) bool {
-				return b.Chapters[j].Verses[a].Number < b.Chapters[j].Verses[b].Number
+			verses := b.Chapters[j].Verses
+			sort.SliceStable(verses, func(x, y int) bool {
+				return verses[x].Number < verses[y].Number
 			})
 		}
-		sort.SliceStable(b.Chapters, func(a, b int) bool {
-			return b.Chapters[a].Number < b.Chapters[b].Number
+		chapters := b.Chapters
+		sort.SliceStable(chapters, func(x, y int) bool {
+			return chapters[x].Number < chapters[y].Number
 		})
 		if len(b.Chapters) > 0 {
 			c.t.byBook[b.ID] = b
