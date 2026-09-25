@@ -25,6 +25,6 @@
     "typescript": "5.9.3"
   },
   "overrides": {
-    "postcss": "8.5.18"
+    "postcss": "8.5.28"
   }
 }
