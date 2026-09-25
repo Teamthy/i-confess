@@ -33,6 +33,10 @@ func (h *Handler) promMetrics(w http.ResponseWriter, r *http.Request) {
 			"misses":   cs.Misses,
 			"stale":    cs.Stale,
 			"hit_rate": cs.HitRate(),
+			// Writes that dropped a cached entry here. A hit rate alone cannot
+			// distinguish "the catalogue never changes" from "the catalogue
+			// changed and nothing noticed".
+			"invalidations": cs.Invalidations,
 		}
 	}
 	traceID := tracing.TraceIDFromContext(r.Context())

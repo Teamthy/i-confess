@@ -88,6 +88,12 @@ func (c *Cache[V]) InvalidatePrefix(prefix string) {
 // Stats for dashboard hit-rate.
 type Stats struct {
 	Hits, Misses, Stale int64
+	// Invalidations counts entries dropped because the data changed, as
+	// opposed to Hits/Misses/Stale which describe lookups. It is separate
+	// because the two answer different questions: a healthy hit rate with
+	// zero invalidations on a corpus that is edited daily means the edits are
+	// not reaching the caches at all.
+	Invalidations int64
 }
 
 type Meter struct {
@@ -98,6 +104,7 @@ type Meter struct {
 func (m *Meter) Hit()            { m.mu.Lock(); m.s.Hits++; m.mu.Unlock() }
 func (m *Meter) Miss()           { m.mu.Lock(); m.s.Misses++; m.mu.Unlock() }
 func (m *Meter) Stale()          { m.mu.Lock(); m.s.Stale++; m.mu.Unlock() }
+func (m *Meter) Invalidated()    { m.mu.Lock(); m.s.Invalidations++; m.mu.Unlock() }
 func (m *Meter) Snapshot() Stats { m.mu.Lock(); defer m.mu.Unlock(); return m.s }
 func (m *Meter) HitRate() float64 {
 	s := m.Snapshot()

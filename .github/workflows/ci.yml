@@ -31,6 +31,11 @@ jobs:
     # run always means a real database was exercised.
     env:
       TEST_DATABASE_URL: host=127.0.0.1 port=5432 user=iconfess password=iconfess dbname=postgres sslmode=disable
+      # Cross-instance cache invalidation is Redis pub/sub. Without a server,
+      # internal/cache's live-Redis assertions skip - loudly, but they skip -
+      # and a green run would then say nothing about the transport that
+      # production depends on. The service below is what makes them run.
+      REDIS_ADDR: 127.0.0.1:6379
 
     services:
       postgres:
@@ -43,6 +48,16 @@ jobs:
           - 5432:5432
         options: >-
           --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5

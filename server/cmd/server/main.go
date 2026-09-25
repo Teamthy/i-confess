@@ -11,6 +11,7 @@ import (
 
 	"github.com/Teamthy/i-confess/internal/api"
 	"github.com/Teamthy/i-confess/internal/billing"
+	"github.com/Teamthy/i-confess/internal/cache"
 	"github.com/Teamthy/i-confess/internal/config"
 	"github.com/Teamthy/i-confess/internal/db"
 	"github.com/Teamthy/i-confess/internal/email"
@@ -173,6 +174,31 @@ func main() {
 		}
 	} else {
 		log.Printf("redis: REDIS_ADDR unset - rate limits are per-instance only")
+	}
+
+	// Cache invalidation between instances (G-10).
+	//
+	// The content caches are per-process, so without a bus an admin edit
+	// published on one replica stays invisible on the others until ttl+swr
+	// expires - up to fifteen minutes on the category and voice caches.
+	//
+	// This reuses the same Redis the limiter does: pub/sub needs one more
+	// connection from a server the process is already configured to talk to,
+	// rather than a new dependency. Without REDIS_ADDR the Handler still
+	// invalidates its own caches on write, which is what a single-instance
+	// deployment needs, and the log says so rather than implying otherwise.
+	if cfg.RedisAddr != "" {
+		bus := redisCacheBus(cfg)
+		if err := h.SetCacheBus(bus); err != nil {
+			// Not fatal: publishing still works, so this instance keeps the
+			// other replicas fresh while it serves its own cache until TTL.
+			log.Printf("redis: cache invalidation subscription failed, this instance will serve stale content until TTL: %v", err)
+		} else {
+			log.Printf("redis: cross-instance cache invalidation enabled at %s (channel %s)", cfg.RedisAddr, bus.Channel)
+		}
+		defer h.CloseCacheBus()
+	} else {
+		log.Printf("redis: REDIS_ADDR unset - cache invalidation is local to this instance only")
 	}
 
 	if cfg.ElevenLabsAPIKey != "" {
@@ -350,4 +376,9 @@ func main() {
 // redisStore builds the shared counter backend for rate limiting.
 func redisStore(cfg config.Config) *ratelimit.RedisStore {
 	return ratelimit.NewRedisStore(cfg.RedisAddr, cfg.RedisPassword)
+}
+
+// redisCacheBus returns the invalidation transport used across API instances.
+func redisCacheBus(cfg config.Config) *cache.RedisBus {
+	return cache.NewRedisBus(cfg.RedisAddr, cfg.RedisPassword)
 }

@@ -7,6 +7,11 @@
 # Tests require a live PostgreSQL. TEST_DATABASE_URL below is the default for a
 # local container; override it on the command line for anything else. There is
 # deliberately no fallback that skips the tests — see internal/db/dbtest.
+#
+# Redis is optional locally and provided by CI: with REDIS_ADDR set, the
+# live pub/sub assertions in internal/cache run, and without it they skip with
+# a message saying so. `docker compose -f server/docker-compose.yml up -d redis`
+# gives you the same server CI uses.
 
 SHELL := /bin/bash
 GO    ?= go

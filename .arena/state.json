@@ -1,15 +1,15 @@
 {
   "project": "i-confess",
-  "branch": "arena/01a0be60-i-confess",
-  "base_commit": "3eb85ccd3a1e20426b1d12abb8369666508aaf77",
-  "phase": "delivery",
-  "task": "IC-003 (PR B): store notification webhooks \u2014 signed App Store Server Notifications V2 and Play RTDN, idempotency on the notification id, out-of-order tolerance, Play acknowledgement",
+  "branch": "arena/01a0d8ae-i-confess",
+  "base_commit": "ad6b00c7cea86f4005cc2802e19546729832336e",
+  "phase": "ledger-50",
+  "task": "Cache invalidation across instances (closes G-10): content-cache invalidation on every admin content write, local first then published to the other API instances over Redis pub/sub",
   "status": "VERIFIED",
   "attempt": 1,
-  "last_successful_step": "webhook endpoints registered at /subscriptions/webhooks/{apple,google} (+ /v1 aliases) over a new store_notifications ledger (migration 0011) that dedupes on (provider, notification_id) and refuses events older than subscriptions.last_store_event_at; Apple V2 notifications verified against the pinned Apple root and decided from the nested signedTransactionInfo; Play notifications resolved through the Play Developer API (never from the message body) after OIDC verification of the Pub/Sub push; Play acknowledgement implemented in internal/playapi and called from both the verify endpoint and the webhook. gofmt clean, go vet clean, full go test -count=1 ./... green against PostgreSQL 17.10, design/generate.py --check + test_design.py + test_ia.py green, contracts/openapi.json and design/routes.json regenerated",
-  "next_action": "commit and push PR B, open the PR, then PR C (FCM/APNs delivery in internal/scheduler + internal/push, wire apps/mobile/lib/src/core/push/device_registration.dart into the reminder flow, real in-app purchase in premium_screen.dart _purchasePlan, add purchase/push plugins to pubspec.yaml, add flutter analyze/test + dart test jobs to CI)",
+  "last_successful_step": "cache keys defined once in internal/api/cache_invalidation.go and used by content_cache.go; four admin writes (category create, confession create, confession status change, voice create) invalidate locally and publish a Message over internal/cache.Bus; MemoryBus for single instance and tests, RedisBus (RESP AUTH/SUBSCRIBE/PUBLISH, reconnect via internal/backoff 250ms->30s, subscription reader kept per connection, Close unblocks a parked read) for production; publish failures logged not returned so a committed write never fails on a lost notification; cache.Stats.Invalidations exposed as cache.invalidations at GET /metrics; CI gained a redis:7 service and REDIS_ADDR so the live pub/sub assertions run there; two bugs found and fixed (throwaway bufio.Reader losing a coalesced message, Close blocking on a live subscription). Evidence: gofmt/go build/go vet clean; go test -race ./... -count=1 green against PostgreSQL 17.10 with REDIS_ADDR=127.0.0.1:6379; internal/cache 12/12; 5 new internal/api tests; live two-instance run (A:8091, B:8092, both with Redis) showed a category published on one visible on the other in both directions, and a third instance without REDIS_ADDR kept its cached copy as the control, while still invalidating its own writes locally. make lint NOT run: the golangci-lint release CDN is unreachable from this sandbox (owed to CI)",
+  "next_action": "commit, push, open the PR",
   "timestamp": "2026-09-20T11:05:00Z",
-  "current_phase": 32,
+  "current_phase": 50,
   "completed_phases": [
     0,
     1,
@@ -42,13 +42,13 @@
     28,
     29,
     30,
-    31
+    31,
+    50
   ],
   "open_gaps": [
     "G-3",
     "G-7",
     "G-9",
-    "G-10",
     "G-12",
     "G-13",
     "G-14",
@@ -76,7 +76,9 @@
     "G-39",
     "G-40",
     "G-41",
-    "G-42"
+    "G-42",
+    "G-56",
+    "G-57"
   ],
   "reconciliation": {
     "reason": "the continuation brief stated HEAD d19a47aa2e4527d7baac2dfc02778d969dc3a6b0 (PHASE 31 moderation, 13 commits ahead of origin/main on branch arena/01a0baf6-i-confess) with a fallback export at /home/user/arena-delivery/; verification found none of it",
@@ -103,5 +105,34 @@
     "the embedded PostgreSQL ships without psql; create or inspect databases with postgres --single. TEST_DATABASE_URL=\"host=127.0.0.1 port=5432 user=iconfess dbname=postgres sslmode=disable\" (trust auth)",
     "internal/storage TestContentTypeMapping failed on an earlier image because /etc/mime.types maps .xyz to chemical/x-xyz; it passes on this one",
     "Dart and Flutter SDKs are unreachable from the sandbox, so dart test and flutter test can only run in CI"
+  ],
+  "files_changed": [
+    "server/internal/cache/bus.go",
+    "server/internal/cache/bus_test.go",
+    "server/internal/cache/redis_bus.go",
+    "server/internal/cache/redis_bus_test.go",
+    "server/internal/cache/cache.go",
+    "server/internal/api/cache_invalidation.go",
+    "server/internal/api/cache_invalidation_test.go",
+    "server/internal/api/admin.go",
+    "server/internal/api/content_cache.go",
+    "server/internal/api/handlers.go",
+    "server/internal/api/types_cache.go",
+    "server/internal/api/prom_metrics.go",
+    "server/internal/config/config.go",
+    "server/cmd/server/main.go",
+    ".github/workflows/ci.yml",
+    "Makefile",
+    "docs/50-CACHE-INVALIDATION.md",
+    "docs/PROJECT-STATUS.md",
+    "docs/03-TECHNOLOGY-DECISIONS.md",
+    ".arena/state.json"
+  ],
+  "environment_notes": [
+    "Go 1.27.1 from the PyPI go-bin wheel (extracted to /home/user/.local/go-extract/go); proxy.golang.org, sum.golang.org and golang.org are unreachable, so modules came from GOPROXY=direct over GitHub plus a local file:///tmp/goproxy holding golang.org/x/crypto v0.55.0 built from codeload.github.com/golang/crypto; GOSUMDB=off only for that fetch, go.mod/go.sum untouched (verified by git status)",
+    "PostgreSQL 17.10 from npm @embedded-postgres/linux-x64@17.10.0-beta.17: the bundled libs need soname symlinks (libicu*.so.60, libpq.so.5) before initdb runs; server on 127.0.0.1:5432, data in /tmp/pgdata",
+    "Redis 7.4.2 built from source (codeload.github.com/redis/redis) with gcc; running on 127.0.0.1:6379",
+    "golangci-lint v2.13 could not be installed: release-assets.githubusercontent.com is unreachable, and building it would need the blocked Go module proxy; gofmt + go vet + the full -race suite stand in, lint owed to CI",
+    "Flutter/Dart SDKs remain unavailable (storage.googleapis.com and pub.dev unreachable), so the mobile app was not built or tested in this session"
   ]
 }

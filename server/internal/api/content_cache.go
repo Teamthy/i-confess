@@ -21,7 +21,7 @@ import (
 // Handler makes a Handler serve only the content it is connected to.
 
 func (h *Handler) cachedListCategories(w http.ResponseWriter, r *http.Request) {
-	if v, fresh, stale, ok := h.catCache.Get("categories:published"); ok {
+	if v, fresh, stale, ok := h.catCache.Get(cacheKeyCategories); ok {
 		if fresh {
 			h.cacheMeter.Hit()
 		} else if stale {
@@ -37,20 +37,20 @@ func (h *Handler) cachedListCategories(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to load categories")
 		return
 	}
-	h.catCache.Set("categories:published", cats)
+	h.catCache.Set(cacheKeyCategories, cats)
 	httpx.WriteJSON(w, http.StatusOK, cats)
 }
 
 func (h *Handler) refreshCategories() {
 	cats, err := h.cont.ListCategories(context.Background(), false)
 	if err == nil {
-		h.catCache.Set("categories:published", cats)
+		h.catCache.Set(cacheKeyCategories, cats)
 	}
 }
 
 func (h *Handler) cachedCategoryConfessions(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	key := "catconf:" + id
+	key := cacheKeyCategoryConfessionsPrefix + id
 	if v, fresh, stale, ok := h.catConfCache.Get(key); ok {
 		if fresh {
 			h.cacheMeter.Hit()
@@ -74,12 +74,12 @@ func (h *Handler) cachedCategoryConfessions(w http.ResponseWriter, r *http.Reque
 func (h *Handler) refreshCategoryConfessions(id string) {
 	confs, err := h.cont.ConfessionsByCategory(context.Background(), id, true)
 	if err == nil {
-		h.catConfCache.Set("catconf:"+id, confs)
+		h.catConfCache.Set(cacheKeyCategoryConfessionsPrefix+id, confs)
 	}
 }
 
 func (h *Handler) cachedListVoices(w http.ResponseWriter, r *http.Request) {
-	if v, fresh, stale, ok := h.voicesCache.Get("voices:all"); ok {
+	if v, fresh, stale, ok := h.voicesCache.Get(cacheKeyVoices); ok {
 		if fresh {
 			h.cacheMeter.Hit()
 		} else if stale {
@@ -95,19 +95,19 @@ func (h *Handler) cachedListVoices(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to load voices")
 		return
 	}
-	h.voicesCache.Set("voices:all", voices)
+	h.voicesCache.Set(cacheKeyVoices, voices)
 	httpx.WriteJSON(w, http.StatusOK, voices)
 }
 
 func (h *Handler) refreshVoices() {
 	voices, err := h.audio.ListVoices(context.Background())
 	if err == nil {
-		h.voicesCache.Set("voices:all", voices)
+		h.voicesCache.Set(cacheKeyVoices, voices)
 	}
 }
 
 // cacheStatsSnapshot exposes this Handler's cache meter for /metrics.
 func (h *Handler) cacheStatsSnapshot() CacheStats {
 	s := h.cacheMeter.Snapshot()
-	return CacheStats{Hits: s.Hits, Misses: s.Misses, Stale: s.Stale}
+	return CacheStats{Hits: s.Hits, Misses: s.Misses, Stale: s.Stale, Invalidations: s.Invalidations}
 }

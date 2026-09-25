@@ -53,6 +53,10 @@ func (h *Handler) adminCreateCategory(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to create category")
 		return
 	}
+	// The catalogue caches hold this list. Without this line the new category
+	// is invisible to every reader - including this instance's own next
+	// request - until the TTL expires. See cache_invalidation.go.
+	h.invalidateCache(invalidationsForCategoryWrite()...)
 	httpx.WriteJSON(w, http.StatusCreated, c)
 }
 
@@ -118,6 +122,7 @@ func (h *Handler) adminCreateConfession(w http.ResponseWriter, r *http.Request) 
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to create confession")
 		return
 	}
+	h.invalidateCache(invalidationsForConfessionWrite()...)
 	httpx.WriteJSON(w, http.StatusCreated, c)
 }
 
@@ -177,6 +182,10 @@ func (h *Handler) adminUpdateConfessionStatus(w http.ResponseWriter, r *http.Req
 	}
 	h.recordAudit(r, "confession_status_"+req.Status, "confession", r.PathValue("id"),
 		strings.TrimSpace(req.Reason), result)
+	// This is the write that publishes and unpublishes content, so it is the
+	// one the catalogue caches care about most: without it an unpublished
+	// confession keeps being served from memory. See cache_invalidation.go.
+	h.invalidateCache(invalidationsForConfessionWrite()...)
 	httpx.WriteJSON(w, http.StatusOK, map[string]string{"status": req.Status})
 }
 
@@ -224,6 +233,7 @@ func (h *Handler) adminCreateVoice(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to create voice")
 		return
 	}
+	h.invalidateCache(invalidationsForVoiceWrite()...)
 	httpx.WriteJSON(w, http.StatusCreated, v)
 }
 

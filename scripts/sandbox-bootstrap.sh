@@ -131,8 +131,35 @@ if ! "$PGBIN/pg_ctl" -D "$PGDATA" status >/dev/null 2>&1; then
     -o "-p 5432 -k /tmp -c listen_addresses=127.0.0.1" -w start >/dev/null
 fi
 
+# ---------------------------------------------------------------------------
+# Redis
+# ---------------------------------------------------------------------------
+# The cache-invalidation tests talk to a real Redis when REDIS_ADDR is set and
+# skip, loudly, when it is not. There is no redis package in this image and the
+# npm builds that ship one link against an ICU version the image does not have,
+# so the server is built from source: gcc and make are present, and Redis has
+# no dependencies beyond libc.
+REDIS_VERSION=7.4.2
+if [ ! -x /tmp/toolchain/redis/bin/redis-server ]; then
+  echo "bootstrap: building Redis $REDIS_VERSION"
+  mkdir -p /tmp/toolchain/redis-src /tmp/toolchain/redis/bin
+  curl -sL -o /tmp/toolchain/redis-src/redis.tgz \
+    "https://codeload.github.com/redis/redis/tar.gz/refs/tags/${REDIS_VERSION}"
+  tar xzf /tmp/toolchain/redis-src/redis.tgz -C /tmp/toolchain/redis-src
+  make -C "/tmp/toolchain/redis-src/redis-${REDIS_VERSION}" -j4 BUILD_TLS=no MALLOC=libc redis-server redis-cli >/tmp/redis-build.log 2>&1
+  cp "/tmp/toolchain/redis-src/redis-${REDIS_VERSION}/src/redis-server" /tmp/toolchain/redis/bin/
+  cp "/tmp/toolchain/redis-src/redis-${REDIS_VERSION}/src/redis-cli" /tmp/toolchain/redis/bin/
+fi
+if ! /tmp/toolchain/redis/bin/redis-cli -p 6379 ping >/dev/null 2>&1; then
+  echo "bootstrap: starting Redis"
+  /tmp/toolchain/redis/bin/redis-server --port 6379 --bind 127.0.0.1 \
+    --daemonize yes --save '' --appendonly no --dir /tmp
+fi
+
 echo
 echo "ready. Next:"
 echo "  source $TOOLCHAIN/env.sh"
 echo "  cd $ROOT/server && TEST_DATABASE_URL=\"host=127.0.0.1 port=5432 user=iconfess dbname=postgres sslmode=disable\" \\"
-echo "      go test -modfile=/tmp/local.mod -count=1 ./..."
+echo "      REDIS_ADDR=127.0.0.1:6379 go test -modfile=/tmp/local.mod -count=1 ./..."
+echo
+echo "REDIS_ADDR is optional: without it the cache pub/sub tests skip with a message saying so."
