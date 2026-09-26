@@ -209,6 +209,10 @@ func (h *Handler) verifySubscriptionV2(w http.ResponseWriter, r *http.Request) {
 			code   string
 		)
 		switch {
+		case errors.Is(err, billing.ErrPaymentsDisabled):
+			// Purchases are switched off on purpose (staging without store
+			// products). Tell the client that, not that a provider is broken.
+			status, code = http.StatusServiceUnavailable, "PAYMENTS_DISABLED"
 		case errors.Is(err, billing.ErrUnconfigured):
 			// Nothing can be verified, so nothing is granted - and the operator
 			// is told, in a code the client can surface differently.

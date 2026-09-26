@@ -3,6 +3,7 @@ package billing
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -344,5 +345,72 @@ func TestRequireVerificationRefusesToBootUnconfigured(t *testing.T) {
 	setAppleEnv(t)
 	if err := RequireVerification(); err != nil {
 		t.Errorf("configured production: %v, want nil", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Payments-disabled staging mode
+// ---------------------------------------------------------------------------
+//
+// Staging holds real data but may not have Apple or Google billing products
+// yet. BILLING_VERIFIER=disabled with ENV=staging must boot and answer the
+// verify route, fail closed - no receipt may ever become a paid entitlement -
+// and the mode must be unusable everywhere else, production above all.
+
+func TestStagingDisabledModeBootsButGrantsNothing(t *testing.T) {
+	clearBillingEnv(t)
+	t.Setenv("ENV", "staging")
+	t.Setenv(EnvBillingVerifier, "disabled")
+
+	v := VerifierFromEnv()
+	if _, ok := v.(paymentsDisabled); !ok {
+		t.Fatalf("ENV=staging BILLING_VERIFIER=disabled resolved to %s, want the payments-disabled verifier",
+			DescribeVerifier(v))
+	}
+	if err := RequireVerification(); err != nil {
+		t.Fatalf("staging with payments disabled must boot, got: %v", err)
+	}
+	if desc := DescribeVerifier(v); !strings.Contains(desc, "payments disabled") {
+		t.Errorf("DescribeVerifier = %q, want it to name the disabled mode", desc)
+	}
+
+	// Fail closed: the development stub's magic receipts and the audit forgery
+	// alike must produce an error that wraps ErrPaymentsDisabled and never a
+	// paid entitlement.
+	for _, receipt := range []string{"valid_monthly", "valid_annual", forgedAppleReceipt()} {
+		ver, err := v.Verify(context.Background(), "apple", receipt)
+		if !errors.Is(err, ErrPaymentsDisabled) {
+			t.Errorf("Verify(%q) error = %v, want ErrPaymentsDisabled", receipt, err)
+		}
+		if ver.Valid || ver.PlanID != "" {
+			t.Errorf("Verify(%q) granted an entitlement in payments-disabled staging: %+v", receipt, ver)
+		}
+	}
+}
+
+func TestProductionRefusesDisabledModeAtBoot(t *testing.T) {
+	clearBillingEnv(t)
+	t.Setenv("ENV", "production")
+	t.Setenv(EnvBillingVerifier, "disabled")
+
+	if _, ok := VerifierFromEnv().(paymentsDisabled); ok {
+		t.Fatal("production resolved to the payments-disabled verifier")
+	}
+	if err := RequireVerification(); err == nil {
+		t.Fatal("production booted with BILLING_VERIFIER=disabled - a staging-only mode")
+	}
+}
+
+func TestDisabledModeIsStagingOnly(t *testing.T) {
+	clearBillingEnv(t)
+	for _, env := range []string{"development", "test", "production"} {
+		t.Setenv("ENV", env)
+		t.Setenv(EnvBillingVerifier, "disabled")
+		if _, ok := VerifierFromEnv().(paymentsDisabled); ok {
+			t.Errorf("ENV=%s resolved to the payments-disabled verifier; the mode is staging-only", env)
+		}
+		if err := RequireVerification(); err == nil {
+			t.Errorf("ENV=%s booted with BILLING_VERIFIER=disabled; only staging may", env)
+		}
 	}
 }

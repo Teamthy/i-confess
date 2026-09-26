@@ -2,6 +2,7 @@ package billing
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -33,8 +34,8 @@ import (
 // Environment variables that configure store verification. Documented in
 // docs/BILLING.md and .env.example.
 const (
-	// EnvBillingVerifier selects the provider: apple, google, chained, or empty
-	// for the development stub.
+	// EnvBillingVerifier selects the provider: apple, google, chained, disabled
+	// (staging only, grants nothing), or empty for the development stub.
 	EnvBillingVerifier = "BILLING_VERIFIER"
 
 	// App Store.
@@ -79,6 +80,26 @@ func (p prodBlocker) Verify(context.Context, string, string) (Verification, erro
 			"%w: no real store verifier is configured; refusing receipts outside dev/test", ErrUnconfigured)
 	}
 	return Verification{}, p.err
+}
+
+// ErrPaymentsDisabled reports that this deployment has purchases switched off
+// on purpose. It is distinct from ErrUnconfigured: an operator chose this, so a
+// client can tell "this staging build deliberately has no store" from "someone
+// forgot the service account", and the handler answers with its own code
+// instead of VERIFIER_UNCONFIGURED.
+var ErrPaymentsDisabled = errors.New("payments are disabled on this deployment")
+
+// paymentsDisabled is the explicit staging-only verifier. Staging holds real
+// data but may not have Apple or Google billing products yet; this verifier
+// lets that deployment boot and answer the verify route while granting
+// nothing - every receipt, however well formed, is refused. It exists so
+// staging does not have to borrow the development stub (which grants premium
+// for valid_ receipts) or die on the production boot gate.
+type paymentsDisabled struct{}
+
+func (paymentsDisabled) Verify(context.Context, string, string) (Verification, error) {
+	return Verification{}, fmt.Errorf(
+		"%w: purchase verification grants no paid entitlement in this environment", ErrPaymentsDisabled)
 }
 
 func isDevOrTest(env string) bool {
@@ -234,6 +255,17 @@ func (s verifierSettings) build() Verifier {
 		return prodBlocker{err: fmt.Errorf(
 			"%w: ENV=%s and %s is unset - no store verifier is configured, so no receipt can be verified",
 			ErrUnconfigured, s.env, EnvBillingVerifier)}
+	case "disabled":
+		// Explicit payments-off mode, staging only. In staging it installs the
+		// fail-closed paymentsDisabled verifier; in every other environment it
+		// is a misconfiguration and boot must refuse rather than quietly run
+		// with purchases switched off.
+		if s.env == "staging" {
+			return paymentsDisabled{}
+		}
+		return prodBlocker{err: fmt.Errorf(
+			"%w: %s=disabled is only valid with ENV=staging, not ENV=%s",
+			ErrUnconfigured, EnvBillingVerifier, s.env)}
 	case "apple", "google", "chained":
 	default:
 		// A typo must not silently disable verification.
@@ -343,6 +375,8 @@ func DescribeVerifier(v Verifier) string {
 	switch t := v.(type) {
 	case NoopVerifier:
 		return "development stub (receipts starting valid_ are accepted - never use this outside development or test)"
+	case paymentsDisabled:
+		return "payments disabled (ENV=staging): the verify route answers but grants no paid entitlement"
 	case prodBlocker:
 		return "fail-closed: " + t.description().Error()
 	case *AppleVerifier:
@@ -372,6 +406,14 @@ func DescribeVerifier(v Verifier) string {
 // a known provider with no product mappings: all three end in a prodBlocker, and
 // all three mean no receipt can be verified.
 func RequireVerification() error {
+	// The staging-only payments-disabled mode must never boot production, even
+	// if a future change made that verifier non-blocking. Refuse it here by
+	// name, before looking at what the resolver built.
+	if s := settingsFromEnv(); s.env == "production" && s.mode == "disabled" {
+		return fmt.Errorf(
+			"%w: %s=disabled is a staging-only mode; production must configure apple, google or chained",
+			ErrUnconfigured, EnvBillingVerifier)
+	}
 	if b, blocked := VerifierFromEnv().(prodBlocker); blocked {
 		return b.description()
 	}

@@ -25,6 +25,7 @@ export default function Header() {
   const links = [
     { href: "/how-it-works", label: "How it works" },
     { href: "/explore", label: "Explore" },
+    { href: "/bible", label: "Bible" },
     { href: "/journal", label: "Journal" },
     { href: "/premium", label: "Premium" },
     { href: "/faq", label: "FAQ" },
