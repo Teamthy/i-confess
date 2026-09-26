@@ -134,7 +134,7 @@ local purchase flow gets removed.
 
 | Variable | Purpose |
 |---|---|
-| `BILLING_VERIFIER` | `apple`, `google`, `chained`, or empty for the development stub |
+| `BILLING_VERIFIER` | `apple`, `google`, `chained`, `disabled` (staging only), or empty for the development stub |
 | `APPLE_BUNDLE_ID` | Bundle id the JWS `bundleId` claim must match |
 | `APPLE_ENVIRONMENT` | `Production` or `Sandbox`; the JWS `environment` claim must match |
 | `APPLE_PRODUCT_MONTHLY`, `APPLE_PRODUCT_ANNUAL` | Product id to plan mapping |
@@ -150,6 +150,20 @@ local purchase flow gets removed.
 
 An unrecognised `BILLING_VERIFIER` is refused rather than ignored: a typo must
 not silently disable verification.
+
+### Payments-disabled staging (`BILLING_VERIFIER=disabled`)
+
+Staging holds real data but may not have Apple or Google billing products yet.
+`ENV=staging BILLING_VERIFIER=disabled` boots a fail-closed verifier: the verify
+route answers (503 `PAYMENTS_DISABLED`) and **no receipt ever grants a paid
+entitlement** — not the development stub's `valid_` receipts, not anything else.
+It is deliberately not the development stub, so public staging can never give
+premium away, and it uses no mock receipts or fabricated store credentials.
+
+The mode is staging-only. `ENV=production` refuses to start with it (both when
+the resolver runs and by an explicit boot-time check), and development/test
+refuse it too — those environments already have their own explicit modes (the
+stub, or a configured store).
 
 ## Store notification webhooks
 
