@@ -18,6 +18,7 @@ import { ConsentBanner } from "@/components/ConsentBanner";
 
 const NAV_ITEMS = [
   { href: "/app", label: "Home", icon: "◉" },
+  { href: "/app/bible", label: "Bible", icon: "▤" },
   { href: "/app/explore", label: "Explore", icon: "◎" },
   { href: "/app/categories", label: "Categories", icon: "≡" },
   { href: "/app/sessions", label: "Sessions", icon: "▷" },
@@ -32,7 +33,7 @@ const NAV_ITEMS = [
 
 const BOTTOM_TABS = [
   { href: "/app", label: "Home", icon: "◉" },
-  { href: "/app/explore", label: "Explore", icon: "◎" },
+  { href: "/app/bible", label: "Bible", icon: "▤" },
   { href: "/app/confessions", label: "Create", icon: "+" },
   { href: "/app/history", label: "Activity", icon: "↻" },
   { href: "/app/profile", label: "Profile", icon: "⊙" },

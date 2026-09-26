@@ -40,9 +40,11 @@ def check(name, condition, detail=""):
 screens = IA["screens"]
 by_id = {s["id"]: s for s in screens}
 
-# The live endpoint set, unprefixed. /v1/ twins are registered too but the
-# Flutter client uses the unprefixed forms.
-live = {f"{r['method']} {r['path']}" for r in ROUTES if not r["path"].startswith("/v1/")}
+# Keep both the full registered set and the unversioned compatibility set.
+# Screens may call either form; coverage asks whether any user-facing legacy
+# route lacks a screen, while endpoint validity accepts every live route.
+all_live = {f"{r['method']} {r['path']}" for r in ROUTES}
+live = {endpoint for endpoint in all_live if not endpoint.split(" ", 1)[1].startswith("/v1/")}
 
 print("Section 12 - tab bar")
 _, tokens, _ = generate.load()
@@ -96,7 +98,7 @@ check("no dead-end screens", not stranded,
 print("\nEndpoint coverage")
 missing = {}
 for s in screens:
-    bad = [e for e in s.get("endpoints", []) if e not in live]
+    bad = [e for e in s.get("endpoints", []) if e not in all_live]
     if bad:
         missing[s["id"]] = bad
 check("every screen's endpoints exist in the running API", not missing,

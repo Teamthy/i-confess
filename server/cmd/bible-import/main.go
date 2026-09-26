@@ -618,8 +618,12 @@ func loadVersion(ctx context.Context, conn *db.DB, v bible.Version, t *bible.Tra
 			INSERT INTO bible_versions
 			  (id,name,abbrev,language,language_name,format,coverage,year,licence,licence_url,
 			   licence_note,attribution,blob_url,sha256,bytes,sort_order,is_default,book_count,
-			   chapter_count,verse_count,imported_at,created_at,updated_at)
-			VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+			   chapter_count,verse_count,imported_at,created_at,updated_at,provider,provider_translation_id,
+			   locale,country,dialect,publisher,description,copyright_text,public_domain,commercial_use,
+			   redistribution_allowed,modification_allowed,audio_allowed,offline_allowed,copy_allowed,
+			   share_allowed,search_index_allowed,api_exposure_allowed,attribution_required,
+			   attribution_text,source_url,source_version,import_version,content_hash,status)
+			VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 			ON CONFLICT (id) DO UPDATE SET
 			  name=EXCLUDED.name, abbrev=EXCLUDED.abbrev, language=EXCLUDED.language,
 			  language_name=EXCLUDED.language_name, format=EXCLUDED.format,
@@ -630,11 +634,17 @@ func loadVersion(ctx context.Context, conn *db.DB, v bible.Version, t *bible.Tra
 			  sort_order=EXCLUDED.sort_order, is_default=EXCLUDED.is_default,
 			  book_count=EXCLUDED.book_count, chapter_count=EXCLUDED.chapter_count,
 			  verse_count=EXCLUDED.verse_count, imported_at=EXCLUDED.imported_at,
-			  updated_at=EXCLUDED.updated_at`,
+			  source_version=EXCLUDED.source_version, import_version=EXCLUDED.import_version,
+			  content_hash=EXCLUDED.content_hash, updated_at=EXCLUDED.updated_at`,
 			v.ID, v.Name, v.Abbrev, v.Language, v.LanguageName, v.Format, rep.Coverage,
 			v.Year, v.Licence, v.LicenceURL, v.LicenceNote, v.Attribution, v.BlobURL(),
 			v.SHA256, v.Bytes, v.SortOrder, v.Default, rep.Books, rep.Chapters, rep.Verses,
-			now, now, now,
+			now, now, now, v.Provider, v.ProviderTranslationID, v.Locale, v.Country, v.Dialect,
+			v.Publisher, v.Description, v.Copyright, v.Rights.PublicDomain, v.Rights.CommercialUse,
+			v.Rights.RedistributionAllowed, v.Rights.ModificationAllowed, v.Rights.AudioAllowed,
+			v.Rights.OfflineAllowed, v.Rights.CopyAllowed, v.Rights.ShareAllowed,
+			v.Rights.SearchIndexAllowed, v.Rights.APIExposureAllowed, v.AttributionRequired,
+			v.Attribution, v.BlobURL(), v.SourceVersion, "open-bibles-v1", v.SHA256, v.Status,
 		); err != nil {
 			return fmt.Errorf("upsert version: %w", err)
 		}
@@ -672,6 +682,22 @@ func loadVersion(ctx context.Context, conn *db.DB, v bible.Version, t *bible.Tra
 		}
 		if rows != rep.Verses {
 			return fmt.Errorf("wrote %d verses, verified %d", rows, rep.Verses)
+		}
+	}
+
+	if _, err := tx.ExecContext(ctx, `DELETE FROM bible_translation_books WHERE version_id = ?`, v.ID); err != nil {
+		return fmt.Errorf("clear translation book map: %w", err)
+	}
+	for order, canonical := range bible.Canon {
+		book := t.Book(canonical.ID)
+		if book == nil {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO bible_translation_books
+			(version_id,book_id,display_name,testament,canonical_order,chapter_count,has_text)
+			VALUES(?,?,?,?,?,?,?)`, v.ID, canonical.ID, canonical.Name, canonical.Testament,
+			order+1, len(book.Chapters), len(book.Chapters) > 0); err != nil {
+			return fmt.Errorf("map translated book %s: %w", canonical.ID, err)
 		}
 	}
 	return tx.Commit()

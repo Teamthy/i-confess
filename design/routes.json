@@ -64,6 +64,118 @@
   },
   {
     "method": "GET",
+    "path": "/admin/bible/audio",
+    "auth": "admin",
+    "summary": "List Bible audio rights-review assets",
+    "tag": "admin-bible"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/bible/audio",
+    "auth": "admin",
+    "summary": "Register a checksum-verified Bible audio manifest",
+    "tag": "admin-bible"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/bible/audio/{id}/review",
+    "auth": "admin",
+    "summary": "Approve or withdraw rights-cleared Bible audio",
+    "tag": "admin-bible"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/bible/catalog",
+    "auth": "admin",
+    "summary": "Discover HelloAO translations for review",
+    "tag": "admin-bible"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/bible/catalog/sync",
+    "auth": "admin",
+    "summary": "Synchronize HelloAO catalog metadata without granting rights",
+    "tag": "admin-bible"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/bible/health",
+    "auth": "admin",
+    "summary": "Bible database and provider health",
+    "tag": "admin-bible"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/bible/metrics",
+    "auth": "admin",
+    "summary": "Sanitized Bible operation metrics without private study payloads",
+    "tag": "admin-bible"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/bible/overview",
+    "auth": "admin",
+    "summary": "Bible catalog and operations overview",
+    "tag": "admin-bible"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/bible/plans",
+    "auth": "admin",
+    "summary": "List Bible plans across editorial statuses",
+    "tag": "admin-bible"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/bible/plans",
+    "auth": "admin",
+    "summary": "Create a draft Bible reading plan",
+    "tag": "admin-bible"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/bible/plans/{id}",
+    "auth": "admin",
+    "summary": "Load a Bible plan and its unpublished day references",
+    "tag": "admin-bible"
+  },
+  {
+    "method": "PATCH",
+    "path": "/admin/bible/plans/{id}",
+    "auth": "admin",
+    "summary": "Review or publish a Bible reading plan",
+    "tag": "admin-bible"
+  },
+  {
+    "method": "PUT",
+    "path": "/admin/bible/plans/{id}/days/{day}",
+    "auth": "admin",
+    "summary": "Edit an unpublished Bible plan day",
+    "tag": "admin-bible"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/bible/translations/{id}/rights",
+    "auth": "admin",
+    "summary": "Review independent Bible translation rights",
+    "tag": "admin-bible"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/bible/verse-of-day",
+    "auth": "admin",
+    "summary": "List reviewed Bible verses of the day",
+    "tag": "admin-bible"
+  },
+  {
+    "method": "PUT",
+    "path": "/admin/bible/verse-of-day/{day}",
+    "auth": "admin",
+    "summary": "Review a verse-of-day reference",
+    "tag": "admin-bible"
+  },
+  {
+    "method": "GET",
     "path": "/admin/categories",
     "auth": "admin",
     "summary": "List all categories including drafts",
@@ -428,6 +540,83 @@
   },
   {
     "method": "GET",
+    "path": "/bible/books",
+    "auth": "public",
+    "summary": "Books available in a translation",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/bible/books/{id}",
+    "auth": "public",
+    "summary": "Book metadata in a translation",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/bible/books/{id}/chapters",
+    "auth": "public",
+    "summary": "Chapters available in a translation book",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/bible/cross-references",
+    "auth": "public",
+    "summary": "Cross references for a canonical passage",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/bible/languages",
+    "auth": "public",
+    "summary": "Available Bible languages",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/bible/passage",
+    "auth": "public",
+    "summary": "Read a normalized Bible passage",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/bible/search",
+    "auth": "public",
+    "summary": "Search scripture or resolve a Bible reference",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/bible/translations",
+    "auth": "public",
+    "summary": "Approved Bible translations with provenance and rights",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/bible/translations/{id}",
+    "auth": "public",
+    "summary": "One translation and its licensing metadata",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/bible/{translation}/{book}/{chapter}",
+    "auth": "public",
+    "summary": "Read a Bible chapter",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/bible/{translation}/{book}/{chapter}/{verse}",
+    "auth": "public",
+    "summary": "Read a Bible verse",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
     "path": "/categories",
     "auth": "public",
     "summary": "Published categories (cached SWR 5m)",
@@ -551,6 +740,76 @@
     "auth": "user",
     "summary": "Upload an avatar; EXIF is stripped",
     "tag": "profile"
+  },
+  {
+    "method": "GET",
+    "path": "/me/bible/bookmarks",
+    "auth": "user",
+    "summary": "List private Bible bookmarks",
+    "tag": "bible"
+  },
+  {
+    "method": "POST",
+    "path": "/me/bible/bookmarks",
+    "auth": "user",
+    "summary": "Create or update a private Bible bookmark",
+    "tag": "bible"
+  },
+  {
+    "method": "DELETE",
+    "path": "/me/bible/bookmarks/{id}",
+    "auth": "user",
+    "summary": "Delete a private Bible bookmark",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/me/bible/highlights",
+    "auth": "user",
+    "summary": "List private Bible highlights",
+    "tag": "bible"
+  },
+  {
+    "method": "POST",
+    "path": "/me/bible/highlights",
+    "auth": "user",
+    "summary": "Create or update a private Bible highlight",
+    "tag": "bible"
+  },
+  {
+    "method": "DELETE",
+    "path": "/me/bible/highlights/{id}",
+    "auth": "user",
+    "summary": "Delete a private Bible highlight",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/me/bible/notes",
+    "auth": "user",
+    "summary": "List private Bible notes",
+    "tag": "bible"
+  },
+  {
+    "method": "POST",
+    "path": "/me/bible/notes",
+    "auth": "user",
+    "summary": "Create a private Bible note",
+    "tag": "bible"
+  },
+  {
+    "method": "DELETE",
+    "path": "/me/bible/notes/{id}",
+    "auth": "user",
+    "summary": "Delete a private Bible note",
+    "tag": "bible"
+  },
+  {
+    "method": "PATCH",
+    "path": "/me/bible/notes/{id}",
+    "auth": "user",
+    "summary": "Update a private Bible note with row-version conflict protection",
+    "tag": "bible"
   },
   {
     "method": "GET",
@@ -1541,6 +1800,118 @@
   },
   {
     "method": "GET",
+    "path": "/v1/bible/audio",
+    "auth": "public",
+    "summary": "Get a signed, rights-gated Bible audio URL",
+    "tag": "bible-audio"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/bible/books",
+    "auth": "public",
+    "summary": "Books available in a translation",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/bible/books/{id}",
+    "auth": "public",
+    "summary": "Book metadata in a translation",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/bible/books/{id}/chapters",
+    "auth": "public",
+    "summary": "Chapters available in a translation book",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/bible/compare",
+    "auth": "public",
+    "summary": "Compare a canonical passage across licensed translations",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/bible/cross-references",
+    "auth": "public",
+    "summary": "Cross references for a canonical passage",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/bible/languages",
+    "auth": "public",
+    "summary": "Available Bible languages",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/bible/passage",
+    "auth": "public",
+    "summary": "Read a normalized Bible passage",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/bible/plans",
+    "auth": "public",
+    "summary": "List curated Bible reading plans",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/bible/plans/{slug}",
+    "auth": "public",
+    "summary": "Read a curated Bible reading plan",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/bible/search",
+    "auth": "public",
+    "summary": "Search scripture or resolve a Bible reference",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/bible/translations",
+    "auth": "public",
+    "summary": "Approved Bible translations with provenance and rights",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/bible/translations/{id}",
+    "auth": "public",
+    "summary": "One translation and its licensing metadata",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/bible/verse-of-day",
+    "auth": "public",
+    "summary": "Get the reviewed verse of the day",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/bible/{translation}/{book}/{chapter}",
+    "auth": "public",
+    "summary": "Read a Bible chapter",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/bible/{translation}/{book}/{chapter}/{verse}",
+    "auth": "public",
+    "summary": "Read a Bible verse",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
     "path": "/v1/categories",
     "auth": "public",
     "summary": "Published categories (cached SWR 5m)",
@@ -1664,6 +2035,209 @@
     "auth": "user",
     "summary": "Upload an avatar; EXIF is stripped",
     "tag": "profile"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/me/bible/bookmarks",
+    "auth": "user",
+    "summary": "List private Bible bookmarks",
+    "tag": "bible"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/me/bible/bookmarks",
+    "auth": "user",
+    "summary": "Create or update a private Bible bookmark",
+    "tag": "bible"
+  },
+  {
+    "method": "DELETE",
+    "path": "/v1/me/bible/bookmarks/{id}",
+    "auth": "user",
+    "summary": "Delete a private Bible bookmark",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/me/bible/collections",
+    "auth": "user",
+    "summary": "List private Bible collections and canonical references",
+    "tag": "bible"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/me/bible/collections",
+    "auth": "user",
+    "summary": "Create a private Bible collection",
+    "tag": "bible"
+  },
+  {
+    "method": "DELETE",
+    "path": "/v1/me/bible/collections/{id}",
+    "auth": "user",
+    "summary": "Delete a private Bible collection",
+    "tag": "bible"
+  },
+  {
+    "method": "PATCH",
+    "path": "/v1/me/bible/collections/{id}",
+    "auth": "user",
+    "summary": "Rename or edit a private Bible collection",
+    "tag": "bible"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/me/bible/collections/{id}/items",
+    "auth": "user",
+    "summary": "Add a canonical Bible reference to a collection",
+    "tag": "bible"
+  },
+  {
+    "method": "DELETE",
+    "path": "/v1/me/bible/collections/{id}/items/{itemID}",
+    "auth": "user",
+    "summary": "Remove a Bible reference from a collection",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/me/bible/highlights",
+    "auth": "user",
+    "summary": "List private Bible highlights",
+    "tag": "bible"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/me/bible/highlights",
+    "auth": "user",
+    "summary": "Create or update a private Bible highlight",
+    "tag": "bible"
+  },
+  {
+    "method": "DELETE",
+    "path": "/v1/me/bible/highlights/{id}",
+    "auth": "user",
+    "summary": "Delete a private Bible highlight",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/me/bible/history",
+    "auth": "user",
+    "summary": "Read private Bible history",
+    "tag": "bible"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/me/bible/history",
+    "auth": "user",
+    "summary": "Save private Bible reading position",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/me/bible/notes",
+    "auth": "user",
+    "summary": "List private Bible notes",
+    "tag": "bible"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/me/bible/notes",
+    "auth": "user",
+    "summary": "Create a private Bible note",
+    "tag": "bible"
+  },
+  {
+    "method": "DELETE",
+    "path": "/v1/me/bible/notes/{id}",
+    "auth": "user",
+    "summary": "Delete a private Bible note",
+    "tag": "bible"
+  },
+  {
+    "method": "PATCH",
+    "path": "/v1/me/bible/notes/{id}",
+    "auth": "user",
+    "summary": "Update a private Bible note with row-version conflict protection",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/me/bible/offline",
+    "auth": "user",
+    "summary": "List personal Bible offline licenses",
+    "tag": "bible"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/me/bible/offline",
+    "auth": "user",
+    "summary": "Build and license an offline Bible book package",
+    "tag": "bible"
+  },
+  {
+    "method": "DELETE",
+    "path": "/v1/me/bible/offline/{id}",
+    "auth": "user",
+    "summary": "Revoke a personal offline license",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/me/bible/plans",
+    "auth": "user",
+    "summary": "List personal reading plan enrollments",
+    "tag": "bible"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/me/bible/plans/{id}/days/{day}",
+    "auth": "user",
+    "summary": "Complete a reading-plan day",
+    "tag": "bible"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/me/bible/plans/{id}/enroll",
+    "auth": "user",
+    "summary": "Enroll in a curated Bible reading plan",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/me/bible/preferences",
+    "auth": "user",
+    "summary": "Read private Bible preferences",
+    "tag": "bible"
+  },
+  {
+    "method": "PUT",
+    "path": "/v1/me/bible/preferences",
+    "auth": "user",
+    "summary": "Save private Bible preferences",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/me/bible/progress",
+    "auth": "user",
+    "summary": "Read private Bible reading progress",
+    "tag": "bible"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/me/bible/progress",
+    "auth": "user",
+    "summary": "Mark a Bible chapter complete",
+    "tag": "bible"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/me/bible/sync",
+    "auth": "user",
+    "summary": "Synchronize private Bible study data",
+    "tag": "bible"
   },
   {
     "method": "GET",

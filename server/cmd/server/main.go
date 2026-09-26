@@ -6,10 +6,12 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/Teamthy/i-confess/internal/api"
+	"github.com/Teamthy/i-confess/internal/bible"
 	"github.com/Teamthy/i-confess/internal/billing"
 	"github.com/Teamthy/i-confess/internal/cache"
 	"github.com/Teamthy/i-confess/internal/config"
@@ -110,6 +112,22 @@ func main() {
 	}
 
 	h := api.NewHandler(api.Config{JWTSecret: cfg.JWTSecret, TokenTTL: cfg.TokenTTL}, conn)
+	localBible := &bible.LocalBibleProvider{DB: conn}
+	helloAO, providerErr := bible.NewHelloAOBibleProvider(os.Getenv("HELLOAO_BASE_URL"), nil)
+	if providerErr != nil { log.Fatalf("bible provider configuration: %v", providerErr) }
+	h.SetBibleDiscoveryProvider(helloAO)
+	// Provider choice is server-side. The local corpus is always the fallback;
+	// HelloAO content is exposed only after its database registry row is reviewed.
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("BIBLE_PROVIDER"))) {
+	case "helloao":
+		h.SetBibleProvider(&bible.ReviewedProvider{Local: localBible, Remote: helloAO})
+		log.Printf("bible: HelloAO adapter enabled with approved local fallback")
+	case "", "local":
+		h.SetBibleProvider(localBible)
+		log.Printf("bible: local verified corpus provider enabled")
+	default:
+		log.Fatalf("bible provider configuration: unsupported BIBLE_PROVIDER %q (choose local or helloao)", os.Getenv("BIBLE_PROVIDER"))
+	}
 	h.SetProduction(cfg.IsProduction())
 	h.BuildEngine()
 	h.SetSigner(objStore)

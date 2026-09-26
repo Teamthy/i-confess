@@ -121,6 +121,7 @@ export function AppHomeClient() {
       )}
 
       <div className="ia-quick" aria-label="Quick actions">
+        <Link href="/app/bible" className="ia-quick__btn"><span className="ia-quick__icon">▤</span> Bible</Link>
         <Link href="/app/explore" className="ia-quick__btn"><span className="ia-quick__icon">◎</span> Explore</Link>
         <Link href="/app/session-builder" className="ia-quick__btn"><span className="ia-quick__icon">▷</span> New session</Link>
         <Link href="/app/community/create" className="ia-quick__btn"><span className="ia-quick__icon">+</span> Write</Link>
