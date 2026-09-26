@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/Teamthy/i-confess/internal/db"
 
@@ -24,6 +25,11 @@ const mediaDir = "data/media"
 // Seed populates a fresh database. The signer receives placeholder audio so the
 // dev environment exercises the same keyed, signed delivery path as production.
 func Seed(db *db.DB, signer storage.ObjectStorage) error {
+	env := strings.ToLower(strings.TrimSpace(os.Getenv("ENV")))
+	if env != "" && env != "development" && env != "test" {
+		return fmt.Errorf("seed: demo seed is refused in ENV=%q (production/staging)", env)
+	}
+
 	bg := context.Background()
 	content := store.NewContentStore(db)
 	cats, err := content.ListCategories(bg, true)
@@ -88,6 +94,27 @@ func Seed(db *db.DB, signer storage.ObjectStorage) error {
 		return err
 	}
 
+	// G-42: a voice without a licence row fails its own platform gate. The
+	// §75 QA checklist refuses to approve any render whose voice has no
+	// active voice_rights row, so before this seed line a development database
+	// could never walk a seeded confession through audio_qa -> approved
+	// without hand-inserting a licence. Grace is an in-house voice, so the
+	// honest licence is exactly that: our own, active, worldwide, for TTS.
+	rights := store.NewVoiceRightsStore(db)
+	if err := rights.Create(bg, &models.VoiceRights{
+		VoiceID:       voice.ID,
+		RightsHolder:  "i-confess studio",
+		AllowedUse:    "tts",
+		Territories:   "GLOBAL",
+		StartDate:     "2026-01-01",
+		Status:        "active",
+		LicenseStatus: "active",
+		Provider:      voice.Provider,
+		Notes:         "seeded in-house licence: the demo catalogue must pass the voices_licensed gate it enforces",
+	}); err != nil {
+		return err
+	}
+
 	// ---- Confessions ----
 	// The library comes from the canonical corpus, which is the same source
 	// EnsureContent installs in production. There is deliberately no second
@@ -112,18 +139,26 @@ func Seed(db *db.DB, signer storage.ObjectStorage) error {
 		}
 		c := &models.Confession{
 			CategoryID: catID, Title: s.Title, ShortText: s.Short, MediumText: s.Medium, LongText: s.Long,
-			Intensity: s.Intensity, Language: "en", Status: "published", Author: "i-confess content team",
-			Variants: variants, Scriptures: s.Scriptures,
+			Intensity: s.Intensity, Language: "en", Status: "published", Author: CanonicalAuthor,
+			TheologicalReviewStatus: TheologicalReviewReviewed,
+			TheologicalReviewer:     CanonicalTheologicalReviewer,
+			TheologicalReviewNotes:  reviewNotesFor(s),
+			Variants:                variants, Scriptures: s.Scriptures,
 		}
 		if err := content.CreateConfession(bg, c); err != nil {
 			return err
+		}
+		version, err := content.EnsureVersion(bg, c.ID, c.Title, c.ShortText,
+			c.MediumText, c.LongText, c.Language, "canonical-audio-bootstrap")
+		if err != nil {
+			return fmt.Errorf("snapshot canonical confession: %w", err)
 		}
 
 		// Generate placeholder audio for each variant and attach it to the voice.
 		for _, v := range c.Variants {
 			// Store the canonical KEY, never a URL. The API mints a signed,
 			// expiring link per request (PRD S11).
-			key := storage.AudioKeyFor(c.ID, v.ID, voice.ID, "en", 1)
+			key := storage.AudioKeyFor(c.ID, v.ID, voice.ID, "en", version.VersionNumber)
 			if err := signer.Upload(bg, key, media.ToneBytes(v.DurationSeconds), map[string]string{
 				"confession_id": c.ID, "voice_id": voice.ID, "language": "en",
 			}); err != nil {
@@ -132,6 +167,7 @@ func Seed(db *db.DB, signer storage.ObjectStorage) error {
 			asset := &models.AudioAsset{
 				ConfessionID: c.ID, VariantID: v.ID, VoiceID: voice.ID,
 				URL: key, DurationSeconds: v.DurationSeconds, Status: "ready",
+				ContentVersionID: version.ID, AudioSource: "bootstrap_fixture",
 			}
 			if err := audio.UpsertAsset(bg, asset); err != nil {
 				return err

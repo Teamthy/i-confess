@@ -127,7 +127,7 @@
 const API = ''; // same origin
 
 // ---------- state ----------
-const state = { token: localStorage.getItem('ic_token') || '', user: null };
+const state = { token: sessionStorage.getItem('ic_token') || '', user: null };
 
 function api(path, opts = {}) {
   const headers = { 'Content-Type': 'application/json' };
@@ -160,7 +160,7 @@ function badge(status) {
 function fmtDate(s) { return s ? new Date(s).toLocaleString() : '—'; }
 
 // ---------- router ----------
-const views = ['dashboard','categories','confessions','voices','audio','users'];
+const views = ['dashboard','categories','confessions','voices','audio','moderation','audit','users'];
 let current = 'dashboard';
 
 function nav(btn, view) {
@@ -174,7 +174,7 @@ function shell(inner) {
   <div class="shell">
     <div class="sidebar">
       <div class="brand">i-<span>confess</span></div>
-      ${[['dashboard','▦','Dashboard'],['categories','▤','Categories'],['confessions','≡','Confessions'],['voices','◉','Voices'],['audio','♪','Audio'],['users','⛁','Users']].map(([v,i,l]) =>
+      ${[['dashboard','▦','Dashboard'],['categories','▤','Categories'],['confessions','≡','Confessions'],['voices','◉','Voices'],['audio','♪','Audio'],['moderation','⚖','Moderation'],['audit','📋','Audit Log'],['users','⛁','Users']].map(([v,i,l]) =>
         `<button class="nav-btn ${current===v?'active':''}" onclick="nav(this,'${v}')"><span class="ico">${i}</span>${l}</button>`).join('')}
       <div class="spacer"></div>
       <div class="who"><b>${esc(state.user?.email || '')}</b>${esc(state.user?.display_name || '')}</div>
@@ -185,7 +185,26 @@ function shell(inner) {
 }
 
 // ---------- login ----------
+let pendingLogin = null;
+
 function loginScreen() {
+  if (pendingLogin) {
+    document.getElementById('app').innerHTML = `
+    <div class="login-wrap">
+      <div class="login-card">
+        <h1 class="brand">i-<span>confess</span></h1>
+        <p class="login-sub">Two-Factor Authentication · Enter 6-digit TOTP code</p>
+        <label>Verification Code</label>
+        <input id="lg-code" type="text" placeholder="123456" maxlength="8" autofocus>
+        <div class="mt"><button class="btn" style="width:100%;justify-content:center" onclick="doMfaLogin()">Verify & Sign In</button></div>
+        <div class="mt" style="text-align:center"><a href="#" onclick="cancelMfa(); return false;" class="muted">Back to password login</a></div>
+        <p class="hint" id="lg-err" style="color:var(--err)"></p>
+      </div>
+    </div>`;
+    document.getElementById('lg-code').addEventListener('keydown', e => { if (e.key === 'Enter') doMfaLogin(); });
+    return;
+  }
+
   document.getElementById('app').innerHTML = `
   <div class="login-wrap">
     <div class="login-card">
@@ -202,6 +221,11 @@ function loginScreen() {
   document.getElementById('lg-pass').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
 }
 
+function cancelMfa() {
+  pendingLogin = null;
+  loginScreen();
+}
+
 async function doLogin() {
   const email = document.getElementById('lg-email').value.trim();
   const password = document.getElementById('lg-pass').value;
@@ -211,9 +235,34 @@ async function doLogin() {
       body: JSON.stringify({ email, password })
     });
     const body = await res.json().catch(() => ({}));
+    if (body.mfa_required) {
+      pendingLogin = { email, password };
+      loginScreen();
+      return;
+    }
     if (!res.ok) throw new Error(body.error || 'Login failed');
     state.token = body.token; state.user = body.user;
-    localStorage.setItem('ic_token', state.token);
+    sessionStorage.setItem('ic_token', state.token);
+    pendingLogin = null;
+    render();
+  } catch (e) {
+    document.getElementById('lg-err').textContent = e.message;
+  }
+}
+
+async function doMfaLogin() {
+  if (!pendingLogin) return;
+  const code = document.getElementById('lg-code').value.trim();
+  try {
+    const res = await fetch(API + '/auth/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: pendingLogin.email, password: pendingLogin.password, code })
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || 'MFA Verification failed');
+    state.token = body.token; state.user = body.user;
+    sessionStorage.setItem('ic_token', state.token);
+    pendingLogin = null;
     render();
   } catch (e) {
     document.getElementById('lg-err').textContent = e.message;
@@ -222,7 +271,8 @@ async function doLogin() {
 
 function logout() {
   state.token = ''; state.user = null;
-  localStorage.removeItem('ic_token');
+  sessionStorage.removeItem('ic_token');
+  pendingLogin = null;
   render();
 }
 
@@ -448,6 +498,79 @@ async function attachAudio() {
   catch (e) { toast(e.message, false); }
 }
 
+async function viewModeration() {
+  const queue = await api('/admin/moderation/queue').catch(() => ({ user_confessions: [], reports: [] }));
+  const ucs = queue.user_confessions || [];
+  const reps = queue.reports || [];
+  return `
+    <h1 class="page-title">Moderation Queue</h1>
+    <p class="page-sub">Review user-submitted confessions and flag reports</p>
+    <div class="panel"><h3>Pending User Confessions (${ucs.length})</h3>
+      ${ucs.length ? `<table><tr><th>Title</th><th>Text</th><th>Status</th><th>Actions</th></tr>
+        ${ucs.map(u => `<tr>
+          <td><b>${esc(u.title)}</b></td>
+          <td>${esc((u.text||'').slice(0, 100))}</td>
+          <td>${badge(u.status)}</td>
+          <td><div class="actions">
+            <button class="btn sm gold" onclick="reviewUC('${u.id}', 'approved')">Approve</button>
+            <button class="btn sm ghost" onclick="reviewUC('${u.id}', 'rejected')">Reject</button>
+          </div></td>
+        </tr>`).join('')}</table>` : '<div class="empty">No pending submissions</div>'}
+    </div>
+    <div class="panel"><h3>Open Reports (${reps.length})</h3>
+      ${reps.length ? `<table><tr><th>Target</th><th>Reason</th><th>Status</th><th>Actions</th></tr>
+        ${reps.map(r => `<tr>
+          <td>${esc(r.target_type)}: ${esc(r.target_id)}</td>
+          <td>${esc(r.reason)}</td>
+          <td>${badge(r.status)}</td>
+          <td><div class="actions">
+            <button class="btn sm gold" onclick="decideReport('${r.id}', 'resolved')">Resolve</button>
+            <button class="btn sm ghost" onclick="decideReport('${r.id}', 'dismissed')">Dismiss</button>
+          </div></td>
+        </tr>`).join('')}</table>` : '<div class="empty">No open reports</div>'}
+    </div>`;
+}
+
+async function reviewUC(id, decision) {
+  try {
+    await api('/admin/moderation/user-confessions/' + id + '/review', {
+      method: 'POST',
+      body: JSON.stringify({ decision, notes: 'Reviewed by admin console' })
+    });
+    toast('Decision recorded: ' + decision);
+    render();
+  } catch (e) { toast(e.message, false); }
+}
+
+async function decideReport(id, decision) {
+  try {
+    await api('/admin/moderation/reports/' + id + '/decision', {
+      method: 'POST',
+      body: JSON.stringify({ decision, notes: 'Closed by admin console' })
+    });
+    toast('Report ' + decision);
+    render();
+  } catch (e) { toast(e.message, false); }
+}
+
+async function viewAudit() {
+  const trail = await api('/admin/audit').catch(() => []);
+  return `
+    <h1 class="page-title">Privileged Audit Log</h1>
+    <p class="page-sub">Security and administrative action trail</p>
+    <div class="panel"><h3>Recent Privileged Actions</h3>
+      ${trail.length ? `<table><tr><th>Timestamp</th><th>Actor</th><th>Action</th><th>Entity</th><th>Detail</th><th>Result</th></tr>
+        ${trail.map(a => `<tr>
+          <td>${fmtDate(a.created_at)}</td>
+          <td><b>${esc(a.actor || 'system')}</b></td>
+          <td>${esc(a.action)}</td>
+          <td>${esc(a.entity)}${a.entity_id ? ' : '+esc(a.entity_id) : ''}</td>
+          <td><span class="muted">${esc(a.detail || '')}</span></td>
+          <td>${esc(a.result || 'ok')}</td>
+        </tr>`).join('')}</table>` : '<div class="empty">No audit records yet</div>'}
+    </div>`;
+}
+
 async function viewUsers() {
   return `
     <h1 class="page-title">Users</h1>
@@ -496,6 +619,8 @@ async function render() {
     else if (current === 'confessions') inner = await viewConfessions();
     else if (current === 'voices') inner = await viewVoices();
     else if (current === 'audio') inner = await viewAudio();
+    else if (current === 'moderation') inner = await viewModeration();
+    else if (current === 'audit') inner = await viewAudit();
     else if (current === 'users') inner = await viewUsers();
     document.getElementById('app').innerHTML = shell(inner);
   } catch (e) {

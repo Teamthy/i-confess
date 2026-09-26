@@ -83,15 +83,27 @@ var Policies = []TablePolicy{
 	{Table: "user_devices", Action: Erase},
 
 	// ---- User-created content and library.
+	{Table: "user_confession_audio", Action: Erase, Column: "user_confession_id",
+		Reason: "removed via their parent user confession"},
 	{Table: "user_collection_items", Action: Erase, Column: "collection_id",
 		Reason: "removed via their parent collection"},
 	{Table: "user_collections", Action: Erase},
 	{Table: "user_confessions", Action: Erase},
 	{Table: "favorites", Action: Erase},
+	// A highlight or a bookmark is the reader's own annotation of a verse, so
+	// it goes with the account like any other note.
+	{Table: "verse_highlights", Action: Erase},
+	{Table: "verse_bookmarks", Action: Erase},
 	{Table: "schedules", Action: Erase},
 	{Table: "session_items", Action: Erase, Column: "session_id",
 		Reason: "removed via their parent session"},
 	{Table: "sessions", Action: Erase},
+
+	// ---- Security and audit trails (IC-007).
+	{Table: "security_events", Action: Erase, Column: "user_id",
+		Reason: "IP and user agent traces erased with the account"},
+	{Table: "audit_logs", Action: Anonymise, Column: "admin_user_id",
+		Reason: "audit records retained for accountability with the individual admin detached"},
 
 	// ---- Notification dispatch log. Erased with the account: it records when
 	// someone was reminded to pray, which is behavioural data about them, and
@@ -110,6 +122,14 @@ var Policies = []TablePolicy{
 	{Table: "session_progress", Action: Erase},
 	{Table: "idempotency_keys", Action: Erase},
 	{Table: "user_templates", Action: Erase},
+
+	// ---- Scripture (migration 0020). A highlight and a bookmark are the
+	// listener's own reading marks, and the marks say what they were reading
+	// when they made them. Erased with the account, not anonymised: the
+	// coordinates are the personal data, so a row stripped of its user
+	// reference would still be "this person read and marked John 3:16".
+	{Table: "verse_highlights", Action: Erase},
+	{Table: "verse_bookmarks", Action: Erase},
 
 	// ---- Moderation. The *records* outlive the account because safety and
 	// accountability reviews depend on them, but the identity of the person
@@ -135,6 +155,23 @@ var Policies = []TablePolicy{
 		Reason: "aggregate analytics; user reference already nullable"},
 	{Table: "signed_urls", Action: Anonymise,
 		Reason: "short-lived access audit; expires on its own"},
+
+	// Trial state is personal lifecycle data and is erased with the account.
+	{Table: "trials", Action: Erase},
+	// The measured journey is personal in the same way the trial row is: it
+	// names which days this person listened. Erased with the account.
+	{Table: "trial_day_completions", Action: Erase},
+	// A block names two people, and the row exists only because one of them
+	// asked for it. It goes when either leaves: it is not a record of anything
+	// that happened to the blocked account, it is a preference of the blocker.
+	{Table: "user_blocks", Action: Erase, Column: "blocker_id"},
+	// An appeal is the appellant's own words about a decision made about them.
+	{Table: "moderation_appeals", Action: Erase},
+
+	// Analytics rows carry a user reference, so they go with the account.
+	// Aggregate reporting does not need the link: the counts survive as
+	// numbers, the attribution does not.
+	{Table: "analytics_events", Action: Erase},
 
 	// ---- Retained. Each states the obligation it satisfies.
 	{Table: "subscriptions", Action: Retain,

@@ -26,6 +26,15 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<!-- Remote notifications need this mode, and without it iOS drops the
+	     payload for an app that is not in the foreground rather than waking it
+	     to handle the tap. Audio is deliberately absent: the background audio
+	     session is not implemented yet (IC-002), and declaring a mode the app
+	     does not use is a review rejection rather than a feature. -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

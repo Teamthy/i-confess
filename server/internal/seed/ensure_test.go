@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/Teamthy/i-confess/internal/db/dbtest"
+	"github.com/Teamthy/i-confess/internal/storage"
 	"github.com/Teamthy/i-confess/internal/store"
 )
 
@@ -92,6 +93,90 @@ func TestEnsureContentIsIdempotent(t *testing.T) {
 	}
 	if len(confs2) != len(CanonicalConfessions) {
 		t.Errorf("after two passes the database holds %d confessions, want %d", len(confs2), len(CanonicalConfessions))
+	}
+}
+
+// TestEnsureCanonicalAudioCoversAllCanonicalConfessions closes G-34. The
+// production EnsureContent path creates the catalogue in every environment;
+// this second idempotent step guarantees every one of the 78 canonical rows
+// has four object-backed duration assets and a content-version link.
+func TestEnsureCanonicalAudioCoversAllCanonicalConfessions(t *testing.T) {
+	conn := dbtest.New(t)
+	defer conn.Close()
+	ctx := context.Background()
+
+	if _, _, err := EnsureContent(ctx, conn); err != nil {
+		t.Fatalf("EnsureContent: %v", err)
+	}
+	objects, err := storage.New(&storage.StorageConfig{
+		Provider: "local", LocalRootPath: t.TempDir(), SigningSecret: "canonical-audio-test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := EnsureCanonicalAudio(ctx, conn, objects); err == nil {
+		t.Fatal("canonical audio was created before theological review")
+	}
+	if reviewed, err := EnsureCanonicalTheology(ctx, conn); err != nil {
+		t.Fatalf("EnsureCanonicalTheology: %v", err)
+	} else if reviewed != len(CanonicalConfessions) {
+		t.Errorf("reviewed %d canonical confessions, want %d", reviewed, len(CanonicalConfessions))
+	}
+	created, err := EnsureCanonicalAudio(ctx, conn, objects)
+	if err != nil {
+		t.Fatalf("EnsureCanonicalAudio: %v", err)
+	}
+	wantAssets := len(CanonicalConfessions) * 4
+	if created != wantAssets {
+		t.Errorf("created %d canonical assets, want %d", created, wantAssets)
+	}
+
+	var confessions, assets int
+	if err := conn.QueryRowContext(ctx,
+		`SELECT COUNT(DISTINCT content_id), COUNT(*) FROM audio_assets
+		 WHERE audio_source='bootstrap_fixture' AND status IN ('ready','published')`).Scan(&confessions, &assets); err != nil {
+		t.Fatal(err)
+	}
+	if confessions != len(CanonicalConfessions) || assets != wantAssets {
+		t.Errorf("audio coverage = %d confessions/%d assets, want %d/%d", confessions, assets, len(CanonicalConfessions), wantAssets)
+	}
+	var reviewed, oldAuthor int
+	if err := conn.QueryRowContext(ctx,
+		`SELECT COUNT(*) FILTER (WHERE theological_review_status='reviewed' AND author=$1),
+		        COUNT(*) FILTER (WHERE author='i-confess content team')
+		 FROM confessions`, CanonicalAuthor).Scan(&reviewed, &oldAuthor); err != nil {
+		t.Fatal(err)
+	}
+	if reviewed != len(CanonicalConfessions) || oldAuthor != 0 {
+		t.Errorf("canonical provenance = %d reviewed rows/%d overstated authors, want %d/0", reviewed, oldAuthor, len(CanonicalConfessions))
+	}
+
+	if again, err := EnsureCanonicalAudio(ctx, conn, objects); err != nil {
+		t.Fatalf("second EnsureCanonicalAudio: %v", err)
+	} else if again != 0 {
+		t.Errorf("second audio ensure created %d assets, want 0", again)
+	}
+
+	rows, err := conn.QueryContext(ctx, `SELECT storage_key FROM audio_assets WHERE audio_source='bootstrap_fixture'`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var key string
+		if err := rows.Scan(&key); err != nil {
+			t.Fatal(err)
+		}
+		exists, err := objects.Exists(ctx, key)
+		if err != nil {
+			t.Fatalf("object %q: %v", key, err)
+		}
+		if !exists {
+			t.Errorf("database asset points at missing object %q", key)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
 	}
 }
 

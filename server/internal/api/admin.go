@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"github.com/Teamthy/i-confess/internal/httpx"
 	"github.com/Teamthy/i-confess/internal/models"
 	"github.com/Teamthy/i-confess/internal/storage"
+	"github.com/Teamthy/i-confess/internal/store"
 )
 
 // ---------- Admin: categories ----------
@@ -51,6 +53,10 @@ func (h *Handler) adminCreateCategory(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to create category")
 		return
 	}
+	// The catalogue caches hold this list. Without this line the new category
+	// is invisible to every reader - including this instance's own next
+	// request - until the TTL expires. See cache_invalidation.go.
+	h.invalidateCache(invalidationsForCategoryWrite()...)
 	httpx.WriteJSON(w, http.StatusCreated, c)
 }
 
@@ -116,6 +122,7 @@ func (h *Handler) adminCreateConfession(w http.ResponseWriter, r *http.Request) 
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to create confession")
 		return
 	}
+	h.invalidateCache(invalidationsForConfessionWrite()...)
 	httpx.WriteJSON(w, http.StatusCreated, c)
 }
 
@@ -137,18 +144,48 @@ func (h *Handler) adminGetConfession(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, c)
 }
 
+// adminUpdateConfessionStatus moves a confession along the editorial
+// lifecycle. Until PHASE 31 this wrote no history, 500'd on a missing id, and
+// reset published_at to NULL on any move other than into published - so
+// unpublishing erased when the confession first went live, and
+// content_moderation_history had no writer at all.
 func (h *Handler) adminUpdateConfessionStatus(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Status string `json:"status"`
+		Reason string `json:"reason"`
 	}
 	if err := httpx.DecodeJSON(r, &req); err != nil || !content.Valid(req.Status) {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid status")
 		return
 	}
-	if err := h.cont.UpdateConfessionStatus(r.Context(), r.PathValue("id"), req.Status); err != nil {
+	from, err := h.mod.UpdateConfessionStatusAudited(r.Context(), r.PathValue("id"), req.Status,
+		actor(r), strings.TrimSpace(req.Reason))
+	if errors.Is(err, store.ErrNotFound) {
+		httpx.WriteError(w, http.StatusNotFound, "confession not found")
+		return
+	}
+	if errors.Is(err, content.ErrInvalidTransition) {
+		httpx.WriteError(w, http.StatusConflict, "content lifecycle transition is not allowed")
+		return
+	}
+	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to update confession")
 		return
 	}
+	// G-41: content_moderation_history records that a state moved; the
+	// admin-wide sink records who moved it. The state the store read under its
+	// lock decides the result, so the audit line cannot disagree with the
+	// history row written by the same transaction.
+	result := "ok"
+	if from == req.Status {
+		result = "unchanged"
+	}
+	h.recordAudit(r, "confession_status_"+req.Status, "confession", r.PathValue("id"),
+		strings.TrimSpace(req.Reason), result)
+	// This is the write that publishes and unpublishes content, so it is the
+	// one the catalogue caches care about most: without it an unpublished
+	// confession keeps being served from memory. See cache_invalidation.go.
+	h.invalidateCache(invalidationsForConfessionWrite()...)
 	httpx.WriteJSON(w, http.StatusOK, map[string]string{"status": req.Status})
 }
 
@@ -196,6 +233,7 @@ func (h *Handler) adminCreateVoice(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to create voice")
 		return
 	}
+	h.invalidateCache(invalidationsForVoiceWrite()...)
 	httpx.WriteJSON(w, http.StatusCreated, v)
 }
 

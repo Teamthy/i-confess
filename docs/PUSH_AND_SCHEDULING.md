@@ -134,13 +134,57 @@ schedule path is visible in development. Startup says so plainly.
 
 ---
 
+## Delivery goes through the queue (IC-012)
+
+The sweep used to talk to APNs and FCM itself, inside the one-minute tick. That
+works until a provider slows down: the sweep then runs longer than its own
+interval, and a process that restarts mid-send loses the delivery with nothing
+recorded but a row claiming it was "sent".
+
+With a durable queue installed, the sweep's only job is to decide *who* is due.
+Each device gets a `notification.send` job, keyed by schedule, occurrence and
+device, so a repeated enqueue of the same reminder to the same phone is a no-op;
+retries, backoff and dead letters belong to the queue. The delivery row is
+recorded as `queued` (migration 0012) because "sent" would be a claim nobody can
+support yet — and that row is what someone opens during an incident.
+
+Token lifecycle moved with the send. The queue handler is now the component that
+hears "this token is gone", so it is the component that forgets it
+(`Services.Devices`), and a provider outage counts against the device only once
+it is permanent - otherwise an afternoon of FCM 503s would empty the device
+table.
+
+## The client half (IC-012)
+
+The audit's finding was that the server was ready and nothing ever registered:
+`postMeDevices` had no caller anywhere in `apps/mobile`, so every reminder ended
+as `failed — no registered devices`.
+
+- **Registration.** `apps/mobile/lib/src/core/push/` obtains the FCM/APNs token,
+  re-registers on every rotation, and posts
+  `{device_id, platform, push_token}` to `POST /me/devices`. The device id is
+  generated once and persisted: Android's `ANDROID_ID` changes on a reinstall or
+  a signing-key change, and a device that renamed itself would be two rows and
+  two notifications.
+- **Permission on a user action.** The OS prompt is raised by the "This device"
+  tile in Settings → Notifications, never at launch. A refusal is an answer: no
+  token is registered.
+- **Deep links.** Tapping a reminder does what the reminder says:
+  `POST /schedules/{id}/start` builds the session under the entitlement rules in
+  force *now*, and the app opens `/player/{session_id}`. If that fails — the plan
+  lapsed, the network is down — it falls back to the Activity tab rather than a
+  player with nothing in it.
+- **No Firebase configuration is not a crash.** `google-services.json` and
+  `GoogleService-Info.plist` carry project credentials and are never committed,
+  so a checkout without them starts, logs, and runs without reminders.
+
 ## Still outstanding
 
-- **FCM service-account token minting.** `AccessToken` is injected as a
-  function; production needs a real Google OAuth2 source rather than a
-  pre-minted token from the environment.
 - **Sweeper coordination.** Runs in-process on a one-minute tick. The
   occurrence key makes multiple replicas *safe*, just wasteful.
+- **Foreground display on Android.** A message the app is already handling is
+  not raised as a notification by the system; showing it needs
+  `flutter_local_notifications`, which is not wired yet.
 - **Passkeys / WebAuthn**, **offline downloads** (§28), and the
   **Flutter / Next.js clients** remain untouched — still backend-only.
 - **Silent/background push** for pre-downloading a session before its
@@ -150,3 +194,40 @@ schedule path is visible in development. Startup says so plainly.
 Next I'd do **offline downloads**: it is the remaining piece that makes a
 scheduled session reliable for users on intermittent mobile data, which is a
 large share of the target market.
+
+### PR C integration notes (2026-09-20)
+
+- **Opt-in:** Activity → “This device”, or Settings → Notifications → “This
+  device”. The action requests OS permission, registers a nonempty token, then
+  writes `scheduled_sessions: true`. A failed registration never reports success.
+  The account toggle is separate from the handset's OS permission.
+- **Startup/rotation:** a restored signed-in session registers without prompting;
+  foreground resume and token refresh re-read the transport token. Signed-out
+  callbacks do not register. Provider disposal cancels listeners.
+- **iOS:** the backend routes `platform: ios` to APNs, so registration uses
+  `getAPNSToken()`, **not** the FCM token. Direct APNs messages have no Firebase
+  message id: AppDelegate forwards taps on the server's `data.deeplink` through
+  `app.iconfess/push_taps` and presents foreground alerts. Both native and Dart
+  sides buffer taps until listeners attach (cold start).
+- **Android:** the installation identifier is random and persisted. Android's
+  `Build.ID` is not a device identifier. The Google Services Gradle plugin is
+  applied when the project-specific `google-services.json` is present.
+- **Queue:** scheduled jobs retain the collapse key, sound, data and destination
+  of the inline notification. The queue retries provider failures; a `queued`
+  occurrence is not evidence of successful delivery.
+
+#### Required device smoke test before release
+
+Configure Firebase for the actual application id (`flutterfire configure`), add
+its iOS plist to the Runner target, enable Push Notifications in the Apple app id
+and signing profile, and provide server APNs/FCM credentials through deployment
+secrets. The committed `aps-environment: development` is for local development;
+Xcode distribution export must produce a production entitlement matching the
+server's APNs environment. Never put provider private keys in mobile assets.
+
+On a physical Android and iOS device, exercise permission grant/denial, token
+registration, rotation, app resume, and foreground/background/terminated taps.
+Verify that a tap calls the authenticated schedule-start endpoint before opening
+the player. Confirm opt-out stops subsequent schedule reminders. Flutter unit
+and widget tests do **not** validate native signing, provisioning, Firebase
+configuration, or delivery through the live providers.

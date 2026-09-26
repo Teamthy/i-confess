@@ -6,10 +6,14 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/Teamthy/i-confess/internal/api"
+	"github.com/Teamthy/i-confess/internal/bible"
+	"github.com/Teamthy/i-confess/internal/billing"
+	"github.com/Teamthy/i-confess/internal/cache"
 	"github.com/Teamthy/i-confess/internal/config"
 	"github.com/Teamthy/i-confess/internal/db"
 	"github.com/Teamthy/i-confess/internal/email"
@@ -32,6 +36,17 @@ func main() {
 		log.Fatalf("config: %v", err)
 	}
 
+	// Store verification (IC-003). Which verifier is installed decides whether a
+	// paying customer gets what they paid for, and a stub that reaches
+	// production gives premium away - so the process says out loud which one it
+	// built, and refuses to start outside development and test without a real
+	// one. Both lines exist because "billing is quietly disabled" is not
+	// something a running server should be able to hide.
+	log.Printf("billing: verifier %s", billing.DescribeVerifier(billing.VerifierFromEnv()))
+	if err := billing.RequireVerification(); err != nil {
+		log.Fatalf("billing: %v", err)
+	}
+
 	conn, err := db.Open(cfg.DatabaseURL)
 	if err != nil {
 		log.Fatalf("db: %v", err)
@@ -47,23 +62,26 @@ func main() {
 	// in every environment (PRD S11). config.Validate has already refused
 	// STORAGE_PROVIDER=local outside development.
 	objStore, err := storage.New(&storage.StorageConfig{
-		Provider:      cfg.StorageProvider,
-		LocalRootPath: cfg.MediaDir,
-		S3Bucket:      cfg.S3Bucket,
-		S3Region:      cfg.S3Region,
-		S3AccessKey:   cfg.S3AccessKey,
-		S3SecretKey:   cfg.S3SecretKey,
-		S3Endpoint:    cfg.S3Endpoint,
-		CDNDomain:     cfg.MediaBaseURL,
-		SigningSecret: cfg.AudioSignSecret,
+		Provider:                 cfg.StorageProvider,
+		LocalRootPath:            cfg.MediaDir,
+		S3Bucket:                 cfg.S3Bucket,
+		S3Region:                 cfg.S3Region,
+		S3AccessKey:              cfg.S3AccessKey,
+		S3SecretKey:              cfg.S3SecretKey,
+		S3Endpoint:               cfg.S3Endpoint,
+		CDNDomain:                cfg.MediaBaseURL,
+		CDNProvider:              "cloudfront",
+		CloudFrontKeyPairID:      cfg.CloudFrontKeyPairID,
+		CloudFrontPrivateKeyPath: cfg.CloudFrontPrivateKeyPath,
+		SigningSecret:            cfg.AudioSignSecret,
 	})
 	if err != nil {
 		log.Fatalf("storage: %v", err)
 	}
 
-	// Seed demo content (development only). This is what creates placeholder
+	// Seed demo content (development and test only). This is what creates placeholder
 	// audio and the demo accounts, and neither of those belongs in production.
-	if cfg.Env == "development" || os.Getenv("SEED") == "1" {
+	if (cfg.Env == "development" || cfg.Env == "test") && (cfg.Env == "development" || os.Getenv("SEED") == "1") {
 		if err := seed.Seed(conn, objStore); err != nil {
 			log.Printf("seed: %v", err)
 		}
@@ -76,18 +94,41 @@ func main() {
 	// confessions are the product's inventory, not demo data.
 	//
 	// It is idempotent: after Seed has populated a dev database this is a
-	// no-op. It creates no audio - audio comes from the generation pipeline
-	// behind the rights gate, never from a bootstrap.
-	//
-	// Failure is logged loudly but not fatal: auth, profile and admin still
-	// work with an empty catalogue, and a crash loop is the worse outcome. It
-	// does mean a boot can succeed with no content, which is why the log line
-	// is an error rather than an info.
+	// no-op for the text rows. A content bootstrap failure is fatal: serving an
+	// empty or partial catalogue is worse than refusing readiness, and makes a
+	// launch appear healthy while every content request fails.
 	if _, _, err := seed.EnsureContent(context.Background(), conn); err != nil {
-		log.Printf("content: FAILED to ensure the canonical library: %v", err)
+		log.Fatalf("content: failed to ensure the canonical library: %v", err)
+	}
+	if reviewed, err := seed.EnsureCanonicalTheology(context.Background(), conn); err != nil {
+		log.Fatalf("content: failed to record canonical theological review: %v", err)
+	} else if reviewed > 0 {
+		log.Printf("content: recorded %d canonical theological reviews", reviewed)
+	}
+	if created, err := seed.EnsureCanonicalAudio(context.Background(), conn, objStore); err != nil {
+		log.Fatalf("audio: failed to ensure canonical audio: %v", err)
+	} else if created > 0 {
+		log.Printf("audio: ensured %d canonical bootstrap assets", created)
 	}
 
 	h := api.NewHandler(api.Config{JWTSecret: cfg.JWTSecret, TokenTTL: cfg.TokenTTL}, conn)
+	localBible := &bible.LocalBibleProvider{DB: conn}
+	helloAO, providerErr := bible.NewHelloAOBibleProvider(os.Getenv("HELLOAO_BASE_URL"), nil)
+	if providerErr != nil { log.Fatalf("bible provider configuration: %v", providerErr) }
+	h.SetBibleDiscoveryProvider(helloAO)
+	// Provider choice is server-side. The local corpus is always the fallback;
+	// HelloAO content is exposed only after its database registry row is reviewed.
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("BIBLE_PROVIDER"))) {
+	case "helloao":
+		h.SetBibleProvider(&bible.ReviewedProvider{Local: localBible, Remote: helloAO})
+		log.Printf("bible: HelloAO adapter enabled with approved local fallback")
+	case "", "local":
+		h.SetBibleProvider(localBible)
+		log.Printf("bible: local verified corpus provider enabled")
+	default:
+		log.Fatalf("bible provider configuration: unsupported BIBLE_PROVIDER %q (choose local or helloao)", os.Getenv("BIBLE_PROVIDER"))
+	}
+	h.SetProduction(cfg.IsProduction())
 	h.BuildEngine()
 	h.SetSigner(objStore)
 
@@ -153,6 +194,31 @@ func main() {
 		log.Printf("redis: REDIS_ADDR unset - rate limits are per-instance only")
 	}
 
+	// Cache invalidation between instances (G-10).
+	//
+	// The content caches are per-process, so without a bus an admin edit
+	// published on one replica stays invisible on the others until ttl+swr
+	// expires - up to fifteen minutes on the category and voice caches.
+	//
+	// This reuses the same Redis the limiter does: pub/sub needs one more
+	// connection from a server the process is already configured to talk to,
+	// rather than a new dependency. Without REDIS_ADDR the Handler still
+	// invalidates its own caches on write, which is what a single-instance
+	// deployment needs, and the log says so rather than implying otherwise.
+	if cfg.RedisAddr != "" {
+		bus := redisCacheBus(cfg)
+		if err := h.SetCacheBus(bus); err != nil {
+			// Not fatal: publishing still works, so this instance keeps the
+			// other replicas fresh while it serves its own cache until TTL.
+			log.Printf("redis: cache invalidation subscription failed, this instance will serve stale content until TTL: %v", err)
+		} else {
+			log.Printf("redis: cross-instance cache invalidation enabled at %s (channel %s)", cfg.RedisAddr, bus.Channel)
+		}
+		defer h.CloseCacheBus()
+	} else {
+		log.Printf("redis: REDIS_ADDR unset - cache invalidation is local to this instance only")
+	}
+
 	if cfg.ElevenLabsAPIKey != "" {
 		h.SetPipeline(voice.NewPipeline(voice.NewElevenLabs(cfg.ElevenLabsAPIKey), objStore))
 		log.Printf("voice: elevenlabs synthesis enabled")
@@ -204,6 +270,13 @@ func main() {
 		h.SetPushSender(push.LogSender{})
 	}
 
+	// Reminders go through the durable queue now that there is one, so a
+	// provider that is slow or briefly unreachable costs a retry rather than
+	// the delivery, and the sweep stays as short as the work it does.
+	if h.SetPushQueue() {
+		log.Printf("push: scheduled reminders are queued through the durable job queue")
+	}
+
 	// Register the job handlers and start the worker pool.
 	//
 	// Only types with a real collaborator are registered; anything else is left
@@ -214,6 +287,7 @@ func main() {
 	installed := workers.Register(queue, workers.Services{
 		Generate: h,
 		Notify:   pushSender,
+		Devices:  h,
 	})
 	worker := jobs.NewWorker(queue, cfg.QueueWorkers)
 	worker.Start(context.Background())
@@ -267,10 +341,33 @@ func main() {
 		}
 	}()
 
+	// Periodically purge expired idempotency records and cleanup old data (IC-023).
+	idemCtx, stopIdem := context.WithCancel(context.Background())
+	defer stopIdem()
+	go func() {
+		t := time.NewTicker(30 * time.Minute)
+		defer t.Stop()
+		for {
+			select {
+			case <-idemCtx.Done():
+				return
+			case <-t.C:
+				if n, err := h.RunIdempotencySweep(idemCtx); err != nil {
+					log.Printf("idempotency: sweep failed: %v", err)
+				} else if n > 0 {
+					log.Printf("idempotency: purged %d expired keys", n)
+				}
+			}
+		}
+	}()
+
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
 		Handler:           h.Routes(),
 		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 
 	// Graceful shutdown handling.
@@ -297,4 +394,9 @@ func main() {
 // redisStore builds the shared counter backend for rate limiting.
 func redisStore(cfg config.Config) *ratelimit.RedisStore {
 	return ratelimit.NewRedisStore(cfg.RedisAddr, cfg.RedisPassword)
+}
+
+// redisCacheBus returns the invalidation transport used across API instances.
+func redisCacheBus(cfg config.Config) *cache.RedisBus {
+	return cache.NewRedisBus(cfg.RedisAddr, cfg.RedisPassword)
 }

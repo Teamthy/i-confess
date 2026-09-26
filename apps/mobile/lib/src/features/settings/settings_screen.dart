@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:iconfess_api/iconfess_api.dart';
 
 import '../../core/routing/routes.dart';
 import '../../core/theme/theme.dart';
 import '../../core/theme/tokens.dart';
 import '../../core/widgets/screen.dart';
 import 'settings_providers.dart';
+import '../../core/di/providers.dart';
+import '../../core/push/push_registration.dart';
 
 /// Settings: preferences, notifications, devices, export, deletion, interests.
 class SettingsScreen extends ConsumerWidget {
@@ -14,9 +17,9 @@ class SettingsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final surfaces = AppSurfaces.of(context);
     return AppScaffold(
       title: 'Settings',
+      scrollable: false,
       body: ListView(
         children: [
           _Section(label: 'Preferences'),
@@ -171,6 +174,7 @@ class _InterestsScreenState extends ConsumerState<InterestsScreen> {
     final categoriesAsync = ref.watch(contentRepositoryProvider).categories();
     return AppScaffold(
       title: 'Interests',
+      scrollable: false,
       body: FutureBuilder(
         future: categoriesAsync,
         builder: (context, snapshot) {
@@ -231,6 +235,7 @@ class NotificationsScreen extends ConsumerWidget {
     final async = ref.watch(notificationPrefsProvider);
     return AppScaffold(
       title: 'Notifications',
+      scrollable: false,
       body: async.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('Failed: $e')),
@@ -238,19 +243,37 @@ class NotificationsScreen extends ConsumerWidget {
           final data = loadable.valueOrNull ?? {};
           return ListView(
             children: [
+              const EnableDeviceRemindersTile(),
               SwitchListTile(
                 title: const Text('Scheduled reminders'),
-                value: data['scheduled'] == true,
+                value: data['scheduled_sessions'] == true,
                 onChanged: (v) async {
-                  await ref.read(apiClientProvider).patchMeNotifications({'scheduled': v});
-                  ref.invalidate(notificationPrefsProvider);
+                  try {
+                    if (v && await ref.read(pushRegistrarProvider).enable() == null) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                          content: Text('Reminders were not enabled. Check notification permission in Settings and try again.'),
+                        ));
+                      }
+                      return;
+                    }
+                    await ref.read(apiClientProvider).patchMeNotifications({'scheduled_sessions': v});
+                    ref.invalidate(notificationPrefsProvider);
+                    ref.invalidate(devicesProvider);
+                  } catch (_) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                        content: Text('Could not save reminder settings. Please try again.'),
+                      ));
+                    }
+                  }
                 },
               ),
               SwitchListTile(
                 title: const Text('Content updates'),
-                value: data['content'] == true,
+                value: data['new_content'] == true,
                 onChanged: (v) async {
-                  await ref.read(apiClientProvider).patchMeNotifications({'content': v});
+                  await ref.read(apiClientProvider).patchMeNotifications({'new_content': v});
                   ref.invalidate(notificationPrefsProvider);
                 },
               ),
@@ -270,6 +293,7 @@ class DevicesScreen extends ConsumerWidget {
     final async = ref.watch(devicesProvider);
     return AppScaffold(
       title: 'Devices',
+      scrollable: false,
       body: async.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('Failed: $e')),
@@ -361,4 +385,44 @@ class _DeletionScreenState extends ConsumerState<DeletionScreen> {
       ),
     );
   }
+}
+
+/// Device permission and account preferences are independent. This action also
+/// works when reminders were enabled previously on a different handset.
+class EnableDeviceRemindersTile extends ConsumerStatefulWidget {
+  const EnableDeviceRemindersTile({super.key});
+
+  @override
+  ConsumerState<EnableDeviceRemindersTile> createState() => _EnableDeviceRemindersTileState();
+}
+
+class _EnableDeviceRemindersTileState extends ConsumerState<EnableDeviceRemindersTile> {
+  bool _busy = false;
+
+  @override
+  Widget build(BuildContext context) => ListTile(
+    title: const Text('This device'),
+    subtitle: const Text('Enable reminders on this phone'),
+    trailing: _busy ? const CircularProgressIndicator() : const Icon(Icons.notifications_active_outlined),
+    onTap: _busy ? null : () async {
+      setState(() => _busy = true);
+      var message = 'Reminders were not enabled. Check notification permission in Settings and try again.';
+      try {
+        final token = await ref.read(pushRegistrarProvider).enable();
+        if (token != null) {
+          await ref.read(apiClientProvider).patchMeNotifications({'scheduled_sessions': true});
+          ref.invalidate(notificationPrefsProvider);
+          ref.invalidate(devicesProvider);
+          message = 'Reminders enabled on this device.';
+        }
+      } catch (_) {
+        message = 'Could not enable reminders. Please try again.';
+      } finally {
+        if (mounted) {
+          setState(() => _busy = false);
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+        }
+      }
+    },
+  );
 }

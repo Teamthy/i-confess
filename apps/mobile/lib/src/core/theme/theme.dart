@@ -14,8 +14,8 @@ import 'tokens.dart';
 /// The player opts into [immersive] explicitly, regardless of what the rest of
 /// the app is doing.
 enum AppMode {
-  /// Warm neutral surfaces, dark type, restrained green accent. Home, Explore,
-  /// Profile, Search, Category.
+  /// Light blue-tinted surfaces, deep navy type, controlled blue accent.
+  /// Home, Explore, Profile, Search, Category.
   discovery,
 
   /// Near-black surfaces, ivory type, minimal controls. Player, active session,

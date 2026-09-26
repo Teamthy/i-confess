@@ -39,6 +39,15 @@ class HomeScreen extends ConsumerWidget {
           const _Greeting(),
           const SizedBox(height: IConfess.space6),
           const _DailySessionCard(),
+          const SizedBox(height: IConfess.space3),
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: OutlinedButton.icon(
+              onPressed: () => context.push(AppRoutes.bible),
+              icon: const Icon(Icons.menu_book_outlined),
+              label: const Text('Open the Bible'),
+            ),
+          ),
           if (live.isNotEmpty) ...[
             const SizedBox(height: IConfess.space7),
             _RailHeader(label: 'Continue listening'),
@@ -200,7 +209,7 @@ class _ContinueRail extends StatelessWidget {
             subtitle: session.status == 'PAUSED' ? 'Paused' : 'In progress',
             color: surfaces.surfaceRaised,
             textColor: surfaces.textPrimary,
-            onTap: () => context.go(AppRoutes.player),
+            onTap: () => context.go(session.id.isNotEmpty ? AppRoutes.playerWithId(session.id) : AppRoutes.player),
           );
         },
       ),

@@ -7,6 +7,7 @@ import '../../core/theme/theme.dart';
 import '../../core/theme/tokens.dart';
 import '../../core/widgets/screen.dart';
 import 'me_providers.dart';
+import '../../core/di/providers.dart';
 
 /// Me / Profile tab: bootstrap, profile, preferences, interests, sessions, premium, settings.
 class MeScreen extends ConsumerWidget {
@@ -206,7 +207,6 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
   @override
   Widget build(BuildContext context) {
     final profileAsync = ref.watch(profileProvider);
-    final surfaces = AppSurfaces.of(context);
 
     return AppScaffold(
       title: 'Edit profile',

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'src/core/analytics/analytics.dart';
 import 'src/core/di/providers.dart';
+import 'src/core/push/push_registration.dart';
 import 'src/core/routing/router.dart';
 import 'src/core/theme/theme.dart';
 
@@ -16,6 +17,15 @@ class IConfessApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final router = ref.watch(routerProvider);
+
+    // A tap on a reminder opens the session it was about. The path comes from
+    // the server's payload and is translated by the push layer before it gets
+    // here, so an unrecognised link simply never arrives.
+    ref.listen<AsyncValue<String>>(pushDeepLinkProvider, (_, next) {
+      final path = next.asData?.value;
+      if (path == null) return;
+      router.go(path);
+    });
 
     return MaterialApp.router(
       title: 'I CONFESS',

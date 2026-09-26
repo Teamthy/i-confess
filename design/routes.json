@@ -15,10 +15,164 @@
   },
   {
     "method": "GET",
+    "path": "/admin/audio/jobs",
+    "auth": "audio_producer,voice_manager",
+    "summary": "List generation requests, newest first",
+    "tag": "admin-audio"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/audio/jobs/{id}",
+    "auth": "audio_producer,voice_manager",
+    "summary": "One generation request with its outcome",
+    "tag": "admin-audio"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/audio/{id}/archive",
+    "auth": "audio_producer,voice_manager",
+    "summary": "Withdraw a render, including from existing sessions",
+    "tag": "admin-audio"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/audio/{id}/publish",
+    "auth": "audio_producer,voice_manager",
+    "summary": "Surface an approved render in discovery",
+    "tag": "admin-audio"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/audio/{id}/qa/approve",
+    "auth": "audio_producer,voice_manager",
+    "summary": "Approve a render for listeners",
+    "tag": "admin-audio"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/audio/{id}/qa/reject",
+    "auth": "audio_producer,voice_manager",
+    "summary": "Reject a render; a note is required",
+    "tag": "admin-audio"
+  },
+  {
+    "method": "GET",
     "path": "/admin/audit",
     "auth": "admin",
     "summary": "Recent privileged actions",
     "tag": "admin-ops"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/bible/audio",
+    "auth": "admin",
+    "summary": "List Bible audio rights-review assets",
+    "tag": "admin-bible"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/bible/audio",
+    "auth": "admin",
+    "summary": "Register a checksum-verified Bible audio manifest",
+    "tag": "admin-bible"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/bible/audio/{id}/review",
+    "auth": "admin",
+    "summary": "Approve or withdraw rights-cleared Bible audio",
+    "tag": "admin-bible"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/bible/catalog",
+    "auth": "admin",
+    "summary": "Discover HelloAO translations for review",
+    "tag": "admin-bible"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/bible/catalog/sync",
+    "auth": "admin",
+    "summary": "Synchronize HelloAO catalog metadata without granting rights",
+    "tag": "admin-bible"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/bible/health",
+    "auth": "admin",
+    "summary": "Bible database and provider health",
+    "tag": "admin-bible"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/bible/metrics",
+    "auth": "admin",
+    "summary": "Sanitized Bible operation metrics without private study payloads",
+    "tag": "admin-bible"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/bible/overview",
+    "auth": "admin",
+    "summary": "Bible catalog and operations overview",
+    "tag": "admin-bible"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/bible/plans",
+    "auth": "admin",
+    "summary": "List Bible plans across editorial statuses",
+    "tag": "admin-bible"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/bible/plans",
+    "auth": "admin",
+    "summary": "Create a draft Bible reading plan",
+    "tag": "admin-bible"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/bible/plans/{id}",
+    "auth": "admin",
+    "summary": "Load a Bible plan and its unpublished day references",
+    "tag": "admin-bible"
+  },
+  {
+    "method": "PATCH",
+    "path": "/admin/bible/plans/{id}",
+    "auth": "admin",
+    "summary": "Review or publish a Bible reading plan",
+    "tag": "admin-bible"
+  },
+  {
+    "method": "PUT",
+    "path": "/admin/bible/plans/{id}/days/{day}",
+    "auth": "admin",
+    "summary": "Edit an unpublished Bible plan day",
+    "tag": "admin-bible"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/bible/translations/{id}/rights",
+    "auth": "admin",
+    "summary": "Review independent Bible translation rights",
+    "tag": "admin-bible"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/bible/verse-of-day",
+    "auth": "admin",
+    "summary": "List reviewed Bible verses of the day",
+    "tag": "admin-bible"
+  },
+  {
+    "method": "PUT",
+    "path": "/admin/bible/verse-of-day/{day}",
+    "auth": "admin",
+    "summary": "Review a verse-of-day reference",
+    "tag": "admin-bible"
   },
   {
     "method": "GET",
@@ -77,10 +231,24 @@
     "tag": "admin-ops"
   },
   {
+    "method": "POST",
+    "path": "/admin/moderation/appeals/{id}/decision",
+    "auth": "admin",
+    "summary": "Decide an appeal (upheld|overturned)",
+    "tag": "admin-content"
+  },
+  {
     "method": "GET",
     "path": "/admin/moderation/queue",
     "auth": "admin",
     "summary": "Moderation queue (UGC + editorial pending)",
+    "tag": "admin-content"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/moderation/reports/{id}/decision",
+    "auth": "admin",
+    "summary": "Close an open report (resolved|dismissed)",
     "tag": "admin-content"
   },
   {
@@ -103,6 +271,20 @@
     "auth": "admin",
     "summary": "Create or update a pricing plan",
     "tag": "admin-content"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/queue",
+    "auth": "admin",
+    "summary": "Background queue: counts by status and the job types this server runs",
+    "tag": "admin-queue"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/queue/requeue",
+    "auth": "admin",
+    "summary": "Release dead-lettered jobs back into the queue",
+    "tag": "admin-queue"
   },
   {
     "method": "GET",
@@ -144,6 +326,13 @@
     "path": "/admin/users/subscription",
     "auth": "admin",
     "summary": "Set a subscription plan",
+    "tag": "admin-users"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/users/{id}/erase",
+    "auth": "admin",
+    "summary": "Immediate account erasure (super-admin only)",
     "tag": "admin-users"
   },
   {
@@ -351,6 +540,83 @@
   },
   {
     "method": "GET",
+    "path": "/bible/books",
+    "auth": "public",
+    "summary": "Books available in a translation",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/bible/books/{id}",
+    "auth": "public",
+    "summary": "Book metadata in a translation",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/bible/books/{id}/chapters",
+    "auth": "public",
+    "summary": "Chapters available in a translation book",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/bible/cross-references",
+    "auth": "public",
+    "summary": "Cross references for a canonical passage",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/bible/languages",
+    "auth": "public",
+    "summary": "Available Bible languages",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/bible/passage",
+    "auth": "public",
+    "summary": "Read a normalized Bible passage",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/bible/search",
+    "auth": "public",
+    "summary": "Search scripture or resolve a Bible reference",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/bible/translations",
+    "auth": "public",
+    "summary": "Approved Bible translations with provenance and rights",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/bible/translations/{id}",
+    "auth": "public",
+    "summary": "One translation and its licensing metadata",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/bible/{translation}/{book}/{chapter}",
+    "auth": "public",
+    "summary": "Read a Bible chapter",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/bible/{translation}/{book}/{chapter}/{verse}",
+    "auth": "public",
+    "summary": "Read a Bible verse",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
     "path": "/categories",
     "auth": "public",
     "summary": "Published categories (cached SWR 5m)",
@@ -369,6 +635,13 @@
     "auth": "public",
     "summary": "Published collections",
     "tag": "content"
+  },
+  {
+    "method": "GET",
+    "path": "/community/confessions",
+    "auth": "public",
+    "summary": "Published user confessions (public UGC reader, anonymous)",
+    "tag": "community"
   },
   {
     "method": "GET",
@@ -441,6 +714,20 @@
     "tag": "profile"
   },
   {
+    "method": "GET",
+    "path": "/me/appeals",
+    "auth": "user",
+    "summary": "Your appeals and their outcomes",
+    "tag": "moderation"
+  },
+  {
+    "method": "POST",
+    "path": "/me/appeals",
+    "auth": "user",
+    "summary": "Appeal a dismissed report or a rejected confession",
+    "tag": "moderation"
+  },
+  {
     "method": "DELETE",
     "path": "/me/avatar",
     "auth": "user",
@@ -453,6 +740,97 @@
     "auth": "user",
     "summary": "Upload an avatar; EXIF is stripped",
     "tag": "profile"
+  },
+  {
+    "method": "GET",
+    "path": "/me/bible/bookmarks",
+    "auth": "user",
+    "summary": "List private Bible bookmarks",
+    "tag": "bible"
+  },
+  {
+    "method": "POST",
+    "path": "/me/bible/bookmarks",
+    "auth": "user",
+    "summary": "Create or update a private Bible bookmark",
+    "tag": "bible"
+  },
+  {
+    "method": "DELETE",
+    "path": "/me/bible/bookmarks/{id}",
+    "auth": "user",
+    "summary": "Delete a private Bible bookmark",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/me/bible/highlights",
+    "auth": "user",
+    "summary": "List private Bible highlights",
+    "tag": "bible"
+  },
+  {
+    "method": "POST",
+    "path": "/me/bible/highlights",
+    "auth": "user",
+    "summary": "Create or update a private Bible highlight",
+    "tag": "bible"
+  },
+  {
+    "method": "DELETE",
+    "path": "/me/bible/highlights/{id}",
+    "auth": "user",
+    "summary": "Delete a private Bible highlight",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/me/bible/notes",
+    "auth": "user",
+    "summary": "List private Bible notes",
+    "tag": "bible"
+  },
+  {
+    "method": "POST",
+    "path": "/me/bible/notes",
+    "auth": "user",
+    "summary": "Create a private Bible note",
+    "tag": "bible"
+  },
+  {
+    "method": "DELETE",
+    "path": "/me/bible/notes/{id}",
+    "auth": "user",
+    "summary": "Delete a private Bible note",
+    "tag": "bible"
+  },
+  {
+    "method": "PATCH",
+    "path": "/me/bible/notes/{id}",
+    "auth": "user",
+    "summary": "Update a private Bible note with row-version conflict protection",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/me/blocks",
+    "auth": "user",
+    "summary": "Accounts you have blocked",
+    "tag": "moderation"
+  },
+  {
+    "method": "POST",
+    "path": "/me/blocks",
+    "auth": "user",
+    "summary": "Block an account",
+    "tag": "moderation"
+  },
+  {
+    "method": "DELETE",
+    "path": "/me/blocks/{userId}",
+    "auth": "user",
+    "summary": "Unblock an account",
+    "tag": "moderation"
   },
   {
     "method": "GET",
@@ -530,6 +908,13 @@
     "auth": "user",
     "summary": "Create a personal confession",
     "tag": "library"
+  },
+  {
+    "method": "POST",
+    "path": "/me/confessions/{id}/submit",
+    "auth": "user",
+    "summary": "Offer a personal confession for moderation review",
+    "tag": "moderation"
   },
   {
     "method": "DELETE",
@@ -701,10 +1086,31 @@
   },
   {
     "method": "GET",
+    "path": "/metrics",
+    "auth": "admin",
+    "summary": "Prometheus metrics",
+    "tag": "admin-ops"
+  },
+  {
+    "method": "GET",
+    "path": "/openapi.json",
+    "auth": "public",
+    "summary": "OpenAPI JSON specification",
+    "tag": "ops"
+  },
+  {
+    "method": "GET",
     "path": "/recommendations",
     "auth": "user",
     "summary": "Personalized recommendations",
     "tag": "home"
+  },
+  {
+    "method": "POST",
+    "path": "/reports",
+    "auth": "user",
+    "summary": "Report published content or a community post",
+    "tag": "moderation"
   },
   {
     "method": "GET",
@@ -770,6 +1176,13 @@
     "tag": "sessions"
   },
   {
+    "method": "DELETE",
+    "path": "/sessions/{id}",
+    "auth": "user",
+    "summary": "Remove a session from history",
+    "tag": "sessions"
+  },
+  {
     "method": "GET",
     "path": "/sessions/{id}",
     "auth": "user",
@@ -788,6 +1201,13 @@
     "path": "/sessions/{id}/complete",
     "auth": "user",
     "summary": "Complete a session",
+    "tag": "sessions"
+  },
+  {
+    "method": "POST",
+    "path": "/sessions/{id}/interrupt",
+    "auth": "user",
+    "summary": "Interrupt a session",
     "tag": "sessions"
   },
   {
@@ -855,9 +1275,51 @@
   },
   {
     "method": "POST",
+    "path": "/subscriptions/trial",
+    "auth": "user",
+    "summary": "Start the one-time Premium trial",
+    "tag": "subscription"
+  },
+  {
+    "method": "POST",
+    "path": "/subscriptions/trial/convert",
+    "auth": "user",
+    "summary": "Finish the trial before store verification",
+    "tag": "subscription"
+  },
+  {
+    "method": "GET",
+    "path": "/subscriptions/trial/engagement",
+    "auth": "user",
+    "summary": "Measured trial journey: completed days and funnel",
+    "tag": "subscription"
+  },
+  {
+    "method": "GET",
+    "path": "/subscriptions/trial/status",
+    "auth": "user",
+    "summary": "Current trial lifecycle state",
+    "tag": "subscription"
+  },
+  {
+    "method": "POST",
     "path": "/subscriptions/verify",
     "auth": "user",
     "summary": "Verify store receipt (server-side, billing.Verifier)",
+    "tag": "subscription"
+  },
+  {
+    "method": "POST",
+    "path": "/subscriptions/webhooks/apple",
+    "auth": "public",
+    "summary": "App Store Server Notifications V2 (JWS verified against the pinned Apple root)",
+    "tag": "subscription"
+  },
+  {
+    "method": "POST",
+    "path": "/subscriptions/webhooks/google",
+    "auth": "public",
+    "summary": "Play real-time developer notification via Pub/Sub push (OIDC verified)",
     "tag": "subscription"
   },
   {
@@ -925,6 +1387,48 @@
   },
   {
     "method": "GET",
+    "path": "/v1/admin/audio/jobs",
+    "auth": "audio_producer,voice_manager",
+    "summary": "List generation requests, newest first",
+    "tag": "admin-audio"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/admin/audio/jobs/{id}",
+    "auth": "audio_producer,voice_manager",
+    "summary": "One generation request with its outcome",
+    "tag": "admin-audio"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/admin/audio/{id}/archive",
+    "auth": "audio_producer,voice_manager",
+    "summary": "Withdraw a render, including from existing sessions",
+    "tag": "admin-audio"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/admin/audio/{id}/publish",
+    "auth": "audio_producer,voice_manager",
+    "summary": "Surface an approved render in discovery",
+    "tag": "admin-audio"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/admin/audio/{id}/qa/approve",
+    "auth": "audio_producer,voice_manager",
+    "summary": "Approve a render for listeners",
+    "tag": "admin-audio"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/admin/audio/{id}/qa/reject",
+    "auth": "audio_producer,voice_manager",
+    "summary": "Reject a render; a note is required",
+    "tag": "admin-audio"
+  },
+  {
+    "method": "GET",
     "path": "/v1/admin/audit",
     "auth": "admin",
     "summary": "Recent privileged actions",
@@ -987,10 +1491,24 @@
     "tag": "admin-ops"
   },
   {
+    "method": "POST",
+    "path": "/v1/admin/moderation/appeals/{id}/decision",
+    "auth": "admin",
+    "summary": "Decide an appeal (upheld|overturned)",
+    "tag": "admin-content"
+  },
+  {
     "method": "GET",
     "path": "/v1/admin/moderation/queue",
     "auth": "admin",
     "summary": "Moderation queue (UGC + editorial pending)",
+    "tag": "admin-content"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/admin/moderation/reports/{id}/decision",
+    "auth": "admin",
+    "summary": "Close an open report (resolved|dismissed)",
     "tag": "admin-content"
   },
   {
@@ -1013,6 +1531,20 @@
     "auth": "admin",
     "summary": "Create or update a pricing plan",
     "tag": "admin-content"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/admin/queue",
+    "auth": "admin",
+    "summary": "Background queue: counts by status and the job types this server runs",
+    "tag": "admin-queue"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/admin/queue/requeue",
+    "auth": "admin",
+    "summary": "Release dead-lettered jobs back into the queue",
+    "tag": "admin-queue"
   },
   {
     "method": "GET",
@@ -1054,6 +1586,13 @@
     "path": "/v1/admin/users/subscription",
     "auth": "admin",
     "summary": "Set a subscription plan",
+    "tag": "admin-users"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/admin/users/{id}/erase",
+    "auth": "admin",
+    "summary": "Immediate account erasure (super-admin only)",
     "tag": "admin-users"
   },
   {
@@ -1261,6 +1800,118 @@
   },
   {
     "method": "GET",
+    "path": "/v1/bible/audio",
+    "auth": "public",
+    "summary": "Get a signed, rights-gated Bible audio URL",
+    "tag": "bible-audio"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/bible/books",
+    "auth": "public",
+    "summary": "Books available in a translation",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/bible/books/{id}",
+    "auth": "public",
+    "summary": "Book metadata in a translation",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/bible/books/{id}/chapters",
+    "auth": "public",
+    "summary": "Chapters available in a translation book",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/bible/compare",
+    "auth": "public",
+    "summary": "Compare a canonical passage across licensed translations",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/bible/cross-references",
+    "auth": "public",
+    "summary": "Cross references for a canonical passage",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/bible/languages",
+    "auth": "public",
+    "summary": "Available Bible languages",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/bible/passage",
+    "auth": "public",
+    "summary": "Read a normalized Bible passage",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/bible/plans",
+    "auth": "public",
+    "summary": "List curated Bible reading plans",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/bible/plans/{slug}",
+    "auth": "public",
+    "summary": "Read a curated Bible reading plan",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/bible/search",
+    "auth": "public",
+    "summary": "Search scripture or resolve a Bible reference",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/bible/translations",
+    "auth": "public",
+    "summary": "Approved Bible translations with provenance and rights",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/bible/translations/{id}",
+    "auth": "public",
+    "summary": "One translation and its licensing metadata",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/bible/verse-of-day",
+    "auth": "public",
+    "summary": "Get the reviewed verse of the day",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/bible/{translation}/{book}/{chapter}",
+    "auth": "public",
+    "summary": "Read a Bible chapter",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/bible/{translation}/{book}/{chapter}/{verse}",
+    "auth": "public",
+    "summary": "Read a Bible verse",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
     "path": "/v1/categories",
     "auth": "public",
     "summary": "Published categories (cached SWR 5m)",
@@ -1279,6 +1930,13 @@
     "auth": "public",
     "summary": "Published collections",
     "tag": "content"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/community/confessions",
+    "auth": "public",
+    "summary": "Published user confessions (public UGC reader, anonymous)",
+    "tag": "community"
   },
   {
     "method": "GET",
@@ -1351,6 +2009,20 @@
     "tag": "profile"
   },
   {
+    "method": "GET",
+    "path": "/v1/me/appeals",
+    "auth": "user",
+    "summary": "Your appeals and their outcomes",
+    "tag": "moderation"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/me/appeals",
+    "auth": "user",
+    "summary": "Appeal a dismissed report or a rejected confession",
+    "tag": "moderation"
+  },
+  {
     "method": "DELETE",
     "path": "/v1/me/avatar",
     "auth": "user",
@@ -1363,6 +2035,230 @@
     "auth": "user",
     "summary": "Upload an avatar; EXIF is stripped",
     "tag": "profile"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/me/bible/bookmarks",
+    "auth": "user",
+    "summary": "List private Bible bookmarks",
+    "tag": "bible"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/me/bible/bookmarks",
+    "auth": "user",
+    "summary": "Create or update a private Bible bookmark",
+    "tag": "bible"
+  },
+  {
+    "method": "DELETE",
+    "path": "/v1/me/bible/bookmarks/{id}",
+    "auth": "user",
+    "summary": "Delete a private Bible bookmark",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/me/bible/collections",
+    "auth": "user",
+    "summary": "List private Bible collections and canonical references",
+    "tag": "bible"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/me/bible/collections",
+    "auth": "user",
+    "summary": "Create a private Bible collection",
+    "tag": "bible"
+  },
+  {
+    "method": "DELETE",
+    "path": "/v1/me/bible/collections/{id}",
+    "auth": "user",
+    "summary": "Delete a private Bible collection",
+    "tag": "bible"
+  },
+  {
+    "method": "PATCH",
+    "path": "/v1/me/bible/collections/{id}",
+    "auth": "user",
+    "summary": "Rename or edit a private Bible collection",
+    "tag": "bible"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/me/bible/collections/{id}/items",
+    "auth": "user",
+    "summary": "Add a canonical Bible reference to a collection",
+    "tag": "bible"
+  },
+  {
+    "method": "DELETE",
+    "path": "/v1/me/bible/collections/{id}/items/{itemID}",
+    "auth": "user",
+    "summary": "Remove a Bible reference from a collection",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/me/bible/highlights",
+    "auth": "user",
+    "summary": "List private Bible highlights",
+    "tag": "bible"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/me/bible/highlights",
+    "auth": "user",
+    "summary": "Create or update a private Bible highlight",
+    "tag": "bible"
+  },
+  {
+    "method": "DELETE",
+    "path": "/v1/me/bible/highlights/{id}",
+    "auth": "user",
+    "summary": "Delete a private Bible highlight",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/me/bible/history",
+    "auth": "user",
+    "summary": "Read private Bible history",
+    "tag": "bible"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/me/bible/history",
+    "auth": "user",
+    "summary": "Save private Bible reading position",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/me/bible/notes",
+    "auth": "user",
+    "summary": "List private Bible notes",
+    "tag": "bible"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/me/bible/notes",
+    "auth": "user",
+    "summary": "Create a private Bible note",
+    "tag": "bible"
+  },
+  {
+    "method": "DELETE",
+    "path": "/v1/me/bible/notes/{id}",
+    "auth": "user",
+    "summary": "Delete a private Bible note",
+    "tag": "bible"
+  },
+  {
+    "method": "PATCH",
+    "path": "/v1/me/bible/notes/{id}",
+    "auth": "user",
+    "summary": "Update a private Bible note with row-version conflict protection",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/me/bible/offline",
+    "auth": "user",
+    "summary": "List personal Bible offline licenses",
+    "tag": "bible"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/me/bible/offline",
+    "auth": "user",
+    "summary": "Build and license an offline Bible book package",
+    "tag": "bible"
+  },
+  {
+    "method": "DELETE",
+    "path": "/v1/me/bible/offline/{id}",
+    "auth": "user",
+    "summary": "Revoke a personal offline license",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/me/bible/plans",
+    "auth": "user",
+    "summary": "List personal reading plan enrollments",
+    "tag": "bible"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/me/bible/plans/{id}/days/{day}",
+    "auth": "user",
+    "summary": "Complete a reading-plan day",
+    "tag": "bible"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/me/bible/plans/{id}/enroll",
+    "auth": "user",
+    "summary": "Enroll in a curated Bible reading plan",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/me/bible/preferences",
+    "auth": "user",
+    "summary": "Read private Bible preferences",
+    "tag": "bible"
+  },
+  {
+    "method": "PUT",
+    "path": "/v1/me/bible/preferences",
+    "auth": "user",
+    "summary": "Save private Bible preferences",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/me/bible/progress",
+    "auth": "user",
+    "summary": "Read private Bible reading progress",
+    "tag": "bible"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/me/bible/progress",
+    "auth": "user",
+    "summary": "Mark a Bible chapter complete",
+    "tag": "bible"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/me/bible/sync",
+    "auth": "user",
+    "summary": "Synchronize private Bible study data",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/me/blocks",
+    "auth": "user",
+    "summary": "Accounts you have blocked",
+    "tag": "moderation"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/me/blocks",
+    "auth": "user",
+    "summary": "Block an account",
+    "tag": "moderation"
+  },
+  {
+    "method": "DELETE",
+    "path": "/v1/me/blocks/{userId}",
+    "auth": "user",
+    "summary": "Unblock an account",
+    "tag": "moderation"
   },
   {
     "method": "GET",
@@ -1440,6 +2336,13 @@
     "auth": "user",
     "summary": "Create a personal confession",
     "tag": "library"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/me/confessions/{id}/submit",
+    "auth": "user",
+    "summary": "Offer a personal confession for moderation review",
+    "tag": "moderation"
   },
   {
     "method": "DELETE",
@@ -1611,10 +2514,31 @@
   },
   {
     "method": "GET",
+    "path": "/v1/metrics",
+    "auth": "admin",
+    "summary": "Prometheus metrics",
+    "tag": "admin-ops"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/openapi.json",
+    "auth": "public",
+    "summary": "OpenAPI JSON specification",
+    "tag": "ops"
+  },
+  {
+    "method": "GET",
     "path": "/v1/recommendations",
     "auth": "user",
     "summary": "Personalized recommendations (deterministic v1)",
     "tag": "home"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/reports",
+    "auth": "user",
+    "summary": "Report published content or a community post",
+    "tag": "moderation"
   },
   {
     "method": "GET",
@@ -1680,6 +2604,13 @@
     "tag": "sessions"
   },
   {
+    "method": "DELETE",
+    "path": "/v1/sessions/{id}",
+    "auth": "user",
+    "summary": "Remove a session from history",
+    "tag": "sessions"
+  },
+  {
     "method": "GET",
     "path": "/v1/sessions/{id}",
     "auth": "user",
@@ -1698,6 +2629,13 @@
     "path": "/v1/sessions/{id}/complete",
     "auth": "user",
     "summary": "Complete a session",
+    "tag": "sessions"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/sessions/{id}/interrupt",
+    "auth": "user",
+    "summary": "Interrupt a session",
     "tag": "sessions"
   },
   {
@@ -1765,9 +2703,51 @@
   },
   {
     "method": "POST",
+    "path": "/v1/subscriptions/trial",
+    "auth": "user",
+    "summary": "Start the one-time Premium trial",
+    "tag": "subscription"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/subscriptions/trial/convert",
+    "auth": "user",
+    "summary": "Finish the trial before store verification",
+    "tag": "subscription"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/subscriptions/trial/engagement",
+    "auth": "user",
+    "summary": "Measured trial journey: completed days and funnel",
+    "tag": "subscription"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/subscriptions/trial/status",
+    "auth": "user",
+    "summary": "Current trial lifecycle state",
+    "tag": "subscription"
+  },
+  {
+    "method": "POST",
     "path": "/v1/subscriptions/verify",
     "auth": "user",
     "summary": "Verify store receipt (server-side, billing.Verifier)",
+    "tag": "subscription"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/subscriptions/webhooks/apple",
+    "auth": "public",
+    "summary": "App Store Server Notifications V2 (JWS verified against the pinned Apple root)",
+    "tag": "subscription"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/subscriptions/webhooks/google",
+    "auth": "public",
+    "summary": "Play real-time developer notification via Pub/Sub push (OIDC verified)",
     "tag": "subscription"
   },
   {

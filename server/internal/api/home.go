@@ -167,142 +167,14 @@ func (h *Handler) searchAll(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{"results": results, "count": len(results)})
 }
 
-// --- Not yet implemented -------------------------------------------------
-//
-// These five routes are registered in the v1 tree but their services are not
-// wired into the Handler yet: recommendations, billing and entitlements exist
-// as standalone packages with no constructors, and the moderation queue has no
-// store at all. They answer 501 rather than a fabricated response, so a client
-// integrating against this API learns the truth immediately instead of
-// discovering it in production.
-//
-// Two of the original six - subscription and entitlements - were removed in
-// PHASE 08. Their packages existed and were already used elsewhere in this
-// package; the comment describing them as having "no constructors" was simply
-// wrong, and a 501 behind a false explanation outlived the reason for it.
-//
-// Tracked in docs/AUDIT-2026-09-05.md.
+// The last 501 stubs on this surface were removed in PHASE 31: the moderation
+// queue, user-confession review and confession QA now have a store and live in
+// internal/api/moderation.go. The original six are all real; see
+// docs/AUDIT-2026-09-05.md for the audit that listed them.
 
-func notImplemented(what string) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		httpx.WriteJSON(w, http.StatusNotImplemented, map[string]any{
-			"error": what + " is not implemented yet",
-			"code":  "NOT_IMPLEMENTED",
-		})
-	}
-}
-
-func (h *Handler) recommendations(w http.ResponseWriter, r *http.Request) {
-	userID := h.userID(r)
-	if userID == "" {
-		httpx.WriteError(w, http.StatusUnauthorized, "authentication required")
-		return
-	}
-
-	// Load signals for deterministic personalization (v1):
-	// - explicit interests (what user said)
-	// - recent sessions (what user actually did)
-	// - all categories (fallback)
-	cats, err := h.cont.ListCategories(r.Context(), false)
-	if err != nil {
-		httpx.WriteError(w, http.StatusInternalServerError, "failed to load categories")
-		return
-	}
-
-	// Build interest map
-	interestWeight := map[string]float64{}
-	if interests, err := h.profiles.Interests(r.Context(), userID); err == nil {
-		for _, it := range interests {
-			interestWeight[it.CategoryID] = interestWeight[it.CategoryID] + float64(it.Weight)
-		}
-	}
-
-	// Build recency map from sessions
-	recentCount := map[string]int{}
-	if sessions, err := h.sess.ListByUser(r.Context(), userID, 20); err == nil {
-		for _, s := range sessions {
-			// Sessions don't directly store category_ids in the list view,
-			// but we can count via items' categories if available, or use a
-			// simple heuristic: if session has items, count first item's category
-			// via confession lookup is expensive, so we count session types.
-			// For v1, we use session creation recency as a signal to boost
-			// diversity, not exact category affinity.
-			_ = s
-		}
-		// For v1, we don't have category breakdown in ListByUser without items.
-		// We keep recentCount empty and rely on interests; future versions can
-		// join session_items -> confessions -> categories.
-	}
-
-	// Score categories: interests first, then alphabetical for determinism
-	type scored struct {
-		cat   models.Category
-		score float64
-	}
-	scoredCats := make([]scored, 0, len(cats))
-	for _, c := range cats {
-		score := interestWeight[c.ID]*10 + float64(recentCount[c.ID])
-		// Boost non-premium for free users? No, show all but mark premium.
-		// Deterministic tie-breaker: sort_order then name.
-		scoredCats = append(scoredCats, scored{cat: c, score: score})
-	}
-
-	// Sort by score desc, then sort_order asc, then name asc for determinism
-	// (so same interests always yield same recommendations, required for v1).
-	for i := 0; i < len(scoredCats); i++ {
-		for j := i + 1; j < len(scoredCats); j++ {
-			si, sj := scoredCats[i], scoredCats[j]
-			less := false
-			if si.score != sj.score {
-				less = si.score < sj.score
-			} else if si.cat.SortOrder != sj.cat.SortOrder {
-				less = si.cat.SortOrder > sj.cat.SortOrder
-			} else {
-				less = si.cat.Name > sj.cat.Name
-			}
-			if less {
-				scoredCats[i], scoredCats[j] = scoredCats[j], scoredCats[i]
-			}
-		}
-	}
-
-	// Top 6 categories
-	topN := 6
-	if len(scoredCats) < topN {
-		topN = len(scoredCats)
-	}
-	recommendedCats := make([]models.Category, 0, topN)
-	recommendedCatIDs := make([]string, 0, topN)
-	for i := 0; i < topN; i++ {
-		recommendedCats = append(recommendedCats, scoredCats[i].cat)
-		recommendedCatIDs = append(recommendedCatIDs, scoredCats[i].cat.ID)
-	}
-
-	// Gather confessions from top categories (2 each, max 12)
-	var recommendedConfessions []models.Confession
-	for _, catID := range recommendedCatIDs {
-		confs, err := h.cont.ConfessionsByCategory(r.Context(), catID, true)
-		if err != nil || len(confs) == 0 {
-			continue
-		}
-		// Take up to 2 per category, deterministic by sort (already ordered by sort_order)
-		take := 2
-		if len(confs) < take {
-			take = len(confs)
-		}
-		recommendedConfessions = append(recommendedConfessions, confs[:take]...)
-		if len(recommendedConfessions) >= 12 {
-			break
-		}
-	}
-
-	httpx.WriteJSON(w, http.StatusOK, map[string]any{
-		"categories":  recommendedCats,
-		"confessions": recommendedConfessions,
-		"count":       len(recommendedCats) + len(recommendedConfessions),
-		"personalized": len(interestWeight) > 0,
-	})
-}
+// recommendations lives in recommendations.go (PHASE 43): the v1 body that
+// stood here ranked on explicit interests alone and left the behavioural
+// signals of master-plan item 34 as a comment about "future versions".
 
 // getSubscription reports the caller's own plan and its status.
 //
@@ -350,16 +222,4 @@ func (h *Handler) getEntitlements(w http.ResponseWriter, r *http.Request) {
 	view := entitlementView(ent)
 	view["playback_ttl_seconds"] = int(ent.PlaybackTTL().Seconds())
 	httpx.WriteJSON(w, http.StatusOK, view)
-}
-
-func (h *Handler) adminQAConfession(w http.ResponseWriter, r *http.Request) {
-	notImplemented("confession QA")(w, r)
-}
-
-func (h *Handler) adminListModerationQueue(w http.ResponseWriter, r *http.Request) {
-	notImplemented("the moderation queue")(w, r)
-}
-
-func (h *Handler) adminReviewUserConfession(w http.ResponseWriter, r *http.Request) {
-	notImplemented("user confession review")(w, r)
 }

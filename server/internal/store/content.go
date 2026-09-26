@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 	"strings"
 
 	"github.com/Teamthy/i-confess/internal/db"
@@ -33,9 +32,9 @@ func (s *ContentStore) CreateCollection(ctx context.Context, c *models.Collectio
 }
 
 func (s *ContentStore) ListCollections(ctx context.Context, includeUnpublished bool) ([]models.Collection, error) {
-	q := `SELECT id,name,slug,COALESCE(description,''),premium,status,sort_order,created_at,updated_at FROM collections`
+	q := `SELECT id,name,slug,COALESCE(description,''),premium,status,sort_order,created_at,updated_at FROM collections WHERE deleted_at IS NULL`
 	if !includeUnpublished {
-		q += ` WHERE status = 'published'`
+		q += ` AND status = 'published'`
 	}
 	q += ` ORDER BY sort_order, name`
 	rows, err := s.db.QueryContext(ctx, q)
@@ -69,9 +68,9 @@ func (s *ContentStore) CreateCategory(ctx context.Context, c *models.Category) e
 }
 
 func (s *ContentStore) ListCategories(ctx context.Context, includeUnpublished bool) ([]models.Category, error) {
-	q := `SELECT id,name,slug,COALESCE(description,''),COALESCE(icon,''),premium,status,sort_order,created_at,updated_at FROM categories`
+	q := `SELECT id,name,slug,COALESCE(description,''),COALESCE(icon,''),premium,status,sort_order,created_at,updated_at FROM categories WHERE deleted_at IS NULL`
 	if !includeUnpublished {
-		q += ` WHERE status = 'published'`
+		q += ` AND status = 'published'`
 	}
 	q += ` ORDER BY sort_order, name`
 	rows, err := s.db.QueryContext(ctx, q)
@@ -79,7 +78,7 @@ func (s *ContentStore) ListCategories(ctx context.Context, includeUnpublished bo
 		return nil, err
 	}
 	defer rows.Close()
-	var out []models.Category
+	out := make([]models.Category, 0)
 	for rows.Next() {
 		var c models.Category
 		if err := rows.Scan(&c.ID, &c.Name, &c.Slug, &c.Description, &c.Icon, &c.Premium, &c.Status, &c.SortOrder, &c.CreatedAt, &c.UpdatedAt); err != nil {
@@ -93,7 +92,7 @@ func (s *ContentStore) ListCategories(ctx context.Context, includeUnpublished bo
 func (s *ContentStore) CategoryByID(ctx context.Context, id string) (*models.Category, error) {
 	var c models.Category
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id,name,slug,COALESCE(description,''),COALESCE(icon,''),premium,status,sort_order,created_at,updated_at FROM categories WHERE id = ?`, id).
+		`SELECT id,name,slug,COALESCE(description,''),COALESCE(icon,''),premium,status,sort_order,created_at,updated_at FROM categories WHERE id = ? AND deleted_at IS NULL`, id).
 		Scan(&c.ID, &c.Name, &c.Slug, &c.Description, &c.Icon, &c.Premium, &c.Status, &c.SortOrder, &c.CreatedAt, &c.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
@@ -118,6 +117,9 @@ func (s *ContentStore) CreateConfession(ctx context.Context, c *models.Confessio
 	if c.Version == 0 {
 		c.Version = 1
 	}
+	if c.TheologicalReviewStatus == "" {
+		c.TheologicalReviewStatus = "unreviewed"
+	}
 	c.CreatedAt, c.UpdatedAt = now(), now()
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -126,10 +128,11 @@ func (s *ContentStore) CreateConfession(ctx context.Context, c *models.Confessio
 	defer tx.Rollback()
 
 	_, err = tx.ExecContext(ctx,
-		`INSERT INTO confessions (id,category_id,title,short_text,medium_text,long_text,description,tags,intensity,language,status,author,version,published_at,created_at,updated_at)
-		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		`INSERT INTO confessions (id,category_id,title,short_text,medium_text,long_text,description,tags,intensity,language,status,author,version,published_at,created_at,updated_at, theological_review_status,theological_reviewer,theological_reviewed_at,theological_review_notes)
+		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		c.ID, c.CategoryID, c.Title, c.ShortText, c.MediumText, c.LongText, c.Description,
-		strings.Join(c.Tags, ","), c.Intensity, c.Language, c.Status, c.Author, c.Version, nullIfEmpty(c.PublishedAt), c.CreatedAt, c.UpdatedAt)
+		strings.Join(c.Tags, ","), c.Intensity, c.Language, c.Status, c.Author, c.Version, nullIfEmpty(c.PublishedAt), c.CreatedAt, c.UpdatedAt,
+		c.TheologicalReviewStatus, nullIfEmpty(c.TheologicalReviewer), nullIfEmpty(c.TheologicalReviewedAt), nullIfEmpty(c.TheologicalReviewNotes))
 	if err != nil {
 		return err
 	}
@@ -172,7 +175,7 @@ func (s *ContentStore) ConfessionByID(ctx context.Context, id string) (*models.C
 	var tags, publishedAt sql.NullString
 	err := s.db.QueryRowContext(ctx,
 		`SELECT id,category_id,title,COALESCE(short_text,''),COALESCE(medium_text,''),COALESCE(long_text,''),COALESCE(description,''),COALESCE(tags,''),intensity,language,status,COALESCE(author,''),version,published_at,created_at,updated_at
-		 FROM confessions WHERE id = ?`, id).
+		 FROM confessions WHERE id = ? AND deleted_at IS NULL`, id).
 		Scan(&c.ID, &c.CategoryID, &c.Title, &c.ShortText, &c.MediumText, &c.LongText, &c.Description, &tags, &c.Intensity, &c.Language, &c.Status, &c.Author, &c.Version, &publishedAt, &c.CreatedAt, &c.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
@@ -199,7 +202,7 @@ func (s *ContentStore) ConfessionByID(ctx context.Context, id string) (*models.C
 
 func (s *ContentStore) ConfessionsByCategory(ctx context.Context, categoryID string, publishedOnly bool) ([]models.Confession, error) {
 	q := `SELECT id,category_id,title,COALESCE(short_text,''),COALESCE(medium_text,''),COALESCE(long_text,''),COALESCE(description,''),COALESCE(tags,''),intensity,language,status,COALESCE(author,''),version,published_at,created_at,updated_at
-	      FROM confessions WHERE category_id = ?`
+	      FROM confessions WHERE category_id = ? AND deleted_at IS NULL`
 	args := []any{categoryID}
 	if publishedOnly {
 		// Derived from the lifecycle authority rather than a literal. The
@@ -223,7 +226,7 @@ func (s *ContentStore) ConfessionsByCategory(ctx context.Context, categoryID str
 		return nil, err
 	}
 	defer rows.Close()
-	var out []models.Confession
+	out := make([]models.Confession, 0)
 	for rows.Next() {
 		var c models.Confession
 		var tags, publishedAt sql.NullString
@@ -243,9 +246,9 @@ func (s *ContentStore) ConfessionsByCategory(ctx context.Context, categoryID str
 
 func (s *ContentStore) ListConfessions(ctx context.Context, publishedOnly bool) ([]models.Confession, error) {
 	q := `SELECT id,category_id,title,COALESCE(short_text,''),COALESCE(medium_text,''),COALESCE(long_text,''),COALESCE(description,''),COALESCE(tags,''),intensity,language,status,COALESCE(author,''),version,published_at,created_at,updated_at
-	      FROM confessions`
+	      FROM confessions WHERE deleted_at IS NULL`
 	if publishedOnly {
-		q += ` WHERE status = 'published'`
+		q += ` AND status = 'published'`
 	}
 	q += ` ORDER BY created_at DESC`
 	rows, err := s.db.QueryContext(ctx, q)
@@ -253,7 +256,7 @@ func (s *ContentStore) ListConfessions(ctx context.Context, publishedOnly bool) 
 		return nil, err
 	}
 	defer rows.Close()
-	var out []models.Confession
+	out := make([]models.Confession, 0)
 	for rows.Next() {
 		var c models.Confession
 		var tags, publishedAt sql.NullString
@@ -271,29 +274,14 @@ func (s *ContentStore) ListConfessions(ctx context.Context, publishedOnly bool) 
 	return out, rows.Err()
 }
 
-func (s *ContentStore) UpdateConfessionStatus(ctx context.Context, id, status string) error {
-	// Defence in depth. The handler validates too, but this is the function
-	// that touches the column, and a caller added later should not be able to
-	// reach the CHECK constraint and surface it as a 500.
-	if !content.Valid(status) {
-		return fmt.Errorf("confession status %q is not in the editorial lifecycle", status)
-	}
-	ts := now()
-	publishedAt := nullIfEmpty("")
-	if status == "published" {
-		publishedAt = ts
-	}
-	_, err := s.db.ExecContext(ctx,
-		`UPDATE confessions SET status = ?, published_at = ?, updated_at = ? WHERE id = ?`,
-		status, publishedAt, ts, id)
-	return err
-}
-
 // ---------- Variants & Scriptures ----------
 
 func (s *ContentStore) Variants(ctx context.Context, confessionID string) ([]models.ConfessionVariant, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id,confession_id,label,duration_seconds,sort_order FROM confession_variants WHERE confession_id = ? ORDER BY sort_order`, confessionID)
+		`SELECT v.id,v.confession_id,v.label,v.duration_seconds,v.sort_order
+		 FROM confession_variants v
+		 JOIN confessions c ON c.id = v.confession_id AND c.deleted_at IS NULL
+		 WHERE v.confession_id = ? AND v.deleted_at IS NULL ORDER BY v.sort_order`, confessionID)
 	if err != nil {
 		return nil, err
 	}
@@ -311,8 +299,10 @@ func (s *ContentStore) Variants(ctx context.Context, confessionID string) ([]mod
 
 func (s *ContentStore) Scriptures(ctx context.Context, confessionID string) ([]models.ScriptureRef, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id,confession_id,book,COALESCE(chapter,0),COALESCE(verse,''),translation,is_direct_quote,COALESCE(notes,''),sort_order
-		 FROM scripture_references WHERE confession_id = ? ORDER BY sort_order`, confessionID)
+		`SELECT s.id,s.confession_id,s.book,COALESCE(s.chapter,0),COALESCE(s.verse,''),s.translation,s.is_direct_quote,COALESCE(s.notes,''),s.sort_order
+		 FROM scripture_references s
+		 JOIN confessions c ON c.id = s.confession_id AND c.deleted_at IS NULL
+		 WHERE s.confession_id = ? AND s.deleted_at IS NULL ORDER BY s.sort_order`, confessionID)
 	if err != nil {
 		return nil, err
 	}

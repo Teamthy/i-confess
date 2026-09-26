@@ -26,13 +26,13 @@ func seedUser(t *testing.T, d *db.DB) string {
 	return id
 }
 
-func TestCreateAndFeedOnlyShowsApprovedSharedPosts(t *testing.T) {
+func TestCreateAndFeedOnlyShowsApprovedPublicPosts(t *testing.T) {
 	d := dbtest.New(t)
 	ctx := context.Background()
 	author := seedUser(t, d)
 	s := NewStore(d)
 
-	p, err := s.Create(ctx, author, "God is faithful.", VisibilityShared)
+	p, err := s.Create(ctx, author, "God is faithful.", VisibilityPublic)
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -82,7 +82,7 @@ func TestFeedExcludesPrivatePosts(t *testing.T) {
 		t.Fatalf("Feed: %v", err)
 	}
 	if len(feed) != 0 {
-		t.Errorf("private post appeared in the shared feed (%d post(s))", len(feed))
+		t.Errorf("private post appeared in the public feed (%d post(s))", len(feed))
 	}
 }
 
@@ -142,5 +142,26 @@ func TestReactionIsConstrained(t *testing.T) {
 	}
 	if err := s.React(ctx, p.ID, author, Reaction("sarcasm")); err == nil {
 		t.Error("stored an invalid reaction; community_reactions_reaction_check did not fire")
+	}
+}
+
+func TestPublicFeedExcludesApprovedSharedPosts(t *testing.T) {
+	d := dbtest.New(t)
+	ctx := context.Background()
+	author := seedUser(t, d)
+	s := NewStore(d)
+	p, err := s.Create(ctx, author, "For my circle only.", VisibilityShared)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.Exec(`UPDATE community_posts SET status=$1 WHERE id=$2`, StatusApproved, p.ID); err != nil {
+		t.Fatal(err)
+	}
+	feed, err := s.Feed(ctx, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(feed) != 0 {
+		t.Fatalf("shared post leaked through public endpoint: %+v", feed)
 	}
 }

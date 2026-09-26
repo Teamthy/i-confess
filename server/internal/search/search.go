@@ -7,7 +7,7 @@ import (
 	"github.com/Teamthy/i-confess/internal/db"
 )
 
-// SearchStore provides full-text and keyword search across content.
+// SearchStore provides keyword search across published content.
 type SearchStore struct {
 	db *db.DB
 }
@@ -16,7 +16,6 @@ func NewSearchStore(db *db.DB) *SearchStore {
 	return &SearchStore{db: db}
 }
 
-// SearchRequest represents a search query.
 type SearchRequest struct {
 	Query         string
 	Types         []string // "confession", "category", "collection", "voice"
@@ -24,7 +23,6 @@ type SearchRequest struct {
 	Limit         int
 }
 
-// Result represents a search result.
 type Result struct {
 	ID          string  `json:"id"`
 	Type        string  `json:"type"`
@@ -34,22 +32,31 @@ type Result struct {
 	Score       float64 `json:"score,omitempty"`
 }
 
-// Search performs a keyword search across content.
-// For MVP, this is a simple LIKE-based search.
-// V2+ can upgrade to PostgreSQL full-text search or Elasticsearch.
+func escapeLike(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `%`, `\%`)
+	s = strings.ReplaceAll(s, `_`, `\_`)
+	return s
+}
+
+// Search performs an escaped search across published content (IC-020).
 func (s *SearchStore) Search(ctx context.Context, req SearchRequest) ([]Result, error) {
-	if req.Query == "" {
+	cleanQuery := strings.TrimSpace(req.Query)
+	if len(cleanQuery) > 100 {
+		cleanQuery = cleanQuery[:100]
+	}
+	if cleanQuery == "" {
 		return []Result{}, nil
 	}
-	if req.Limit == 0 {
+	if req.Limit <= 0 || req.Limit > 100 {
 		req.Limit = 20
 	}
 	if len(req.Types) == 0 {
 		req.Types = []string{"confession", "category", "collection", "voice"}
 	}
 
-	var results []Result
-	query := "%" + strings.ToLower(req.Query) + "%"
+	results := make([]Result, 0)
+	query := "%" + escapeLike(strings.ToLower(cleanQuery)) + "%"
 
 	// Search confessions
 	if contains(req.Types, "confession") {
@@ -107,7 +114,7 @@ func (s *SearchStore) searchConfessions(ctx context.Context, query string, publi
 	}
 	defer rows.Close()
 
-	var results []Result
+	results := make([]Result, 0)
 	for rows.Next() {
 		var r Result
 		if err := rows.Scan(&r.ID, &r.Title, &r.Description, &r.ImageURL); err != nil {
@@ -132,7 +139,7 @@ func (s *SearchStore) searchCategories(ctx context.Context, query string, publis
 	}
 	defer rows.Close()
 
-	var results []Result
+	results := make([]Result, 0)
 	for rows.Next() {
 		var r Result
 		if err := rows.Scan(&r.ID, &r.Title, &r.Description, &r.ImageURL); err != nil {
@@ -157,7 +164,7 @@ func (s *SearchStore) searchCollections(ctx context.Context, query string, publi
 	}
 	defer rows.Close()
 
-	var results []Result
+	results := make([]Result, 0)
 	for rows.Next() {
 		var r Result
 		if err := rows.Scan(&r.ID, &r.Title, &r.Description, &r.ImageURL); err != nil {
@@ -178,7 +185,7 @@ func (s *SearchStore) searchVoices(ctx context.Context, query string) ([]Result,
 	}
 	defer rows.Close()
 
-	var results []Result
+	results := make([]Result, 0)
 	for rows.Next() {
 		var r Result
 		if err := rows.Scan(&r.ID, &r.Title, &r.Description, &r.ImageURL); err != nil {

@@ -480,6 +480,70 @@ final class ContentRepository extends Repository {
     }
   }
 
+  /// Fetches the session queue snapshot with freshly signed URLs and current progress.
+  Future<Loadable<SessionQueueResponse>> sessionQueue(String id) async {
+    try {
+      final json = await api.getSessionsByIdQueue(id);
+      return Loadable.loaded(SessionQueueResponse.fromJson(json));
+    } on ApiException catch (e) {
+      return Loadable.failed(e);
+    }
+  }
+
+  /// Starts playback for a session.
+  Future<WriteResult<ListeningSession>> startSession(String id) =>
+      write(() => api.postSessionsByIdStart(id), ListeningSession.fromJson);
+
+  /// Pauses a live session.
+  Future<WriteResult<ListeningSession>> pauseSession(String id) =>
+      write(() => api.postSessionsByIdPause(id), ListeningSession.fromJson);
+
+  /// Resumes a paused or interrupted session.
+  Future<WriteResult<ListeningSession>> resumeSession(String id) =>
+      write(() => api.postSessionsByIdResume(id), ListeningSession.fromJson);
+
+  /// Interrupts an active session.
+  Future<WriteResult<ListeningSession>> interruptSession(String id) =>
+      write(() => api.postSessionsByIdInterrupt(id), ListeningSession.fromJson);
+
+  /// Records playback progress with deterministic conflict resolution.
+  Future<WriteResult<SyncProgressResponse>> syncProgress(
+    String id, {
+    required int positionMs,
+    String? queueItemId,
+    String? itemStatus,
+    String? deviceId,
+    String? lastUpdatedAt,
+  }) =>
+      write(
+        () => api.postSessionsByIdProgress(id, {
+          'position_ms': positionMs,
+          if (queueItemId != null && queueItemId.isNotEmpty)
+            'queue_item_id': queueItemId,
+          if (itemStatus != null && itemStatus.isNotEmpty)
+            'item_status': itemStatus,
+          if (deviceId != null && deviceId.isNotEmpty) 'device_id': deviceId,
+          if (lastUpdatedAt != null && lastUpdatedAt.isNotEmpty)
+            'last_updated_at': lastUpdatedAt,
+        }),
+        SyncProgressResponse.fromJson,
+      );
+
+  /// Skips an item in the queue.
+  Future<WriteResult<Map<String, dynamic>>> skipSessionItem(
+          String id, String itemId) =>
+      write(
+        () => api.postSessionsByIdSkip(id, {'item_id': itemId}),
+        (json) => json,
+      );
+
+  /// Completes the session.
+  Future<WriteResult<Map<String, dynamic>>> completeSession(String id) =>
+      write(
+        () => api.postSessionsByIdComplete(id),
+        (json) => json,
+      );
+
   /// The listener's sessions, newest first, for continue-listening and history.
   ///
   /// Not cached, like [createSession]: a session's status changes as it is
@@ -509,38 +573,51 @@ final class ContentRepository extends Repository {
   ///
   /// The server stores favourites as (entity_type, entity_id) so the same table
   /// can hold categories, voices and collections later.
-  Future<WriteResult<void>> addFavoriteConfession(String confessionId) => write(
-        () => api.postMeFavorites({
-          'entity_type': 'confession',
-          'entity_id': confessionId,
-        }),
-        (_) {},
-      );
+  Future<WriteResult<void>> addFavoriteConfession(String confessionId) =>
+      _favoriteWrite(() => api.postMeFavorites({
+            'entity_type': 'confession',
+            'entity_id': confessionId,
+          }));
 
   /// Removes a confession from favourites.
-  Future<WriteResult<void>> removeFavoriteConfession(String confessionId) => write(
-        () => api.deleteMeFavorites({
-          'entity_type': 'confession',
-          'entity_id': confessionId,
-        }),
-        (_) {},
-      );
+  Future<WriteResult<void>> removeFavoriteConfession(String confessionId) =>
+      _favoriteWrite(() => api.deleteMeFavorites({
+            'entity_type': 'confession',
+            'entity_id': confessionId,
+          }));
 
-  /// Whether a confession is favourited, derived from the favourites list.
+  /// Toggling a favourite invalidates the library's cached favourites list.
   ///
-  /// Not cached beyond the list call: favouriting is a write that must be
-  /// reflected immediately, and the list is small.
+  /// The heart lives on the confession screen and the list it changes is a tab
+  /// in the library, so without this a user favourites something, opens the
+  /// library and does not find it — for up to the cache TTL.
+  Future<WriteResult<void>> _favoriteWrite(
+      Future<Map<String, dynamic>> Function() action) async {
+    final result = await write(action, (_) {});
+    if (result.succeeded) {
+      await cache.delete(CacheKeys.favorites);
+      await cache.delete('${CacheKeys.favorites}:confession');
+    }
+    return result;
+  }
+
+  /// Whether a confession is favourited.
+  ///
+  /// Matched on (entity_type, entity_id) — the favourite's own row id is
+  /// deliberately not consulted. Comparing it against a confession id, which
+  /// this did before PHASE 27, is a false positive waiting to happen: both are
+  /// UUIDs from the same generator, and the match would silently light up the
+  /// heart on the wrong confession.
+  ///
+  /// Not cached: favouriting is a write that must be reflected immediately,
+  /// and the server narrows the list for us.
   Future<Loadable<bool>> isFavorite(String confessionId) async {
     try {
-      final json = await api.getMeFavorites();
-      final list = json['data'] is List ? json['data'] as List : (json is List ? json : []);
-      final found = list.any((item) {
-        if (item is! Map<String, dynamic>) return false;
-        return item['entity_id'] == confessionId ||
-            item['confession_id'] == confessionId ||
-            item['id'] == confessionId;
-      });
-      return Loadable.loaded(found);
+      final json = await api.getMeFavorites(type: 'confession');
+      final favorites = parseList(json['data'], Favorite.fromJson);
+      return Loadable.loaded(
+        favorites.any((f) => f.entityType == 'confession' && f.entityId == confessionId),
+      );
     } on ApiException catch (e) {
       return Loadable.failed(e);
     }
@@ -551,6 +628,10 @@ final class ContentRepository extends Repository {
 final class LibraryRepository extends Repository {
   LibraryRepository(super.api, super.cache);
 
+  /// The listener's own collections, with item counts.
+  ///
+  /// Cached under a key distinct from the editorial `published_collections`:
+  /// same word, different data.
   Future<Loadable<List<UserCollection>>> collections() => cachedRead(
         key: CacheKeys.collections,
         ttl: CacheTtl.library,
@@ -558,10 +639,166 @@ final class LibraryRepository extends Repository {
         decode: (json) => parseList(json['data'], UserCollection.fromJson),
       );
 
-  Future<WriteResult<UserCollection>> createCollection(String name) => write(
-        () => api.postMeCollections({'name': name}),
+  /// One collection with its items.
+  ///
+  /// Deliberately uncached. The list is cached because it is what the library
+  /// opens on and it survives being a few minutes old; a detail view is opened
+  /// to act on — add, remove, reorder — and showing a stale item list there
+  /// means the user reorders rows that no longer exist.
+  Future<Loadable<UserCollection>> collection(String id) async {
+    try {
+      return Loadable.loaded(UserCollection.fromJson(await api.getMeCollectionsById(id)));
+    } on ApiException catch (e) {
+      return Loadable.failed(e);
+    }
+  }
+
+  /// Creates a collection. Private unless asked otherwise, and the server
+  /// enforces that floor independently (§37).
+  Future<WriteResult<UserCollection>> createCollection(
+    String name, {
+    String description = '',
+    String? visibility,
+    String? coverUrl,
+  }) =>
+      _invalidatingWrite(
+        () => api.postMeCollections({
+          'name': name,
+          if (description.isNotEmpty) 'description': description,
+          if (visibility != null && visibility.isNotEmpty) 'visibility': visibility,
+          if (coverUrl != null && coverUrl.isNotEmpty) 'cover_url': coverUrl,
+        }),
         UserCollection.fromJson,
       );
+
+  /// Patches a collection. Each parameter is optional, and a null one is
+  /// omitted rather than sent; an empty [coverUrl] is sent deliberately, as
+  /// the instruction to clear the artwork back to the monogram (G-44).
+  Future<WriteResult<UserCollection>> updateCollection(
+    String id, {
+    String? name,
+    String? description,
+    String? visibility,
+    String? coverUrl,
+  }) =>
+      _invalidatingWrite(
+        () => api.patchMeCollectionsById(id, {
+          if (name != null) 'name': name,
+          if (description != null) 'description': description,
+          if (visibility != null) 'visibility': visibility,
+          if (coverUrl != null) 'cover_url': coverUrl,
+        }),
+        UserCollection.fromJson,
+      );
+
+  Future<WriteResult<void>> deleteCollection(String id) =>
+      _invalidatingWrite(() => api.deleteMeCollectionsById(id), (_) {});
+
+  /// Adds a confession to a collection. The server answers with the whole
+  /// collection, so the caller does not need a second read to refresh.
+  Future<WriteResult<UserCollection>> addToCollection(
+          String collectionId, String confessionId) =>
+      _invalidatingWrite(
+        () => api.postMeCollectionsByIdItems(
+            collectionId, {'confession_id': confessionId}),
+        UserCollection.fromJson,
+      );
+
+  Future<WriteResult<void>> removeFromCollection(
+          String collectionId, String confessionId) =>
+      _invalidatingWrite(
+        () => api.deleteMeCollectionsByIdItemsByConfessionId(
+            collectionId, confessionId),
+        (_) {},
+      );
+
+  Future<WriteResult<UserCollection>> reorderCollection(
+          String collectionId, List<String> confessionIds) =>
+      _invalidatingWrite(
+        () => api.patchMeCollectionsByIdReorder(
+            collectionId, {'confession_ids': confessionIds}),
+        UserCollection.fromJson,
+      );
+
+  /// Removes a favourite of any entity type.
+  ///
+  /// The library lists favourited categories and voices alongside confessions,
+  /// so the type has to be carried rather than assumed — hard-coding
+  /// 'confession' would make a favourited category impossible to remove from
+  /// the one screen that shows it.
+  Future<WriteResult<void>> removeFavorite({
+    required String entityType,
+    required String entityId,
+  }) async {
+    final result = await write(
+      () => api.deleteMeFavorites({
+        'entity_type': entityType,
+        'entity_id': entityId,
+      }),
+      (_) {},
+    );
+    if (result.succeeded) {
+      await cache.delete(CacheKeys.favorites);
+      await cache.delete('${CacheKeys.favorites}:$entityType');
+    }
+    return result;
+  }
+
+  /// The listener's favourites, newest first, with display names resolved by
+  /// the server. [type] narrows to one kind of entity.
+  Future<Loadable<List<Favorite>>> favorites({String? type}) => cachedRead(
+        key: type == null || type.isEmpty
+            ? CacheKeys.favorites
+            : '${CacheKeys.favorites}:$type',
+        ttl: CacheTtl.library,
+        fetch: () async => {
+          'data': (await api.getMeFavorites(
+                type: type == null || type.isEmpty ? null : type,
+              ))['data'] ??
+              []
+        },
+        decode: (json) => parseList(json['data'], Favorite.fromJson),
+      );
+
+  /// Confessions the listener wrote, newest first.
+  ///
+  /// Decoded as [UserConfession], not [Confession]: `/me/confessions` returns
+  /// the user's own writing, which shares no field names with editorial
+  /// content beyond the id.
+  Future<Loadable<List<UserConfession>>> myConfessions() => cachedRead(
+        key: CacheKeys.myConfessions,
+        ttl: CacheTtl.library,
+        fetch: () async => {'data': (await api.getMeConfessions())['data'] ?? []},
+        decode: (json) => parseList(json['data'], UserConfession.fromJson),
+      );
+
+  /// Offers a draft for moderation review. Publication is the moderator's
+  /// decision, so a success here means "submitted", never "published".
+  Future<WriteResult<UserConfession>> submitConfession(String id) =>
+      _invalidatingWrite(
+        () => api.postMeConfessionsByIdSubmit(id),
+        UserConfession.fromJson,
+      );
+
+  /// Performs a write and drops the library's cached reads.
+  ///
+  /// Without this a user who creates a collection sees their new collection
+  /// appear and then vanish on the next open, because the cached list — up to
+  /// 30 minutes old — is served over it. The invalidation runs only on
+  /// success: a failed write changed nothing, and throwing away a good cache
+  /// because the network refused would make the offline case worse.
+  Future<WriteResult<T>> _invalidatingWrite<T>(
+    Future<Map<String, dynamic>> Function() action,
+    T Function(Map<String, dynamic>) decode,
+  ) async {
+    final result = await write(action, decode);
+    if (result.succeeded) {
+      await cache.delete(CacheKeys.collections);
+      await cache.delete(CacheKeys.favorites);
+      await cache.delete(CacheKeys.myConfessions);
+    }
+    return result;
+  }
 
   Future<Loadable<List<Schedule>>> schedules() => cachedRead(
         key: CacheKeys.schedules,
@@ -732,6 +969,43 @@ final class TemplateRepository extends Repository {
       );
 }
 
+/// Community: moderated public posts and published user confessions (G-40).
+final class CommunityRepository extends Repository {
+  CommunityRepository(super.api, super.cache);
+
+  /// Anonymous, moderation-approved community posts (public).
+  Future<Loadable<List<Map<String, dynamic>>>> feed() async {
+    try {
+      final json = await api.getCommunityFeed();
+      final posts = (json['posts'] as List? ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList(growable: false);
+      return Loadable.loaded(posts);
+    } on ApiException catch (e) {
+      return Loadable.failed(e);
+    }
+  }
+
+  /// Published user confessions that are public (public UGC reader, G-40).
+  /// Anonymous: the server never returns author identity.
+  Future<Loadable<List<UserConfession>>> confessions({int limit = 20}) async {
+    try {
+      final json = await api.getCommunityConfessions(limit: limit);
+      final list = (json['confessions'] as List? ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(UserConfession.fromJson)
+          .toList(growable: false);
+      return Loadable.loaded(list);
+    } on ApiException catch (e) {
+      return Loadable.failed(e);
+    }
+  }
+
+  Future<WriteResult<void>> react(String postId, String reaction) =>
+      write(() => api.postCommunityPostsByIdReact(postId, reaction), (_) {});
+}
+
 /// Subscription plans, entitlements and trial.
 final class SubscriptionRepository extends Repository {
   SubscriptionRepository(super.api, super.cache);
@@ -781,6 +1055,38 @@ final class SubscriptionRepository extends Repository {
     }
   }
 
+  /// The measured trial: which days were actually completed, and the funnel
+  /// behind it.
+  ///
+  /// Deliberately not cached. A progress display is the evidence the paywall
+  /// shows before asking for payment, and a five-minute-old reading would let
+  /// it show a day as unfinished that the listener completed a moment ago.
+  Future<Loadable<TrialEngagement>> trialEngagement() async {
+    try {
+      return Loadable.loaded(
+          TrialEngagement.fromJson(await api.getSubscriptionsTrialEngagement()));
+    } on ApiException catch (e) {
+      return Loadable.failed(e);
+    }
+  }
+
+  Future<WriteResult<TrialStatus>> startTrial() =>
+      write(() => api.postSubscriptionsTrial(), TrialStatus.fromJson);
+
+  Future<Loadable<TrialStatus>> trialStatus() async {
+    try {
+      return Loadable.loaded(
+          TrialStatus.fromJson(await api.getSubscriptionsTrialStatus()));
+    } on ApiException catch (e) {
+      return Loadable.failed(e);
+    }
+  }
+
+  Future<WriteResult<TrialStatus>> convertTrial() => write(
+        () => api.postSubscriptionsTrialConvert(),
+        TrialStatus.fromJson,
+      );
+
   Future<WriteResult<Subscription>> verifyReceipt(
           {required String provider, required String receipt}) =>
       write(
@@ -788,6 +1094,100 @@ final class SubscriptionRepository extends Repository {
           'provider': provider,
           'receipt': receipt,
         }),
-        Subscription.fromJson,
+        Subscription.fromVerification,
+      );
+}
+
+/// Reporting, blocking and appeals (PHASE 42).
+///
+/// The three belong together because they are one system seen from the
+/// listener's side: reporting is asking a moderator to act, blocking is acting
+/// for yourself without waiting, and appealing is answering a decision the
+/// moderator made. Keeping them apart is how a block ends up rendered as a
+/// punishment, which is the confusion that turns the feature around.
+final class ModerationRepository extends Repository {
+  ModerationRepository(super.api, super.cache);
+
+  /// Files a report against published content or a community post.
+  Future<WriteResult<Map<String, dynamic>>> report({
+    required String entityType,
+    required String entityId,
+    required String reason,
+    String detail = '',
+  }) =>
+      write(
+        () => api.postReports({
+          'entity_type': entityType,
+          'entity_id': entityId,
+          'reason': reason,
+          if (detail.isNotEmpty) 'detail': detail,
+        }),
+        (json) => json,
+      );
+
+  /// The accounts this listener has blocked, newest first.
+  Future<Loadable<List<UserBlock>>> blocks() async {
+    try {
+      final json = await api.getMeBlocks();
+      return Loadable.loaded(
+        parseList(json['blocks'], UserBlock.fromJson),
+      );
+    } on ApiException catch (e) {
+      return Loadable.failed(e);
+    }
+  }
+
+  /// Blocks an account. Idempotent on the server: a repeated call returns the
+  /// existing boundary rather than an error, so a retry after a lost response
+  /// still succeeds.
+  Future<WriteResult<UserBlock>> block(String userId, {String reason = ''}) =>
+      write(
+        () => api.postMeBlocks({
+          'user_id': userId,
+          if (reason.isNotEmpty) 'reason': reason,
+        }),
+        UserBlock.fromJson,
+      );
+
+  /// Removes a boundary. The server treats unblocking something never blocked
+  /// as success, so this never needs a "was it blocked?" check first.
+  Future<WriteResult<bool>> unblock(String userId) async {
+    try {
+      await api.deleteMeBlocksByUserId(userId);
+      return WriteResult.success(true);
+    } on ApiException catch (e) {
+      return WriteResult.failure(e);
+    }
+  }
+
+  /// This listener's appeals, with the moderator's reasoning once there is any.
+  Future<Loadable<List<ModerationAppeal>>> appeals() async {
+    try {
+      final json = await api.getMeAppeals();
+      return Loadable.loaded(
+        parseList(json['appeals'], ModerationAppeal.fromJson),
+      );
+    } on ApiException catch (e) {
+      return Loadable.failed(e);
+    }
+  }
+
+  /// Appeals a dismissed report or a rejected confession.
+  ///
+  /// The server refuses an appeal against a decision that was never made - a
+  /// report still open, a confession still in review - so a client should not
+  /// offer the action until the decision exists.
+  Future<WriteResult<ModerationAppeal>> appeal({
+    required String decisionType,
+    required String decisionId,
+    required String statement,
+  }) =>
+      write(
+        () => api.postMeAppeals({
+          'decision_type': decisionType,
+          'decision_id': decisionId,
+          'statement': statement,
+        }),
+        ModerationAppeal.fromJson,
       );
 }

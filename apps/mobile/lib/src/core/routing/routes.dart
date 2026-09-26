@@ -30,12 +30,14 @@ abstract final class AppRoutes {
   // Primary destinations
   static const home = '/home';
   static const explore = '/explore';
+  static const bible = '/bible';
   static const confess = '/confess';
   static const activity = '/activity';
   static const me = '/me';
 
   // Detail routes
   static const search = '/explore/search';
+  static const community = '/explore/community';
   static const category = '/explore/category';
   static const confession = '/confession';
   static const player = '/player';
@@ -108,10 +110,12 @@ abstract final class AppRouteNames {
   static const completion = 'completion';
   static const home = 'home';
   static const explore = 'explore';
+  static const bible = 'bible';
   static const confess = 'confess';
   static const activity = 'activity';
   static const me = 'me';
   static const search = 'search';
+  static const community = 'community';
   static const categoryDetail = 'categoryDetail';
   static const confessionDetail = 'confessionDetail';
   static const player = 'player';

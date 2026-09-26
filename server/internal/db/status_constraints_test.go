@@ -7,14 +7,20 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Teamthy/i-confess/internal/audio"
 	"github.com/Teamthy/i-confess/internal/community"
+	"github.com/Teamthy/i-confess/internal/content"
 	"github.com/Teamthy/i-confess/internal/db/dbtest"
+	"github.com/Teamthy/i-confess/internal/jobs"
+	"github.com/Teamthy/i-confess/internal/models"
+	"github.com/Teamthy/i-confess/internal/moderation"
 	"github.com/Teamthy/i-confess/internal/sessions"
+	trialdomain "github.com/Teamthy/i-confess/internal/trial"
 )
 
 // TestEveryStatusColumnIsConstrained closes G-2.
 //
-// Twenty-two tables carry a status column. For most of them the permitted
+// Twenty-three tables carry a status column. For most of them the permitted
 // values existed only in a trailing SQL comment, which PostgreSQL does not
 // enforce: a typo wrote an invalid state and nothing noticed until a query
 // filtered on it and quietly returned no rows.
@@ -101,16 +107,44 @@ func TestDatabaseVocabularyMatchesGoConstants(t *testing.T) {
 		table    string
 		expected []string
 	}{
-		{"community_posts", []string{
-			community.StatusDraft, community.StatusSubmitted, community.StatusUnderReview,
-			community.StatusApproved, community.StatusRejected, community.StatusPublished,
-			community.StatusArchived,
+		{"collections", []string{"draft", "published", "archived"}},
+		{"categories", []string{"draft", "published", "archived", "pending_deletion", "deleted"}},
+		{"confessions", contentStatusStrings()},
+		{"voices", []string{"active", "inactive", "archived", "pending_deletion", "deleted"}},
+		{"content_versions", []string{"draft", "approved", "published", "archived"}},
+		{"audio_assets", assetStatusStrings()},
+		{"audio_generation_jobs", jobStatusStrings()},
+		{"audio_variants", []string{"processing", "ready", "failed"}},
+		{"audio_processing_logs", []string{"started", "completed", "failed"}},
+		{"voice_rights", []string{"pending", "active", "expired", "revoked"}},
+		{"audio_playback_sessions", []string{"playing", "paused", "completed", "abandoned"}},
+		{"audio_downloads", []string{"queued", "downloading", "downloaded", "failed", "removed"}},
+		{"users", []string{"active", "suspended", "pending_deletion", "deleted"}},
+		{"subscriptions", []string{
+			models.SubscriptionActive, models.SubscriptionTrial, models.SubscriptionGrace,
+			models.SubscriptionCancelled, models.SubscriptionExpired, models.SubscriptionRefunded,
+			models.SubscriptionSuspended,
 		}},
 		{"sessions", []string{
 			string(sessions.Draft), string(sessions.Ready), string(sessions.Scheduled),
 			string(sessions.Starting), string(sessions.Active), string(sessions.Paused),
 			string(sessions.Interrupted), string(sessions.Completed), string(sessions.Cancelled),
 			string(sessions.Expired), string(sessions.Failed),
+		}},
+		{"session_items", []string{"QUEUED", "PLAYING", "COMPLETED", "SKIPPED", "FAILED"}},
+		{"user_confessions", moderation.UGCStatuses()},
+		{"user_confession_audio", []string{"queued", "processing", "ready", "failed"}},
+		{"jobs", []string{
+			jobs.StatusQueued, jobs.StatusRunning, jobs.StatusCompleted, jobs.StatusFailed,
+			jobs.StatusDeadLetter,
+		}},
+		{"scheduled_deliveries", []string{"sent", "queued", "failed", "skipped"}},
+		{"moderation_cases", moderation.CaseStatuses()},
+		{"reports", moderation.ReportStatuses()},
+		{"community_posts", []string{
+			community.StatusDraft, community.StatusSubmitted, community.StatusUnderReview,
+			community.StatusApproved, community.StatusRejected, community.StatusPublished,
+			community.StatusArchived,
 		}},
 	}
 
@@ -151,6 +185,85 @@ func TestDatabaseVocabularyMatchesGoConstants(t *testing.T) {
 }
 
 var valueRe = regexp.MustCompile(`'([^']*)'(?:::\w+)?`)
+
+// TestTheologicalReviewVocabularyParityAgainstConstraint protects the
+// canonical-review gate introduced in PHASE 40. Like the lifecycle tests, it
+// reads the installed PostgreSQL CHECK rather than migration text.
+func TestTheologicalReviewVocabularyParityAgainstConstraint(t *testing.T) {
+	raw := dbtest.Raw(t)
+	def, err := checkDefinition(context.Background(), raw, "confessions", "theological_review_status")
+	if err != nil {
+		t.Fatalf("confessions.theological_review_status: %v", err)
+	}
+	want := map[string]bool{"unreviewed": true, "reviewed": true, "needs_revision": true}
+	got := map[string]bool{}
+	for _, match := range valueRe.FindAllStringSubmatch(def, -1) {
+		got[match[1]] = true
+	}
+	for value := range want {
+		if !got[value] {
+			t.Errorf("theology code accepts %q but live CHECK rejects it", value)
+		}
+	}
+	for value := range got {
+		if !want[value] {
+			t.Errorf("live theology CHECK accepts %q but code does not declare it", value)
+		}
+	}
+}
+
+// TestTrialVocabularyParityAgainstConstraint is the Phase 36 pattern used by
+// content in TestContentVocabularyParityAgainstConstraint: compare the Go
+// vocabulary with the CHECK installed in the live PostgreSQL test database.
+func TestTrialVocabularyParityAgainstConstraint(t *testing.T) {
+	raw := dbtest.Raw(t)
+	def, err := checkDefinition(context.Background(), raw, "trials", "state")
+	if err != nil {
+		t.Fatalf("trials.state: %v", err)
+	}
+	got := map[string]bool{}
+	for _, match := range valueRe.FindAllStringSubmatch(def, -1) {
+		got[match[1]] = true
+	}
+	want := map[string]bool{}
+	for _, state := range trialdomain.All() {
+		want[string(state)] = true
+	}
+	for value := range want {
+		if !got[value] {
+			t.Errorf("trial code accepts %q but the live CHECK rejects it", value)
+		}
+	}
+	for value := range got {
+		if !want[value] {
+			t.Errorf("trials.state CHECK accepts %q but trial code does not declare it", value)
+		}
+	}
+}
+
+func contentStatusStrings() []string {
+	out := make([]string, 0, len(content.All()))
+	for _, status := range content.All() {
+		out = append(out, string(status))
+	}
+	return out
+}
+
+func assetStatusStrings() []string {
+	out := make([]string, 0, len(audio.All()))
+	for _, status := range audio.All() {
+		out = append(out, string(status))
+	}
+	return out
+}
+
+func jobStatusStrings() []string {
+	out := make([]string, 0, len(audio.AllJobStatuses()))
+	for _, status := range audio.AllJobStatuses() {
+		out = append(out, string(status))
+	}
+	return out
+}
 
 func checkDefinition(ctx context.Context, raw *sql.DB, table, column string) (string, error) {
 	var def sql.NullString

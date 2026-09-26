@@ -178,18 +178,119 @@ func TestTransportFaultIsRetryableButRejectedTokenIsNot(t *testing.T) {
 	}
 }
 
+// fakeDevices records the token-lifecycle consequences of a delivery.
+type fakeDevices struct {
+	cleared  []string
+	failures []string
+}
+
+func (f *fakeDevices) ClearPushToken(_ context.Context, userID, deviceID string) error {
+	f.cleared = append(f.cleared, userID+"/"+deviceID)
+	return nil
+}
+
+func (f *fakeDevices) RecordPushFailure(_ context.Context, userID, deviceID string) error {
+	f.failures = append(f.failures, userID+"/"+deviceID)
+	return nil
+}
+
+// A provider saying "this token is gone" has to change stored state, not just
+// this job: the device is uninstalled or the token was rotated, so every future
+// reminder would fail the same way. The queue delivers reminders in production,
+// which makes this handler the only component that hears that answer.
+func TestADeadTokenIsForgottenWhenTheQueueDelivers(t *testing.T) {
+	sender := &fakeSender{err: push.InvalidToken("apns returned 410: Unregistered")}
+	devices := &fakeDevices{}
+	h := handler(t, Services{Notify: sender, Devices: devices}, TypeNotificationSend)
+
+	err := h(context.Background(), map[string]any{
+		"token": "tk", "title": "t", "user_id": "u1", "device_id": "phone",
+	})
+	if err == nil {
+		t.Fatal("a dead token was reported as a successful delivery")
+	}
+	if !jobs.IsPermanent(err) {
+		t.Errorf("a dead token was left retryable: %v", err)
+	}
+	if len(devices.cleared) != 1 || devices.cleared[0] != "u1/phone" {
+		t.Fatalf("cleared = %v, want [u1/phone]", devices.cleared)
+	}
+	if len(devices.failures) != 0 {
+		t.Errorf("a dead token was also counted as a failure: %v", devices.failures)
+	}
+}
+
+// A provider outage is not the device's fault. It must be retried, and it must
+// not count against the token, or an outage would end with every device in the
+// database looking dead.
+func TestAProviderOutageIsRetriedWithoutCountingAgainstTheDevice(t *testing.T) {
+	sender := &fakeSender{err: push.Retryable("fcm returned 503")}
+	devices := &fakeDevices{}
+	h := handler(t, Services{Notify: sender, Devices: devices}, TypeNotificationSend)
+
+	err := h(context.Background(), map[string]any{
+		"token": "tk", "title": "t", "user_id": "u1", "device_id": "phone",
+	})
+	if err == nil {
+		t.Fatal("an outage was reported as a successful delivery")
+	}
+	if jobs.IsPermanent(err) {
+		t.Errorf("an outage was marked permanent: %v", err)
+	}
+	if len(devices.cleared) != 0 || len(devices.failures) != 0 {
+		t.Errorf("an outage touched the device: cleared=%v failures=%v", devices.cleared, devices.failures)
+	}
+}
+
+// A permanent rejection of the payload is worth counting: the same device keeps
+// failing, and something should eventually be able to tell it apart from a
+// device that is gone.
+func TestAPermanentRejectionIsCountedAgainstTheDevice(t *testing.T) {
+	sender := &fakeSender{err: push.Permanent("apns returned 400: BadTopic")}
+	devices := &fakeDevices{}
+	h := handler(t, Services{Notify: sender, Devices: devices}, TypeNotificationSend)
+
+	_ = h(context.Background(), map[string]any{
+		"token": "tk", "title": "t", "user_id": "u1", "device_id": "phone",
+	})
+	if len(devices.failures) != 1 || devices.failures[0] != "u1/phone" {
+		t.Fatalf("failures = %v, want [u1/phone]", devices.failures)
+	}
+	if len(devices.cleared) != 0 {
+		t.Errorf("a payload rejection cleared the token: %v", devices.cleared)
+	}
+}
+
+// The inline path (a dispatch without a queue) carries no ids, and an
+// unconfigured deployment has no device store. Neither may panic: the sweep
+// handles those failures itself.
+func TestDeliveryWithoutDeviceContextIsStillClassified(t *testing.T) {
+	sender := &fakeSender{err: push.InvalidToken("gone")}
+	h := handler(t, Services{Notify: sender}, TypeNotificationSend)
+
+	err := h(context.Background(), map[string]any{"token": "tk", "title": "t"})
+	if err == nil || !jobs.IsPermanent(err) {
+		t.Fatalf("err = %v, want a permanent failure", err)
+	}
+}
+
 func TestNotifyBuildsTheNotification(t *testing.T) {
 	s := &fakeSender{}
 	h := handler(t, Services{Notify: s}, TypeNotificationSend)
 	if err := h(context.Background(), map[string]any{
 		"token": "tk-1", "title": "Time to pray", "body": "Your 7am session",
-		"platform": "ios",
-		"data":     map[string]any{"session_id": "s-9", "n": 3},
+		"platform":     "ios",
+		"collapse_key": "sched-1",
+		"sound":        "default",
+		"data":         map[string]any{"session_id": "s-9", "n": 3},
 	}); err != nil {
 		t.Fatal(err)
 	}
 	if s.got.Token != "tk-1" || s.got.Title != "Time to pray" || s.got.Body != "Your 7am session" {
 		t.Errorf("notification = %+v", s.got)
+	}
+	if s.got.CollapseKey != "sched-1" || s.got.Sound != "default" {
+		t.Errorf("notification options lost: %+v", s.got)
 	}
 	if s.got.Platform != push.Platform("ios") {
 		t.Errorf("platform = %q", s.got.Platform)

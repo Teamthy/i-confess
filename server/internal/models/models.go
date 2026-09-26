@@ -1,5 +1,10 @@
 package models
 
+import (
+	"strings"
+	"time"
+)
+
 // Timestamps are stored as RFC3339 strings in SQLite and TIMESTAMPTZ in Postgres.
 type Collection struct {
 	ID          string `json:"id"`
@@ -27,24 +32,31 @@ type Category struct {
 }
 
 type Confession struct {
-	ID          string              `json:"id"`
-	CategoryID  string              `json:"category_id"`
-	Title       string              `json:"title"`
-	ShortText   string              `json:"short_text,omitempty"`
-	MediumText  string              `json:"medium_text,omitempty"`
-	LongText    string              `json:"long_text,omitempty"`
-	Description string              `json:"description,omitempty"`
-	Tags        []string            `json:"tags,omitempty"`
-	Intensity   int                 `json:"intensity"`
-	Language    string              `json:"language"`
-	Status      string              `json:"status"`
-	Author      string              `json:"author,omitempty"`
-	Version     int                 `json:"version"`
-	PublishedAt string              `json:"published_at,omitempty"`
-	CreatedAt   string              `json:"created_at"`
-	UpdatedAt   string              `json:"updated_at"`
-	Variants    []ConfessionVariant `json:"variants,omitempty"`
-	Scriptures  []ScriptureRef      `json:"scriptures,omitempty"`
+	ID          string   `json:"id"`
+	CategoryID  string   `json:"category_id"`
+	Title       string   `json:"title"`
+	ShortText   string   `json:"short_text,omitempty"`
+	MediumText  string   `json:"medium_text,omitempty"`
+	LongText    string   `json:"long_text,omitempty"`
+	Description string   `json:"description,omitempty"`
+	Tags        []string `json:"tags,omitempty"`
+	Intensity   int      `json:"intensity"`
+	Language    string   `json:"language"`
+	Status      string   `json:"status"`
+	Author      string   `json:"author,omitempty"`
+	// The author is provenance for the text, not a claim that a named team or
+	// church authored or endorsed it. Review metadata is stored separately and
+	// kept out of the public confession projection.
+	TheologicalReviewStatus string              `json:"-"`
+	TheologicalReviewer     string              `json:"-"`
+	TheologicalReviewedAt   string              `json:"-"`
+	TheologicalReviewNotes  string              `json:"-"`
+	Version                 int                 `json:"version"`
+	PublishedAt             string              `json:"published_at,omitempty"`
+	CreatedAt               string              `json:"created_at"`
+	UpdatedAt               string              `json:"updated_at"`
+	Variants                []ConfessionVariant `json:"variants,omitempty"`
+	Scriptures              []ScriptureRef      `json:"scriptures,omitempty"`
 }
 
 type ConfessionVariant struct {
@@ -110,6 +122,9 @@ type AudioAsset struct {
 	QAReviewedBy string `json:"qa_reviewed_by,omitempty"`
 	QAReviewedAt string `json:"qa_reviewed_at,omitempty"`
 	QANote       string `json:"qa_note,omitempty"`
+	// AudioSource distinguishes a real generated/recorded render from the
+	// deterministic bootstrap fixture used to guarantee catalogue coverage.
+	AudioSource string `json:"audio_source,omitempty"`
 }
 
 // AudioJob is one generation request and its outcome.
@@ -158,6 +173,21 @@ type User struct {
 	UpdatedAt     string `json:"updated_at,omitempty"`
 }
 
+// Subscription status values (IC-003).
+//
+// These strings are the contract: migration 0002 constrained the column to a
+// closed vocabulary and migration 0010 widened it for the states a real store
+// reports. A status outside this set cannot be written.
+const (
+	SubscriptionActive    = "active"
+	SubscriptionTrial     = "trial"
+	SubscriptionGrace     = "grace"
+	SubscriptionCancelled = "cancelled"
+	SubscriptionExpired   = "expired"
+	SubscriptionRefunded  = "refunded"
+	SubscriptionSuspended = "suspended"
+)
+
 type Subscription struct {
 	ID        string `json:"id"`
 	UserID    string `json:"user_id"`
@@ -166,6 +196,89 @@ type Subscription struct {
 	StartedAt string `json:"started_at,omitempty"`
 	EndsAt    string `json:"ends_at,omitempty"`
 	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at,omitempty"`
+
+	// Store identity. Without these a renewal, a cancellation or a refund can
+	// only be matched to a user by expiry date, which is ambiguous the moment
+	// anyone buys twice.
+	Provider              string `json:"provider,omitempty"`
+	ProviderTransactionID string `json:"provider_transaction_id,omitempty"`
+	OriginalTransactionID string `json:"original_transaction_id,omitempty"`
+	ProductID             string `json:"product_id,omitempty"`
+	StoreEnvironment      string `json:"store_environment,omitempty"`
+	// AutoRenew is nil when the store did not say. Absent is not false: a
+	// prepaid plan has no auto-renewal at all.
+	AutoRenew      *bool  `json:"auto_renew,omitempty"`
+	LastVerifiedAt string `json:"last_verified_at,omitempty"`
+}
+
+// ExpiresAt parses EndsAt, reporting whether the row carries a usable expiry.
+func (s Subscription) ExpiresAt() (time.Time, bool) {
+	if strings.TrimSpace(s.EndsAt) == "" {
+		return time.Time{}, false
+	}
+	t, err := time.Parse(time.RFC3339, s.EndsAt)
+	if err != nil {
+		// An unparsable expiry must not be treated as "no expiry": that would
+		// turn a corrupt row into a permanent subscription. Callers see
+		// "no usable expiry" and the status decides.
+		return time.Time{}, false
+	}
+	return t.UTC(), true
+}
+
+// Entitled reports whether this subscription grants premium at time now.
+//
+// The rule is deliberately (status, clock) and not status alone. The status
+// column records what the store last said, and the store does not call back at
+// the instant a paid period ends — so a row that still reads active can be
+// months out of date. Resolving entitlements from the status string is what
+// made a lapsed subscription keep premium indefinitely.
+//
+// Cancelled is entitled while the paid period runs: cancel means "do not
+// renew", not "revoke what was paid for".
+func (s Subscription) Entitled(now time.Time) bool {
+	expiry, hasExpiry := s.ExpiresAt()
+
+	// A non-empty expiry that will not parse is a corrupt row, not a grant
+	// without a clock. Treating the two the same is how a data error becomes a
+	// permanent subscription: ExpiresAt reports "no usable expiry" for both, so
+	// the caller has to look at the raw column to tell them apart.
+	if !hasExpiry && strings.TrimSpace(s.EndsAt) != "" {
+		return false
+	}
+
+	switch s.Status {
+	case SubscriptionActive, SubscriptionTrial, SubscriptionGrace:
+		// A row with no expiry is a grant without a clock: an administrative
+		// override, or a legacy row written before verification existed.
+		return !hasExpiry || expiry.After(now)
+	case SubscriptionCancelled:
+		// Cancellation with no period end is incoherent, so it does not
+		// entitle anything: there is nothing to say how long it should last.
+		return hasExpiry && expiry.After(now)
+	default:
+		return false
+	}
+}
+
+// EffectiveStatus reports the status to show a client.
+//
+// It differs from Status only once the clock has passed an expiry, where a row
+// that reads active is reported as expired. A client that shows "Premium" over
+// a lapsed subscription generates support requests about a product that is
+// behaving correctly.
+func (s Subscription) EffectiveStatus(now time.Time) string {
+	if expiry, ok := s.ExpiresAt(); ok && !expiry.After(now) {
+		switch s.Status {
+		case SubscriptionActive, SubscriptionTrial, SubscriptionGrace, SubscriptionCancelled:
+			return SubscriptionExpired
+		}
+	}
+	if s.Status == "" {
+		return "none"
+	}
+	return s.Status
 }
 
 type Schedule struct {
@@ -266,18 +379,118 @@ type SessionItem struct {
 	LockReason string `json:"lock_reason,omitempty"`
 }
 
+// UserConfession is user-generated content (§22). Status and Visibility were
+// columns without any Go reading them until PHASE 31; Status carries the
+// moderation lifecycle (draft|submitted|approved|rejected|published|archived),
+// Visibility the audience the author is asking for (private|shared|public).
+// The review fields are set by the moderation review endpoint and are empty
+// until a reviewer acts.
 type UserConfession struct {
+	ID              string `json:"id"`
+	UserID          string `json:"user_id"`
+	Title           string `json:"title"`
+	Text            string `json:"text"`
+	CategoryID      string `json:"category_id,omitempty"`
+	IsPrivate       bool   `json:"is_private"`
+	Status          string `json:"status"`
+	Visibility      string `json:"visibility"`
+	ReviewNotes     string `json:"review_notes,omitempty"`
+	ReviewedBy      string `json:"reviewed_by,omitempty"`
+	ReviewedAt      string `json:"reviewed_at,omitempty"`
+	RejectionReason string `json:"rejection_reason,omitempty"`
+	PublishedAt     string `json:"published_at,omitempty"`
+	Version         int    `json:"version"`
+	CreatedAt       string `json:"created_at"`
+	UpdatedAt       string `json:"updated_at"`
+}
+
+// Report is a user flag on a piece of content (§10, §22). Status is
+// open|reviewed|resolved|dismissed; one open report per reporter per entity is
+// enforced by a partial unique index, so re-reporting the same thing is a
+// no-op that returns the existing row.
+type Report struct {
+	ID             string `json:"id"`
+	ReporterID     string `json:"reporter_id"`
+	EntityType     string `json:"entity_type"`
+	EntityID       string `json:"entity_id"`
+	Reason         string `json:"reason"`
+	Detail         string `json:"detail,omitempty"`
+	Status         string `json:"status"`
+	ReviewedBy     string `json:"reviewed_by,omitempty"`
+	ReviewedAt     string `json:"reviewed_at,omitempty"`
+	ResolutionNote string `json:"resolution_note,omitempty"`
+	CreatedAt      string `json:"created_at"`
+}
+
+// ModerationCase is the work item a moderator drains (§10). One case is open
+// at a time per entity, enforced by a partial unique index; Before/After hold
+// the status the entity had on either side of the decision that closed the
+// case.
+type ModerationCase struct {
 	ID         string `json:"id"`
-	UserID     string `json:"user_id"`
-	Title      string `json:"title"`
-	Text       string `json:"text"`
-	CategoryID string `json:"category_id,omitempty"`
-	IsPrivate  bool   `json:"is_private"`
+	EntityType string `json:"entity_type"`
+	EntityID   string `json:"entity_id"`
+	Status     string `json:"status"`
+	Reason     string `json:"reason,omitempty"`
+	Actor      string `json:"actor,omitempty"`
+	Before     string `json:"before,omitempty"`
+	After      string `json:"after,omitempty"`
+	Detail     string `json:"detail,omitempty"`
 	CreatedAt  string `json:"created_at"`
 	UpdatedAt  string `json:"updated_at"`
 }
 
+// ModerationQueue is the moderator's work list: UGC awaiting review, open
+// user reports and editorial content parked in a human review state.
+type ModerationQueue struct {
+	UserConfessions []UserConfession `json:"user_confessions"`
+	Reports         []Report         `json:"reports"`
+	Editorial       []Confession     `json:"editorial"`
+	// Appeals is []any rather than a moderation type because models is the
+	// shared shape package and must not import the moderation vocabulary that
+	// reads it. The store fills it with its own appeal rows.
+	Appeals []any          `json:"appeals"`
+	Counts  map[string]int `json:"counts"`
+}
+
+// QACheck is one line of the §75 audio QA checklist.
+type QACheck struct {
+	Name   string `json:"name"`
+	Passed bool   `json:"passed"`
+	Detail string `json:"detail"`
+}
+
+// QAReport is the persisted outcome of running the §75 gate against a
+// confession. It is written to confessions.qa_report on every run, pass or
+// fail, so a failed gate leaves evidence rather than silence.
+type QAReport struct {
+	RanAt  string    `json:"ran_at"`
+	Actor  string    `json:"actor"`
+	Passed bool      `json:"passed"`
+	Note   string    `json:"note,omitempty"`
+	Checks []QACheck `json:"checks"`
+}
+
+// Favorite is polymorphic by design: one table holds a listener's favourites
+// across confessions, categories, sessions and voices, so adding a favouritable
+// kind does not need a new table (§35).
+//
+// The cost of that shape is that a favourite carries no name. Title, Subtitle
+// and Missing are resolved at read time by ListFavoritesDetailed and are not
+// stored: denormalising a title would leave the library showing the old one
+// after an editor renames a confession. They are omitted from the JSON when
+// empty, so the bare rows written by AddFavorite serialise unchanged.
 type Favorite struct {
+	// Title is the display name of the favourited entity, resolved on read.
+	Title string `json:"title,omitempty"`
+	// Subtitle is a short line of context — the category a confession sits in.
+	Subtitle string `json:"subtitle,omitempty"`
+	// Missing marks a favourite whose target no longer resolves, because the
+	// content was archived or deleted. The row is still returned so the user
+	// can clear it; silently dropping it would leave an entry they can see in
+	// their export but never remove.
+	Missing bool `json:"missing,omitempty"`
+
 	ID         string `json:"id"`
 	UserID     string `json:"user_id"`
 	EntityType string `json:"entity_type"`

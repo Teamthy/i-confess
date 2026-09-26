@@ -40,9 +40,11 @@ def check(name, condition, detail=""):
 screens = IA["screens"]
 by_id = {s["id"]: s for s in screens}
 
-# The live endpoint set, unprefixed. /v1/ twins are registered too but the
-# Flutter client uses the unprefixed forms.
-live = {f"{r['method']} {r['path']}" for r in ROUTES if not r["path"].startswith("/v1/")}
+# Keep both the full registered set and the unversioned compatibility set.
+# Screens may call either form; coverage asks whether any user-facing legacy
+# route lacks a screen, while endpoint validity accepts every live route.
+all_live = {f"{r['method']} {r['path']}" for r in ROUTES}
+live = {endpoint for endpoint in all_live if not endpoint.split(" ", 1)[1].startswith("/v1/")}
 
 print("Section 12 - tab bar")
 _, tokens, _ = generate.load()
@@ -96,7 +98,7 @@ check("no dead-end screens", not stranded,
 print("\nEndpoint coverage")
 missing = {}
 for s in screens:
-    bad = [e for e in s.get("endpoints", []) if e not in live]
+    bad = [e for e in s.get("endpoints", []) if e not in all_live]
     if bad:
         missing[s["id"]] = bad
 check("every screen's endpoints exist in the running API", not missing,
@@ -110,10 +112,15 @@ check("every screen declares its endpoints", not no_api,
 # screen. Worth knowing which, so this reports rather than silently passing.
 used = {e for s in screens for e in s.get("endpoints", [])}
 unused = sorted(live - used)
+# Endpoints no screen can call. /webhooks/ is in this list because a store
+# notification is delivered by Apple or Google, not by the app: there is no
+# screen that posts to it, and requiring one would mean inventing a screen to
+# satisfy the check rather than describing the product.
 non_ui = [u for u in unused
           if not any(k in u for k in
                      ("/health", "/healthz", "/admin/", "/auth/logout",
-                      "/auth/refresh", "/me/history", "/v1/"))]
+                      "/auth/refresh", "/me/history", "/v1/", "/metrics", "/openapi.json",
+                      "/webhooks/"))]
 check("every user-facing endpoint has a screen", not non_ui,
       f"{len(non_ui)} unreferenced: {non_ui}")
 

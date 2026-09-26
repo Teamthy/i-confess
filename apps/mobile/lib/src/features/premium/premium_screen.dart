@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
+import 'package:iconfess_api/iconfess_api.dart';
 
 import '../../core/theme/theme.dart';
 import '../../core/theme/tokens.dart';
 import '../../core/widgets/screen.dart';
 import 'premium_providers.dart';
+import 'purchase_controller.dart';
 
 /// Premium paywall: plans with regional pricing (NGN/USD/GBP/EUR/PHP), trial journey, entitlements.
 ///
@@ -19,7 +20,18 @@ class PremiumScreen extends ConsumerWidget {
     final subAsync = ref.watch(subscriptionProvider);
     final entAsync = ref.watch(entitlementsProvider);
     final trialAsync = ref.watch(trialProvider);
+    final engagementAsync = ref.watch(trialEngagementProvider);
     final surfaces = AppSurfaces.of(context);
+
+    // Purchase outcomes arrive on their own stream, minutes after the tap when
+    // a bank confirmation is involved, so they are surfaced as they happen
+    // rather than returned from the button press.
+    ref.listen<PurchaseState>(premiumPurchaseControllerProvider, (_, next) {
+      final message = next.error ?? next.message;
+      if (message == null) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      ref.read(premiumPurchaseControllerProvider.notifier).clear();
+    });
 
     return AppScaffold(
       title: 'Premium',
@@ -101,6 +113,18 @@ class PremiumScreen extends ConsumerWidget {
                         padding: const EdgeInsets.only(bottom: IConfess.space3),
                         child: _PlanCard(plan: plan),
                       ),
+                    // Required by App Store review for a non-consumable, and
+                    // the only way back for someone who reinstalled: without
+                    // it a paying subscriber sees a paywall and no route to
+                    // the subscription they already own.
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton(
+                        onPressed: ref.watch(premiumPurchaseControllerProvider).busy ? null
+                            : () => ref.read(premiumPurchaseControllerProvider.notifier).restore(),
+                        child: const Text('Restore purchases'),
+                      ),
+                    ),
                   ],
                 );
               },
@@ -113,17 +137,48 @@ class PremiumScreen extends ConsumerWidget {
               data: (loadable) {
                 final days = loadable.valueOrNull ?? [];
                 if (days.isEmpty) return const SizedBox.shrink();
+                // Completed days come from real session completions, so a tick
+                // here means the listener listened - not that a clock moved.
+                // AsyncValue exposes asData in Riverpod 3, and Loadable is
+                // what carries the value - the same two-step the activity
+                // providers use.
+                final completed = engagementAsync.asData?.value.valueOrNull
+                        ?.completedDays ??
+                    const <int>[];
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Your first week',
-                        style: IConfess.subheading.copyWith(color: surfaces.textPrimary)),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text('Your first week',
+                              style: IConfess.subheading
+                                  .copyWith(color: surfaces.textPrimary)),
+                        ),
+                        if (completed.isNotEmpty)
+                          Text('${completed.length}/7 done',
+                              style: IConfess.caption
+                                  .copyWith(color: surfaces.textSecondary)),
+                      ],
+                    ),
                     const SizedBox(height: IConfess.space3),
                     for (final day in days.take(7))
                       ListTile(
-                        leading: CircleAvatar(child: Text('${day.day}')),
+                        leading: CircleAvatar(
+                          backgroundColor: completed.contains(day.day)
+                              ? IConfess.colorBrand50
+                              : null,
+                          child: completed.contains(day.day)
+                              ? const Icon(Icons.check_rounded, size: 18)
+                              : Text('${day.day}'),
+                        ),
                         title: Text(day.title),
-                        subtitle: Text(day.description),
+                        // The call to action is the day's actual ask. It was
+                        // declared on the client and never sent, so every row
+                        // rendered without one.
+                        subtitle: Text(
+                            day.cta.isEmpty ? day.description : '${day.description}\n${day.cta}'),
+                        isThreeLine: day.cta.isNotEmpty,
                       ),
                   ],
                 );
@@ -151,13 +206,18 @@ class _EntChip extends StatelessWidget {
   }
 }
 
-class _PlanCard extends StatelessWidget {
+class _PlanCard extends ConsumerWidget {
   const _PlanCard({required this.plan});
-  final dynamic plan;
+  final Plan plan;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final surfaces = AppSurfaces.of(context);
+    final purchase = ref.watch(premiumPurchaseControllerProvider);
+    final gateway = ref.watch(purchaseGatewayProvider);
+    final id = storeProductIdFor(plan.id, apple: gateway.provider == 'apple');
+    final products = ref.watch(storeProductsProvider);
+    final product = products.asData?.value[id];
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(IConfess.space5),
@@ -189,15 +249,9 @@ class _PlanCard extends StatelessWidget {
           const SizedBox(height: IConfess.space2),
           Text(plan.description, style: IConfess.bodySm.copyWith(color: surfaces.textSecondary)),
           const SizedBox(height: IConfess.space3),
-          // Prices: show NGN, USD, GBP, EUR, PHP if available
-          Wrap(
-            spacing: IConfess.space2,
-            children: [
-              for (final curr in ['NGN', 'USD', 'GBP', 'EUR', 'PHP'])
-                if (plan.priceFor(curr).isNotEmpty)
-                  Chip(label: Text(plan.priceFor(curr))),
-            ],
-          ),
+          Text(product?.price ?? (products.isLoading
+              ? 'Loading store price…' : 'Unavailable in this store'),
+              style: IConfess.subheading.copyWith(color: surfaces.textPrimary)),
           const SizedBox(height: IConfess.space3),
           if (plan.features.isNotEmpty)
             Column(
@@ -218,8 +272,24 @@ class _PlanCard extends StatelessWidget {
             ),
           const SizedBox(height: IConfess.space4),
           FilledButton(
-            onPressed: () {},
-            child: Text(plan.trialDays > 0 ? 'Start ${plan.trialDays}-day trial' : 'Subscribe'),
+            // Disabled while the store is deciding: two taps on a slow
+            // connection is how a user ends up buying twice.
+            onPressed: purchase.busy || product == null
+                ? null
+                : () => ref.read(premiumPurchaseControllerProvider.notifier).purchase(plan.id),
+            child: purchase.busy
+                ? const SizedBox(
+                    height: 18,
+                    width: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Text('Subscribe'),
+          ),
+          const SizedBox(height: IConfess.space2),
+          Text(
+            'Payment is taken by the App Store or Google Play. Premium is activated '
+            'by our server once the store confirms the purchase.',
+            style: IConfess.caption.copyWith(color: surfaces.textSecondary),
           ),
         ],
       ),

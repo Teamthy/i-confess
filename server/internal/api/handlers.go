@@ -6,11 +6,14 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Teamthy/i-confess/internal/db"
 
 	"github.com/Teamthy/i-confess/internal/auth"
+	"github.com/Teamthy/i-confess/internal/bible"
+	"github.com/Teamthy/i-confess/internal/billing"
 	"github.com/Teamthy/i-confess/internal/cache"
 	"github.com/Teamthy/i-confess/internal/deletion"
 	"github.com/Teamthy/i-confess/internal/email"
@@ -18,6 +21,7 @@ import (
 	"github.com/Teamthy/i-confess/internal/httpx"
 	"github.com/Teamthy/i-confess/internal/jobs"
 	"github.com/Teamthy/i-confess/internal/models"
+	"github.com/Teamthy/i-confess/internal/moderation"
 	"github.com/Teamthy/i-confess/internal/oauth"
 	"github.com/Teamthy/i-confess/internal/ratelimit"
 	"github.com/Teamthy/i-confess/internal/scheduler"
@@ -30,13 +34,28 @@ import (
 
 // Handler bundles all stores and config needed by the API.
 type Handler struct {
-	cfg       Config
-	users     *store.UserStore
-	cont      *store.ContentStore
-	audio     *store.AudioStore
-	sess      *store.SessionStore
-	sched     *store.ScheduleStore
-	eng       *store.EngagementStore
+	cfg    Config
+	bible  bible.BibleProvider
+	bibleDiscovery bible.BibleProvider
+	users  *store.UserStore
+	trials *store.TrialStore
+	cont   *store.ContentStore
+	audio  *store.AudioStore
+	sess   *store.SessionStore
+	sched  *store.ScheduleStore
+	eng    *store.EngagementStore
+	mod    *store.ModerationStore
+	// analytics persists the funnel events. Trial day completion, conversion
+	// and cancellation are recorded here rather than in a client batch, so the
+	// server is the source of truth for the numbers it reports about itself.
+	analytics *store.AnalyticsStore
+	// blocks owns listener-set boundaries. Separate from mod because a block is
+	// not a moderation action: no moderator takes it and none can see it.
+	blocks *store.BlockStore
+	// signals reads the seven listener signals personalization ranks on
+	// (master-plan 34). Read-only: it derives evidence from tables other
+	// features write, so there is no second bookkeeping to drift.
+	signals   *store.SignalStore
 	engn      *engine.Engine
 	search    *search.SearchStore
 	templates *store.TemplateStore
@@ -87,13 +106,31 @@ type Handler struct {
 	catConfCache *cache.Cache[[]models.Confession]
 	voicesCache  *cache.Cache[[]models.Voice]
 	cacheMeter   *cache.Meter
+	// cacheBus carries invalidations to the other API instances, and
+	// cacheOwner identifies this instance so it ignores the echo of its own
+	// messages (G-10). A nil bus is a single-instance deployment: writes still
+	// invalidate this instance's own caches.
+	cacheBus   cache.Bus
+	cacheOwner string
 	// metrics counts security-relevant events for alerting (S83, S84).
 	metrics *AuthMetrics
+	bibleMetrics *bibleOperationMetrics
+	bibleMetrics *bibleOperationMetrics
+	// Store notification collaborators (IC-003, PR B). Nil means "resolve from
+	// the environment", which is what production does; tests supply them
+	// directly, and a deployment that reads credentials from a secret manager
+	// can too.
+	appleNotify  appleNotificationVerifier
+	googleNotify googleNotificationResolver
+	playAck      billing.PlayAcknowledger
 	// cacheStats reports cache hit-rate for /metrics (§7.1)
 	cacheStats func() CacheStats
 	// routes records every registered endpoint, so the API spec is generated
 	// from the same calls that serve traffic and cannot drift.
-	routes *routeRecorder
+	routes   *routeRecorder
+	authMW   map[string]func(http.Handler) http.Handler
+	authMWmu sync.Mutex
+	isProd   bool
 }
 
 // SetLimiter installs a rate limiter. Production passes a Redis-backed
@@ -113,6 +150,9 @@ func (h *Handler) SetMailer(q *email.Queue, cfg email.Config) {
 // SetDevTokenSink installs a development/test hook for one-time tokens.
 func (h *Handler) SetDevTokenSink(f func(purpose, email, token string)) { h.devTokenSink = f }
 
+// SetProduction configures production mode for security headers and hardening.
+func (h *Handler) SetProduction(prod bool) { h.isProd = prod }
+
 type Config struct {
 	JWTSecret string
 	TokenTTL  string
@@ -120,13 +160,22 @@ type Config struct {
 
 func NewHandler(cfg Config, db *db.DB) *Handler {
 	return &Handler{
-		cfg:          cfg,
-		users:        store.NewUserStore(db),
+		cfg:       cfg,
+		bible:     &bible.LocalBibleProvider{DB: db},
+		bibleDiscovery: &bible.LocalBibleProvider{DB: db},
+		users:     store.NewUserStore(db),
+		analytics: store.NewAnalyticsStore(db),
+		blocks:    store.NewBlockStore(db),
+		signals:   store.NewSignalStore(db),
+		// The trial store writes its own funnel events: expiry is a clock fact
+		// that no single handler reliably observes, so the transition records it.
+		trials:       store.NewTrialStore(db).WithAnalytics(store.NewAnalyticsStore(db)),
 		cont:         store.NewContentStore(db),
 		audio:        store.NewAudioStore(db),
 		sess:         store.NewSessionStore(db),
 		sched:        store.NewScheduleStore(db),
 		eng:          store.NewEngagementStore(db),
+		mod:          store.NewModerationStore(db),
 		search:       search.NewSearchStore(db),
 		templates:    store.NewTemplateStore(db),
 		plans:        store.NewPlanStore(db),
@@ -145,7 +194,9 @@ func NewHandler(cfg Config, db *db.DB) *Handler {
 		voicesCache:  cache.New[[]models.Voice](5*time.Minute, 10*time.Minute),
 		cacheMeter:   &cache.Meter{},
 		metrics:      NewAuthMetrics(),
+		bibleMetrics: newBibleOperationMetrics(),
 		routes:       &routeRecorder{},
+		authMW:       make(map[string]func(http.Handler) http.Handler),
 	}
 }
 
@@ -333,7 +384,7 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 	// failure. Every other error is refused. Collapsing the two - as
 	// "mErr == nil && enrolment.Enabled" did - is what let a database error
 	// skip the second factor entirely.
-	enrolment, mErr := h.users.MFAEnrolmentFor(r.Context(), u.ID)
+	enrolment, mErr := h.getMFAEnrolment(r.Context(), u.ID)
 	if mErr != nil && !errors.Is(mErr, store.ErrNotFound) {
 		log.Printf("auth: cannot read MFA enrolment for %s, refusing sign-in: %v", u.ID, mErr)
 		writeCode(w, http.StatusServiceUnavailable, "AUTH_UNAVAILABLE", "sign-in is temporarily unavailable, try again")
@@ -1062,8 +1113,32 @@ func (h *Handler) createSession(w http.ResponseWriter, r *http.Request) {
 		// one is the guarantee that survives a future edit to the handler.
 		MaxDurationSeconds: ent.MaxSessionSeconds(),
 	})
+	if errors.Is(err, engine.ErrNoVoice) {
+		httpx.WriteJSON(w, http.StatusUnprocessableEntity, map[string]any{
+			"error":  "no available active voice",
+			"code":   "VOICE_UNAVAILABLE",
+			"reason": "voice_unavailable",
+		})
+		return
+	}
 	if errors.Is(err, engine.ErrNoContent) {
-		httpx.WriteError(w, http.StatusUnprocessableEntity, "no content available for the selected categories and voice")
+		httpx.WriteJSON(w, http.StatusUnprocessableEntity, map[string]any{
+			"error":  "no published content available for the selected categories and voice",
+			"code":   "CONTENT_UNAVAILABLE",
+			"reason": "content_unavailable",
+		})
+		return
+	}
+	if errors.Is(err, engine.ErrDurationTooShort) || errors.Is(err, engine.ErrDurationTooLong) {
+		httpx.WriteJSON(w, http.StatusUnprocessableEntity, map[string]any{
+			"error":  err.Error(),
+			"code":   "DURATION_OUT_OF_BOUNDS",
+			"reason": "duration_out_of_bounds",
+		})
+		return
+	}
+	if errors.Is(err, engine.ErrDurationExceedsPlan) {
+		writePlanLimit(w, ent)
 		return
 	}
 	if errors.Is(err, engine.ErrNoExactFit) {
@@ -1072,6 +1147,7 @@ func (h *Handler) createSession(w http.ResponseWriter, r *http.Request) {
 		// without cutting a confession short, which we do not do.
 		httpx.WriteJSON(w, http.StatusUnprocessableEntity, map[string]any{
 			"error":  "no combination of complete confessions matches that exact length",
+			"code":   "EXACT_DURATION_UNAVAILABLE",
 			"reason": "exact_duration_unavailable",
 			"hint":   "choose a nearby length, or use the balanced strategy",
 		})
@@ -1366,8 +1442,23 @@ func (h *Handler) removeFavorite(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// listFavorites returns the caller's favourites with display names resolved.
+//
+// The bare table rows carry only (entity_type, entity_id), which a library
+// screen cannot render as anything but opaque ids — which is exactly what the
+// favourites tab showed before PHASE 27. An optional `type` narrows the list
+// to one kind of entity.
 func (h *Handler) listFavorites(w http.ResponseWriter, r *http.Request) {
-	list, err := h.eng.ListFavorites(r.Context(), h.userID(r), r.URL.Query().Get("type"))
+	entityType := r.URL.Query().Get("type")
+	// A filter the vocabulary does not contain would silently return nothing,
+	// which reads to the caller as "you have no favourites" rather than "that
+	// is not a thing you can favourite".
+	if entityType != "" && !validEntityType(entityType) {
+		writeCode(w, http.StatusBadRequest, "VALIDATION_FAILED",
+			"type must be one of confession, category, session, voice")
+		return
+	}
+	list, err := h.eng.ListFavoritesDetailed(r.Context(), h.userID(r), entityType)
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to load favorites")
 		return
@@ -1396,6 +1487,33 @@ func (h *Handler) recordPlayback(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
+
+	// Prevent forged playback records:
+	// A client request alone must not prove that audio played or completed.
+	if req.SessionID != "" {
+		sess, err := h.sess.ByID(r.Context(), req.SessionID)
+		if errors.Is(err, store.ErrNotFound) {
+			httpx.WriteError(w, http.StatusNotFound, "session not found")
+			return
+		}
+		if err != nil {
+			httpx.WriteError(w, http.StatusInternalServerError, "failed to load session")
+			return
+		}
+		if sess.UserID != h.userID(r) {
+			httpx.WriteError(w, http.StatusForbidden, "not your session")
+			return
+		}
+		// Refuse forged completion of a session that has never started playback and has no listened duration
+		if req.Completed && req.DurationSeconds <= 0 && sess.StartedAt == "" && sess.Status != string(sessions.Completed) && sess.Status != string(sessions.Active) && sess.Status != string(sessions.Paused) && sess.Status != string(sessions.Interrupted) {
+			httpx.WriteJSON(w, http.StatusConflict, map[string]any{
+				"error": "a session can only be completed after playback has started",
+				"code":  "INVALID_TRANSITION",
+			})
+			return
+		}
+	}
+
 	rec := &models.PlaybackRecord{
 		UserID:          h.userID(r),
 		SessionID:       req.SessionID,
@@ -1418,6 +1536,7 @@ func (h *Handler) createUserConfession(w http.ResponseWriter, r *http.Request) {
 		Title      string `json:"title"`
 		Text       string `json:"text"`
 		CategoryID string `json:"category_id"`
+		Visibility string `json:"visibility"`
 	}
 	if err := httpx.DecodeJSON(r, &req); err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid request body")
@@ -1427,12 +1546,26 @@ func (h *Handler) createUserConfession(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusBadRequest, "title and text are required")
 		return
 	}
+	// PRIVATE is the default and the floor (PRD §22): asking for a public
+	// audience is allowed at creation, but the moderation review is what
+	// actually publishes - visibility is the author's intent, not the outcome.
+	visibility := req.Visibility
+	if visibility == "" {
+		visibility = moderation.VisibilityPrivate
+	}
+	if !moderation.ValidVisibility(visibility) {
+		httpx.WriteError(w, http.StatusBadRequest,
+			"visibility must be one of: "+strings.Join(moderation.UGCVisibilities(), ", "))
+		return
+	}
 	uc := &models.UserConfession{
 		UserID:     h.userID(r),
 		Title:      req.Title,
 		Text:       req.Text,
 		CategoryID: req.CategoryID,
-		IsPrivate:  true, // private by default (PRD §22)
+		IsPrivate:  visibility == moderation.VisibilityPrivate,
+		Status:     string(moderation.UGCDraft),
+		Visibility: visibility,
 	}
 	if err := h.eng.CreateUserConfession(r.Context(), uc); err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to create confession")

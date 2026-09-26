@@ -1,20 +1,23 @@
-# RETIRED — do not extend
+# RETIRED — replacement delivered
 
-**Status:** marked for replacement, not yet deleted.
+**Status:** the replacement has landed in PHASE 38 (ledger 45). This file is
+kept as a historical record only; nothing in `apps/web` is retired any more.
+
 **Decision:** recorded in `docs/03-TECHNOLOGY-DECISIONS.md`.
-**Replaced by:** PHASE 38.
-**Size at retirement:** 434 lines.
+**Replaced by:** the PHASE 38 rebuild of this same directory —
+`docs/45-PHASE-38-MARKETING-SITE.md`.
+**Size at retirement:** 434 lines (now rebuilt: 30+ files against the PHASE 05
+design system).
 
-## Why
+## What was carried over, deliberately
 
-D-5: rebuilt against the PHASE 05 design system. Building a marketing site before a design system exists is how it ends up visually unrelated to the product.
+- The security headers from the old `next.config.mjs` (nosniff, frame-deny,
+  referrer policy, permissions policy) — kept and reworded.
+- The sitemap/robots idea — rebuilt, now generated from the live API.
+- `/t/[token]` — kept because real share links exist in the wild; rebuilt
+  against the new client with correct 404 behaviour.
+- The pricing page — rebuilt on the live plans API.
 
-## Why it is still here
+Nothing else survived, and nothing was lifted without a reason recorded in
+`docs/45-PHASE-38-MARKETING-SITE.md` §3–§4.
 
-The replacement is sequenced to PHASE 38. Deleting this directory now would leave the
-repository without the surface it provides for every phase in between, and would
-destroy the only working reference for how a client talks to the API.
-
-Nothing here should be extended. If a piece is worth keeping, lift it
-deliberately into the replacement, file by file, with a reason recorded in the
-pull request.

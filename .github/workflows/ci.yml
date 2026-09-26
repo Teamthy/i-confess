@@ -31,6 +31,11 @@ jobs:
     # run always means a real database was exercised.
     env:
       TEST_DATABASE_URL: host=127.0.0.1 port=5432 user=iconfess password=iconfess dbname=postgres sslmode=disable
+      # Cross-instance cache invalidation is Redis pub/sub. Without a server,
+      # internal/cache's live-Redis assertions skip - loudly, but they skip -
+      # and a green run would then say nothing about the transport that
+      # production depends on. The service below is what makes them run.
+      REDIS_ADDR: 127.0.0.1:6379
 
     services:
       postgres:
@@ -43,6 +48,16 @@ jobs:
           - 5432:5432
         options: >-
           --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -98,6 +113,14 @@ jobs:
           python3 design/test_design.py
           python3 design/test_ia.py
 
+      # Catches the cheap class of Dart mistake — a model field, endpoint,
+      # provider or token that does not exist — without needing an SDK, so it
+      # fails here in seconds rather than in the Flutter job minutes later.
+      # It does not replace `flutter analyze`; both run.
+      - name: Dart symbols
+        working-directory: .
+        run: python3 scripts/check_dart_symbols.py
+
       # new-from-merge-base: main needs a ref literally named `main`. The PR
       # checkout is a detached merge ref, so create it before lint runs;
       # otherwise golangci cannot resolve the base and reports findings on
@@ -121,3 +144,91 @@ jobs:
             echo "$files"
             exit 1
           fi
+
+  # The Dart and Flutter clients have no job here before this change, and their
+  # fifteen test files had never been executed by anything - not CI, not a
+  # release, not the audit beyond reading them. Adding the jobs is what makes
+  # "the tests pass" mean something for the mobile app.
+  #
+  # These run on GitHub's runners because pub.dev is unreachable from the
+  # development sandbox: dependencies can be resolved here and nowhere else, so
+  # this job IS the verification for anything under apps/ and clients/.
+  mobile:
+    name: Flutter analyze & test (apps/mobile)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/mobile
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Resolve dependencies
+        id: dependencies
+        run: ../../scripts/ci-check.sh flutter pub get
+
+      # --no-fatal-infos on purpose. Lint infos are style, and this package has
+      # never been analyzed in CI; failing on the pre-existing ones would make
+      # the job red for reasons that have nothing to do with the change under
+      # review. Errors and warnings still fail it, which is where the real
+      # findings live - a missing import compiles nowhere.
+      - name: Analyze
+        run: ../../scripts/ci-check.sh flutter analyze --no-fatal-infos
+
+      - name: Test
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        run: ../../scripts/ci-check.sh flutter test --reporter expanded
+
+  deployment:
+    name: Container and deployment checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build production image
+        run: docker build --tag iconfess:ci server
+      - name: Assert non-root runtime
+        run: test "$(docker image inspect iconfess:ci --format '{{.Config.User}}')" = "10001:10001"
+      - name: Validate Kubernetes manifests
+        run: |
+          docker run --rm -v "$PWD:/work" ghcr.io/yannh/kubeconform:latest -strict -summary /work/server/k8s/deployment-prod.yaml
+      - name: Lint CloudFormation
+        uses: scottbrenner/cfn-lint-action@v2
+        with:
+          command: cfn-lint infrastructure/media-cloudfront.yaml
+      - name: Scan filesystem
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: .
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+
+  dart-client:
+    name: Dart test (clients/dart)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: clients/dart
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Dart
+        uses: dart-lang/setup-dart@v1
+
+      - name: Resolve dependencies
+        id: dependencies
+        run: ../../scripts/ci-check.sh dart pub get
+
+      - name: Analyze
+        run: ../../scripts/ci-check.sh dart analyze
+
+      - name: Test
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        run: ../../scripts/ci-check.sh dart test --reporter expanded

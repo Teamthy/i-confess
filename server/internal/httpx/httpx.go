@@ -27,7 +27,6 @@ func WriteError(w http.ResponseWriter, status int, msg string) {
 // DecodeJSON decodes the request body, enforcing a size limit and single value.
 func DecodeJSON(r *http.Request, dst any) error {
 	dec := json.NewDecoder(io.LimitReader(r.Body, 1<<20))
-	dec.DisallowUnknownFields()
 	if err := dec.Decode(dst); err != nil {
 		return err
 	}

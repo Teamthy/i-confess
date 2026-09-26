@@ -11,11 +11,13 @@ import '../../features/auth/sign_in_screen.dart';
 import '../../features/auth/sign_up_screen.dart';
 import '../../features/auth/verification_screen.dart';
 import '../../features/auth/welcome_screen.dart';
+import '../../features/bible/bible_screen.dart';
 import '../../features/confess/confess_screen.dart';
 import '../../features/confess/duration_screen.dart';
 import '../../features/confess/review_screen.dart';
 import '../../features/confess/voice_screen.dart';
 import '../../features/confession/confession_detail_screen.dart';
+import '../../features/community/community_screen.dart';
 import '../../features/downloads/downloads_screen.dart';
 import '../../features/explore/category_detail_screen.dart';
 import '../../features/explore/explore_screen.dart';
@@ -151,6 +153,11 @@ GoRouter createRouter(
               builder: (context, state) => const ExploreScreen(),
               routes: [
                 GoRoute(
+                  path: 'community',
+                  name: AppRouteNames.community,
+                  builder: (context, state) => const CommunityScreen(),
+                ),
+                GoRoute(
                   path: 'search',
                   name: AppRouteNames.search,
                   builder: (context, state) => const SearchScreen(),
@@ -221,6 +228,34 @@ GoRouter createRouter(
             ),
           ]),
         ],
+      ),
+
+      // Bible reference deep links resolve through the same iCONFESS API as reader navigation.
+      GoRoute(
+        path: '${AppRoutes.bible}/:translation/:book/:chapter/:verse',
+        name: 'bibleVerse',
+        builder: (context, state) => BibleScreen(
+          initialTranslation: state.pathParameters['translation'],
+          initialReference: '${state.pathParameters['book']} ${state.pathParameters['chapter']}:${state.pathParameters['verse']}',
+        ),
+      ),
+      GoRoute(
+        path: '${AppRoutes.bible}/:translation/:book/:chapter',
+        name: 'bibleChapter',
+        builder: (context, state) => BibleScreen(
+          initialTranslation: state.pathParameters['translation'],
+          initialReference: '${state.pathParameters['book']} ${state.pathParameters['chapter']}',
+        ),
+      ),
+      GoRoute(
+        path: '${AppRoutes.bible}/:translation',
+        name: 'bibleTranslation',
+        builder: (context, state) => BibleScreen(initialTranslation: state.pathParameters['translation']),
+      ),
+      GoRoute(
+        path: AppRoutes.bible,
+        name: AppRouteNames.bible,
+        builder: (context, state) => const BibleScreen(),
       ),
 
       // Full-screen flows above shell

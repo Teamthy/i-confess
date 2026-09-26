@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/Teamthy/i-confess/internal/engine"
 	"github.com/Teamthy/i-confess/internal/httpx"
@@ -68,9 +69,13 @@ func (h *Handler) createTemplate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Shareable URL
+	baseURL := strings.TrimRight(h.mailCfg.BaseURL, "/")
+	if baseURL == "" {
+		baseURL = "https://iconfess.app"
+	}
 	httpx.WriteJSON(w, http.StatusCreated, map[string]any{
 		"template":  t,
-		"share_url": "https://iconfess.app/t/" + t.ShareToken,
+		"share_url": baseURL + "/t/" + t.ShareToken,
 		"deeplink":  "iconfess://t/" + t.ShareToken,
 	})
 }

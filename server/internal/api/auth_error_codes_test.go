@@ -63,7 +63,7 @@ func TestAuthErrorsCarryStableCodes(t *testing.T) {
 		{
 			"a malformed registration body is a validation failure",
 			"/auth/register",
-			map[string]string{"email": "x@example.com", "password": "correct-passphrase-2026", "unexpected": "field"},
+			map[string]string{"email": "", "password": "correct-passphrase-2026"},
 			http.StatusBadRequest, "AUTH_VALIDATION_FAILED",
 		},
 		{

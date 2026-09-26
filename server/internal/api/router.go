@@ -14,6 +14,13 @@ import (
 func (h *Handler) Routes() http.Handler {
 	mux := http.NewServeMux()
 
+	// Every authenticated route validates the session server-side, so logout,
+	// suspension and password changes take effect immediately rather than when
+	// the token happens to expire (PRD S3, S54).
+	sv := sessionValidator{h: h}
+	authed := auth.MiddlewareWithSessions(h.cfg.JWTSecret, sv)
+	admin := auth.RequireRoleWithSessions(h.cfg.JWTSecret, sv)
+
 	// Authentication endpoints are the highest-value attack surface, so they
 	// are throttled by client address before any database work happens (S20).
 	perIP := func(rule ratelimit.Rule, name string) func(http.Handler) http.Handler {
@@ -31,8 +38,8 @@ func (h *Handler) Routes() http.Handler {
 	h.route(mux, "GET /health/ready", "public", "ops", "Readiness with subsystem detail", nil, h.readyz)
 
 	// Machine-readable API description, generated from the route table above.
-	mux.HandleFunc("GET /metrics", h.promMetrics)
-	mux.HandleFunc("GET /openapi.json", h.serveOpenAPI)
+	h.route(mux, "GET /metrics", "admin", "admin-ops", "Prometheus metrics", admin, h.promMetrics)
+	h.route(mux, "GET /openapi.json", "public", "ops", "OpenAPI JSON specification", nil, h.serveOpenAPI)
 
 	// Listener web application (SPA), served at the site root.
 	mux.Handle("GET /", webapp.Handler())
@@ -69,9 +76,6 @@ func (h *Handler) Routes() http.Handler {
 	// Every authenticated route validates the session server-side, so logout,
 	// suspension and password changes take effect immediately rather than when
 	// the token happens to expire (PRD S3, S54).
-	sv := sessionValidator{h: h}
-
-	authed := auth.MiddlewareWithSessions(h.cfg.JWTSecret, sv)
 	h.route(mux, "GET /me", "user", "profile", "Account summary", authed, h.me)
 	h.route(mux, "GET /home", "user", "home", "Home sections", authed, h.home)
 
@@ -175,11 +179,19 @@ func (h *Handler) Routes() http.Handler {
 	h.route(mux, "POST /me/history", "user", "library", "Record playback", authed, h.recordPlayback)
 
 	h.route(mux, "POST /me/confessions", "user", "library", "Create a personal confession", authed, h.createUserConfession)
+	h.route(mux, "POST /me/confessions/{id}/submit", "user", "moderation", "Offer a personal confession for moderation review", authed, h.submitUserConfession)
+	h.route(mux, "POST /reports", "user", "moderation", "Report published content or a community post", authed, h.createReport)
+	// Blocking and appeals (PHASE 42). A block is a listener's own boundary; an
+	// appeal is a listener's answer to a decision made about them.
+	h.route(mux, "GET /me/blocks", "user", "moderation", "Accounts you have blocked", authed, h.listBlocks)
+	h.route(mux, "POST /me/blocks", "user", "moderation", "Block an account", authed, h.createBlock)
+	h.route(mux, "DELETE /me/blocks/{userId}", "user", "moderation", "Unblock an account", authed, h.deleteBlock)
+	h.route(mux, "GET /me/appeals", "user", "moderation", "Your appeals and their outcomes", authed, h.listAppeals)
+	h.route(mux, "POST /me/appeals", "user", "moderation", "Appeal a dismissed report or a rejected confession", authed, h.createAppeal)
 	h.route(mux, "GET /recommendations", "user", "home", "Personalized recommendations", authed, h.recommendations)
 	h.route(mux, "GET /me/confessions", "user", "library", "List personal confessions", authed, h.listUserConfessions)
 
 	// Admin routes
-	admin := auth.RequireRoleWithSessions(h.cfg.JWTSecret, sv)
 	h.route(mux, "GET /admin/stats", "admin", "admin-ops", "Platform totals", admin, h.adminStats)
 
 	h.route(mux, "POST /admin/categories", "admin", "admin-content", "Create a category", admin, h.adminCreateCategory)
@@ -193,6 +205,8 @@ func (h *Handler) Routes() http.Handler {
 
 	h.route(mux, "GET /admin/moderation/queue", "admin", "admin-content", "Moderation queue (UGC + editorial pending)", admin, h.adminListModerationQueue)
 	h.route(mux, "POST /admin/moderation/user-confessions/{id}/review", "admin", "admin-content", "Review a user confession (approved|rejected)", admin, h.adminReviewUserConfession)
+	h.route(mux, "POST /admin/moderation/reports/{id}/decision", "admin", "admin-content", "Close an open report (resolved|dismissed)", admin, h.adminDecideReport)
+	h.route(mux, "POST /admin/moderation/appeals/{id}/decision", "admin", "admin-content", "Decide an appeal (upheld|overturned)", admin, h.adminDecideAppeal)
 
 	h.route(mux, "POST /admin/voices", "admin", "admin-voice", "Create a voice", admin, h.adminCreateVoice)
 	h.route(mux, "GET /admin/voices", "admin", "admin-voice", "List voices", admin, h.adminListVoices)
@@ -204,6 +218,99 @@ func (h *Handler) Routes() http.Handler {
 	h.route(mux, "GET /admin/users/admins", "admin", "admin-users", "List admin accounts", admin, h.adminListAdmins)
 	h.route(mux, "POST /admin/users/status", "admin", "admin-users", "Suspend or restore an account", admin, h.adminSetUserStatus)
 	h.route(mux, "POST /admin/users/subscription", "admin", "admin-users", "Set a subscription plan", admin, h.adminSetSubscription)
+
+	// Bible platform (first reader/API slice). Public reads are served only by the
+	// normalized BibleProvider boundary; client apps never call a source provider.
+	bibleSearchLimit := perIP(ratelimit.BibleSearch, "bible-search")
+	h.route(mux, "GET /v1/bible/languages", "public", "bible", "Available Bible languages", nil, h.bibleLanguages)
+	h.route(mux, "GET /v1/bible/translations", "public", "bible", "Approved Bible translations with provenance and rights", nil, h.bibleTranslations)
+	h.route(mux, "GET /v1/bible/translations/{id}", "public", "bible", "One translation and its licensing metadata", nil, h.bibleTranslation)
+	h.route(mux, "GET /v1/bible/books", "public", "bible", "Books available in a translation", nil, h.bibleBooks)
+	h.route(mux, "GET /v1/bible/books/{id}", "public", "bible", "Book metadata in a translation", nil, h.bibleBook)
+	h.route(mux, "GET /v1/bible/books/{id}/chapters", "public", "bible", "Chapters available in a translation book", nil, h.bibleBookChapters)
+	h.route(mux, "GET /v1/bible/passage", "public", "bible", "Read a normalized Bible passage", nil, h.biblePassage)
+	h.route(mux, "GET /v1/bible/search", "public", "bible", "Search scripture or resolve a Bible reference", bibleSearchLimit, h.bibleSearch)
+	h.route(mux, "GET /v1/bible/cross-references", "public", "bible", "Cross references for a canonical passage", nil, h.bibleCrossReferences)
+	h.route(mux, "GET /v1/bible/compare", "public", "bible", "Compare a canonical passage across licensed translations", nil, h.bibleCompare)
+	h.route(mux, "GET /v1/bible/verse-of-day", "public", "bible", "Get the reviewed verse of the day", nil, h.bibleVerseOfDay)
+	h.route(mux, "GET /v1/bible/plans", "public", "bible", "List curated Bible reading plans", nil, h.biblePlans)
+	h.route(mux, "GET /v1/bible/plans/{slug}", "public", "bible", "Read a curated Bible reading plan", nil, h.biblePlan)
+	h.route(mux, "GET /v1/bible/audio", "public", "bible-audio", "Get a signed, rights-gated Bible audio URL", nil, h.bibleAudio)
+	h.route(mux, "GET /v1/bible/{translation}/{book}/{chapter}", "public", "bible", "Read a Bible chapter", nil, h.bibleChapter)
+	h.route(mux, "GET /v1/bible/{translation}/{book}/{chapter}/{verse}", "public", "bible", "Read a Bible verse", nil, h.bibleVerse)
+	// Compatibility aliases are kept in parity with the unversioned mobile
+	// client contract; browser /api/v1/* is reverse-proxied to the v1 routes.
+	h.route(mux, "GET /bible/languages", "public", "bible", "Available Bible languages", nil, h.bibleLanguages)
+	h.route(mux, "GET /bible/translations", "public", "bible", "Approved Bible translations with provenance and rights", nil, h.bibleTranslations)
+	h.route(mux, "GET /bible/translations/{id}", "public", "bible", "One translation and its licensing metadata", nil, h.bibleTranslation)
+	h.route(mux, "GET /bible/books", "public", "bible", "Books available in a translation", nil, h.bibleBooks)
+	h.route(mux, "GET /bible/books/{id}", "public", "bible", "Book metadata in a translation", nil, h.bibleBook)
+	h.route(mux, "GET /bible/books/{id}/chapters", "public", "bible", "Chapters available in a translation book", nil, h.bibleBookChapters)
+	h.route(mux, "GET /bible/passage", "public", "bible", "Read a normalized Bible passage", nil, h.biblePassage)
+	h.route(mux, "GET /bible/search", "public", "bible", "Search scripture or resolve a Bible reference", bibleSearchLimit, h.bibleSearch)
+	h.route(mux, "GET /bible/cross-references", "public", "bible", "Cross references for a canonical passage", nil, h.bibleCrossReferences)
+	h.route(mux, "GET /bible/{translation}/{book}/{chapter}", "public", "bible", "Read a Bible chapter", nil, h.bibleChapter)
+	h.route(mux, "GET /bible/{translation}/{book}/{chapter}/{verse}", "public", "bible", "Read a Bible verse", nil, h.bibleVerse)
+
+	// Bible rights, catalog and operations administration. Discovery metadata is
+	// separated from approved application content; every permission decision is audited.
+	h.route(mux, "GET /admin/bible/overview", "admin", "admin-bible", "Bible catalog and operations overview", admin, h.adminBibleOverview)
+	h.route(mux, "GET /admin/bible/health", "admin", "admin-bible", "Bible database and provider health", admin, h.adminBibleHealth)
+	h.route(mux, "GET /admin/bible/catalog", "admin", "admin-bible", "Discover HelloAO translations for review", admin, h.adminBibleCatalog)
+	h.route(mux, "POST /admin/bible/catalog/sync", "admin", "admin-bible", "Synchronize HelloAO catalog metadata without granting rights", admin, h.adminSyncBibleCatalog)
+	h.route(mux, "POST /admin/bible/translations/{id}/rights", "admin", "admin-bible", "Review independent Bible translation rights", admin, h.adminReviewBibleRights)
+	h.route(mux, "GET /admin/bible/metrics", "admin", "admin-bible", "Sanitized Bible operation metrics without private study payloads", admin, h.adminBibleMetrics)
+	h.route(mux, "GET /admin/bible/plans", "admin", "admin-bible", "List Bible plans across editorial statuses", admin, h.adminListBiblePlans)
+	h.route(mux, "GET /admin/bible/plans/{id}", "admin", "admin-bible", "Load a Bible plan and its unpublished day references", admin, h.adminGetBiblePlan)
+	h.route(mux, "POST /admin/bible/plans", "admin", "admin-bible", "Create a draft Bible reading plan", admin, h.adminCreateBiblePlan)
+	h.route(mux, "PATCH /admin/bible/plans/{id}", "admin", "admin-bible", "Review or publish a Bible reading plan", admin, h.adminUpdateBiblePlan)
+	h.route(mux, "PUT /admin/bible/plans/{id}/days/{day}", "admin", "admin-bible", "Edit an unpublished Bible plan day", admin, h.adminAddBiblePlanDay)
+	h.route(mux, "GET /admin/bible/verse-of-day", "admin", "admin-bible", "List reviewed Bible verses of the day", admin, h.adminListBibleVerseOfDay)
+	h.route(mux, "PUT /admin/bible/verse-of-day/{day}", "admin", "admin-bible", "Review a verse-of-day reference", admin, h.adminSetBibleVerseOfDay)
+	h.route(mux, "GET /admin/bible/audio", "admin", "admin-bible", "List Bible audio rights-review assets", admin, h.adminBibleAudioList)
+	h.route(mux, "POST /admin/bible/audio", "admin", "admin-bible", "Register a checksum-verified Bible audio manifest", admin, h.adminRegisterBibleAudio)
+	h.route(mux, "POST /admin/bible/audio/{id}/review", "admin", "admin-bible", "Approve or withdraw rights-cleared Bible audio", admin, h.adminReviewBibleAudio)
+
+	// Private Bible study data is always scoped to the authenticated account.
+	h.route(mux, "GET /v1/me/bible/collections", "user", "bible", "List private Bible collections and canonical references", authed, h.listMyBibleCollections)
+	h.route(mux, "POST /v1/me/bible/collections", "user", "bible", "Create a private Bible collection", authed, h.createMyBibleCollection)
+	h.route(mux, "PATCH /v1/me/bible/collections/{id}", "user", "bible", "Rename or edit a private Bible collection", authed, h.patchMyBibleCollection)
+	h.route(mux, "DELETE /v1/me/bible/collections/{id}", "user", "bible", "Delete a private Bible collection", authed, h.deleteMyBibleCollection)
+	h.route(mux, "POST /v1/me/bible/collections/{id}/items", "user", "bible", "Add a canonical Bible reference to a collection", authed, h.addMyBibleCollectionItem)
+	h.route(mux, "DELETE /v1/me/bible/collections/{id}/items/{itemID}", "user", "bible", "Remove a Bible reference from a collection", authed, h.deleteMyBibleCollectionItem)
+	h.route(mux, "GET /v1/me/bible/bookmarks", "user", "bible", "List private Bible bookmarks", authed, h.listMyBibleBookmarks)
+	h.route(mux, "POST /v1/me/bible/bookmarks", "user", "bible", "Create or update a private Bible bookmark", authed, h.saveMyBibleBookmark)
+	h.route(mux, "DELETE /v1/me/bible/bookmarks/{id}", "user", "bible", "Delete a private Bible bookmark", authed, h.deleteMyBibleBookmark)
+	h.route(mux, "GET /v1/me/bible/highlights", "user", "bible", "List private Bible highlights", authed, h.listMyBibleHighlights)
+	h.route(mux, "POST /v1/me/bible/highlights", "user", "bible", "Create or update a private Bible highlight", authed, h.saveMyBibleHighlight)
+	h.route(mux, "DELETE /v1/me/bible/highlights/{id}", "user", "bible", "Delete a private Bible highlight", authed, h.deleteMyBibleHighlight)
+	h.route(mux, "GET /v1/me/bible/notes", "user", "bible", "List private Bible notes", authed, h.listMyBibleNotes)
+	h.route(mux, "POST /v1/me/bible/notes", "user", "bible", "Create a private Bible note", authed, h.createMyBibleNote)
+	h.route(mux, "PATCH /v1/me/bible/notes/{id}", "user", "bible", "Update a private Bible note with row-version conflict protection", authed, h.patchMyBibleNote)
+	h.route(mux, "DELETE /v1/me/bible/notes/{id}", "user", "bible", "Delete a private Bible note", authed, h.deleteMyBibleNote)
+	h.route(mux, "GET /v1/me/bible/preferences", "user", "bible", "Read private Bible preferences", authed, h.getBiblePreferences)
+	h.route(mux, "PUT /v1/me/bible/preferences", "user", "bible", "Save private Bible preferences", authed, h.putBiblePreferences)
+	h.route(mux, "GET /v1/me/bible/history", "user", "bible", "Read private Bible history", authed, h.getBibleHistory)
+	h.route(mux, "POST /v1/me/bible/history", "user", "bible", "Save private Bible reading position", authed, h.recordBibleHistory)
+	h.route(mux, "GET /v1/me/bible/progress", "user", "bible", "Read private Bible reading progress", authed, h.getBibleProgress)
+	h.route(mux, "POST /v1/me/bible/progress", "user", "bible", "Mark a Bible chapter complete", authed, h.completeBibleChapter)
+	h.route(mux, "POST /v1/me/bible/sync", "user", "bible", "Synchronize private Bible study data", authed, h.syncBibleData)
+	h.route(mux, "GET /v1/me/bible/offline", "user", "bible", "List personal Bible offline licenses", authed, h.listBibleOfflineLicenses)
+	h.route(mux, "POST /v1/me/bible/offline", "user", "bible", "Build and license an offline Bible book package", authed, h.requestOfflineBiblePackage)
+	h.route(mux, "DELETE /v1/me/bible/offline/{id}", "user", "bible", "Revoke a personal offline license", authed, h.revokeBibleOfflineLicense)
+	h.route(mux, "GET /v1/me/bible/plans", "user", "bible", "List personal reading plan enrollments", authed, h.myBiblePlans)
+	h.route(mux, "POST /v1/me/bible/plans/{id}/enroll", "user", "bible", "Enroll in a curated Bible reading plan", authed, h.enrollBiblePlan)
+	h.route(mux, "POST /v1/me/bible/plans/{id}/days/{day}", "user", "bible", "Complete a reading-plan day", authed, h.completeBiblePlanDay)
+	h.route(mux, "GET /me/bible/bookmarks", "user", "bible", "List private Bible bookmarks", authed, h.listMyBibleBookmarks)
+	h.route(mux, "POST /me/bible/bookmarks", "user", "bible", "Create or update a private Bible bookmark", authed, h.saveMyBibleBookmark)
+	h.route(mux, "DELETE /me/bible/bookmarks/{id}", "user", "bible", "Delete a private Bible bookmark", authed, h.deleteMyBibleBookmark)
+	h.route(mux, "GET /me/bible/highlights", "user", "bible", "List private Bible highlights", authed, h.listMyBibleHighlights)
+	h.route(mux, "POST /me/bible/highlights", "user", "bible", "Create or update a private Bible highlight", authed, h.saveMyBibleHighlight)
+	h.route(mux, "DELETE /me/bible/highlights/{id}", "user", "bible", "Delete a private Bible highlight", authed, h.deleteMyBibleHighlight)
+	h.route(mux, "GET /me/bible/notes", "user", "bible", "List private Bible notes", authed, h.listMyBibleNotes)
+	h.route(mux, "POST /me/bible/notes", "user", "bible", "Create a private Bible note", authed, h.createMyBibleNote)
+	h.route(mux, "PATCH /me/bible/notes/{id}", "user", "bible", "Update a private Bible note with row-version conflict protection", authed, h.patchMyBibleNote)
+	h.route(mux, "DELETE /me/bible/notes/{id}", "user", "bible", "Delete a private Bible note", authed, h.deleteMyBibleNote)
 
 	// Operational surfaces. Admin-only: failure counts reveal whether an attack
 	// is landing, which is what an attacker most wants to know (S83).
@@ -224,7 +331,7 @@ func (h *Handler) Routes() http.Handler {
 	// roles may run it.
 	// Immediate erasure is SUPER_ADMIN only: RequireRoleWithSessions admits
 	// super admins everywhere, and naming no other role keeps it to them.
-	mux.Handle("POST /admin/users/{id}/erase", auth.RequireRoleWithSessions(h.cfg.JWTSecret, sv)(http.HandlerFunc(h.adminEraseUser)))
+	h.route(mux, "POST /admin/users/{id}/erase", "admin", "admin-users", "Immediate account erasure (super-admin only)", admin, h.adminEraseUser)
 
 	audioMgr := auth.RequireRoleWithSessions(h.cfg.JWTSecret, sv, auth.RoleAudioProducer, auth.RoleVoiceManager)
 	h.route(mux, "POST /admin/audio/generate", "audio_producer,voice_manager", "admin-audio", "Generate audio; refused 451 when voice rights disallow it", audioMgr, h.adminGenerateAudio)
@@ -256,6 +363,7 @@ func (h *Handler) Routes() http.Handler {
 	})
 	h.route(mux, "POST /sessions/{id}/pause", "user", "sessions", "Pause a session", authed, h.pauseSession)
 	h.route(mux, "POST /sessions/{id}/resume", "user", "sessions", "Resume a paused session", authed, h.resumeSession)
+	h.route(mux, "POST /sessions/{id}/interrupt", "user", "sessions", "Interrupt a session", authed, h.interruptSession)
 	h.route(mux, "POST /sessions/{id}/complete", "user", "sessions", "Complete a session", authed, func(w http.ResponseWriter, r *http.Request) {
 		idempotent(http.HandlerFunc(h.completeSession)).ServeHTTP(w, r)
 	})
@@ -272,15 +380,33 @@ func (h *Handler) Routes() http.Handler {
 	h.route(mux, "GET /subscription", "user", "subscription", "Current plan and entitlements", authed, h.getSubscription)
 	h.route(mux, "GET /entitlements", "user", "subscription", "Entitlement flags", authed, h.getEntitlements)
 	h.route(mux, "GET /subscriptions/trial", "user", "subscription", "Trial journey (Day1..Day7)", authed, h.getTrial)
+	h.route(mux, "POST /subscriptions/trial", "user", "subscription", "Start the one-time Premium trial", authed, func(w http.ResponseWriter, r *http.Request) {
+		idempotent(http.HandlerFunc(h.startTrial)).ServeHTTP(w, r)
+	})
+	h.route(mux, "GET /subscriptions/trial/status", "user", "subscription", "Current trial lifecycle state", authed, h.getTrialStatus)
+	h.route(mux, "GET /subscriptions/trial/engagement", "user", "subscription", "Measured trial journey: completed days and funnel", authed, h.getTrialEngagement)
+	h.route(mux, "POST /subscriptions/trial/convert", "user", "subscription", "Finish the trial before store verification", authed, func(w http.ResponseWriter, r *http.Request) {
+		idempotent(http.HandlerFunc(h.convertTrial)).ServeHTTP(w, r)
+	})
 	h.route(mux, "POST /subscriptions/verify", "user", "subscription", "Verify store receipt (server-side, billing.Verifier)", authed, func(w http.ResponseWriter, r *http.Request) {
 		idempotent(http.HandlerFunc(h.verifySubscriptionV2)).ServeHTTP(w, r)
 	})
-	h.route(mux, "POST /community/posts", "user", "community", "Create community post (moderated, never auto-publish)", nil, h.createCommunityPost)
+	// Store notification webhooks (IC-003, PR B). Public by construction:
+	// the caller is a store, not a user, and the authentication is the
+	// signature on the payload - Apple's certificate chain, and Google's OIDC
+	// token plus a signed API call. Neither endpoint reads anything from the
+	// request that a client could assert.
+	h.route(mux, "POST /subscriptions/webhooks/apple", "public", "subscription",
+		"App Store Server Notifications V2 (JWS verified against the pinned Apple root)", nil, h.appleStoreWebhook)
+	h.route(mux, "POST /subscriptions/webhooks/google", "public", "subscription",
+		"Play real-time developer notification via Pub/Sub push (OIDC verified)", nil, h.googleStoreWebhook)
+	h.route(mux, "POST /community/posts", "user", "community", "Create community post (moderated, never auto-publish)", authed, h.createCommunityPost)
 	h.route(mux, "GET /community/feed", "public", "community", "Approved community feed", nil, h.feedCommunity)
-	h.route(mux, "POST /community/posts/{id}/react", "user", "community", "React amen/heart/pray", nil, h.reactCommunity)
-	h.route(mux, "POST /ai/parse", "user", "ai", "AI NLU → categories/duration (never invents theology)", nil, h.aiParse)
-	h.route(mux, "POST /analytics/batch", "user", "analytics", "Batch analytics events (no PII)", nil, h.analyticsBatch)
-	h.route(mux, "GET /search", "public", "content", "Search confessions, categories, voices, Scripture", nil, h.searchAll)
+	h.route(mux, "GET /community/confessions", "public", "community", "Published user confessions (public UGC reader, anonymous)", nil, h.feedUserConfessions)
+	h.route(mux, "POST /community/posts/{id}/react", "user", "community", "React amen/heart/pray", authed, h.reactCommunity)
+	h.route(mux, "POST /ai/parse", "user", "ai", "AI NLU → categories/duration (never invents theology)", authed, h.aiParse)
+	h.route(mux, "POST /analytics/batch", "user", "analytics", "Batch analytics events (no PII)", authed, h.analyticsBatch)
+	h.route(mux, "GET /search", "public", "content", "Search confessions, categories, voices, Scripture", registerLimit, h.searchAll)
 	h.route(mux, "GET /admin/plans", "admin", "admin-content", "List pricing plans (admin-editable)", admin, h.adminListPlans)
 	h.route(mux, "PUT /admin/plans", "admin", "admin-content", "Create or update a pricing plan", admin, h.adminUpsertPlan)
 	// Versioned aliases — §46, §110-§112.
@@ -305,7 +431,8 @@ func (h *Handler) Routes() http.Handler {
 	h.route(mux, "GET /v1/healthz", "public", "ops", "Liveness", nil, h.livez)
 	h.route(mux, "GET /v1/health/live", "public", "ops", "Liveness", nil, h.livez)
 	h.route(mux, "GET /v1/health/ready", "public", "ops", "Readiness with subsystem detail", nil, h.readyz)
-	mux.HandleFunc("GET /v1/openapi.json", h.serveOpenAPI)
+	h.route(mux, "GET /v1/metrics", "admin", "admin-ops", "Prometheus metrics", admin, h.promMetrics)
+	h.route(mux, "GET /v1/openapi.json", "public", "ops", "OpenAPI JSON specification", nil, h.serveOpenAPI)
 	// Authenticated user (v1) — all with server-side session validation
 	h.route(mux, "GET /v1/me", "user", "profile", "Account summary", authed, h.me)
 	h.route(mux, "GET /v1/me/bootstrap", "user", "profile", "Everything needed to start the app", authed, h.bootstrap)
@@ -369,6 +496,7 @@ func (h *Handler) Routes() http.Handler {
 	})
 	h.route(mux, "POST /v1/sessions/{id}/pause", "user", "sessions", "Pause a session", authed, h.pauseSession)
 	h.route(mux, "POST /v1/sessions/{id}/resume", "user", "sessions", "Resume a paused session", authed, h.resumeSession)
+	h.route(mux, "POST /v1/sessions/{id}/interrupt", "user", "sessions", "Interrupt a session", authed, h.interruptSession)
 	h.route(mux, "POST /v1/sessions/{id}/complete", "user", "sessions", "Complete a session", authed, func(w http.ResponseWriter, r *http.Request) {
 		idempotent(http.HandlerFunc(h.completeSession)).ServeHTTP(w, r)
 	})
@@ -400,6 +528,13 @@ func (h *Handler) Routes() http.Handler {
 	h.route(mux, "GET /v1/me/history", "user", "library", "Listening history", authed, h.history)
 	h.route(mux, "POST /v1/me/history", "user", "library", "Record playback", authed, h.recordPlayback)
 	h.route(mux, "POST /v1/me/confessions", "user", "library", "Create a personal confession", authed, h.createUserConfession)
+	h.route(mux, "POST /v1/me/confessions/{id}/submit", "user", "moderation", "Offer a personal confession for moderation review", authed, h.submitUserConfession)
+	h.route(mux, "POST /v1/reports", "user", "moderation", "Report published content or a community post", authed, h.createReport)
+	h.route(mux, "GET /v1/me/blocks", "user", "moderation", "Accounts you have blocked", authed, h.listBlocks)
+	h.route(mux, "POST /v1/me/blocks", "user", "moderation", "Block an account", authed, h.createBlock)
+	h.route(mux, "DELETE /v1/me/blocks/{userId}", "user", "moderation", "Unblock an account", authed, h.deleteBlock)
+	h.route(mux, "GET /v1/me/appeals", "user", "moderation", "Your appeals and their outcomes", authed, h.listAppeals)
+	h.route(mux, "POST /v1/me/appeals", "user", "moderation", "Appeal a dismissed report or a rejected confession", authed, h.createAppeal)
 	h.route(mux, "GET /v1/me/confessions", "user", "library", "List personal confessions", authed, h.listUserConfessions)
 	h.route(mux, "GET /v1/recommendations", "user", "home", "Personalized recommendations (deterministic v1)", authed, h.recommendations)
 	// Subscription & entitlements (v1)
@@ -407,18 +542,32 @@ func (h *Handler) Routes() http.Handler {
 	h.route(mux, "GET /v1/entitlements", "user", "subscription", "Entitlement flags", authed, h.getEntitlements)
 	h.route(mux, "GET /v1/subscriptions/plans", "public", "subscription", "List plans with regional pricing (NGN/USD/GBP/EUR/PHP)", nil, h.listPlans)
 	h.route(mux, "GET /v1/subscriptions/trial", "user", "subscription", "Trial journey (Day1..Day7)", authed, h.getTrial)
+	h.route(mux, "POST /v1/subscriptions/trial", "user", "subscription", "Start the one-time Premium trial", authed, func(w http.ResponseWriter, r *http.Request) {
+		idempotent(http.HandlerFunc(h.startTrial)).ServeHTTP(w, r)
+	})
+	h.route(mux, "GET /v1/subscriptions/trial/status", "user", "subscription", "Current trial lifecycle state", authed, h.getTrialStatus)
+	h.route(mux, "GET /v1/subscriptions/trial/engagement", "user", "subscription", "Measured trial journey: completed days and funnel", authed, h.getTrialEngagement)
+	h.route(mux, "POST /v1/subscriptions/trial/convert", "user", "subscription", "Finish the trial before store verification", authed, func(w http.ResponseWriter, r *http.Request) {
+		idempotent(http.HandlerFunc(h.convertTrial)).ServeHTTP(w, r)
+	})
 	h.route(mux, "POST /v1/subscriptions/verify", "user", "subscription", "Verify store receipt (server-side, billing.Verifier)", authed, func(w http.ResponseWriter, r *http.Request) {
 		idempotent(http.HandlerFunc(h.verifySubscriptionV2)).ServeHTTP(w, r)
 	})
 	// Search (§41)
-	h.route(mux, "POST /v1/community/posts", "user", "community", "Create community post (moderated, never auto-publish)", nil, h.createCommunityPost)
+	h.route(mux, "POST /v1/subscriptions/webhooks/apple", "public", "subscription",
+		"App Store Server Notifications V2 (JWS verified against the pinned Apple root)", nil, h.appleStoreWebhook)
+	h.route(mux, "POST /v1/subscriptions/webhooks/google", "public", "subscription",
+		"Play real-time developer notification via Pub/Sub push (OIDC verified)", nil, h.googleStoreWebhook)
+	h.route(mux, "POST /v1/community/posts", "user", "community", "Create community post (moderated, never auto-publish)", authed, h.createCommunityPost)
 	h.route(mux, "GET /v1/community/feed", "public", "community", "Approved community feed", nil, h.feedCommunity)
-	h.route(mux, "POST /v1/community/posts/{id}/react", "user", "community", "React amen/heart/pray", nil, h.reactCommunity)
-	h.route(mux, "POST /v1/ai/parse", "user", "ai", "AI NLU → categories/duration (never invents theology)", nil, h.aiParse)
-	h.route(mux, "POST /v1/analytics/batch", "user", "analytics", "Batch analytics events (no PII)", nil, h.analyticsBatch)
-	h.route(mux, "GET /v1/search", "public", "content", "Search confessions, categories, voices, Scripture", nil, h.searchAll)
+	h.route(mux, "GET /v1/community/confessions", "public", "community", "Published user confessions (public UGC reader, anonymous)", nil, h.feedUserConfessions)
+	h.route(mux, "POST /v1/community/posts/{id}/react", "user", "community", "React amen/heart/pray", authed, h.reactCommunity)
+	h.route(mux, "POST /v1/ai/parse", "user", "ai", "AI NLU → categories/duration (never invents theology)", authed, h.aiParse)
+	h.route(mux, "POST /v1/analytics/batch", "user", "analytics", "Batch analytics events (no PII)", authed, h.analyticsBatch)
+	h.route(mux, "GET /v1/search", "public", "content", "Search confessions, categories, voices, Scripture", registerLimit, h.searchAll)
 	// Admin (v1)
 	h.route(mux, "GET /v1/admin/stats", "admin", "admin-ops", "Platform totals", admin, h.adminStats)
+	h.route(mux, "POST /v1/admin/users/{id}/erase", "admin", "admin-users", "Immediate account erasure (super-admin only)", admin, h.adminEraseUser)
 	h.route(mux, "POST /v1/admin/categories", "admin", "admin-content", "Create a category", admin, h.adminCreateCategory)
 	h.route(mux, "GET /v1/admin/categories", "admin", "admin-content", "List all categories including drafts", admin, h.adminListCategories)
 	h.route(mux, "POST /v1/admin/confessions", "admin", "admin-content", "Create a confession", admin, h.adminCreateConfession)
@@ -428,6 +577,8 @@ func (h *Handler) Routes() http.Handler {
 	h.route(mux, "POST /v1/admin/confessions/{id}/qa", "admin", "admin-content", "Run Audio QA checklist (§75) before APPROVED", admin, h.adminQAConfession)
 	h.route(mux, "GET /v1/admin/moderation/queue", "admin", "admin-content", "Moderation queue (UGC + editorial pending)", admin, h.adminListModerationQueue)
 	h.route(mux, "POST /v1/admin/moderation/user-confessions/{id}/review", "admin", "admin-content", "Review a user confession (approved|rejected)", admin, h.adminReviewUserConfession)
+	h.route(mux, "POST /v1/admin/moderation/reports/{id}/decision", "admin", "admin-content", "Close an open report (resolved|dismissed)", admin, h.adminDecideReport)
+	h.route(mux, "POST /v1/admin/moderation/appeals/{id}/decision", "admin", "admin-content", "Decide an appeal (upheld|overturned)", admin, h.adminDecideAppeal)
 	h.route(mux, "POST /v1/admin/voices", "admin", "admin-voice", "Create a voice", admin, h.adminCreateVoice)
 	h.route(mux, "GET /v1/admin/voices", "admin", "admin-voice", "List voices", admin, h.adminListVoices)
 	h.route(mux, "POST /v1/admin/audio", "admin", "admin-audio", "Attach an audio asset to a confession", admin, h.adminUpsertAudio)
@@ -454,5 +605,5 @@ func (h *Handler) Routes() http.Handler {
 	h.route(mux, "POST /v1/admin/audio/{id}/publish", "audio_producer,voice_manager", "admin-audio", "Surface an approved render in discovery", audioMgr, h.adminPublishAudio)
 	h.route(mux, "POST /v1/admin/audio/{id}/archive", "audio_producer,voice_manager", "admin-audio", "Withdraw a render, including from existing sessions", audioMgr, h.adminArchiveAudio)
 
-	return RequestIDMiddleware(tracing.Middleware(logRequests(mux)))
+	return RequestIDMiddleware(tracing.Middleware(SecurityHeadersMiddleware(logRequests(mux), h.isProd)))
 }

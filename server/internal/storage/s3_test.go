@@ -264,7 +264,7 @@ func TestGetMetadataNeverReturnsNil(t *testing.T) {
 func TestContentTypeMapping(t *testing.T) {
 	cases := map[string]string{
 		"a/v1.m4a": "audio/mp4", "a/v1.mp3": "audio/mpeg", "a/v1.wav": "audio/wav",
-		"a/v1.flac": "audio/flac", "a/v1.ogg": "audio/ogg", "a/v1.xyz": "application/octet-stream",
+		"a/v1.flac": "audio/flac", "a/v1.ogg": "audio/ogg", "a/v1.unknowncustombin": "application/octet-stream",
 	}
 	for key, want := range cases {
 		if got := contentTypeForKey(key); got != want {

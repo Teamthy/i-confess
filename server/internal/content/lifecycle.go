@@ -24,17 +24,23 @@
 // compares it to All(). If the two drift, a test fails rather than a 500.
 package content
 
+import (
+	"errors"
+	"fmt"
+)
+
+// ErrInvalidTransition marks a movement that is not in the forward-only graph.
+var ErrInvalidTransition = errors.New("invalid content transition")
+
 // Status is one position in the editorial lifecycle.
 type Status string
 
 // The editorial lifecycle, in the order content normally moves through it.
 //
-// Order is informational — it documents intent and drives nothing. This phase
-// deliberately does not enforce a transition graph: adding one without a
-// workflow engine behind it would mean rejecting legitimate corrections
-// (reopening a published confession to fix a typo) and the rules would be
-// argued about in a code review rather than derived from how editors actually
-// work. The vocabulary is enforced; the path through it is not yet.
+// The order is not an ordinal shortcut. The explicit edge table below is the
+// authority: content may move only forward, and emergency withdrawal has its
+// own published→archived edge rather than silently treating archived as a
+// number after published.
 const (
 	// StatusDraft is written but not yet reviewed.
 	StatusDraft Status = "draft"
@@ -89,8 +95,56 @@ var lifecycle = []Status{
 	StatusAudioQA,
 	StatusApproved,
 	StatusPublished,
-	StatusArchived,
 	StatusDeprecated,
+	StatusArchived,
+}
+
+// Edge is one permitted forward movement in the editorial lifecycle.
+type Edge struct {
+	From Status
+	To   Status
+}
+
+// forwardEdges is the complete transition graph. Keep this as a table rather
+// than deriving it from lifecycle indexes: published content may be deprecated
+// or urgently archived, and terminal archived content has no exit.
+var forwardEdges = []Edge{
+	{From: StatusDraft, To: StatusContentReview},
+	{From: StatusContentReview, To: StatusTheologicalReview},
+	{From: StatusTheologicalReview, To: StatusAudioProduction},
+	{From: StatusAudioProduction, To: StatusAudioQA},
+	{From: StatusAudioQA, To: StatusApproved},
+	{From: StatusApproved, To: StatusPublished},
+	{From: StatusPublished, To: StatusDeprecated},
+	{From: StatusPublished, To: StatusArchived}, // emergency withdrawal
+	{From: StatusDeprecated, To: StatusArchived},
+}
+
+// Edges returns a defensive copy of the forward-only graph.
+func Edges() []Edge {
+	out := make([]Edge, len(forwardEdges))
+	copy(out, forwardEdges)
+	return out
+}
+
+// CanTransition reports whether the exact directed edge is permitted.
+func CanTransition(from, to string) bool {
+	for _, edge := range forwardEdges {
+		if string(edge.From) == from && string(edge.To) == to {
+			return true
+		}
+	}
+	return false
+}
+
+// Transition validates one content movement. A no-op is deliberately not an
+// edge; handlers treat a repeated PATCH as an unchanged request before calling
+// this function.
+func Transition(from, to string) error {
+	if !CanTransition(from, to) {
+		return fmt.Errorf("%w: %s -> %s", ErrInvalidTransition, from, to)
+	}
+	return nil
 }
 
 // All returns every status the lifecycle contains, in order.

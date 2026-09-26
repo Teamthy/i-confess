@@ -1,21 +1,27 @@
 {
   "$description": "I CONFESS mobile information architecture. PHASE 06. Every screen names the endpoints it depends on, and design/test_ia.py verifies each one exists in design/routes.json - which is exported from the running handler, not transcribed. A screen that points at an endpoint the backend does not have is a spinner in production.",
-
   "platform": "mobile",
-
   "tabs": {
     "$description": "Section 12: exactly five, in this order. Sourced from the navigation.bottom token rather than restated, so the two cannot disagree.",
     "source": "{navigation.bottom}",
-    "order": ["home", "explore", "confess", "activity", "profile"]
+    "order": [
+      "home",
+      "explore",
+      "confess",
+      "activity",
+      "profile"
+    ]
   },
-
   "screens": [
     {
       "id": "onboarding",
       "title": "Welcome",
       "depth": 0,
       "parents": [],
-      "endpoints": ["POST /auth/consent", "PUT /me/interests"],
+      "endpoints": [
+        "POST /auth/consent",
+        "PUT /me/interests"
+      ],
       "notes": "Shown once. Consent before tracking, interests before recommendations - a home feed built from nothing is a list of everything, which is the same as a list of nothing."
     },
     {
@@ -23,49 +29,86 @@
       "title": "Sign in",
       "depth": 0,
       "parents": [],
-      "endpoints": ["POST /auth/login", "POST /auth/social/{provider}", "POST /auth/mfa/begin", "POST /auth/mfa/confirm"],
+      "endpoints": [
+        "POST /auth/login",
+        "POST /auth/social/{provider}",
+        "POST /auth/mfa/begin",
+        "POST /auth/mfa/confirm"
+      ],
       "notes": "Root. Reachable from profile when signed out, and from any premium action when the session has expired."
     },
     {
       "id": "auth/sign-up",
       "title": "Create account",
       "depth": 1,
-      "parents": ["auth/sign-in"],
-      "endpoints": ["POST /auth/register", "POST /auth/verify-email", "POST /auth/resend-verification"],
+      "parents": [
+        "auth/sign-in"
+      ],
+      "endpoints": [
+        "POST /auth/register",
+        "POST /auth/verify-email",
+        "POST /auth/resend-verification"
+      ],
       "notes": ""
     },
     {
       "id": "auth/reset",
       "title": "Reset password",
       "depth": 1,
-      "parents": ["auth/sign-in"],
-      "endpoints": ["POST /auth/request-password-reset", "POST /auth/reset-password"],
+      "parents": [
+        "auth/sign-in"
+      ],
+      "endpoints": [
+        "POST /auth/request-password-reset",
+        "POST /auth/reset-password"
+      ],
       "notes": ""
     },
     {
       "id": "auth/security",
       "title": "Security",
       "depth": 2,
-      "parents": ["settings"],
-      "endpoints": ["GET /auth/sessions", "DELETE /auth/sessions/{id}", "POST /auth/logout-all", "POST /auth/change-password", "POST /auth/security-events", "GET /auth/identities", "POST /auth/identities/{provider}", "DELETE /auth/identities/{provider}"],
+      "parents": [
+        "settings"
+      ],
+      "endpoints": [
+        "GET /auth/sessions",
+        "DELETE /auth/sessions/{id}",
+        "POST /auth/logout-all",
+        "POST /auth/change-password",
+        "POST /auth/security-events",
+        "GET /auth/identities",
+        "POST /auth/identities/{provider}",
+        "DELETE /auth/identities/{provider}"
+      ],
       "notes": "Active sessions with revoke. Someone who suspects their account was used needs to see where it was used from."
     },
     {
       "id": "auth/mfa",
       "title": "Two-factor authentication",
       "depth": 3,
-      "parents": ["auth/security"],
-      "endpoints": ["GET /auth/mfa", "POST /auth/mfa/begin", "POST /auth/mfa/confirm", "POST /auth/mfa/disable"],
+      "parents": [
+        "auth/security"
+      ],
+      "endpoints": [
+        "GET /auth/mfa",
+        "POST /auth/mfa/begin",
+        "POST /auth/mfa/confirm",
+        "POST /auth/mfa/disable"
+      ],
       "notes": ""
     },
-
     {
       "id": "home",
       "title": "Home",
       "tab": "home",
       "depth": 0,
       "parents": [],
-      "endpoints": ["GET /home", "GET /recommendations", "GET /me/bootstrap"],
+      "endpoints": [
+        "GET /home",
+        "GET /recommendations",
+        "GET /me/bootstrap"
+      ],
       "notes": "Continue where you left off, then today's plan, then recommendations. A session app's home is a resume button, not a feed."
     },
     {
@@ -74,90 +117,220 @@
       "tab": "explore",
       "depth": 0,
       "parents": [],
-      "endpoints": ["GET /categories", "GET /collections", "GET /voices"],
+      "endpoints": [
+        "GET /categories",
+        "GET /collections",
+        "GET /voices"
+      ],
       "notes": "The 39 categories, ordered by the server's sort_order. Never hardcoded in the client - PHASE 00."
     },
     {
       "id": "explore/category",
       "title": "Category",
       "depth": 1,
-      "parents": ["explore", "home", "search"],
-      "endpoints": ["GET /categories/{id}/confessions"],
+      "parents": [
+        "explore",
+        "home",
+        "search"
+      ],
+      "endpoints": [
+        "GET /categories/{id}/confessions"
+      ],
       "notes": ""
     },
     {
       "id": "explore/collection",
       "title": "Collection",
       "depth": 1,
-      "parents": ["explore", "library"],
-      "endpoints": ["GET /collections", "GET /categories/{id}/confessions"],
+      "parents": [
+        "explore",
+        "library"
+      ],
+      "endpoints": [
+        "GET /collections",
+        "GET /categories/{id}/confessions"
+      ],
       "notes": ""
     },
     {
       "id": "search",
       "title": "Search",
       "depth": 1,
-      "parents": ["explore", "home"],
-      "endpoints": ["GET /search"],
+      "parents": [
+        "explore",
+        "home"
+      ],
+      "endpoints": [
+        "GET /search"
+      ],
       "notes": ""
     },
-
+    {
+      "id": "bible-reader",
+      "title": "Bible reader",
+      "depth": 1,
+      "parents": [
+        "home",
+        "explore"
+      ],
+      "endpoints": [
+        "GET /bible/languages",
+        "GET /bible/translations",
+        "GET /bible/translations/{id}",
+        "GET /bible/books",
+        "GET /bible/books/{id}",
+        "GET /bible/books/{id}/chapters",
+        "GET /bible/passage",
+        "GET /bible/search",
+        "GET /bible/cross-references",
+        "GET /bible/{translation}/{book}/{chapter}",
+        "GET /bible/{translation}/{book}/{chapter}/{verse}",
+        "GET /me/bible/bookmarks",
+        "POST /me/bible/bookmarks",
+        "DELETE /me/bible/bookmarks/{id}",
+        "GET /me/bible/highlights",
+        "POST /me/bible/highlights",
+        "DELETE /me/bible/highlights/{id}",
+        "GET /me/bible/notes",
+        "POST /me/bible/notes",
+        "PATCH /me/bible/notes/{id}",
+        "DELETE /me/bible/notes/{id}",
+        "GET /v1/bible/compare",
+        "GET /v1/bible/verse-of-day",
+        "GET /v1/bible/plans",
+        "GET /v1/bible/plans/{slug}",
+        "GET /v1/bible/audio",
+        "GET /v1/me/bible/preferences",
+        "PUT /v1/me/bible/preferences",
+        "GET /v1/me/bible/history",
+        "POST /v1/me/bible/history",
+        "GET /v1/me/bible/progress",
+        "POST /v1/me/bible/progress",
+        "POST /v1/me/bible/sync",
+        "GET /v1/me/bible/offline",
+        "POST /v1/me/bible/offline",
+        "DELETE /v1/me/bible/offline/{id}",
+        "GET /v1/me/bible/plans",
+        "POST /v1/me/bible/plans/{id}/enroll",
+        "POST /v1/me/bible/plans/{id}/days/{day}",
+        "GET /v1/me/bible/collections",
+        "POST /v1/me/bible/collections",
+        "PATCH /v1/me/bible/collections/{id}",
+        "DELETE /v1/me/bible/collections/{id}",
+        "POST /v1/me/bible/collections/{id}/items",
+        "DELETE /v1/me/bible/collections/{id}/items/{itemID}"
+      ],
+      "notes": "Scripture text remains API-provided and immutable. Personal notes, bookmarks, history and highlights are private; translation exposure and copying remain rights-gated. RTL, accessibility, offline packages, curated plans, comparison and verse-of-day use only reviewed API data."
+    },
     {
       "id": "confess",
       "title": "Confess",
       "tab": "confess",
       "depth": 0,
       "parents": [],
-      "endpoints": ["GET /categories", "POST /sessions/preview"],
+      "endpoints": [
+        "GET /categories",
+        "POST /sessions/preview"
+      ],
       "notes": "The builder's first step: what to speak over your life. Preview before committing so the user sees the plan the engine chose, not just the duration they asked for."
     },
     {
       "id": "confess/describe",
       "title": "Describe your session",
       "depth": 1,
-      "parents": ["confess", "home"],
-      "endpoints": ["POST /ai/parse", "POST /sessions/preview"],
+      "parents": [
+        "confess",
+        "home"
+      ],
+      "endpoints": [
+        "POST /ai/parse",
+        "POST /sessions/preview"
+      ],
       "notes": "Natural language to session spec: \"45 minutes on fear\" becomes a category, a duration and a strategy. The parsed result is always shown for confirmation before anything is created - the user is responsible for what they speak over their life, so the app never guesses silently."
     },
     {
       "id": "confess/confession",
       "title": "Confession",
       "depth": 1,
-      "parents": ["confess", "explore/category", "explore/collection", "search", "library/favorites"],
-      "endpoints": ["GET /confessions/{id}", "POST /me/favorites", "POST /me/confessions"],
-      "notes": ""
+      "parents": [
+        "confess",
+        "explore/category",
+        "explore/collection",
+        "search",
+        "library/favorites",
+        "library/collection"
+      ],
+      "endpoints": [
+        "GET /confessions/{id}",
+        "POST /me/favorites",
+        "POST /me/confessions",
+        "POST /me/confessions/{id}/submit",
+        "POST /reports"
+      ],
+      "notes": "Own drafts submit for publication from here; viewers can report a confession (PHASE 31)."
     },
     {
       "id": "confess/duration",
       "title": "How long?",
       "depth": 1,
-      "parents": ["confess", "confess/confession"],
-      "endpoints": ["POST /sessions/preview"],
+      "parents": [
+        "confess",
+        "confess/confession"
+      ],
+      "endpoints": [
+        "POST /sessions/preview"
+      ],
       "notes": "10/15/30/45/60/90/120/180 plus custom. The strategy selector lives here, defaulting to balanced - the user should be able to see why a 45 minute session came back as 42."
     },
     {
       "id": "confess/voice",
       "title": "Which voice?",
       "depth": 2,
-      "parents": ["confess/duration"],
-      "endpoints": ["GET /voices"],
+      "parents": [
+        "confess/duration"
+      ],
+      "endpoints": [
+        "GET /voices"
+      ],
       "notes": "Rights are checked server-side before generation. A voice that cannot be licensed must not appear as selectable - PHASE 00 section 5."
     },
     {
       "id": "confess/create",
       "title": "Review",
       "depth": 3,
-      "parents": ["confess/voice"],
-      "endpoints": ["POST /sessions", "POST /templates"],
+      "parents": [
+        "confess/voice"
+      ],
+      "endpoints": [
+        "POST /sessions",
+        "POST /templates"
+      ],
       "notes": "The only place a session is created. Save as template offered here rather than buried in the player."
     },
-
     {
       "id": "player",
       "title": "Session",
       "depth": 1,
-      "parents": ["confess/create", "home", "activity", "activity/session", "template/detail", "activity/schedule"],
-      "endpoints": ["GET /sessions/{id}", "GET /sessions/{id}/queue", "POST /sessions/{id}/start", "POST /sessions/{id}/pause", "POST /sessions/{id}/resume", "POST /sessions/{id}/progress", "POST /sessions/{id}/skip", "POST /sessions/{id}/complete", "POST /analytics/batch"],
+      "parents": [
+        "confess/create",
+        "home",
+        "activity",
+        "activity/session",
+        "template/detail",
+        "activity/schedule"
+      ],
+      "endpoints": [
+        "GET /sessions/{id}",
+        "GET /sessions/{id}/queue",
+        "POST /sessions/{id}/start",
+        "POST /sessions/{id}/pause",
+        "POST /sessions/{id}/resume",
+        "POST /sessions/{id}/interrupt",
+        "POST /sessions/{id}/progress",
+        "POST /sessions/{id}/skip",
+        "POST /sessions/{id}/complete",
+        "POST /analytics/batch"
+      ],
       "notes": "Full screen, above the tab bar at z-index player. The queue is a snapshot and must not change under the user mid-session - G-1. Progress syncs so a kill does not lose the session."
     },
     {
@@ -166,64 +339,139 @@
       "tab": "activity",
       "depth": 0,
       "parents": [],
-      "endpoints": ["GET /sessions", "GET /schedules", "GET /me/history"],
+      "endpoints": [
+        "GET /sessions",
+        "GET /schedules",
+        "GET /me/history"
+      ],
       "notes": "History and streak. Scheduled sessions surface here rather than in a separate tab."
     },
     {
       "id": "activity/session",
       "title": "Session detail",
       "depth": 1,
-      "parents": ["activity", "home"],
-      "endpoints": ["GET /sessions/{id}", "GET /sessions/{id}/queue", "PATCH /sessions/{id}"],
+      "parents": [
+        "activity",
+        "home"
+      ],
+      "endpoints": [
+        "GET /sessions/{id}",
+        "GET /sessions/{id}/queue",
+        "PATCH /sessions/{id}",
+        "DELETE /sessions/{id}"
+      ],
       "notes": ""
     },
     {
       "id": "activity/schedule",
       "title": "New schedule",
       "depth": 1,
-      "parents": ["activity", "player"],
-      "endpoints": ["POST /schedules", "GET /schedules"],
+      "parents": [
+        "activity",
+        "player"
+      ],
+      "endpoints": [
+        "POST /schedules",
+        "GET /schedules"
+      ],
       "notes": "Scheduled sessions are a core loop requirement, not a settings afterthought."
     },
     {
       "id": "activity/schedule-edit",
       "title": "Edit schedule",
       "depth": 2,
-      "parents": ["activity"],
-      "endpoints": ["PATCH /schedules/{id}", "DELETE /schedules/{id}", "POST /schedules/{id}/start"],
+      "parents": [
+        "activity"
+      ],
+      "endpoints": [
+        "PATCH /schedules/{id}",
+        "DELETE /schedules/{id}",
+        "POST /schedules/{id}/start"
+      ],
       "notes": ""
     },
-
     {
       "id": "library",
       "title": "Library",
       "depth": 1,
-      "parents": ["profile", "explore"],
-      "endpoints": ["GET /me/confessions", "GET /me/favorites", "GET /me/collections", "GET /me/collections/{id}", "POST /me/collections", "PATCH /me/collections/{id}", "DELETE /me/collections/{id}", "POST /me/collections/{id}/items", "DELETE /me/collections/{id}/items/{confessionId}", "PATCH /me/collections/{id}/reorder", "DELETE /me/favorites"],
-      "notes": ""
+      "parents": [
+        "profile",
+        "explore"
+      ],
+      "endpoints": [
+        "GET /me/confessions",
+        "GET /me/favorites",
+        "GET /me/collections",
+        "GET /me/collections/{id}",
+        "POST /me/collections",
+        "PATCH /me/collections/{id}",
+        "DELETE /me/collections/{id}",
+        "POST /me/collections/{id}/items",
+        "DELETE /me/collections/{id}/items/{confessionId}",
+        "PATCH /me/collections/{id}/reorder",
+        "DELETE /me/favorites",
+        "POST /me/confessions/{id}/submit",
+        "GET /me/appeals",
+        "POST /me/appeals"
+      ],
+      "notes": "Three tabs over one question - what is mine. Collections, favourites and the listener's own writing; the Mine tab offers a draft for review, which is why submit is listed here as well as on the confession screen. Appeals are here for the same reason: a rejection lands on the listener's own writing, so the answer to it belongs next to the writing rather than behind a support form."
     },
     {
       "id": "library/favorites",
       "title": "Favourites",
       "depth": 2,
-      "parents": ["library"],
-      "endpoints": ["GET /me/favorites", "DELETE /me/favorites"],
-      "notes": ""
+      "parents": [
+        "library"
+      ],
+      "endpoints": [
+        "GET /me/favorites",
+        "DELETE /me/favorites"
+      ],
+      "notes": "Polymorphic: confessions, categories, voices and sessions share one table, so a row carries an entity type and the server resolves its title on read. Unfavouriting passes that type through - assuming 'confession' would make a favourited category impossible to remove."
+    },
+    {
+      "id": "library/collection",
+      "title": "Collection",
+      "depth": 2,
+      "parents": [
+        "library"
+      ],
+      "endpoints": [
+        "GET /me/collections/{id}",
+        "PATCH /me/collections/{id}",
+        "DELETE /me/collections/{id}",
+        "DELETE /me/collections/{id}/items/{confessionId}"
+      ],
+      "notes": "One of the listener's own collections and its items. Distinct from explore/collection, which is editorial and read-only; this one can be renamed, emptied and deleted. The route shipped in PHASE 27 but went undescribed here until the endpoints were audited."
     },
     {
       "id": "templates",
       "title": "Templates",
       "depth": 1,
-      "parents": ["profile", "confess"],
-      "endpoints": ["GET /templates", "POST /templates"],
+      "parents": [
+        "profile",
+        "confess"
+      ],
+      "endpoints": [
+        "GET /templates",
+        "POST /templates"
+      ],
       "notes": ""
     },
     {
       "id": "template/detail",
       "title": "Template",
       "depth": 2,
-      "parents": ["templates", "template/share"],
-      "endpoints": ["GET /templates/{id}", "POST /templates/{id}/start", "PATCH /templates/{id}", "DELETE /templates/{id}"],
+      "parents": [
+        "templates",
+        "template/share"
+      ],
+      "endpoints": [
+        "GET /templates/{id}",
+        "POST /templates/{id}/start",
+        "PATCH /templates/{id}",
+        "DELETE /templates/{id}"
+      ],
       "notes": ""
     },
     {
@@ -231,89 +479,166 @@
       "title": "Shared template",
       "depth": 0,
       "parents": [],
-      "endpoints": ["GET /t/{token}"],
+      "endpoints": [
+        "GET /t/{token}"
+      ],
       "notes": "Deep-link root. Must render something useful when the viewer is signed out - a shared prayer that demands an account before showing its own text will not be shared twice."
     },
     {
       "id": "community",
       "title": "Community",
       "depth": 1,
-      "parents": ["explore", "profile"],
-      "endpoints": ["GET /community/feed", "POST /community/posts", "POST /community/posts/{id}/react"],
+      "parents": [
+        "explore",
+        "profile"
+      ],
+      "endpoints": [
+        "GET /community/feed",
+        "GET /community/confessions",
+        "POST /community/posts",
+        "POST /community/posts/{id}/react"
+      ],
       "notes": "Deliberately one level down, not a tab. G-4: there is no PUBLIC visibility state yet, so this surface has nothing to publish to and must not appear in navigation until PHASE 30."
     },
-
     {
       "id": "profile",
       "title": "Profile",
       "tab": "profile",
       "depth": 0,
       "parents": [],
-      "endpoints": ["GET /me/bootstrap", "GET /me", "GET /me/profile", "GET /entitlements", "GET /subscription"],
+      "endpoints": [
+        "GET /me/bootstrap",
+        "GET /me",
+        "GET /me/profile",
+        "GET /entitlements",
+        "GET /subscription"
+      ],
       "notes": ""
     },
     {
       "id": "profile/edit",
       "title": "Edit profile",
       "depth": 1,
-      "parents": ["profile"],
-      "endpoints": ["GET /me/profile", "PATCH /me/profile", "POST /me/avatar", "DELETE /me/avatar"],
+      "parents": [
+        "profile"
+      ],
+      "endpoints": [
+        "GET /me/profile",
+        "PATCH /me/profile",
+        "POST /me/avatar",
+        "DELETE /me/avatar"
+      ],
       "notes": ""
     },
     {
       "id": "paywall",
       "title": "Premium",
       "depth": 1,
-      "parents": ["profile", "home", "confess/voice", "library"],
-      "endpoints": ["GET /subscriptions/plans", "GET /entitlements", "GET /subscriptions/trial", "GET /subscription", "POST /subscriptions/verify"],
-      "notes": "Prices come from the server in the user's currency. Nothing is hardcoded. Verification is server-side - see the PHASE 04 payment bypass."
+      "parents": [
+        "profile",
+        "home",
+        "confess/voice",
+        "library"
+      ],
+      "endpoints": [
+        "GET /subscriptions/plans",
+        "GET /entitlements",
+        "GET /subscriptions/trial",
+        "POST /subscriptions/trial",
+        "GET /subscriptions/trial/status",
+        "GET /subscriptions/trial/engagement",
+        "POST /subscriptions/trial/convert",
+        "GET /subscription",
+        "POST /subscriptions/verify"
+      ],
+      "notes": "Prices come from the server in the user's currency. Nothing is hardcoded. Verification is server-side - see the PHASE 04 payment bypass. The trial engagement read is on this screen because the completed-day progress is the evidence the paywall shows before asking for payment; days completed are counted from real session completions, never from a clock."
     },
     {
       "id": "settings",
       "title": "Settings",
       "depth": 1,
-      "parents": ["profile"],
-      "endpoints": ["GET /me/preferences", "PATCH /me/preferences"],
-      "notes": ""
+      "parents": [
+        "profile"
+      ],
+      "endpoints": [
+        "GET /me/preferences",
+        "PATCH /me/preferences",
+        "GET /me/blocks",
+        "POST /me/blocks",
+        "DELETE /me/blocks/{userId}"
+      ],
+      "notes": "Blocking lives here rather than on a moderation screen on purpose. It is a listener controlling their own view, not a moderator acting on someone else, and putting it beside the moderation vocabulary would make it read as a penalty against the blocked account - which is the confusion that turns a block feature into a harassment tool. The list is the blocker's own and is never shown to the blocked account."
     },
     {
       "id": "settings/interests",
       "title": "Interests",
       "depth": 2,
-      "parents": ["settings", "onboarding"],
-      "endpoints": ["GET /me/interests", "PUT /me/interests"],
+      "parents": [
+        "settings",
+        "onboarding"
+      ],
+      "endpoints": [
+        "GET /me/interests",
+        "PUT /me/interests"
+      ],
       "notes": ""
     },
     {
       "id": "settings/notifications",
       "title": "Notifications",
       "depth": 2,
-      "parents": ["settings"],
-      "endpoints": ["GET /me/notifications", "PATCH /me/notifications", "GET /me/devices", "POST /me/devices", "DELETE /me/devices/{id}"],
+      "parents": [
+        "settings"
+      ],
+      "endpoints": [
+        "GET /me/notifications",
+        "PATCH /me/notifications",
+        "GET /me/devices",
+        "POST /me/devices",
+        "DELETE /me/devices/{id}"
+      ],
       "notes": ""
     },
     {
       "id": "settings/downloads",
       "title": "Downloads",
       "depth": 2,
-      "parents": ["settings", "library"],
-      "endpoints": ["GET /me/downloads", "POST /me/downloads", "DELETE /me/downloads/{id}", "POST /me/downloads/{id}/refresh"],
+      "parents": [
+        "settings",
+        "library"
+      ],
+      "endpoints": [
+        "GET /me/downloads",
+        "POST /me/downloads",
+        "DELETE /me/downloads/{id}",
+        "POST /me/downloads/{id}/refresh"
+      ],
       "notes": "Offline playback. Downloads are licence-bound and expire; the refresh call exists because an expired licence is not the same as a missing file."
     },
     {
       "id": "account/export",
       "title": "Export data",
       "depth": 2,
-      "parents": ["settings"],
-      "endpoints": ["GET /me/export"],
+      "parents": [
+        "settings"
+      ],
+      "endpoints": [
+        "GET /me/export"
+      ],
       "notes": ""
     },
     {
       "id": "account/deletion",
       "title": "Delete account",
       "depth": 2,
-      "parents": ["settings"],
-      "endpoints": ["GET /me/deletion", "POST /me/deletion", "DELETE /me/deletion"],
+      "parents": [
+        "settings"
+      ],
+      "endpoints": [
+        "GET /me/deletion",
+        "POST /me/deletion",
+        "DELETE /me/deletion"
+      ],
       "notes": "Destructive and irreversible. Requires an explicit typed confirmation and must not be reachable by accident. internal/deletion covers every user table."
     }
   ]

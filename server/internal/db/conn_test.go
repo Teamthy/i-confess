@@ -88,8 +88,20 @@ func replaceDatabaseName(url, name string) string {
 	return url + " dbname=" + name
 }
 
-// TestPostgresSchemaLoads is the phase gate for the canonical schema: 61
-// tables, every foreign key resolvable, seed rows applied.
+// TestPostgresSchemaLoads is the phase gate for the canonical schema: every
+// table present, every foreign key resolvable, seed rows applied.
+//
+// The count is asserted rather than merely logged so that a migration which
+// silently fails to apply is caught here instead of by whatever query reaches
+// the missing table first. It moves by one with each new table - 0011 added
+// store_notifications, the ledger of store notifications applied to
+// subscriptions (IC-003, PR B); 0018 added trial_day_completions and
+// analytics_events, the measured trial journey and the persisted funnel
+// events (PHASE 41); 0019 added user_blocks and moderation_appeals, the
+// listener's self-service boundary and the answer to a moderation decision
+// (PHASE 42); 0020 added bible_versions, bible_verses, verse_highlights and
+// verse_bookmarks, the imported Scripture, its registry and the two marks a
+// reader can leave on a verse.
 func TestPostgresSchemaLoads(t *testing.T) {
 	ctx := context.Background()
 	d := newTestDB(t)
@@ -99,8 +111,8 @@ func TestPostgresSchemaLoads(t *testing.T) {
 		`SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public'`).Scan(&tables); err != nil {
 		t.Fatalf("count tables: %v", err)
 	}
-	if tables != 64 {
-		t.Errorf("expected 64 tables, got %d", tables)
+	if tables != 74 {
+		t.Errorf("expected 74 tables, got %d", tables)
 	}
 
 	var fks int
@@ -109,8 +121,8 @@ func TestPostgresSchemaLoads(t *testing.T) {
 		 WHERE constraint_type = 'FOREIGN KEY' AND table_schema = 'public'`).Scan(&fks); err != nil {
 		t.Fatalf("count foreign keys: %v", err)
 	}
-	if fks != 76 {
-		t.Errorf("expected 76 foreign keys, got %d", fks)
+	if fks != 86 {
+		t.Errorf("expected 86 foreign keys, got %d", fks)
 	}
 
 	var flags int

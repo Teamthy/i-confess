@@ -587,6 +587,482 @@ void main() {
       // said, which the product rules forbid.
       expect(interests.explicit, isNot(contains('finance')));
     });
+
+    test('SessionItem copyWith preserves existing values unless overridden', () {
+      const item = SessionItem(
+        id: 'i1',
+        confessionId: 'c1',
+        title: 'Title',
+        status: 'QUEUED',
+      );
+      final updated = item.copyWith(status: 'PLAYING', position: 2);
+      expect(updated.id, 'i1');
+      expect(updated.confessionId, 'c1');
+      expect(updated.title, 'Title');
+      expect(updated.status, 'PLAYING');
+      expect(updated.position, 2);
+    });
+  });
+
+  group('session playback', () {
+    test('sessionQueue parses items, counts and progress', () async {
+      api.respond('/sessions/s-1/queue', 200, {
+        'session_id': 's-1',
+        'status': 'ACTIVE',
+        'items': [
+          {
+            'id': 'qi-1',
+            'confession_id': 'c-1',
+            'title': 'Peace',
+            'audio_url': '/media/p.mp3?sig=test',
+            'duration_seconds': 60,
+            'status': 'PLAYING',
+            'position': 0,
+          },
+          {
+            'id': 'qi-2',
+            'confession_id': 'c-2',
+            'title': 'Joy',
+            'audio_url': '/media/j.mp3?sig=test',
+            'duration_seconds': 90,
+            'status': 'QUEUED',
+            'position': 1,
+          },
+        ],
+        'counts': {'PLAYING': 1, 'QUEUED': 1, 'COMPLETED': 0},
+        'items_total': 2,
+        'items_completed': 0,
+        'progress': {
+          'session_id': 's-1',
+          'queue_item_id': 'qi-1',
+          'position_ms': 5000,
+          'completed_items': 0,
+          'last_updated_at': '2026-09-20T10:00:00Z',
+        },
+      });
+
+      final repo = ContentRepository(client, cache);
+      final loadable = await repo.sessionQueue('s-1');
+
+      final queue = (loadable as LoadLoaded<SessionQueueResponse>).value;
+      expect(queue.sessionId, 's-1');
+      expect(queue.status, 'ACTIVE');
+      expect(queue.items, hasLength(2));
+      expect(queue.items[0].isPlayable, isTrue);
+      expect(queue.counts['PLAYING'], 1);
+      expect(queue.itemsTotal, 2);
+      expect(queue.progress, isNotNull);
+      expect(queue.progress!.positionMs, 5000);
+    });
+
+    test('lifecycle calls start, pause, resume and interrupt', () async {
+      api.respond('/sessions/s-1/start', 200, {'id': 's-1', 'status': 'ACTIVE'});
+      api.respond('/sessions/s-1/pause', 200, {'id': 's-1', 'status': 'PAUSED'});
+      api.respond('/sessions/s-1/resume', 200, {'id': 's-1', 'status': 'ACTIVE'});
+      api.respond('/sessions/s-1/interrupt', 200, {'id': 's-1', 'status': 'INTERRUPTED'});
+
+      final repo = ContentRepository(client, cache);
+      final start = await repo.startSession('s-1');
+      expect((start as WriteSuccess<ListeningSession>).value.status, 'ACTIVE');
+
+      final pause = await repo.pauseSession('s-1');
+      expect((pause as WriteSuccess<ListeningSession>).value.status, 'PAUSED');
+
+      final resume = await repo.resumeSession('s-1');
+      expect((resume as WriteSuccess<ListeningSession>).value.status, 'ACTIVE');
+
+      final interrupt = await repo.interruptSession('s-1');
+      expect((interrupt as WriteSuccess<ListeningSession>).value.status, 'INTERRUPTED');
+    });
+
+    test('syncProgress posts progress payload and decodes response', () async {
+      api.respond('/sessions/s-1/progress', 200, {
+        'applied': true,
+        'progress': {
+          'session_id': 's-1',
+          'queue_item_id': 'qi-1',
+          'position_ms': 12000,
+          'last_updated_at': '2026-09-20T10:05:00Z',
+        },
+      });
+
+      final repo = ContentRepository(client, cache);
+      final result = await repo.syncProgress(
+        's-1',
+        positionMs: 12000,
+        queueItemId: 'qi-1',
+        itemStatus: 'PLAYING',
+        deviceId: 'dev-1',
+        lastUpdatedAt: '2026-09-20T10:05:00Z',
+      );
+
+      final res = (result as WriteSuccess<SyncProgressResponse>).value;
+      expect(res.applied, isTrue);
+      expect(res.progress.positionMs, 12000);
+
+      final sent = jsonDecode(api.lastBody!) as Map<String, dynamic>;
+      expect(sent['position_ms'], 12000);
+      expect(sent['queue_item_id'], 'qi-1');
+      expect(sent['item_status'], 'PLAYING');
+      expect(sent['device_id'], 'dev-1');
+      expect(sent['last_updated_at'], '2026-09-20T10:05:00Z');
+    });
+
+    test('skip and complete post to their respective endpoints', () async {
+      api.respond('/sessions/s-1/skip', 200, {'skipped': 'qi-1', 'advanced': true});
+      api.respond('/sessions/s-1/complete', 200, {'status': 'COMPLETED'});
+
+      final repo = ContentRepository(client, cache);
+      final skipRes = await repo.skipSessionItem('s-1', 'qi-1');
+      expect((skipRes as WriteSuccess<Map<String, dynamic>>).value['skipped'], 'qi-1');
+
+      final compRes = await repo.completeSession('s-1');
+      expect((compRes as WriteSuccess<Map<String, dynamic>>).value['status'], 'COMPLETED');
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Library (§35-§37, PHASE 27)
+  // -------------------------------------------------------------------------
+
+  group('library collections', () {
+    test('decodes collections with counts, cover and visibility', () async {
+      api.respond('/me/collections', 200, {
+        'data': [
+          {
+            'id': 'col-1',
+            'name': 'Morning mercies',
+            'description': 'Before the day starts',
+            'cover_url': 'https://cdn.example/c.jpg',
+            'visibility': 'private',
+            'item_count': 3,
+          },
+          {'id': 'col-2', 'name': 'Unlisted set', 'visibility': 'unlisted', 'item_count': 0},
+        ],
+      });
+
+      final result = await libraryRepo().collections();
+      final collections = (result as LoadLoaded<List<UserCollection>>).value;
+
+      expect(collections, hasLength(2));
+      expect(collections.first.name, 'Morning mercies');
+      expect(collections.first.itemCount, 3);
+      expect(collections.first.coverUrl, 'https://cdn.example/c.jpg');
+      expect(collections.first.isPrivate, isTrue);
+      expect(collections[1].isPrivate, isFalse);
+      expect(collections[1].isEmpty, isTrue);
+    });
+
+    test('the listener\'s collections do not share a cache key with the '
+        'editorial ones', () async {
+      api.respond('/me/collections', 200, {
+        'data': [
+          {'id': 'mine', 'name': 'Mine', 'item_count': 1},
+        ],
+      });
+      api.respond('/collections', 200, {
+        'data': [
+          {'id': 'editorial', 'name': 'Featured', 'premium': false},
+        ],
+      });
+
+      await libraryRepo().collections();
+      await ContentRepository(client, cache).collections();
+
+      // Reading the library again must not return the editorial payload. One
+      // key for both would hand each surface the other's data.
+      final again = await libraryRepo().collections();
+      final mine = (again as LoadLoaded<List<UserCollection>>).value;
+      expect(mine.single.name, 'Mine');
+    });
+
+    test('collection detail carries its items in order', () async {
+      api.respond('/me/collections/col-1', 200, {
+        'id': 'col-1',
+        'name': 'Morning mercies',
+        'items': [
+          {'id': 'i1', 'confession_id': 'c1', 'title': 'I am held', 'position': 0},
+          {'id': 'i2', 'confession_id': 'c2', 'title': '', 'position': 1},
+        ],
+      });
+
+      final result = await libraryRepo().collection('col-1');
+      final collection = (result as LoadLoaded<UserCollection>).value;
+
+      expect(collection.items, hasLength(2));
+      expect(collection.items.first.title, 'I am held');
+      expect(collection.items.first.resolved, isTrue);
+      // An item whose confession no longer resolves comes back with an empty
+      // title; the screen renders that as "No longer available" rather than a
+      // blank row.
+      expect(collection.items[1].resolved, isFalse);
+      // item_count was absent, so the honest count is the number of items.
+      expect(collection.itemCount, 2);
+    });
+
+    test('creating a collection drops the cached list', () async {
+      api.respond('/me/collections', 200, {
+        'data': [
+          {'id': 'col-1', 'name': 'Only one', 'item_count': 0},
+        ],
+      });
+
+      await libraryRepo().collections();
+      expect(await raw.read(CacheKeys.collections), isNotNull);
+
+      await libraryRepo().createCollection('Second');
+
+      // Without this the user creates a collection and the list they are
+      // looking at keeps serving the stale copy for the rest of its TTL.
+      expect(await raw.read(CacheKeys.collections), isNull);
+    });
+
+    test('a failed create leaves the cache intact', () async {
+      api.respond('/me/collections', 200, {
+        'data': [
+          {'id': 'col-1', 'name': 'Only one', 'item_count': 0},
+        ],
+      });
+      await libraryRepo().collections();
+
+      // 400 from the server: nothing changed, so the good cache must survive.
+      api.respond('/me/collections', 400, {'code': 'PROFILE_INVALID', 'message': 'no'});
+      final result = await libraryRepo().createCollection('');
+
+      expect(result.succeeded, isFalse);
+      expect(await raw.read(CacheKeys.collections), isNotNull);
+    });
+
+    test('create sends only the fields that were given', () async {
+      api.respond('/me/collections', 201, {'id': 'new', 'name': 'Evening'});
+
+      await libraryRepo().createCollection('Evening');
+      final sent = jsonDecode(api.lastBody!) as Map<String, dynamic>;
+
+      expect(sent['name'], 'Evening');
+      // Visibility is omitted rather than sent empty: the server defaults to
+      // private, and sending '' would ask it to validate a value we do not
+      // mean.
+      expect(sent.containsKey('visibility'), isFalse);
+      expect(sent.containsKey('description'), isFalse);
+    });
+  });
+
+  group('library favourites', () {
+    test('decodes resolved titles and flags missing targets', () async {
+      api.respond('/me/favorites', 200, {
+        'data': [
+          {
+            'id': 'f1',
+            'entity_type': 'confession',
+            'entity_id': 'c1',
+            'title': 'I am held by grace',
+            'subtitle': 'Peace',
+          },
+          {'id': 'f2', 'entity_type': 'confession', 'entity_id': 'gone', 'missing': true},
+        ],
+      });
+
+      final result = await libraryRepo().favorites();
+      final favorites = (result as LoadLoaded<List<Favorite>>).value;
+
+      expect(favorites.first.displayTitle, 'I am held by grace');
+      expect(favorites.first.subtitle, 'Peace');
+      expect(favorites.first.missing, isFalse);
+
+      // A favourite whose target is gone must still say something a human can
+      // read, never the bare id.
+      expect(favorites[1].missing, isTrue);
+      expect(favorites[1].displayTitle, 'No longer available');
+    });
+
+    test('the type filter is actually sent', () async {
+      api.respond('/me/favorites', 200, {'data': []});
+
+      await libraryRepo().favorites(type: 'confession');
+
+      // A filter dropped in transit looks exactly like one that was never
+      // requested: the call succeeds and returns rows, just the wrong ones.
+      expect(api.queryOf('/me/favorites'), {'type': 'confession'});
+    });
+
+    test('filtered favourites are cached separately from the full list', () async {
+      api.respond('/me/favorites', 200, {'data': []});
+
+      await libraryRepo().favorites();
+      await libraryRepo().favorites(type: 'voice');
+
+      expect(await raw.read(CacheKeys.favorites), isNotNull);
+      expect(await raw.read('${CacheKeys.favorites}:voice'), isNotNull);
+    });
+
+    test('unfavouriting passes the entity type through', () async {
+      api.respond('/me/favorites', 200, {'ok': true});
+
+      await libraryRepo().removeFavorite(entityType: 'category', entityId: 'cat-1');
+      final sent = jsonDecode(api.lastBody!) as Map<String, dynamic>;
+
+      // Hard-coding 'confession' here would make a favourited category
+      // impossible to remove from the only screen that lists it.
+      expect(sent['entity_type'], 'category');
+      expect(sent['entity_id'], 'cat-1');
+      expect(api.methodOf('/me/favorites'), 'DELETE');
+    });
+
+    test('unfavouriting drops both the full and the filtered cache', () async {
+      api.respond('/me/favorites', 200, {'data': []});
+      await libraryRepo().favorites();
+      await libraryRepo().favorites(type: 'confession');
+
+      await libraryRepo().removeFavorite(entityType: 'confession', entityId: 'c1');
+
+      expect(await raw.read(CacheKeys.favorites), isNull);
+      expect(await raw.read('${CacheKeys.favorites}:confession'), isNull);
+    });
+
+    test('isFavorite matches on the entity id, never the favourite row id',
+        () async {
+      // The row's own id is a UUID from the same generator as a confession id.
+      // Comparing the two, as this did before PHASE 27, lights the heart on
+      // the wrong confession.
+      api.respond('/me/favorites', 200, {
+        'data': [
+          {'id': 'conf-42', 'entity_type': 'confession', 'entity_id': 'something-else'},
+        ],
+      });
+
+      final result = await ContentRepository(client, cache).isFavorite('conf-42');
+      expect((result as LoadLoaded<bool>).value, isFalse,
+          reason: 'the favourite row id must not be mistaken for the entity id');
+    });
+
+    test('isFavorite finds a genuine match and narrows the request', () async {
+      api.respond('/me/favorites', 200, {
+        'data': [
+          {'id': 'f1', 'entity_type': 'confession', 'entity_id': 'conf-42'},
+        ],
+      });
+
+      final result = await ContentRepository(client, cache).isFavorite('conf-42');
+      expect((result as LoadLoaded<bool>).value, isTrue);
+      expect(api.queryOf('/me/favorites'), {'type': 'confession'});
+    });
+
+    test('favouriting a confession invalidates the library tab cache', () async {
+      api.respond('/me/favorites', 200, {'data': []});
+      await libraryRepo().favorites();
+      expect(await raw.read(CacheKeys.favorites), isNotNull);
+
+      await ContentRepository(client, cache).addFavoriteConfession('c1');
+
+      // The heart is on the confession screen and the list it changes is a
+      // tab in the library; without this the user saves something and cannot
+      // find it.
+      expect(await raw.read(CacheKeys.favorites), isNull);
+    });
+  });
+
+  group('my confessions', () {
+    test('decodes the author\'s own writing, not editorial content', () async {
+      api.respond('/me/confessions', 200, {
+        'data': [
+          {
+            'id': 'uc-1',
+            'title': 'My own words',
+            'text': 'I am kept.',
+            'status': 'draft',
+            'visibility': 'private',
+          },
+        ],
+      });
+
+      final result = await libraryRepo().myConfessions();
+      final mine = (result as LoadLoaded<List<UserConfession>>).value;
+
+      // Decoding this as the editorial Confession model reads short_text and
+      // description, neither of which exists here, so every row rendered
+      // blank. That is the defect this model exists to close.
+      expect(mine.single.text, 'I am kept.');
+      expect(mine.single.lead, 'My own words');
+      expect(mine.single.isDraft, isTrue);
+    });
+
+    test('a titleless draft leads with its opening words', () async {
+      api.respond('/me/confessions', 200, {
+        'data': [
+          {'id': 'uc-2', 'title': '', 'text': 'Short note.', 'status': 'draft'},
+        ],
+      });
+
+      final mine = ((await libraryRepo().myConfessions())
+              as LoadLoaded<List<UserConfession>>)
+          .value;
+      expect(mine.single.lead, 'Short note.');
+    });
+
+    test('a long titleless draft is truncated rather than rendered whole',
+        () async {
+      final long = 'x' * 200;
+      api.respond('/me/confessions', 200, {
+        'data': [
+          {'id': 'uc-3', 'title': '', 'text': long, 'status': 'draft'},
+        ],
+      });
+
+      final mine = ((await libraryRepo().myConfessions())
+              as LoadLoaded<List<UserConfession>>)
+          .value;
+      expect(mine.single.lead.length, lessThan(long.length));
+      expect(mine.single.lead, endsWith('…'));
+    });
+
+    test('only a non-private draft may be offered for review', () async {
+      const draftPrivate = UserConfession(id: 'a', status: 'draft', visibility: 'private');
+      const draftShared = UserConfession(id: 'b', status: 'draft', visibility: 'shared');
+      const submitted = UserConfession(id: 'c', status: 'submitted', visibility: 'public');
+
+      // A private note has nothing to moderate, and a submitted one is already
+      // with a reviewer; offering either would be a button that can only fail.
+      expect(draftPrivate.canSubmit, isFalse);
+      expect(draftShared.canSubmit, isTrue);
+      expect(submitted.canSubmit, isFalse);
+      expect(submitted.isPending, isTrue);
+    });
+
+    test('submitting posts to the submit route and clears the cache', () async {
+      api.respond('/me/confessions', 200, {'data': []});
+      await libraryRepo().myConfessions();
+
+      api.respond('/me/confessions/uc-1/submit', 200, {
+        'id': 'uc-1',
+        'status': 'submitted',
+        'visibility': 'public',
+      });
+
+      final result = await libraryRepo().submitConfession('uc-1');
+      final updated = (result as WriteSuccess<UserConfession>).value;
+
+      // "submitted", never "published": the moderator decides, and the client
+      // must not imply otherwise.
+      expect(updated.status, 'submitted');
+      expect(updated.isPublished, isFalse);
+      expect(api.callCount('/me/confessions/uc-1/submit'), 1);
+      expect(await raw.read(CacheKeys.myConfessions), isNull);
+    });
+
+    test('an unparseable status degrades instead of throwing', () async {
+      api.respond('/me/confessions', 200, {
+        'data': [
+          {'id': 'uc-4', 'title': 'T', 'text': 'x', 'status': 42},
+        ],
+      });
+
+      final mine = ((await libraryRepo().myConfessions())
+              as LoadLoaded<List<UserConfession>>)
+          .value;
+      // An older app talking to a newer server must degrade, not crash.
+      expect(mine.single.status, 'draft');
+    });
   });
 }
 
@@ -598,7 +1074,22 @@ class _Api {
   final Map<String, int> _counts = {};
   String? lastBody;
 
+  /// The query parameters of the most recent request to a path.
+  ///
+  /// Kept separately from [_counts] because a filter that is silently dropped
+  /// on the way out looks identical to one that was never asked for: the call
+  /// still succeeds and still returns rows, just the wrong ones.
+  final Map<String, Map<String, String>> _lastQuery = {};
+
+  /// The method of the most recent request to a path, so a test can tell a
+  /// DELETE that was actually sent from one that was not.
+  final Map<String, String> _lastMethod = {};
+
   int callCount(String path) => _counts[path] ?? 0;
+
+  Map<String, String> queryOf(String path) => _lastQuery[path] ?? const {};
+
+  String? methodOf(String path) => _lastMethod[path];
 
   String get baseUrl => 'http://127.0.0.1:${_server.port}';
 
@@ -616,6 +1107,8 @@ class _Api {
     _server.listen((request) async {
       lastBody = await utf8.decoder.bind(request).join();
       _counts[request.uri.path] = (_counts[request.uri.path] ?? 0) + 1;
+      _lastQuery[request.uri.path] = request.uri.queryParameters;
+      _lastMethod[request.uri.path] = request.method;
       final reply = _replies[request.uri.path] ?? _Reply(404, {'error': 'not found'});
 
       request.response.statusCode = reply.status;

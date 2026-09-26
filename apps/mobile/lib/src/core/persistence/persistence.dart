@@ -99,6 +99,13 @@ abstract final class StoreKeys {
   static const lastDuration = 'builder.duration';
   static const lastVoiceId = 'builder.voice';
   static const analyticsConsent = 'analytics.consent';
+
+  /// The device's stable identifier, kept so a device that changes hands or
+  /// reinstalls is still one row in the server's device table (IC-012).
+  static const pushDeviceId = 'push.device_id';
+
+  /// Stored playback progress and state for resume across app restarts.
+  static String sessionPlayback(String sessionId) => 'session.playback.$sessionId';
 }
 
 /// Keystore adapter for [SecureStorage], which the API client requires.

@@ -329,8 +329,19 @@ func parentTableFor(child string) string {
 		return "user_collections"
 	case "session_items":
 		return "sessions"
+	case "user_confession_audio":
+		return "user_confessions"
 	case "community_posts":
 		// author_id is a direct reference to users(id).
+		return "users"
+	case "user_blocks":
+		// blocker_id is a direct reference to users(id). Without this entry the
+		// generic child branch scopes through the table's own id, which asks
+		// user_blocks for a user_id column it does not have.
+		return "users"
+	case "security_events":
+		return "users"
+	case "audit_logs":
 		return "users"
 	}
 	return child

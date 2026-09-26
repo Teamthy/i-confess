@@ -155,17 +155,17 @@ deployment fail to boot gets reverted within a week.
 2. **`TOKEN_TTL` default changed from `720h` to `24h`.** Any client that assumed
    a month-long token will start seeing expiries. The mobile app is not built
    yet, so the window to change this is now.
-3. **`SetSubscription`'s untyped signature is still open** (PHASE 36) and the
-   admin subscription route still accepts an arbitrary plan string from an admin
-   caller. Admin endpoints are a separate trust boundary and were not audited
-   here.
+3. The admin subscription override remains a separate trust-boundary review
+   item. Its database CHECK is the backstop for status vocabulary, but this
+   authentication phase did not prove every admin billing input. It is not the
+   store-verification gap assigned to G-29 in the current phase ledger.
 
 ## Carried forward
 
-- **G-29** — `bcrypt.DefaultCost` is 10. OWASP's floor, not its recommendation;
-  12 is a better default for a new system and costs roughly 4× per hash, which
-  is irrelevant at login volume. Deferred because it invalidates nothing but
-  should be decided deliberately.
+- **Historical G-29 label** — this audit used the identifier for a bcrypt-cost
+  recommendation. The current ledger assigns G-29 to the production billing
+  verifier gap, which PHASE 36 closes. The bcrypt cost remains an unnumbered
+  hardening recommendation rather than an open ledger gap.
 - **G-30** — no password policy is enforced at registration beyond whatever the
   client sends. Not audited in this phase.
 - **G-31** — refresh token rotation and reuse detection were not audited. The

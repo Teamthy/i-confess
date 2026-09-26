@@ -6,6 +6,7 @@
 library iconfess_api;
 
 export 'src/api_client.dart';
+export 'src/bible.dart';
 export 'src/api_error.dart';
 export 'src/endpoints.dart';
 export 'src/token_store.dart';

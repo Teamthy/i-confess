@@ -123,6 +123,21 @@ extension IConfessEndpoints on ApiClient {
   /// Available voices
   Future<Map<String, dynamic>> getVoices() => get('/voices');
 
+  // ---- community ----
+  /// Anonymous, moderation-approved community posts
+  Future<Map<String, dynamic>> getCommunityFeed() => get('/community/feed');
+
+  /// Published user confessions (public UGC reader, anonymous)
+  Future<Map<String, dynamic>> getCommunityConfessions({int? limit}) {
+    final qs = limit == null ? '' : '?limit=$limit';
+    return get('/community/confessions$qs');
+  }
+
+  /// Add an idempotent reaction to an approved community post
+  Future<Map<String, dynamic>> postCommunityPostsByIdReact(
+          String id, String reaction) =>
+      post('/community/posts/$id/react', {'reaction': reaction});
+
   // ---- devices ----
   /// List devices
   Future<Map<String, dynamic>> getMeDevices() => get('/me/devices');
@@ -205,11 +220,18 @@ extension IConfessEndpoints on ApiClient {
           [Map<String, dynamic>? body]) =>
       post('/me/confessions', body);
 
-  /// Remove a favourite
-  Future<Map<String, dynamic>> deleteMeFavorites() => delete('/me/favorites');
+  /// Offer a personal confession for moderation review
+  Future<Map<String, dynamic>> postMeConfessionsByIdSubmit(String id,
+          [Map<String, dynamic>? body]) =>
+      post('/me/confessions/$id/submit', body);
 
-  /// List favourites
-  Future<Map<String, dynamic>> getMeFavorites() => get('/me/favorites');
+  /// Remove a favourite
+  Future<Map<String, dynamic>> deleteMeFavorites([Map<String, dynamic>? body]) =>
+      delete('/me/favorites', body);
+
+  /// List favourites, optionally narrowed to one entity type
+  Future<Map<String, dynamic>> getMeFavorites({String? type}) =>
+      get('/me/favorites', query: type == null ? null : {'type': type});
 
   /// Add a favourite
   Future<Map<String, dynamic>> postMeFavorites([Map<String, dynamic>? body]) =>
@@ -387,6 +409,24 @@ extension IConfessEndpoints on ApiClient {
   Future<Map<String, dynamic>> getSubscriptionsTrial() =>
       get('/subscriptions/trial');
 
+  /// Start the one-time Premium trial
+  Future<Map<String, dynamic>> postSubscriptionsTrial(
+          [Map<String, dynamic>? body]) =>
+      post('/subscriptions/trial', body);
+
+  /// Current trial lifecycle state
+  Future<Map<String, dynamic>> getSubscriptionsTrialStatus() =>
+      get('/subscriptions/trial/status');
+
+  /// Measured trial journey: completed days and funnel
+  Future<Map<String, dynamic>> getSubscriptionsTrialEngagement() =>
+      get('/subscriptions/trial/engagement');
+
+  /// Finish the trial before store verification
+  Future<Map<String, dynamic>> postSubscriptionsTrialConvert(
+          [Map<String, dynamic>? body]) =>
+      post('/subscriptions/trial/convert', body);
+
   /// Verify receipt (server-side)
   Future<Map<String, dynamic>> postSubscriptionsVerify(
           [Map<String, dynamic>? body]) =>
@@ -412,6 +452,11 @@ extension IConfessEndpoints on ApiClient {
           [Map<String, dynamic>? body]) =>
       post('/sessions/$id/resume', body);
 
+  /// Interrupt session
+  Future<Map<String, dynamic>> postSessionsByIdInterrupt(String id,
+          [Map<String, dynamic>? body]) =>
+      post('/sessions/$id/interrupt', body);
+
   /// Record progress
   Future<Map<String, dynamic>> postSessionsByIdProgress(String id,
           [Map<String, dynamic>? body]) =>
@@ -426,4 +471,32 @@ extension IConfessEndpoints on ApiClient {
   Future<Map<String, dynamic>> postSessionsByIdComplete(String id,
           [Map<String, dynamic>? body]) =>
       post('/sessions/$id/complete', body);
+
+  // ---- moderation: reporting, blocking, appeals ----
+  /// Report published content or a community post.
+  ///
+  /// This was missing from the typed client entirely, so a client could not
+  /// file a report at all. It is added alongside appeals because an appeal
+  /// against a dismissed report is meaningless to a client that cannot file
+  /// the report in the first place.
+  Future<Map<String, dynamic>> postReports(Map<String, dynamic> body) =>
+      post('/reports', body);
+
+  /// Accounts you have blocked
+  Future<Map<String, dynamic>> getMeBlocks() => get('/me/blocks');
+
+  /// Block an account
+  Future<Map<String, dynamic>> postMeBlocks(Map<String, dynamic> body) =>
+      post('/me/blocks', body);
+
+  /// Unblock an account
+  Future<Map<String, dynamic>> deleteMeBlocksByUserId(String userId) =>
+      delete('/me/blocks/$userId');
+
+  /// Your appeals and their outcomes
+  Future<Map<String, dynamic>> getMeAppeals() => get('/me/appeals');
+
+  /// Appeal a dismissed report or a rejected confession
+  Future<Map<String, dynamic>> postMeAppeals(Map<String, dynamic> body) =>
+      post('/me/appeals', body);
 }

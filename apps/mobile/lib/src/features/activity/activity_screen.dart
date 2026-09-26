@@ -7,6 +7,7 @@ import '../../core/theme/theme.dart';
 import '../../core/theme/tokens.dart';
 import '../../core/widgets/screen.dart';
 import 'activity_providers.dart';
+import '../settings/settings_screen.dart' show EnableDeviceRemindersTile;
 
 /// Activity screen: history, streak, schedules.
 ///
@@ -23,6 +24,7 @@ class ActivityScreen extends ConsumerWidget {
 
     return AppScaffold(
       title: 'Activity',
+      scrollable: false,
       body: DefaultTabController(
         length: 3,
         child: Column(
@@ -74,6 +76,7 @@ class ActivityScreen extends ConsumerWidget {
               ],
             ),
             const SizedBox(height: IConfess.space3),
+            const EnableDeviceRemindersTile(),
             Expanded(
               child: TabBarView(
                 children: [
@@ -222,7 +225,7 @@ class _SessionTile extends StatelessWidget {
       borderRadius: BorderRadius.circular(IConfess.radiusMd),
       child: InkWell(
         borderRadius: BorderRadius.circular(IConfess.radiusMd),
-        onTap: () => context.go(AppRoutes.player),
+        onTap: () => context.go(session.id.isNotEmpty ? AppRoutes.playerWithId(session.id) : AppRoutes.player),
         child: Padding(
           padding: const EdgeInsets.all(IConfess.space4),
           child: Row(

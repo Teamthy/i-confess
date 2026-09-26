@@ -5,6 +5,9 @@ import 'package:iconfess/app.dart';
 import 'package:iconfess/src/core/routing/routes.dart';
 import 'package:iconfess/src/features/auth/auth_controller.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:iconfess_api/iconfess_api.dart';
+
+import 'support/fake_api_client.dart';
 
 import 'package:iconfess/src/core/di/providers.dart';
 
@@ -20,10 +23,15 @@ class _FixedAuth extends AuthController {
 Future<void> pumpApp(WidgetTester tester, AuthState state) async {
   SharedPreferences.setMockInitialValues({});
   final prefs = await SharedPreferences.getInstance();
+  final api = FakeApiClient(tokens: InMemoryTokenStore());
+  api.respond('/sessions', {'sessions': <dynamic>[]});
+  api.respond('/schedules', {'data': <dynamic>[]});
+  api.respond('/categories', {'data': <dynamic>[]});
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         sharedPreferencesProvider.overrideWithValue(prefs),
+        apiClientProvider.overrideWithValue(api),
         authControllerProvider.overrideWith(() => _FixedAuth(state)),
       ],
       child: const IConfessApp(),
@@ -170,7 +178,9 @@ void main() {
 
       await tester.tap(find.text('Activity').first);
       await tester.pumpAndSettle();
-      expect(find.text('PHASE 24'), findsWidgets);
+      expect(find.text('Schedules'), findsOneWidget);
+      expect(find.text('History'), findsOneWidget);
+      expect(find.text('This device'), findsOneWidget);
     });
   });
 }

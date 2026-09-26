@@ -120,6 +120,7 @@ func (h *Handler) startSession(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	sess.Items = items
+	h.signSessionAudio(r.Context(), sess, h.entitlementsFor(r.Context(), h.userID(r)))
 	httpx.WriteJSON(w, http.StatusOK, sess)
 }
 
@@ -145,6 +146,23 @@ func (h *Handler) resumeSession(w http.ResponseWriter, r *http.Request) {
 	if !h.transition(w, r, sess, sessions.Active) {
 		return
 	}
+	items, err := h.sess.Items(r.Context(), sess.ID)
+	if err == nil {
+		sess.Items = items
+		h.signSessionAudio(r.Context(), sess, h.entitlementsFor(r.Context(), h.userID(r)))
+	}
+	httpx.WriteJSON(w, http.StatusOK, sess)
+}
+
+// interruptSession moves a session to INTERRUPTED (e.g. phone call, route change).
+func (h *Handler) interruptSession(w http.ResponseWriter, r *http.Request) {
+	sess, ok := h.ownSession(w, r)
+	if !ok {
+		return
+	}
+	if !h.transition(w, r, sess, sessions.Interrupted) {
+		return
+	}
 	httpx.WriteJSON(w, http.StatusOK, sess)
 }
 
@@ -157,6 +175,14 @@ func (h *Handler) resumeSession(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) completeSession(w http.ResponseWriter, r *http.Request) {
 	sess, ok := h.ownSession(w, r)
 	if !ok {
+		return
+	}
+	// Forged completion check: audio must have actually started.
+	if sess.StartedAt == "" && sess.Status != string(sessions.Active) && sess.Status != string(sessions.Paused) && sess.Status != string(sessions.Interrupted) {
+		httpx.WriteJSON(w, http.StatusConflict, map[string]any{
+			"error": "a session can only be completed after playback has started",
+			"code":  "INVALID_TRANSITION",
+		})
 		return
 	}
 	if !h.transition(w, r, sess, sessions.Completed) {
@@ -178,6 +204,22 @@ func (h *Handler) completeSession(w http.ResponseWriter, r *http.Request) {
 			completed++
 		}
 	}
+
+	// Authoritative recording of completed playback:
+	_ = h.eng.RecordPlayback(r.Context(), &models.PlaybackRecord{
+		UserID:          sess.UserID,
+		SessionID:       sess.ID,
+		DurationSeconds: sess.ActualDuration,
+		Completed:       true,
+		Skipped:         false,
+	})
+
+	// A real completion is the only thing that can complete a trial journey
+	// day. It is derived here rather than accepted from a client, so the
+	// conversion funnel measures playback instead of assertion. Best effort:
+	// an account that is not on a trial has nothing to record, and analytics
+	// must never fail a completion the listener actually earned.
+	h.recordTrialDayCompletion(r.Context(), sess.UserID, sess.ID)
 
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{
 		"status":          sess.Status,
@@ -201,6 +243,12 @@ func (h *Handler) getSessionQueue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sort.Slice(items, func(i, j int) bool { return items[i].Position < items[j].Position })
+
+	// Sign audio URLs on every queue read so the client gets freshly signed URLs
+	// with fresh TTL and real entitlement gating, never raw storage keys.
+	sess.Items = items
+	h.signSessionAudio(r.Context(), sess, h.entitlementsFor(r.Context(), h.userID(r)))
+	items = sess.Items
 
 	counts := map[string]int{}
 	for i := range items {
@@ -354,6 +402,11 @@ func (h *Handler) skipSessionItem(w http.ResponseWriter, r *http.Request) {
 	}
 	if next != nil {
 		_ = h.sess.SetPlayingItem(r.Context(), sess.ID, next.ID, string(sessions.ItemPlaying))
+		sess.Items = []models.SessionItem{*next}
+		h.signSessionAudio(r.Context(), sess, h.entitlementsFor(r.Context(), h.userID(r)))
+		if len(sess.Items) > 0 {
+			next = &sess.Items[0]
+		}
 	}
 
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{

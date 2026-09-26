@@ -5,6 +5,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app.dart';
 import 'src/core/di/providers.dart';
+import 'src/core/push/push_registration.dart';
+import 'src/features/premium/purchase_controller.dart';
 import 'src/features/auth/auth_controller.dart';
 
 Future<void> main() async {
@@ -31,6 +33,13 @@ Future<void> main() async {
   // milliseconds of native splash rather than a visible flash.
   await container.read(authControllerProvider.notifier).restore();
   recordAppOpened(container);
+
+  // Push is set up here rather than from a widget so it happens once per
+  // process, and so widget tests never touch a platform channel. It registers
+  // nothing until a session exists: a token belongs to a user, and the endpoint
+  // that accepts it is authenticated.
+  container.read(pushRegistrarProvider);
+  container.read(premiumPurchaseControllerProvider);
 
   runApp(UncontrolledProviderScope(container: container, child: const IConfessApp()));
 }

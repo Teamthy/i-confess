@@ -551,6 +551,7 @@ final class Voice {
 /// silently skipping (§26).
 final class SessionItem {
   const SessionItem({
+    this.id = '',
     required this.confessionId,
     this.title = '',
     this.text = '',
@@ -559,8 +560,11 @@ final class SessionItem {
     this.position = 0,
     this.locked = false,
     this.lockReason = '',
+    this.status = 'QUEUED',
+    this.category = '',
   });
 
+  final String id;
   final String confessionId;
   final String title;
   final String text;
@@ -569,11 +573,41 @@ final class SessionItem {
   final int position;
   final bool locked;
   final String lockReason;
+  final String status;
+  final String category;
 
   /// Whether this item can actually be played right now.
   bool get isPlayable => !locked && audioUrl.isNotEmpty;
 
+  SessionItem copyWith({
+    String? id,
+    String? confessionId,
+    String? title,
+    String? text,
+    String? audioUrl,
+    int? durationSeconds,
+    int? position,
+    bool? locked,
+    String? lockReason,
+    String? status,
+    String? category,
+  }) =>
+      SessionItem(
+        id: id ?? this.id,
+        confessionId: confessionId ?? this.confessionId,
+        title: title ?? this.title,
+        text: text ?? this.text,
+        audioUrl: audioUrl ?? this.audioUrl,
+        durationSeconds: durationSeconds ?? this.durationSeconds,
+        position: position ?? this.position,
+        locked: locked ?? this.locked,
+        lockReason: lockReason ?? this.lockReason,
+        status: status ?? this.status,
+        category: category ?? this.category,
+      );
+
   factory SessionItem.fromJson(Map<String, dynamic> json) => SessionItem(
+        id: _str(json, 'id'),
         confessionId: _str(json, 'confession_id'),
         title: _str(json, 'title'),
         text: _str(json, 'text'),
@@ -582,6 +616,112 @@ final class SessionItem {
         position: _int(json, 'position'),
         locked: _bool(json, 'locked'),
         lockReason: _str(json, 'lock_reason'),
+        status: _str(json, 'status', 'QUEUED'),
+        category: _str(json, 'category', _str(json, 'category_name')),
+      );
+}
+
+/// Resume point and listening statistics for a session.
+final class SessionProgress {
+  const SessionProgress({
+    required this.sessionId,
+    this.userId = '',
+    this.queueItemId = '',
+    this.positionMs = 0,
+    this.completedItems = 0,
+    this.deviceId = '',
+    this.lastUpdatedAt = '',
+  });
+
+  final String sessionId;
+  final String userId;
+  final String queueItemId;
+  final int positionMs;
+  final int completedItems;
+  final String deviceId;
+  final String lastUpdatedAt;
+
+  factory SessionProgress.fromJson(Map<String, dynamic> json) =>
+      SessionProgress(
+        sessionId: _str(json, 'session_id'),
+        userId: _str(json, 'user_id'),
+        queueItemId: _str(json, 'queue_item_id'),
+        positionMs: _int(json, 'position_ms'),
+        completedItems: _int(json, 'completed_items'),
+        deviceId: _str(json, 'device_id'),
+        lastUpdatedAt: _str(json, 'last_updated_at'),
+      );
+
+  Map<String, dynamic> toJson() => {
+        'session_id': sessionId,
+        'user_id': userId,
+        'queue_item_id': queueItemId,
+        'position_ms': positionMs,
+        'completed_items': completedItems,
+        'device_id': deviceId,
+        'last_updated_at': lastUpdatedAt,
+      };
+}
+
+/// A snapshot of a session's playback queue with freshly signed URLs.
+final class SessionQueueResponse {
+  const SessionQueueResponse({
+    required this.sessionId,
+    this.status = '',
+    this.items = const [],
+    this.counts = const {},
+    this.itemsTotal = 0,
+    this.itemsCompleted = 0,
+    this.progress,
+  });
+
+  final String sessionId;
+  final String status;
+  final List<SessionItem> items;
+  final Map<String, int> counts;
+  final int itemsTotal;
+  final int itemsCompleted;
+  final SessionProgress? progress;
+
+  factory SessionQueueResponse.fromJson(Map<String, dynamic> json) {
+    final rawCounts = json['counts'];
+    final countsMap = <String, int>{};
+    if (rawCounts is Map) {
+      for (final entry in rawCounts.entries) {
+        countsMap[entry.key.toString()] =
+            (entry.value is num) ? (entry.value as num).toInt() : 0;
+      }
+    }
+    final rawProgress = json['progress'];
+    return SessionQueueResponse(
+      sessionId: _str(json, 'session_id'),
+      status: _str(json, 'status'),
+      items: _list(json['items']).map(SessionItem.fromJson).toList(),
+      counts: countsMap,
+      itemsTotal: _int(json, 'items_total'),
+      itemsCompleted: _int(json, 'items_completed'),
+      progress: rawProgress is Map<String, dynamic>
+          ? SessionProgress.fromJson(rawProgress)
+          : null,
+    );
+  }
+}
+
+/// The outcome of an opportunistic progress sync.
+final class SyncProgressResponse {
+  const SyncProgressResponse({
+    required this.applied,
+    required this.progress,
+  });
+
+  final bool applied;
+  final SessionProgress progress;
+
+  factory SyncProgressResponse.fromJson(Map<String, dynamic> json) =>
+      SyncProgressResponse(
+        applied: _bool(json, 'applied'),
+        progress: SessionProgress.fromJson(
+            (json['progress'] as Map<String, dynamic>?) ?? {}),
       );
 }
 
@@ -595,6 +735,7 @@ final class ListeningSession {
     this.voiceDowngraded = false,
     this.voiceDowngradeReason = '',
     this.items = const [],
+    this.createdAt,
   });
 
   final String id;
@@ -609,6 +750,7 @@ final class ListeningSession {
   final String voiceDowngradeReason;
 
   final List<SessionItem> items;
+  final DateTime? createdAt;
 
   /// Items that can actually be played, in order.
   List<SessionItem> get playable =>
@@ -626,6 +768,7 @@ final class ListeningSession {
         voiceDowngraded: _bool(json, 'voice_downgraded'),
         voiceDowngradeReason: _str(json, 'voice_downgrade_reason'),
         items: _list(json['items']).map(SessionItem.fromJson).toList(),
+        createdAt: _time(json, 'created_at'),
       );
 }
 
@@ -785,24 +928,199 @@ final class UserCollection {
     required this.id,
     required this.name,
     this.description = '',
+    this.coverUrl = '',
     this.visibility = 'private',
     this.itemCount = 0,
+    this.items = const [],
+    this.updatedAt,
   });
 
   final String id;
   final String name;
   final String description;
+
+  /// Artwork for the collection. Empty for most: the library falls back to a
+  /// generated treatment rather than shipping a placeholder image, so an
+  /// uncovered collection still looks deliberate.
+  final String coverUrl;
   final String visibility;
   final int itemCount;
 
+  /// Populated only by the detail read (`GET /me/collections/{id}`). The list
+  /// endpoint returns counts without items, so an empty list here means "not
+  /// loaded", which is why [itemCount] is carried separately rather than
+  /// derived from `items.length`.
+  final List<CollectionItem> items;
+  final DateTime? updatedAt;
+
   bool get isPrivate => visibility == 'private';
+  bool get isEmpty => itemCount == 0;
 
   factory UserCollection.fromJson(Map<String, dynamic> json) => UserCollection(
         id: _str(json, 'id'),
         name: _str(json, 'name'),
         description: _str(json, 'description'),
+        coverUrl: _str(json, 'cover_url'),
         visibility: _str(json, 'visibility', 'private'),
-        itemCount: _int(json, 'item_count'),
+        // The detail response carries items but the server computes
+        // item_count from them; when both are present they agree, and when
+        // only items are present the length is the honest count.
+        itemCount: json['item_count'] == null && json['items'] is List
+            ? (json['items'] as List).length
+            : _int(json, 'item_count'),
+        items: _list(json['items']).map(CollectionItem.fromJson).toList(),
+        updatedAt: _time(json, 'updated_at'),
+      );
+}
+
+/// One entry in a user collection (§36).
+final class CollectionItem {
+  const CollectionItem({
+    required this.id,
+    required this.confessionId,
+    this.title = '',
+    this.position = 0,
+  });
+
+  final String id;
+  final String confessionId;
+  final String title;
+  final int position;
+
+  /// The server resolves the title by joining `confessions`. An empty title
+  /// means the confession behind this item no longer resolves — archived or
+  /// withdrawn — and the row should say so rather than render blank.
+  bool get resolved => title.isNotEmpty;
+
+  factory CollectionItem.fromJson(Map<String, dynamic> json) => CollectionItem(
+        id: _str(json, 'id'),
+        confessionId: _str(json, 'confession_id'),
+        title: _str(json, 'title'),
+        position: _int(json, 'position'),
+      );
+}
+
+/// A favourite (§35).
+///
+/// The server's favourites table is polymorphic — one row shape covers
+/// confessions, categories, sessions and voices — so this model is too. The
+/// display fields are resolved server-side at read time and are absent from
+/// the write endpoints, which take only the type and the id.
+final class Favorite {
+  const Favorite({
+    required this.id,
+    required this.entityType,
+    required this.entityId,
+    this.title = '',
+    this.subtitle = '',
+    this.missing = false,
+    this.createdAt,
+  });
+
+  final String id;
+  final String entityType;
+  final String entityId;
+  final String title;
+  final String subtitle;
+
+  /// The favourited thing no longer resolves. The row is still shown, so the
+  /// user can clear it; hiding it would leave an entry they cannot remove.
+  final bool missing;
+  final DateTime? createdAt;
+
+  bool get isConfession => entityType == 'confession';
+
+  /// What a row leads with. Never empty: an unresolvable favourite says so
+  /// rather than rendering an opaque id, which is what this surface did before
+  /// the server learned to hydrate.
+  String get displayTitle {
+    if (title.isNotEmpty) return title;
+    return missing ? 'No longer available' : entityId;
+  }
+
+  factory Favorite.fromJson(Map<String, dynamic> json) => Favorite(
+        id: _str(json, 'id'),
+        entityType: _str(json, 'entity_type'),
+        entityId: _str(json, 'entity_id'),
+        title: _str(json, 'title'),
+        subtitle: _str(json, 'subtitle'),
+        missing: _bool(json, 'missing'),
+        createdAt: _time(json, 'created_at'),
+      );
+}
+
+/// A confession the listener wrote (§22).
+///
+/// Distinct from [Confession], which is editorial content. They share a name
+/// and almost nothing else: the user's own writing has one `text` field rather
+/// than three lengths, and it carries a moderation status the editorial model
+/// has no equivalent for. Decoding one as the other — which the library did
+/// before PHASE 27 — yields rows with every field empty, because none of the
+/// keys line up.
+final class UserConfession {
+  const UserConfession({
+    required this.id,
+    this.title = '',
+    this.text = '',
+    this.categoryId = '',
+    this.status = 'draft',
+    this.visibility = 'private',
+    this.rejectionReason = '',
+    this.reviewNotes = '',
+    this.createdAt,
+    this.updatedAt,
+  });
+
+  final String id;
+  final String title;
+  final String text;
+  final String categoryId;
+
+  /// The moderation lifecycle: draft, submitted, approved, rejected,
+  /// published or archived.
+  final String status;
+
+  /// The audience the author asked for: private, shared or public. Asking is
+  /// not receiving — publication is the moderator's decision, and the UI must
+  /// not present a `public` visibility on a `draft` as though it were live.
+  final String visibility;
+  final String rejectionReason;
+  final String reviewNotes;
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
+
+  /// Whether the author can still edit and submit this.
+  bool get isDraft => status == 'draft';
+
+  /// Waiting on a moderator. The author can neither edit nor resubmit.
+  bool get isPending => status == 'submitted';
+
+  bool get isPublished => status == 'published';
+  bool get isRejected => status == 'rejected';
+
+  /// Only a draft may be offered for review, and only one that asks for an
+  /// audience beyond the author. A private note has nothing to moderate.
+  bool get canSubmit => isDraft && visibility != 'private';
+
+  /// The line a list row leads with. Falls back to the opening of the text,
+  /// because a title is not enforced at creation.
+  String get lead {
+    if (title.isNotEmpty) return title;
+    if (text.isEmpty) return 'Untitled';
+    return text.length <= 60 ? text : '${text.substring(0, 60).trimRight()}…';
+  }
+
+  factory UserConfession.fromJson(Map<String, dynamic> json) => UserConfession(
+        id: _str(json, 'id'),
+        title: _str(json, 'title'),
+        text: _str(json, 'text'),
+        categoryId: _str(json, 'category_id'),
+        status: _str(json, 'status', 'draft'),
+        visibility: _str(json, 'visibility', 'private'),
+        rejectionReason: _str(json, 'rejection_reason'),
+        reviewNotes: _str(json, 'review_notes'),
+        createdAt: _time(json, 'created_at'),
+        updatedAt: _time(json, 'updated_at'),
       );
 }
 
@@ -933,26 +1251,128 @@ final class SearchResult {
       );
 }
 
-/// Recommendations payload (deterministic v1).
+/// The seven listener signals behind a recommendation (PHASE 43), reported as
+/// quantities so a client can show *why* rather than a bare "personalized".
+///
+/// `present` names the signals that had evidence; the counters are zero when
+/// a signal is absent. Repeat listening is a count of confessions the listener
+/// has finished in more than one session — never collapsed to a flag.
+final class ListenerSignals {
+  const ListenerSignals({
+    this.present = const [],
+    this.categoriesListenedTo = 0,
+    this.completionRate = 0,
+    this.completionSample = 0,
+    this.preferredDaypart = '',
+    this.typicalDurationSeconds = 0,
+    this.favourites = 0,
+    this.skips = 0,
+    this.repeatListening = 0,
+  });
+
+  final List<String> present;
+  final int categoriesListenedTo;
+  final double completionRate;
+  final int completionSample;
+  final String preferredDaypart;
+  final int typicalDurationSeconds;
+  final int favourites;
+  final int skips;
+  final int repeatListening;
+
+  factory ListenerSignals.fromJson(Map<String, dynamic> json) =>
+      ListenerSignals(
+        present: (json['present'] is List)
+            ? (json['present'] as List).whereType<String>().toList()
+            : const [],
+        categoriesListenedTo: _int(json, 'categories_listened_to'),
+        completionRate: (json['completion_rate'] is num)
+            ? (json['completion_rate'] as num).toDouble()
+            : 0,
+        completionSample: _int(json, 'completion_sample'),
+        preferredDaypart: _str(json, 'preferred_daypart'),
+        typicalDurationSeconds: _int(json, 'typical_duration_seconds'),
+        favourites: _int(json, 'favourites'),
+        skips: _int(json, 'skips'),
+        repeatListening: _int(json, 'repeat_listening'),
+      );
+}
+
+/// A confession the listener has finished in more than one session, with how
+/// many times — the "listen again" rail.
+final class ListenAgain {
+  const ListenAgain({required this.confession, this.times = 0});
+
+  final Confession confession;
+  final int times;
+
+  factory ListenAgain.fromJson(Map<String, dynamic> json) {
+    final raw = json['confession'];
+    return ListenAgain(
+      confession: Confession.fromJson(
+          raw is Map<String, dynamic> ? raw : const <String, dynamic>{}),
+      times: _int(json, 'times'),
+    );
+  }
+}
+
+/// Recommendations payload. Ranked by deterministic rules over the seven
+/// listener signals (PHASE 43); `personalized` is true only when at least one
+/// signal had evidence. Reasons are keyed by category / confession id.
 final class Recommendations {
   const Recommendations({
     this.categories = const [],
     this.confessions = const [],
     this.personalized = false,
+    this.listenAgain = const [],
+    this.categoryReasons = const {},
+    this.confessionReasons = const {},
+    this.suggestedDurationSeconds = 0,
+    this.daypart = '',
+    this.signals = const ListenerSignals(),
   });
 
   final List<Category> categories;
   final List<Confession> confessions;
   final bool personalized;
+  final List<ListenAgain> listenAgain;
+  final Map<String, List<String>> categoryReasons;
+  final Map<String, List<String>> confessionReasons;
+  final int suggestedDurationSeconds;
+  final String daypart;
+  final ListenerSignals signals;
 
-  factory Recommendations.fromJson(Map<String, dynamic> json) =>
-      Recommendations(
-        categories:
-            _list(json['categories']).map(Category.fromJson).toList(),
-        confessions:
-            _list(json['confessions']).map(Confession.fromJson).toList(),
-        personalized: _bool(json, 'personalized'),
-      );
+  static Map<String, List<String>> _reasons(Object? v) {
+    if (v is! Map<String, dynamic>) return const {};
+    final out = <String, List<String>>{};
+    v.forEach((k, val) {
+      out[k] = (val is List) ? val.whereType<String>().toList() : <String>[];
+    });
+    return out;
+  }
+
+  factory Recommendations.fromJson(Map<String, dynamic> json) {
+    final rawReasons = json['reasons'];
+    final reasons = rawReasons is Map<String, dynamic>
+        ? rawReasons
+        : const <String, dynamic>{};
+    final rawSignals = json['signals'];
+    return Recommendations(
+      categories: _list(json['categories']).map(Category.fromJson).toList(),
+      confessions:
+          _list(json['confessions']).map(Confession.fromJson).toList(),
+      personalized: _bool(json, 'personalized'),
+      listenAgain:
+          _list(json['listen_again']).map(ListenAgain.fromJson).toList(),
+      categoryReasons: _reasons(reasons['categories']),
+      confessionReasons: _reasons(reasons['confessions']),
+      suggestedDurationSeconds: _int(json, 'suggested_duration_seconds'),
+      daypart: _str(json, 'daypart'),
+      signals: ListenerSignals.fromJson(rawSignals is Map<String, dynamic>
+          ? rawSignals
+          : const <String, dynamic>{}),
+    );
+  }
 }
 
 /// Subscription plan with regional pricing.
@@ -1017,6 +1437,20 @@ final class Subscription {
 
   bool get isPremium => plan == 'premium' && active;
 
+  /// POST /subscriptions/verify returns a store plan and a server-resolved
+  /// entitlement object, not the GET /subscription shape. The store plan alone
+  /// must never be used to infer Premium (it can describe an expired purchase).
+  factory Subscription.fromVerification(Map<String, dynamic> json) {
+    final entitlements = json['entitlements'];
+    final premium = json['verified'] == true && entitlements is Map &&
+        (entitlements['Plan'] ?? entitlements['plan']) == 'premium';
+    return Subscription(
+      plan: premium ? 'premium' : 'free',
+      status: _str(json, 'state', 'unknown'),
+      active: premium,
+    );
+  }
+
   factory Subscription.fromJson(Map<String, dynamic> json) => Subscription(
         plan: _str(json, 'plan', 'free'),
         status: _str(json, 'status', 'active'),
@@ -1025,25 +1459,238 @@ final class Subscription {
       );
 }
 
+/// One account's boundary against another.
+///
+/// A block is not a moderation action. It does not delete anything, it does not
+/// penalise the blocked account, and it is not shown to them; it changes what
+/// one account is served. A client must not render it as a penalty, or the
+/// feature becomes a harassment tool in the other direction.
+final class UserBlock {
+  const UserBlock({
+    this.id = '',
+    this.blockerId = '',
+    this.blockedId = '',
+    this.reason = '',
+    this.createdAt = '',
+  });
+
+  final String id;
+  final String blockerId;
+  final String blockedId;
+  final String reason;
+  final String createdAt;
+
+  factory UserBlock.fromJson(Map<String, dynamic> json) => UserBlock(
+        id: _str(json, 'id'),
+        blockerId: _str(json, 'blocker_id'),
+        blockedId: _str(json, 'blocked_id'),
+        reason: _str(json, 'reason'),
+        createdAt: _str(json, 'created_at'),
+      );
+}
+
+/// A listener's answer to a decision made about them.
+///
+/// [status] is one of submitted, under_review, upheld, overturned. Both
+/// decisions are terminal: an appeal is heard once, because an appeal that
+/// could be filed until a moderator relented is a queue, not an appeal.
+final class ModerationAppeal {
+  const ModerationAppeal({
+    this.id = '',
+    this.decisionType = '',
+    this.decisionId = '',
+    this.statement = '',
+    this.status = 'submitted',
+    this.decisionNote = '',
+    this.createdAt = '',
+  });
+
+  final String id;
+  final String decisionType;
+  final String decisionId;
+  final String statement;
+  final String status;
+  final String decisionNote;
+  final String createdAt;
+
+  /// Whether a moderator has answered.
+  bool get isDecided => status == 'upheld' || status == 'overturned';
+
+  /// Whether the original decision was reversed. An overturned appeal reopens
+  /// the work; it does not publish or resolve anything.
+  bool get wasOverturned => status == 'overturned';
+
+  factory ModerationAppeal.fromJson(Map<String, dynamic> json) =>
+      ModerationAppeal(
+        id: _str(json, 'id'),
+        decisionType: _str(json, 'decision_type'),
+        decisionId: _str(json, 'decision_id'),
+        statement: _str(json, 'statement'),
+        status: _str(json, 'status', 'submitted'),
+        decisionNote: _str(json, 'decision_note'),
+        createdAt: _str(json, 'created_at'),
+      );
+}
+
 /// Trial journey day.
+///
+/// Each day teaches one thing, and [intent] names it. The flags are not
+/// decoration: [sessionCount] is two on the morning-and-night day, [personalized]
+/// means the server substituted this listener's own interests, [premiumVoice]
+/// and [custom] select a different surface entirely. A client renders the right
+/// affordance from the flag rather than guessing at it from the prose.
 final class TrialDay {
   const TrialDay({
     this.day = 0,
+    this.intent = '',
     this.title = '',
     this.description = '',
     this.cta = '',
+    this.categories = const <String>[],
+    this.duration = 0,
+    this.sessionCount = 1,
+    this.personalized = false,
+    this.premiumVoice = false,
+    this.custom = false,
+    this.summary = false,
   });
 
   final int day;
+  final String intent;
   final String title;
   final String description;
   final String cta;
+  final List<String> categories;
+  final int duration;
+  final int sessionCount;
+  final bool personalized;
+  final bool premiumVoice;
+  final bool custom;
+  final bool summary;
 
   factory TrialDay.fromJson(Map<String, dynamic> json) => TrialDay(
         day: _int(json, 'day'),
+        intent: _str(json, 'intent'),
         title: _str(json, 'title'),
         description: _str(json, 'description'),
         cta: _str(json, 'cta'),
+        // Categories are category slugs, so this is a string list. The shared
+        // _list helper only yields maps, which would have decoded every slug
+        // into the string form of an empty map.
+        categories: (json['categories'] as List?)?.whereType<String>().toList() ??
+            const <String>[],
+        duration: _int(json, 'duration'),
+        sessionCount: _int(json, 'session_count', 1),
+        personalized: _bool(json, 'personalized'),
+        premiumVoice: _bool(json, 'premium_voice'),
+        custom: _bool(json, 'custom'),
+        summary: _bool(json, 'summary'),
+      );
+}
+
+/// One measured day of the trial journey.
+///
+/// [sessionId] is the evidence: the row exists because a real session reached
+/// COMPLETED, not because a client said the day was done.
+final class TrialDayCompletion {
+  const TrialDayCompletion({
+    this.id = '',
+    this.day = 0,
+    this.sessionId = '',
+    this.completedAt = '',
+  });
+
+  final String id;
+  final int day;
+  final String sessionId;
+  final String completedAt;
+
+  factory TrialDayCompletion.fromJson(Map<String, dynamic> json) =>
+      TrialDayCompletion(
+        id: _str(json, 'id'),
+        day: _int(json, 'day'),
+        sessionId: _str(json, 'session_id'),
+        completedAt: _str(json, 'completed_at'),
+      );
+}
+
+/// The measured trial: days actually completed, not days elapsed.
+///
+/// An account on day five that finished two sessions reports 2 of 7. The
+/// distinction is the whole point - a clock reading is true of a listener who
+/// never opened the app.
+final class TrialEngagement {
+  const TrialEngagement({
+    this.state = 'ELIGIBLE',
+    this.currentDay = 0,
+    this.completedDays = const <int>[],
+    this.daysCompleted = 0,
+    this.daysTotal = 0,
+    this.completionRate = 0,
+    this.completions = const <TrialDayCompletion>[],
+    this.funnel = const <String, int>{},
+  });
+
+  final String state;
+  final int currentDay;
+  final List<int> completedDays;
+  final int daysCompleted;
+  final int daysTotal;
+  final double completionRate;
+  final List<TrialDayCompletion> completions;
+  final Map<String, int> funnel;
+
+  factory TrialEngagement.fromJson(Map<String, dynamic> json) {
+    final days = <int>[];
+    if (json['completed_days'] is List) {
+      for (final d in json['completed_days'] as List) {
+        if (d is int) {
+          days.add(d);
+        } else if (d is num) {
+          days.add(d.toInt());
+        }
+      }
+    }
+    final funnel = <String, int>{};
+    if (json['funnel'] is Map) {
+      (json['funnel'] as Map).forEach((k, v) {
+        funnel[k.toString()] = v is num ? v.toInt() : 0;
+      });
+    }
+    return TrialEngagement(
+      state: _str(json, 'state', 'ELIGIBLE'),
+      currentDay: _int(json, 'current_day'),
+      completedDays: days,
+      daysCompleted: _int(json, 'days_completed'),
+      daysTotal: _int(json, 'days_total'),
+      completionRate: (json['completion_rate'] as num?)?.toDouble() ?? 0,
+      completions: _list(json['completions'])
+          .map(TrialDayCompletion.fromJson)
+          .toList(growable: false),
+      funnel: funnel,
+    );
+  }
+}
+
+/// Persisted trial lifecycle state and current entitlement projection.
+final class TrialStatus {
+  const TrialStatus({
+    this.state = 'ELIGIBLE',
+    this.plan = 'free',
+    this.entitled = false,
+    this.currentDay = 0,
+  });
+
+  final String state;
+  final String plan;
+  final bool entitled;
+  final int currentDay;
+
+  factory TrialStatus.fromJson(Map<String, dynamic> json) => TrialStatus(
+        state: _str(json, 'state', 'ELIGIBLE'),
+        plan: _str(json, 'plan', 'free'),
+        entitled: _bool(json, 'entitled'),
+        currentDay: _int(json, 'current_day'),
       );
 }
 

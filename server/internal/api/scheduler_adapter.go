@@ -2,9 +2,12 @@ package api
 
 import (
 	"context"
+	"errors"
 
+	"github.com/Teamthy/i-confess/internal/jobs"
 	"github.com/Teamthy/i-confess/internal/push"
 	"github.com/Teamthy/i-confess/internal/scheduler"
+	"github.com/Teamthy/i-confess/internal/workers"
 )
 
 // pushSender is the transport the dispatcher delivers through.
@@ -90,6 +93,55 @@ func (h *Handler) SetPushSender(sender pushSender) {
 		return
 	}
 	h.dispatcher = scheduler.New(schedulerStore{h: h}, sender)
+}
+
+// pushJobQueue defers reminder delivery to the durable job queue.
+//
+// It exists so the scheduler never has to know a job type name, and so the
+// queue's duplicate-idempotency-key error can be swallowed in exactly one
+// place: a key that is already queued means the delivery it wanted is on its
+// way, which is the outcome, not a failure.
+type pushJobQueue struct{ queue jobs.Queue }
+
+func (q pushJobQueue) EnqueueNotification(ctx context.Context, payload map[string]any, dedupeKey string) error {
+	_, err := q.queue.Enqueue(ctx, jobs.Job{
+		Type:           workers.TypeNotificationSend,
+		Payload:        payload,
+		IdempotencyKey: dedupeKey,
+	})
+	if errors.Is(err, jobs.ErrDuplicateJob) {
+		return nil
+	}
+	return err
+}
+
+// SetPushQueue routes scheduled reminders through the job queue instead of
+// sending them inline during the sweep.
+//
+// Called after SetPushSender. Without it the sweep talks to APNs and FCM itself,
+// which works until the first provider slowdown: the sweep then runs longer
+// than its own tick, and a restart mid-send loses the delivery with nothing
+// recorded but a row that says "sent".
+func (h *Handler) SetPushQueue() bool {
+	if h.dispatcher == nil || h.queue == nil {
+		return false
+	}
+	h.dispatcher.Queue = pushJobQueue{queue: h.queue}
+	return true
+}
+
+// ClearPushToken forgets a token a push provider rejected as dead.
+//
+// This is the worker's view of the same operation the sweep performs: the
+// queue delivers reminders in production, so the queue handler is the
+// component that learns a token is gone and has to act on it.
+func (h *Handler) ClearPushToken(ctx context.Context, userID, deviceID string) error {
+	return h.library.ClearPushToken(ctx, userID, deviceID)
+}
+
+// RecordPushFailure counts a delivery the provider rejected.
+func (h *Handler) RecordPushFailure(ctx context.Context, userID, deviceID string) error {
+	return h.library.RecordPushFailure(ctx, userID, deviceID)
 }
 
 // RunScheduleSweep dispatches any schedules that have become due.

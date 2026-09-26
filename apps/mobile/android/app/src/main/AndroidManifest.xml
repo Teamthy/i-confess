@@ -1,4 +1,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Android 13+ requires the runtime notification permission, and asking
+         for it needs the manifest entry. The request itself is raised from an
+         explicit user action (Settings, then "Enable reminders"), never on
+         launch: a prompt nobody asked for is the fastest route to a permanent
+         denial. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <application
         android:label="iconfess"
         android:name="${applicationName}"
@@ -25,6 +32,14 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- The channel a background FCM notification is posted to when the
+             app is not running. Must match the channel created in
+             lib/src/core/push/firebase_push_transport.dart, otherwise Android
+             falls back to the default channel and the user's per-channel
+             settings (sound, importance) are ignored. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="iconfess_schedules" />
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

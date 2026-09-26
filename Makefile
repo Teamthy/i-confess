@@ -7,6 +7,11 @@
 # Tests require a live PostgreSQL. TEST_DATABASE_URL below is the default for a
 # local container; override it on the command line for anything else. There is
 # deliberately no fallback that skips the tests — see internal/db/dbtest.
+#
+# Redis is optional locally and provided by CI: with REDIS_ADDR set, the
+# live pub/sub assertions in internal/cache run, and without it they skip with
+# a message saying so. `docker compose -f server/docker-compose.yml up -d redis`
+# gives you the same server CI uses.
 
 SHELL := /bin/bash
 GO    ?= go
@@ -17,7 +22,7 @@ SERVER  := server
 LINT    := golangci-lint
 
 .PHONY: help build test race vet lint lint-fix fmt fmt-check tidy verify clean \
-	design design-check design-contrast routes mobile-check
+	design design-check design-contrast routes mobile-check dart-symbols
 
 PY ?= python3
 DESIGN := design
@@ -73,11 +78,15 @@ routes: ## Re-export the live route table to design/routes.json
 	cd $(SERVER) && EXPORT_ROUTES=1 EXPORT_ROUTES_PATH=$(CURDIR)/$(DESIGN)/routes.json \
 	  $(GO) test ./internal/api/ -run TestExportRouteTable -count=1
 
-mobile-check: ## Analyse and test the Flutter app
+dart-symbols: ## Static symbol check for the Dart sources; runs without an SDK
+	$(PY) scripts/check_dart_symbols.py
+
+mobile-check: dart-symbols ## Analyse and test the Flutter app
 	@if command -v $(FLUTTER) >/dev/null 2>&1; then \
 		cd $(MOBILE) && $(FLUTTER) pub get && $(FLUTTER) analyze && $(FLUTTER) test; \
 	else \
-		echo "mobile-check: SKIPPED - $(FLUTTER) is not on PATH, so the app was not checked"; \
+		echo "mobile-check: $(FLUTTER) is not on PATH; analyze/test are owed to CI."; \
+		echo "mobile-check: the dart-symbols check above still ran and is not a skip."; \
 	fi
 
 verify: fmt-check design-check build vet lint test mobile-check ## Run everything CI runs

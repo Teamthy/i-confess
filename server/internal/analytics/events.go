@@ -6,18 +6,26 @@ package analytics
 // scheduled usage, engagement. All events are actor + entity, not content.
 
 const (
-	EventAppOpened              = "app_opened"
-	EventSessionCreated         = "session_created"
-	EventSessionStarted         = "session_started"
-	EventSessionPaused          = "session_paused"
-	EventSessionResumed         = "session_resumed"
-	EventSessionCompleted       = "session_completed"
-	EventSessionSkipped         = "session_skipped"
-	EventScheduleCreated        = "schedule_created"
-	EventScheduleTriggered      = "schedule_triggered"
-	EventDownloadCreated        = "download_created"
-	EventDownloadRevoked        = "download_revoked"
-	EventTrialDayViewed         = "trial_day_viewed"
+	EventAppOpened         = "app_opened"
+	EventSessionCreated    = "session_created"
+	EventSessionStarted    = "session_started"
+	EventSessionPaused     = "session_paused"
+	EventSessionResumed    = "session_resumed"
+	EventSessionCompleted  = "session_completed"
+	EventSessionSkipped    = "session_skipped"
+	EventScheduleCreated   = "schedule_created"
+	EventScheduleTriggered = "schedule_triggered"
+	EventDownloadCreated   = "download_created"
+	EventDownloadRevoked   = "download_revoked"
+	EventTrialDayViewed    = "trial_day_viewed"
+	// Trial funnel. A journey that can be displayed but not measured cannot
+	// answer "did the trial work": these four are the numerator and denominator
+	// of trial→paid conversion. Day completion is emitted by the server from
+	// the session completion path, never asserted by a client.
+	EventTrialStarted           = "trial_started"
+	EventTrialDayCompleted      = "trial_day_completed"
+	EventTrialConverted         = "trial_converted"
+	EventTrialExpired           = "trial_expired"
 	EventSubscriptionStarted    = "subscription_started"
 	EventSubscriptionVerified   = "subscription_verified"
 	EventSubscriptionCancelled  = "subscription_cancelled"

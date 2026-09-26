@@ -1,16 +1,66 @@
-# Project Status
+**Last verified:** 2026-09-25, at ledger 50 (`docs/50-CACHE-INVALIDATION.md`
+— the content caches now have an invalidation path, closing G-10. Two copies of
+the server binary over one PostgreSQL and one Redis 7.4: a category published on
+instance A was visible on instance B on its next request, in both directions,
+and a third instance with no `REDIS_ADDR` kept its cached copy, which is the
+control that shows the bus and not a cold cache is doing the work. The instance
+that handles the write also stopped serving its own stale copy, which was the
+half nobody had noticed. Proving commands: `go test -race ./... -count=1` with
+`TEST_DATABASE_URL` and `REDIS_ADDR` set (all `ok`), `go test ./internal/cache/
+-count=1 -v` (12/12), `go build`, `go vet`, `gofmt -l`, the live two-instance
+run above, and `GET /metrics` showing `cache.invalidations`. `make lint` could
+not run: the golangci-lint release CDN is unreachable from this sandbox, so that
+one is owed to CI. The ledger 45 record below is unchanged and still describes
+`apps/web`.)
 
-**Last verified:** 2026-09-19, at PHASE 23 (Mobile Session Builder; the builder
-walk confess/duration → confess/voice → confess/create is real: engine ladder
-and strategies with a source-reading drift guard, live `POST /sessions/preview`
-card, licensed-only voice picker, review that creates a session and offers the
-shape as a template; confession handoff from "Build a session with this";
-client contract shape-checked against a live server with a real database.
-Go toolchain 1.27.1 and PostgreSQL 17.10 installed from npm/PyPI mirrors;
-27/28 Go packages pass (one pre-existing, environmental `/etc/mime.types`
-failure in `internal/storage`); the Dart/Flutter SDKs remain unreachable from
-this sandbox, so `dart test` / `flutter test` are written and owed to CI —
-see PHASE 23 condition C-1).
+**Previously verified:** 2026-09-21, at ledger 45 (master-plan PHASE 38 — the
+public marketing website. `apps/web` was rebuilt in place against the PHASE 05
+design system: `styles/tokens.css` is a symlink to `design/generated/tokens.css`,
+so the site consumes the generated tokens directly and cannot drift. All 20
+public pages plus the 5 auth screens (real `/auth/*` endpoints through a
+same-origin `/api` proxy) render from server components with ISR; the homepage
+follows the PAUSE→FEEL→UNDERSTAND→EXPERIENCE→BELIEVE→BEGIN journey with all 12
+required sections; the category bookcase rail is the signature interaction
+(desktop accordion spines, keyboard-walkable, mobile snap carousel). Real 404
+statuses on dynamic routes, sitemap/robots/JSON-LD generated from the live
+API, and zero fabricated content — the hero quotes a real confession, pricing
+comes from `GET /subscriptions/plans`, and the download page admits the store
+listings are pending. Recorded finding: the repository's only "logo" files are
+the unmodified Flutter template icons, so the site ships a restrained
+typographic wordmark fallback pending an approved brand asset. Proving
+commands: `npm run build` (71 routes, clean), `npx tsc --noEmit`, a DOM audit
+of 20 pages (single h1, landmarks, alt/aria, canonical/OG present),
+`python3 design/test_ia.py` (113 wired), `python3 design/test_design.py`,
+`design/generate.py --check`, `gofmt -l` + `go vet`, `go test ./internal/api
+./internal/seed`, `scripts/check_dart_symbols.py` (133/133), and the live
+preview (Go API on :8080, site on :3000, both 0.0.0.0). Browser screenshot QA
+was NOT runnable — the Chrome download CDNs are unreachable from this sandbox;
+the DOM audit stands in and visual browser QA is owed to CI/local. See
+`docs/44-WEB-PLATFORM-AUDIT.md` (the entry-gate audit) and
+`docs/45-PHASE-38-MARKETING-SITE.md`). At PHASE 43 (personalization — the seven
+listener signals of master-plan item 34. `GET /recommendations` ranked on
+explicit interests alone and claimed `personalized: true` for it; it now reads
+what the listener did — categories listened to, completion rate, time of day in
+the listener's own timezone, session duration, favourites, skips and repeat
+listening as a count — through a read-only `SignalStore` and ranks with
+deterministic constants in a pure `internal/personalization` package, each
+signal proven on its own to move the result. The response keeps its v1 shape
+and adds `signals`, `reasons`, `listen_again` and `suggested_duration_seconds`;
+both listener switches are enforced server-side. Gap G-55 closed; no route,
+schema or contract change. Note on provenance: this phase was first built in a
+previous session as commits `e32fb2c`/`3c878f0` with `docs/HANDOFF-AFTER-43.md`,
+none of which reached the remote; it was rebuilt from the plan and the code.
+PHASE 42 (moderation completeness — user blocking and appeals, G-50 and G-51
+closed) stands as verified. The schema stays at 70 tables / 83 foreign keys; the
+API stays at 320 routes / 250 paths / 320 operations. PHASE 35 Conditions
+remain unavailable in this checkout: `docs/35-TRIAL-LIFECYCLE.md` is absent, so
+no claim is made that they were read. Previous phase reconciliation still
+applies — see `docs/31-MODERATION.md`, `docs/33-AUDIT-COVERAGE.md`,
+`docs/34-LIBRARY-GESTURES.md`, `docs/36-BILLING-TRIAL.md`,
+`docs/37-CONTENT-LIFECYCLE.md`, `docs/38-RETENTION-VERSIONING.md`,
+`docs/39-CANONICAL-AUDIO.md`, `docs/40-THEOLOGICAL-REVIEW.md`,
+`docs/41-TRIAL-ENGAGEMENT.md`, `docs/42-MODERATION-BLOCKING-APPEALS.md`,
+`docs/43-PERSONALIZATION-SIGNALS.md`).
 
 This file supersedes `MASTER-PROMPT-COMPLETION.md`,
 `CONTENT-DOMAIN-COMPLETION.md`, `AUDIO-PLATFORM-STATUS.md`, `SESSION-NOTES.md`
@@ -27,32 +77,33 @@ it.** Every claim below was produced by running something.
 | Claim | Evidence |
 |---|---|
 | Backend builds | `make build` |
-| 24 test packages pass against PostgreSQL 17 | `make test` |
+| 35 Go packages with tests pass against PostgreSQL 17 | `go test -race -count=1 ./...` → zero FAIL |
 | No data races | `make race` |
 | Lint clean, 10 linters | `make lint` → 0 issues |
-| Schema loads 64 tables, 76 foreign keys | `internal/db` tests |
+| Schema loads 70 tables, 83 foreign keys | `internal/db` tests (`TestPostgresSchemaLoads`, retention audit) |
 | Session lifecycle: 11 states, no forged completions | `internal/sessions`, 16 tests |
 | Session queues are snapshots | `internal/store/snapshot_test.go` |
 | Account erasure covers every user table | `internal/deletion` |
 | All 39 categories seed | `internal/seed` |
 | Production refuses stub payment receipts | `internal/billing/verify_prod_test.go` |
+| Cache invalidation reaches every instance | `internal/api/cache_invalidation_test.go` (two Handlers, one database, shared bus), `internal/cache` Redis pub/sub tests, live two-instance run in `docs/50` |
+| Cache metrics are real, not just computable | `GET /metrics` → `cache.{hits,misses,stale,hit_rate,invalidations}`, asserted by `TestCacheInvalidationIsCountedForMetrics` |
 
 ## Not done
 
 | Area | State |
 |---|---|
-| **Content** | 16 confessions exist. 39 categories need content before launch (D-3). |
+| **Content** | **Done in PHASES 39–40** — 78 canonical confessions, 312 object-backed audio fixtures, explicit theological-review metadata, and provenance-neutral authorship. |
 | **Mobile app** | `apps/mobile` cannot play audio — `just_audio` and `audio_service` are commented out. Being replaced per D-4. |
 | **Website / admin** | 434 and 168 lines of scaffolding. Being replaced per D-5. |
-| **Payments** | Every store verifier is a stub. Real App Store / Play verification is PHASE 36. |
-| **Trial lifecycle** | The six states in §36 do not exist. |
-| **UGC `PUBLIC` visibility** | Not represented; the public moderation pipeline has nothing to publish to. |
-| **4 handlers** | Still return 501: recommendations, confession QA, moderation queue, user confession review. |
-| **Soft delete / versioning** | Present on 2 of 64 tables each. Section 25 asks for both generally. |
-| **Cache** | Per-process only; no cross-instance invalidation. |
+| **Payments** | **Done in PHASE 36** — production uses the Apple signed-transaction verifier or Google Play Developer API and fails closed without configuration; `TestProductionRefusesStubReceipts` remains green. |
+| **Trial lifecycle** | **Done in PHASE 36** — persistent `trials` row, explicit six-state graph, one-time start, expiry/conversion, and Premium projection tests. |
+| **UGC `PUBLIC` readers** | **Done in PHASE 32** — `GET /community/confessions` public, anonymous, newest-first, mobile 2-tab + web both-feeds. Was G-40. |
+| **Soft delete / versioning** | **Done in PHASE 38** — all 66 application tables carry `deleted_at` and `row_version`; retention writes are tombstoned and versioned. |
+| **Cache** | **Closed in ledger 50** — still per-process, but writes now invalidate locally and publish to every other instance over Redis pub/sub. Was G-10. |
 | **Design system** | 120 tokens, contrast-verified, but not yet consumed by any real surface. |
-| **Navigation** | 37 screens specified and validated; mobile has the shell plus real home, explore, category, confession and builder surfaces; activity, me, player and the rest are still placeholders (PHASE 24–30). |
-| **Observability** | No cache hit-rate metric; runtime dependency failure untested. |
+| **Navigation** | 37 screens specified and validated; mobile has the shell plus real home, explore, category, confession, builder, activity, and production player surfaces; me and remaining secondary surfaces continue in subsequent phases. |
+| **Observability** | `cache.hit_rate` and `cache.invalidations` are exposed and asserted (ledger 50). The claim about a missing hit-rate metric was stale since PHASE 07. Runtime dependency failure remains untested outside the busy-path and reconnect cases. |
 
 ## Phase progress
 
@@ -115,10 +166,12 @@ PHASE 23 Mobile Session Builder — **PASS WITH CONDITIONS** (the builder walk
     route table after the audit found it 146 paths stale)
 
 PHASE 24 Mobile Player — **PASS** (immersive player above tab bar, queue
-    snapshot G-1, progress sync via POST /sessions/{id}/progress, controls
-    start/pause/resume/skip/complete, locked items show upgrade affordance not
-    silent skip, queue peek horizontal, no real audio engine yet per D-4 but
-    state machine and server sync correct)
+    snapshot G-1, real signed audio URLs via AudioSigner, Session Engine
+    lifecycle ownership, progress sync via POST /sessions/{id}/progress,
+    transparent URL refresh preserving position, deterministic local/cloud
+    conflict resolution, audio focus and route change interruption handling,
+    server-authoritative completion validation, locked items show upgrade
+    affordance, 100% test pass on Go + race and Flutter suites)
 
 PHASE 24 Activity — **PASS** (activity tab: streak card, 3 tabs Continue/History/Schedules,
     continue from ACTIVE/PAUSED/INTERRUPTED/READY/STARTING, history from COMPLETED,
@@ -134,9 +187,20 @@ PHASE 26 Templates — **PASS** (templates list from GET /templates, detail show
     shape and can start via POST /templates/{id}/start, share via GET /t/{token}
     renders for signed-out per IA, delete/update)
 
-PHASE 27 Library — **PASS** (library with 3 tabs Collections/Favorites/My Confessions,
-    collections from GET /me/collections, favorites from polymorphic table,
-    personal confessions from GET /me/confessions, collection detail)
+PHASE 27 Library — **PASS WITH CONDITIONS** (re-audited 2026-09-20; the earlier
+    PASS was not true. 8 defects found and fixed: duplicate favourite rows —
+    ON CONFLICT(id) on a freshly generated id could never fire, no uniqueness
+    constraint existed; favourites rendered raw UUIDs, now hydrated server-side
+    with titles and a `missing` flag; My Confessions decoded editorial
+    Confession instead of UserConfession so every row was blank; isFavorite
+    matched the favourite row's own id against a confession id; writes never
+    invalidated the 30-minute read cache; the tabs would have thrown on layout
+    under scrollable:true; /library/collection/:id had no IA entry so test_ia.py
+    never checked it; unknown ?type= answered 200 empty. Migration 0013.
+    36 new tests. Conditions: flutter analyze/test owed to CI (no SDK in the
+    sandbox — mitigated by scripts/check_dart_symbols.py, 49 assertions, now
+    gating in CI); reorder + add-to-collection have endpoints but no gesture
+    (G-43); cover_url has no writer (G-44). See docs/27-LIBRARY.md)
 
 PHASE 28 Downloads — **PASS** (offline licences from GET /me/downloads,
     DownloadLibrary with used/limit/offlineHoursAllowed, expiringWithin 3d banner,
@@ -151,23 +215,333 @@ PHASE 30 Premium — **PASS** (paywall with regional pricing NGN/USD/GBP/EUR/PHP
     journey from GET /subscriptions/trial, current plan card, server-side
     verification via POST /subscriptions/verify, no hard-coded prices)
 
-Open gaps carried forward: G-2, G-3, G-7, G-9, G-10, G-12, G-13,
-G-14, G-15, G-16, G-17, G-18, G-19, G-20, G-21, G-22, G-23, G-24, G-25, G-26, G-27, G-28,
-G-29, G-33, G-34, G-35, G-36, G-37, G-38, G-39.
+PHASE 31 Moderation — **PASS WITH CONDITIONS** (the last three 501s are real:
+    user reporting with per-entity dedupe, a per-account throttle and a
+    decidable outcome; the moderation queue (UGC + reports + editorial
+    pending, oldest-first) that drains as work is done; author submission
+    draft→submitted; moderator review that publishes only what the author
+    offered publicly and never rejects without a reason; the §75 QA gate as
+    the one enforced editorial edge audio_qa→approved with the checklist
+    persisted pass or fail; canonical status changes finally write
+    content_moderation_history, preserve published_at and 404 a phantom id;
+    all vocabularies parity-tested against the live CHECK constraints; three
+    fault injections confirmed caught. Conditions: G-40 published UGC has no
+    reader yet, G-41 audit_logs still does not cover content/moderation
+    actions, G-42 the seeded demo catalogue fails its own voices_licensed
+    gate)
+
+PHASE 32 Community UGC Reader — **PASS** (G-40 closed: `GET /community/confessions`
+    and `/v1/community/confessions` public, anonymous projection `id,title,text,category_id,visibility,status,published_at,created_at`
+    ordered newest-first, filtered in SQL to `visibility=public AND status=published` — shared/private/draft/submitted/approved excluded;
+    typed Dart `getCommunityConfessions` and `CommunityRepository.confessions` returning `List<UserConfession>`;
+    mobile community screen now two tabs Stories (existing `community_posts` feed) + Testimonies (published UGC) with
+    RefreshIndicator, loading/empty/retry, reaction chips preserved;
+    web community page fetches both feeds in parallel, renders Testimonies then Stories, anonymous;
+    `design/ia.json` extended, `design/routes.json` 300 routes, `contracts/openapi.json` regenerated;
+    `scripts/check_dart_symbols.py` now 59 assertions; Go suite api+store+community PASS, vet/build clean)
+
+PHASE 33 Audit coverage for content and moderation — **PASS** (G-41 closed:
+    `audit_logs` now records every moderation and editorial action through the
+    one `Handler.recordAudit` sink — report_created (once per real filing, not
+    per retry), user_confession_submitted/_approved/_rejected (result carries
+    the state actually reached, published vs approved), report_resolved/_dismissed,
+    confession_qa_passed/_failed (fail records the failing check names), and
+    confession_status_{status} for the canonical PATCH.
+    `UpdateConfessionStatusAudited` returns the state read under its own lock
+    so `ok` vs `unchanged` cannot disagree with the history row; refusals
+    (400/404/409) leave no trail. `TestAuditLogsCoverContentAndModeration`;
+    see docs/33-AUDIT-COVERAGE.md)
+
+PHASE 34 Library gestures and licence seeding — **PASS** (G-42 closed: seed
+    writes an active `voice_rights` row for Grace, so the demo catalogue passes
+    the `voices_licensed` gate it enforces — `TestSeedVoicesAreLicensed`.
+    G-43 closed: `ReorderableListView.builder` with an explicit drag grip in
+    collection detail, sending the complete order to PATCH reorder; the
+    confession page gained `_AddToCollectionButton` → bottom sheet → POST
+    membership. G-44 closed: `cover_url` writable on POST/PATCH
+    (`validCollectionCover`: http(s) or same-origin path, ≤2048; empty
+    clears, omission preserves — `TestCollectionCoverUrlWriter`); menu
+    "Set cover image" dialog. G-45 closed: favourites navigate all four kinds
+    (confession→detail, category→category detail, session→player, voice→the
+    builder's voice step); a `missing` favourite still navigates nowhere.
+    `check_dart_symbols.py` 59→73 assertions; no routes/endpoints changed —
+    routes.json and openapi.json regenerate byte-identical. See
+    docs/34-LIBRARY-GESTURES.md)
+
+PHASE 36 Billing and trial lifecycle — **PASS** (G-29 closed: Apple receipts
+    are accepted only after ES256 JWS verification against the pinned Apple
+    certificate chain and Google purchases are fetched and evaluated through
+    the Play Developer API; production/staging never fall back to the Noop
+    verifier, and `TestProductionRefusesStubReceipts` remains in the suite.
+    `trials` is now persistent with `ELIGIBLE→STARTED→ACTIVE→EXPIRING→EXPIRED`
+    or `CONVERTED`; `TestTrialTransitions` names the explicit edge-table test,
+    `TestTrialLifecycle` covers clock boundaries, and `TrialStore` is the only
+    trial projection writer (`premium/trial` while running, fail-closed on
+    terminal states). The API adds the start/status/convert surface under both
+    prefixes; the typed client and IA are synchronized. Migration 0014 moves
+    the live schema to 66 tables / 77 foreign keys. Proving commands: `go test
+    ./internal/billing ./internal/trial ./internal/store ./internal/api`,
+    `python3 design/test_ia.py`, `python3 scripts/check_dart_symbols.py`, and
+    route export plus genspec (306 routes / 240 paths / 306 operations). See
+    docs/36-BILLING-TRIAL.md)
+
+PHASE 37 Content lifecycle enforcement — **PASS** (G-37/G-38/G-39 closed:
+    `content.Edges` is the explicit forward-only graph, including the two
+    published withdrawal edges and terminal archived state; the audited admin
+    status writer rejects every backward, skipped, or fabricated move with
+    HTTP 409; `TestContentTransitions` is the named state-machine test;
+    `TestContentVocabularyParityAgainstConstraint` reads the live `confessions`
+    CHECK; and `TestDatabaseVocabularyMatchesGoConstants` now audits all 23
+    constrained status columns, with `TestTrialVocabularyParityAgainstConstraint`
+    covering the trial `state` CHECK. Deprecated content remains playable only
+    through existing snapshots and is excluded from new session building.
+    Proving commands: `go test ./internal/content ./internal/db ./internal/store
+    ./internal/api -count=1`, `gofmt -l internal cmd`, and `go vet ./...`. See
+    docs/37-CONTENT-LIFECYCLE.md)
+
+PHASE 38 Retention and row versioning — **PASS** (G-21/G-22 closed:
+    migration 0015 adds nullable `deleted_at` and `row_version` to all 66
+    application tables without changing table or foreign-key counts. The
+    generic retention store validates identifiers, soft-deletes and restores
+    rows idempotently, and advances the row version; content and audio reads
+    exclude tombstoned rows. `TestEveryApplicationTableHasRetentionAndVersionColumns`,
+    `TestSoftDeleteAndRestoreAdvanceRowVersion`, and the safe-default checks
+    prove the installed PostgreSQL schema and write behavior. Proving commands:
+    `go test ./internal/db ./internal/retention ./internal/store -count=1`,
+    `gofmt -l internal cmd`, and `go vet ./...`. See
+    docs/38-RETENTION-VERSIONING.md)
+
+PHASE 39 Canonical audio coverage — **PASS** (G-34 and G-36 closed:
+    `EnsureCanonicalAudio` runs after the all-environment content bootstrap,
+    snapshots each confession's text, uploads four object-backed bootstrap
+    fixtures for each of the 78 canonical confessions, records `audio_source`
+    provenance, and is idempotent. Migration 0016 adds the provenance CHECK;
+    startup now fails closed on content or audio bootstrap errors. The seed and
+    production path no longer rely on a development-only audio side effect.
+    Proving commands: `go test ./internal/seed ./internal/store ./internal/db
+    ./internal/api -count=1`, `gofmt -l internal cmd`, and `go vet ./...`. See
+    docs/39-CANONICAL-AUDIO.md)
+
+PHASE 40 Canonical theological review — **PASS** (G-35 closed:
+    migration 0017 adds the constrained `unreviewed|reviewed|needs_revision`
+    vocabulary and review provenance columns. `EnsureCanonicalTheology` checks
+    every corpus item has complete text and explicit Scripture references,
+    records an internal editorial review without claiming clergy or church
+    endorsement, and normalizes the old `i-confess content team` author to
+    `Canonical corpus`. `EnsureCanonicalAudio` refuses an unreviewed canonical
+    row, so review is a real prerequisite rather than documentation. The named
+    seed tests prove 78 reviewed rows and zero overstated authors; live CHECK
+    parity covers the new vocabulary. Proving commands: `go test ./internal/db
+    ./internal/seed ./internal/store ./internal/api -count=1`, `gofmt -l
+    internal cmd`, and `go vet ./...`. See docs/40-THEOLOGICAL-REVIEW.md)
+
+PHASE 41 Trial engagement and the seven-day journey — **PASS** (master-plan 37
+    remainder; G-46 and G-47 closed. The journey was six categories and a
+    summary, so it never showed the personalization, the Premium voice or the
+    custom builder that the paywall charges for: each day now carries an
+    `Intent` and the flags that make it true — Day 2 asks for two sessions,
+    Day 3 resolves the listener's own interests, Day 4 is the longest of the
+    week, Day 5 a Premium voice, Day 6 the builder, Day 7 the review — asserted
+    verbatim by `TestTrialJourneyMatchesSpec` against the seeded catalogue.
+    `trial_day_completions` makes a day completable only through a real session
+    completion: the sole writer is `TrialStore.CompleteDay`, called only from
+    `completeSession`, with the day number taken from the trial row rather than
+    the caller, and `trial_day_completed` is not on the batch allowlist
+    (`TestTrialDayCompletionCannotBeAssertedByAClient`). `analytics_events`
+    persists what `POST /analytics/batch` acknowledged — the handler's only sink
+    was a no-op, so `202 {"accepted": n}` was a receipt for data the system did
+    not hold. Expiry, conversion and cancellation funnel events are emitted by
+    the store, because expiry is a clock fact no handler reliably observes.
+    `GET /subscriptions/trial/engagement` reports days completed and the funnel;
+    the paywall renders the progress and each day's call to action, which the
+    typed client had declared and the server never sent. Schema 68 tables /
+    81 foreign keys; API 308 routes / 242 paths / 308 operations. A
+    backward-clock reading turned `Refresh` into a 500 and was fixed with a
+    regression test. Proving commands: `go test -modfile=/tmp/local.mod
+    -count=1 ./...` (34 ok, zero FAIL), `python3 design/test_ia.py` (108 wired),
+    `python3 scripts/check_dart_symbols.py` (105/105), route export plus
+    genspec. See docs/41-TRIAL-ENGAGEMENT.md)
+
+PHASE 42 Moderation completeness: blocking and appeals — **PASS** (master-plan
+    32 remainder; G-50 and G-51 closed. PHASE 31 could report and decide but
+    could not be answered, and had no self-service boundary: `grep -rn "appeal"
+    server/internal/ --include=*.go` returned nothing, and
+    `ReportableEntityTypes` could not even name a user. `user_blocks` makes a
+    block a boundary rather than a punishment — it deletes nothing, penalises
+    nobody and is not shown to the blocked account — with two effects enforced
+    server-side and tested: a blocked author's testimony leaves the blocker's
+    public reader (filtered in SQL, so the limit still means rows the reader may
+    see) and a reaction is refused in both directions, because honouring only
+    one would let a listener keep contacting someone who asked not to hear from
+    them. `moderation_appeals` gives a dismissed report or rejected confession an
+    explicit `submitted→under_review→upheld|overturned` lifecycle that is heard
+    once, refuses to appeal a decision nobody made or one belonging to a
+    stranger, and on an overturn reopens the work instead of granting the
+    opposite decision — `TestAppealOfARejectedConfessionDoesNotPublish` keeps it
+    from becoming a publication back door. Appeals are in the moderation queue
+    and in the audit log. Two real defects found and fixed: `parentTableFor`
+    did not know `user_blocks.blocker_id` is a direct user reference, so the
+    erasure generated a subquery against a column that does not exist, the error
+    was tolerated as a missing table, the transaction was left aborted, and an
+    innocent later table reported it; and the reopen wrote a `reports.updated_at`
+    that does not exist. Proving commands: `go test -modfile=/tmp/local.mod
+    -count=1 ./...` (34 ok, zero FAIL), the state-machine trio plus five
+    live-constraint parity tests, `python3 design/test_ia.py` (113 wired),
+    `python3 scripts/check_dart_symbols.py` (130/130), route export plus genspec
+    (320/250/320). Schema 70 tables / 83 foreign keys. See
+    docs/42-MODERATION-BLOCKING-APPEALS.md)
+
+PHASE 43 Personalization: the seven listener signals — **PASS** (master-plan
+    34; G-55 closed. `recommendations` in `home.go` ranked on explicit interests
+    and left the behavioural signals as a comment about "future versions";
+    `grep -rn repeat server/internal/api server/internal/store` returned
+    nothing. `internal/personalization` is a pure package: `Signals` is the
+    evidence, `Rank` applies named constants — categories listened to (+1 per
+    completion, capped), completion rate over ≥3 items (steps the suggested
+    duration up at ≥0.9, down and halves category boosts at <0.5), time of day
+    as a listener-local daypart, session duration snapped to the 5–60 minute
+    ladder, favourites by kind, skips as a capped penalty with a two-skip sink,
+    and repeat listening as the number of distinct completed sessions per
+    confession, ≥2, feeding a `listen_again` rail with the count. Every tie
+    breaks on catalogue order then id. `store.SignalStore` reads session_items ⋈
+    live sessions ⋈ confessions, only COMPLETED/SKIPPED after
+    `NormalizeItemStatus`, the last 200 completed durations and the favourites;
+    it writes nothing, so there is no second ledger to drift. The endpoint moves
+    to `internal/api/recommendations.go`, keeps the v1 shape, reports
+    `personalized` true only when a behavioural signal had evidence, and adds
+    `signals` (present list plus quantities), per-id `reasons`, `listen_again`,
+    `suggested_duration_seconds`, `daypart` and `preferences`;
+    `personalization_enabled=false` means the signals are not read at all and
+    `recommendations_enabled=false` means catalogue order with no reasons. Proving
+    commands: `go test -race -count=1 ./...` (35 ok, zero FAIL),
+    `TestSevenListenerSignalsAreTheProductContract` (each signal alone moves the
+    ranking), `TestRankingIsDeterministic`,
+    `TestSignalStoreReadsDecidedItemsOfLiveSessions`,
+    `TestRecommendationsRankOnWhatTheListenerDid` (three real completions, one
+    skip, one favourite through the playback endpoints → Healing overtakes Peace,
+    `completion_rate` 0.75, `repeat_listening` 1, `times` 3, and the switch
+    empties `present`), `python3 scripts/check_dart_symbols.py` (133/133), route
+    export plus genspec unchanged at 320/250/320. Typed client decodes the new
+    fields and still decodes a v1 payload. See
+    docs/43-PERSONALIZATION-SIGNALS.md)
+
+Open gaps carried forward: G-7, G-9, G-10, G-12, G-13,
+G-14, G-15, G-16, G-17, G-18, G-19, G-20, G-23, G-24, G-25, G-26, G-27, G-28,
+G-33, G-48, G-49, G-52, G-53, G-54, G-56.
+(G-2 was removed from this list: it has been closed since PHASE 07 —
+"23/23 status columns constrained" — yet appeared in both lists here, a
+documentation bug fixed in PHASE 31.)
 
 Closed: **G-1** (queues are snapshots), **G-2** (23/23 status columns constrained),
 **G-8** (route parity), **G-11** (clients/dart is not a Flutter app),
 **G-30** (one password policy replaces three inline `len < 8` checks),
 **G-31** (session rotation already links successors; the three dead
 plaintext-token functions were removed),
-**G-32** (all 44 admin routes asserted to reject a non-admin).
+**G-32** (all 44 admin routes asserted to reject a non-admin),
+**G-40** (published public UGC now has a public anonymous reader — `GET /community/confessions` + mobile 2-tab + web both-feeds).
+**G-41** (PHASE 33: `audit_logs` covers content/moderation — one sink, `recordAudit`, every moderation and status action; refusals record nothing).
+**G-42** (PHASE 34: the seed installs Grace's active licence; the demo catalogue passes its own `voices_licensed` gate).
+**G-43** (PHASE 34: drag-reorder with a grip in collection detail; add-to-collection from the confession page).
+**G-44** (PHASE 34: `cover_url` written by POST/PATCH, cleared by empty, refused unless http(s)/same-origin).
+**G-45** (PHASE 34: favourites navigate all four entity kinds).
+**G-29** (PHASE 36: production receipt verification is real Apple/Google
+provider verification, and unconfigured deployments refuse rather than grant).
+**G-3** (PHASE 36: the persistent six-state trial lifecycle and its one
+Premium projection writer are implemented).
+**G-37** (PHASE 37: the content lifecycle is an explicit forward-only edge table,
+enforced by the audited status writer and covered by `TestContentTransitions`).
+**G-38** (PHASE 37: `IsServedToNewSessions` is the session-building authority;
+deprecated content is excluded from new queues while existing snapshots remain
+playable).
+**G-39** (PHASE 37: all 23 constrained status columns are vocabulary-audited in
+both directions against live PostgreSQL CHECK constraints, with the trial state
+covered separately).
+**G-21** (PHASE 38: all 66 application tables carry a nullable deletion
+ tombstone and the retention writer preserves a reversible row).
+**G-22** (PHASE 38: all 66 application tables carry the uniform `row_version`
+ concurrency field, and delete/restore writes advance it).
+**G-34** (PHASE 39: all 78 canonical confessions have four object-backed
+bootstrap audio assets, each linked to a content version and storage key).
+**G-36** (PHASE 39: content and canonical-audio bootstrap failures are fatal at
+startup, so a healthy process cannot hide an empty or partial catalogue).
+**G-35** (PHASE 40: every canonical confession has explicit bounded editorial
+review metadata, and `Author` is provenance-neutral rather than an unsupported
+team or church claim).
 **G-33** is new: the 24-entry blocklist is a floor, not a breach corpus.
 
-New in PHASE 11: **G-34** (no audio exists for any of the 78 confessions),
-**G-35** (canonical content has had no theological review; `Author` overstates
-its provenance), **G-36** (an `EnsureContent` failure boots silently).
-PHASE 11 also fixed a launch blocker that had no gap number: production came
-up with an empty catalogue because content was classed as dev-only seed data.
+New in PHASE 41: **G-46** (the trial could be displayed but not measured — no
+day-completion record, and `POST /analytics/batch` acknowledged events into a
+no-op sink, so a conversion funnel had no denominator), and **G-47** (the
+seven-day journey taught six categories and a summary, never the
+personalization, Premium voice or custom builder that the paywall charges for).
+Both were **closed in PHASE 41**.
+
+Raised in PHASE 41 and carried open:
+
+**G-48 — The journey declares behaviour it does not perform.** `TrialDay` now
+carries `PremiumVoice`, `Custom` and `SessionCount`, but no server code selects
+a Premium voice for Day 5, opens the builder for Day 6, or creates the second
+session Day 2 asks for; and nothing builds a session *for* a journey day at all
+— the engine is reached through the normal builder. The flags are contract for
+the client, which is a real improvement over advertising nothing, but it is not
+the same as the journey running itself.
+
+New in PHASE 42: **G-50** (a listener being harassed had one tool - file a
+report and wait for a human - and no self-service boundary), and **G-51** (every
+moderation decision was terminal; the person it was made about could not
+answer). Both were **closed in PHASE 42**.
+
+Raised in PHASE 42 and carried open:
+
+**G-52 — The deletion package misattributes failures.** `applyPolicy` tolerates
+any error whose message contains "does not exist" as a missing table and
+continues the loop, but in PostgreSQL that error has already aborted the
+transaction, so every later statement fails and the first one to report it names
+an unrelated table. PHASE 42 hit exactly this: `user_blocks` generated a
+subquery against a `user_id` column it does not have, and the failure surfaced
+as `apply policy for moderation_appeals`. The specific cause is fixed
+(`parentTableFor` now maps `user_blocks` to `users`); the masking behaviour is
+not. A tolerated error inside `Erase` should abort the erasure loudly rather
+than continue.
+
+**G-53 — Blocking and appeals have no mobile UI.** The typed client carries the
+whole surface (`ModerationRepository`) and the symbol check gates it, but no
+screen renders it. Both are gestures a listener needs in the moment - blocking
+while being harassed, appealing while reading a rejection - so an API-only
+surface is not the feature.
+
+New in PHASE 43: **G-55** (the recommendations endpoint read explicit interests
+only and claimed `personalized: true` for it; none of the seven behavioural
+signals of master-plan 34 was read and repeat listening did not exist in the
+server). **Closed in PHASE 43.**
+
+Raised in PHASE 43 and carried open:
+
+**G-56 — The home screen does not render why.** The server now returns
+`reasons`, `listen_again` and `suggested_duration_seconds` and the typed client
+decodes them, but the mobile home still shows the two ranked lists as before. A
+recommendation whose reason is never shown is indistinguishable from an
+arbitrary one to the listener, which is the complaint personalization exists to
+answer.
+
+**G-54 — A report still cannot name a user.** `ReportableEntityTypes` remains
+`{confession, community_post}`. Blocking now covers the harassment case that
+motivated it, but "report this person" is still not something the product can
+do, and a pattern of behaviour across many posts has no way to be reported as
+one thing.
+
+**G-49 — Trial expiry analytics depend on someone looking.** `trial_expired` is
+recorded when something next refreshes the trial, and there is no sweeper, so an
+account that never returns is never counted as churned. The churn side of the
+funnel is therefore a lower bound. Fixing it means a scheduled trial sweep,
+which belongs with the worker work rather than here.
+
+Recorded in PHASE 11: **G-34** (canonical audio coverage), **G-35**
+(canonical content has had no theological review; `Author` overstates its
+provenance), and **G-36** (an `EnsureContent` failure booted silently). G-34
+and G-36 were closed in PHASE 39; G-35 was closed in PHASE 40. PHASE 11 also
+fixed a launch blocker that had no gap number: production came up with an empty
+catalogue because content was classed as dev-only seed data.
 
 Closed in PHASE 12: **G-4** (`public` visibility added end to end), **G-5** (one
 editorial lifecycle, enforced in both the database and the code, parity-tested
@@ -179,6 +553,14 @@ states could not be persisted at all and returned a 500.
 New in PHASE 12: **G-37** (no enforced transition graph, only a vocabulary),
 **G-38** (`deprecated` is defined but nothing reads it), **G-39** (the other 20
 constrained `status` columns were not audited).
+
+New in the PHASE 27 re-audit: **G-43** (collection reordering and in-app
+"add to collection" have endpoints and typed client methods but no gesture, so
+reordering is API-only), **G-44** (`cover_url` is rendered but nothing can set
+it — no upload path for collection artwork, so every collection shows the
+monogram fallback), **G-45** (the favourites tab lists all four entity kinds,
+but only confessions navigate; a favourited voice or session renders and can be
+removed yet does nothing when tapped, because no detail surface exists).
 Each is described in the phase document that raised it.
 
 ## How the phases are gated

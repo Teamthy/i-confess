@@ -68,8 +68,63 @@ func TestCollectionCRUD(t *testing.T) {
 	}
 }
 
-// The ownership test that matters: another user's collection must be
-// unreachable, and reported as 404 rather than 403 so the id is not confirmed.
+// G-44: cover_url was rendered by every collection row since PHASE 27 and
+// written by nothing — the monogram was permanent. Now POST and PATCH carry
+// it, an empty value clears it, omission changes nothing, and only URLs the
+// client could honestly put in an image tag get through.
+func TestCollectionCoverUrlWriter(t *testing.T) {
+	a := newAuthHarness(t)
+	token, _ := a.register(t, "col-cover@test.com")
+
+	_, created := a.do("POST", "/me/collections", token, map[string]any{
+		"name": "Gallery", "cover_url": "https://example.org/a.jpg",
+	})
+	id := collectionID(t, created)
+	if created["cover_url"] != "https://example.org/a.jpg" {
+		t.Fatalf("create did not persist the cover: %v", created)
+	}
+
+	code, out := a.do("PATCH", "/me/collections/"+id, token,
+		map[string]any{"cover_url": "/media/covers/g.jpg"})
+	if code != http.StatusOK || out["cover_url"] != "/media/covers/g.jpg" {
+		t.Fatalf("cover patch: %d %v", code, out)
+	}
+
+	// A PATCH that does not mention cover_url must not wipe it.
+	_, out = a.do("PATCH", "/me/collections/"+id, token, map[string]any{"name": "Gallery Two"})
+	if out["cover_url"] != "/media/covers/g.jpg" {
+		t.Fatalf("rename wiped the cover: %v", out)
+	}
+
+	// The empty string is a decision: the row falls back to the monogram.
+	_, out = a.do("PATCH", "/me/collections/"+id, token, map[string]any{"cover_url": "   "})
+	if v, present := out["cover_url"]; present && v != "" {
+		t.Fatalf("cover not cleared: %v", out)
+	}
+
+	// Anything that is not an http(s) or same-origin URL is refused on both
+	// write paths: no javascript:, no data:, no absurd length.
+	for _, bad := range []string{"javascript:alert(1)", "data:text/html,<img>",
+		"ftp://example.org/a.jpg", strings.Repeat("h", 2049)} {
+		if code, _ := a.do("PATCH", "/me/collections/"+id, token,
+			map[string]any{"cover_url": bad}); code != http.StatusBadRequest {
+			t.Errorf("PATCH cover_url %q: got %d, want 400", label(bad), code)
+		}
+		if code, _ := a.do("POST", "/me/collections", token,
+			map[string]any{"name": "Bad cover", "cover_url": bad}); code != http.StatusBadRequest {
+			t.Errorf("POST cover_url %q: got %d, want 400", label(bad), code)
+		}
+	}
+}
+
+// label keeps a 2049-character rejection readable in the failure log.
+func label(s string) string {
+	if len(s) > 40 {
+		return s[:40] + "…"
+	}
+	return s
+}
+
 func TestCannotAccessAnotherUsersCollection(t *testing.T) {
 	a := newAuthHarness(t)
 	alice, _ := a.register(t, "alice-col@test.com")
