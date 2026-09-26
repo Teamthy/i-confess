@@ -26,7 +26,7 @@ import (
 
 const fixturePath = "testdata/cited-verses.osis.xml"
 
-func loadFixture(t *testing.T) *Translation {
+func loadFixture(t *testing.T) *ParsedTranslation {
 	t.Helper()
 	f, err := os.Open(fixturePath)
 	if err != nil {
@@ -225,7 +225,7 @@ func TestFixtureTextIsVerbatim(t *testing.T) {
 	t.Logf("compared %d verse texts against %s", compared, v.SourceFile)
 }
 
-func countChapters(tr *Translation) int {
+func countChapters(tr *ParsedTranslation) int {
 	n := 0
 	for i := range tr.Books {
 		n += len(tr.Books[i].Chapters)

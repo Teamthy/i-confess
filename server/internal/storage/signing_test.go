@@ -107,10 +107,11 @@ func TestAudioKeySanitizesTraversal(t *testing.T) {
 }
 
 func TestValidKey(t *testing.T) {
-	good := []string{"audio/a/b/c/en/v1.mp3"}
+	good := []string{"audio/a/b/c/en/v1.mp3", "bible/offline/kjv/hash/Gen.json", "bible/audio/kjv/Gen/1.mp3"}
 	bad := []string{
 		"", "etc/passwd", "audio/../../etc/passwd", "/audio/a.mp3",
 		"audio//a.mp3", "audio/a?b.mp3", "audio/a\x00.mp3", "audio/a\\b.mp3",
+		"bible/../../etc/passwd", "bible/unreviewed.txt", "bible/offline/../leak.json",
 		strings.Repeat("audio/x", 200),
 	}
 	for _, k := range good {

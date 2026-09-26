@@ -13,6 +13,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:iconfess_api/iconfess_api.dart';
 
 import '../../core/di/providers.dart';
+import '../auth/auth_controller.dart';
+import 'offline_package_store.dart';
 
 T? _firstOrNull<T>(Iterable<T> values) {
   final iterator = values.iterator;
@@ -38,6 +40,7 @@ class _BibleScreenState extends ConsumerState<BibleScreen> {
   bool _loading = true;
   bool _initialReferenceResolved = false;
   String? _error;
+  String? _offlineStatus;
   int _chapterNumber = 1;
   double _fontSize = 21;
   double _lineHeight = 1.75;
@@ -60,6 +63,81 @@ class _BibleScreenState extends ConsumerState<BibleScreen> {
   };
 
   BibleRepository get _repository => ref.read(bibleRepositoryProvider);
+
+  Future<OfflineBiblePackageStore> _offlineStore() async {
+    final root = await getApplicationSupportDirectory();
+    return OfflineBiblePackageStore(
+      ref.read(secureStorageProvider), Directory('${root.path}/bible-offline'),
+    );
+  }
+
+  // Earlier releases wrote .json packages in plaintext. They cannot be
+  // grandfathered in: remove them when the reader starts, even while online.
+  Future<void> _purgeLegacyOfflinePackages() async {
+    final prefs = ref.read(sharedPreferencesProvider);
+    final index = prefs.getStringList('bible_offline_index') ?? <String>[];
+    try {
+      final store = await _offlineStore();
+      final storage = ref.read(secureStorageProvider);
+      var changed = false;
+      for (final key in List<String>.from(index)) {
+        final raw = await storage.read(key);
+        if (raw == null) { index.remove(key); changed = true; continue; }
+        try {
+          final metadata = jsonDecode(raw) as Map<String, dynamic>;
+          if (metadata['format'] == OfflineBiblePackageStore.format) continue;
+          await store.remove(key);
+          index.remove(key);
+          changed = true;
+        } catch (_) {
+          // A locked keystore must not turn a package into a plaintext fallback.
+        }
+      }
+      if (changed) await prefs.setStringList('bible_offline_index', index);
+    } catch (_) {
+      // The reader still refuses to load any package without an encryption key.
+    }
+  }
+
+  Future<void> _removeLocalPackage(String key) async {
+    await (await _offlineStore()).remove(key);
+    final prefs = ref.read(sharedPreferencesProvider);
+    final index = prefs.getStringList('bible_offline_index') ?? <String>[];
+    if (index.remove(key)) await prefs.setStringList('bible_offline_index', index);
+  }
+
+  // A license can be revoked while the phone has no connection. A successful
+  // authoritative API response is the earliest opportunity to destroy its
+  // local key. An unreachable API does not masquerade as a revocation.
+  Future<void> _reconcileOfflineLicenses(String owner) async {
+    try {
+      final licenses = await _repository.offlineLicenses();
+      final active = <String>{};
+      for (final license in licenses) {
+        final expires = DateTime.tryParse(license['expires_at'] as String? ?? '');
+        if (license['revoked_at'] == null &&
+            (license['package_status'] == null || license['package_status'] == 'ready') &&
+            expires != null && expires.isAfter(DateTime.now().toUtc())) {
+          active.add(license['id'] as String);
+        }
+      }
+      final prefs = ref.read(sharedPreferencesProvider);
+      final storage = ref.read(secureStorageProvider);
+      final keys = prefs.getStringList('bible_offline_index') ?? <String>[];
+      for (final key in List<String>.from(keys)) {
+        final raw = await storage.read(key);
+        if (raw == null) continue;
+        final metadata = jsonDecode(raw) as Map<String, dynamic>;
+        if (metadata['owner_user_id'] == owner &&
+            !active.contains(metadata['license_id'])) {
+          await _removeLocalPackage(key);
+        }
+      }
+    } catch (_) {
+      // Transport, auth or keystore errors fail closed at read time; never
+      // infer a mass revocation from an incomplete license response.
+    }
+  }
 
   String _t(String key) => _labels[_uiLocale]?[key] ?? _labels['en']![key]!;
   TextDirection get _uiDirection => _uiLocale == 'ar' ? TextDirection.rtl : TextDirection.ltr;
@@ -87,7 +165,7 @@ class _BibleScreenState extends ConsumerState<BibleScreen> {
 
   Future<String?> _refreshSyncOwner() async {
     final storage = ref.read(secureStorageProvider);
-    if (!await ref.read(apiClientProvider).hasSession()) return storage.read('bible.sync.owner');
+    if (!await ref.read(apiClientProvider).hasSession()) return null;
     try {
       final response = await ref.read(apiClientProvider).get('/v1/me');
       final user = Map<String, dynamic>.from(response['user'] as Map? ?? const {});
@@ -96,12 +174,15 @@ class _BibleScreenState extends ConsumerState<BibleScreen> {
     } catch (_) {
       // Keep the last known owner while offline; the account is verified again before sync.
     }
-    return storage.read('bible.sync.owner');
+    final owner = await storage.read('bible.sync.owner');
+    final authenticatedID = ref.read(authControllerProvider).userId;
+    return authenticatedID == null || authenticatedID == owner ? owner : null;
   }
 
   @override
   void initState() {
     super.initState();
+    unawaited(_purgeLegacyOfflinePackages());
     _restorePreferences();
     _loadTranslations();
   }
@@ -122,6 +203,7 @@ class _BibleScreenState extends ConsumerState<BibleScreen> {
     final api = ref.read(apiClientProvider);
     if (!await api.hasSession()) return;
     final owner = await _refreshSyncOwner();
+    if (owner != null) unawaited(_reconcileOfflineLicenses(owner));
     final cursorOwner = owner ?? 'unbound';
     final cursor = prefs.getString('bible_sync_cursor_$cursorOwner') ?? '';
     if (mounted) setState(() => _lastSync = cursor);
@@ -148,10 +230,53 @@ class _BibleScreenState extends ConsumerState<BibleScreen> {
     super.dispose();
   }
 
+  Future<List<OfflineBiblePackage>> _localPackages({String? translationID}) async {
+    if (!await ref.read(apiClientProvider).hasSession()) return const [];
+    final storage = ref.read(secureStorageProvider);
+    final owner = await storage.read('bible.sync.owner');
+    final authenticatedID = ref.read(authControllerProvider).userId;
+    if (owner == null || owner.isEmpty ||
+        (authenticatedID != null && authenticatedID != owner)) return const [];
+    final keys = ref.read(sharedPreferencesProvider).getStringList('bible_offline_index') ?? const <String>[];
+    final store = await _offlineStore();
+    final packages = <OfflineBiblePackage>[];
+    for (final key in keys) {
+      try {
+        final raw = await storage.read(key);
+        if (raw == null) continue;
+        final metadata = jsonDecode(raw) as Map<String, dynamic>;
+        if (metadata['format'] != OfflineBiblePackageStore.format ||
+            metadata['owner_user_id'] != owner) continue;
+        final translation = metadata['translation_id'] as String;
+        if (translationID != null && translation != translationID) continue;
+        final book = metadata['book_id'] as String;
+        final package = await store.load(
+          translationID: translation, bookID: book, ownerID: owner,
+        );
+        if (package != null) packages.add(package);
+      } catch (_) {
+        // A corrupt or locked keystore never results in unverified text.
+      }
+    }
+    return packages;
+  }
+
   Future<void> _loadTranslations() async {
     setState(() { _loading = true; _error = null; });
     try {
-      final translations = await _repository.translations();
+      List<BibleTranslation> translations;
+      try {
+        translations = await _repository.translations();
+      } on NetworkException {
+        final packages = await _localPackages();
+        final byID = <String, BibleTranslation>{};
+        for (final package in packages) {
+          final raw = package.payload['translation'] as Map;
+          final translation = BibleTranslation.fromJson(Map<String, dynamic>.from(raw));
+          byID[translation.id] = translation;
+        }
+        translations = byID.values.toList(growable: false);
+      }
       if (!mounted) return;
       setState(() {
         _translations = translations;
@@ -172,7 +297,18 @@ class _BibleScreenState extends ConsumerState<BibleScreen> {
     final translation = _translation;
     if (translation == null) return;
     try {
-      final books = await _repository.books(translation.id);
+      List<BibleBook> books;
+      try {
+        books = await _repository.books(translation.id);
+      } on NetworkException {
+        final packages = await _localPackages(translationID: translation.id);
+        final byID = <String, BibleBook>{};
+        for (final package in packages) {
+          final book = BibleBook.fromJson(Map<String, dynamic>.from(package.payload['book'] as Map));
+          byID[book.id] = book;
+        }
+        books = byID.values.toList(growable: false);
+      }
       if (!mounted) return;
       setState(() {
         _books = books;
@@ -225,17 +361,30 @@ class _BibleScreenState extends ConsumerState<BibleScreen> {
   Future<void> _loadChapter(BibleBook? book, {int? chapter}) async {
     final translation = _translation;
     if (translation == null || book == null) return;
-    setState(() { _loading = true; _error = null; _selectedVerse = null; });
+    setState(() { _loading = true; _error = null; _offlineStatus = null; _selectedVerse = null; _chapter = null; });
     final targetChapter = chapter ?? _chapterNumber;
     try {
       final result = await _repository.chapter(translation.id, book.id, targetChapter);
       if (!mounted) return;
       setState(() { _chapter = result; _chapterNumber = targetChapter; });
       unawaited(_trackChapter(result));
-    } catch (_) {
+    } on NetworkException {
       if (!mounted) return;
       final restored = await _loadOfflineChapter(translation.id, book.id, targetChapter);
-      if (!restored && mounted) setState(() => _error = 'This chapter is not available right now. Please retry.');
+      if (!restored && mounted) setState(() => _error = 'This chapter is not available offline. Reconnect and try again.');
+    } on ApiError catch (error) {
+      // A server denial is not a network outage. Never bypass revoked online
+      // rights by showing an older cached package.
+      if (error.status == 403 || error.status == 404) {
+        try {
+          await _removeLocalPackage(OfflineBiblePackageStore.metadataKey(translation.id, book.id));
+        } catch (_) {
+          // The keystore still fails closed if a cleanup attempt is interrupted.
+        }
+      }
+      if (mounted) setState(() => _error = 'This chapter is not available right now. Please retry.');
+    } catch (_) {
+      if (mounted) setState(() => _error = 'This chapter is not available right now. Please retry.');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -243,26 +392,26 @@ class _BibleScreenState extends ConsumerState<BibleScreen> {
 
   Future<bool> _loadOfflineChapter(String translationID, String bookID, int chapterNumber) async {
     try {
-      final storage = ref.read(secureStorageProvider);
-      final key = 'bible.offline.$translationID.$bookID';
-      final raw = await storage.read(key);
-      if (raw == null) return false;
-      final manifest = jsonDecode(raw) as Map<String, dynamic>;
-      final currentOwner = await storage.read('bible.sync.owner');
-      if (currentOwner == null || manifest['owner_user_id'] != currentOwner) return false;
-      final expiry = DateTime.tryParse(manifest['expires_at'] as String? ?? '');
-      if (expiry == null || DateTime.now().toUtc().isAfter(expiry)) return false;
-      final file = File(manifest['path'] as String);
-      if (!await file.exists()) return false;
-      final bytes = await file.readAsBytes();
-      if (sha256.convert(bytes).toString() != manifest['content_hash']) return false;
-      final payload = jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
-      final chapters = (payload['chapters'] as List? ?? const []).whereType<Map>().toList();
+      // A signed-out user is never implicitly the previous license owner.
+      if (!await ref.read(apiClientProvider).hasSession()) return false;
+      final owner = await ref.read(secureStorageProvider).read('bible.sync.owner');
+      final authenticatedID = ref.read(authControllerProvider).userId;
+      if (owner == null ||
+          (authenticatedID != null && authenticatedID != owner)) return false;
+      final package = await (await _offlineStore()).load(
+        translationID: translationID, bookID: bookID, ownerID: owner,
+      );
+      if (package == null) return false;
+      final chapters = (package.payload['chapters'] as List? ?? const []).whereType<Map>();
       for (final rawChapter in chapters) {
         final value = Map<String, dynamic>.from(rawChapter);
         if ((value['chapter'] as num?)?.toInt() == chapterNumber) {
           if (!mounted) return false;
-          setState(() { _chapter = BibleChapter.fromJson(value); _chapterNumber = chapterNumber; _error = 'Offline reading · license expires ${expiry.toLocal().toString().split(' ').first}'; });
+          setState(() {
+            _chapter = BibleChapter.fromJson(value);
+            _chapterNumber = chapterNumber;
+            _offlineStatus = 'Offline reading · license expires ${package.expiresAt.toLocal().toString().split(' ').first}';
+          });
           return true;
         }
       }
@@ -286,7 +435,7 @@ class _BibleScreenState extends ConsumerState<BibleScreen> {
         'preferred_language': _translation?.languageCode,
         'font_size': _fontSize.round(),
         'line_height': _lineHeight,
-        'theme': 'system',
+        'theme': Theme.of(context).brightness == Brightness.dark ? 'dark' : 'light',
         'show_verse_numbers': _showVerseNumbers,
         'row_version': _preferencesVersion,
       });
@@ -496,7 +645,10 @@ class _BibleScreenState extends ConsumerState<BibleScreen> {
       final owner = await _refreshSyncOwner();
       if (owner == null) { _snack('Verify your account before downloading an offline license.'); return; }
       final manifest = await _repository.requestOfflineBook(chapter.translation.id, chapter.book.id);
-      final url = Uri.parse(manifest['download_url'] as String);
+      final signedURL = Uri.parse(manifest['download_url'] as String);
+      final url = signedURL.hasScheme
+          ? signedURL
+          : Uri.parse(ref.read(apiBaseUrlProvider)).resolveUri(signedURL);
       final client = HttpClient();
       try {
         final request = await client.getUrl(url);
@@ -510,38 +662,25 @@ class _BibleScreenState extends ConsumerState<BibleScreen> {
         final bytes = builder.takeBytes();
         final hash = sha256.convert(bytes).toString();
         if (hash != manifest['content_hash']) throw const HttpException('Package integrity check failed');
-        final root = await getApplicationDocumentsDirectory();
-        final directory = Directory('${root.path}/bible-offline');
-        await directory.create(recursive: true);
-        final file = File('${directory.path}/${chapter.translation.id}_${chapter.book.id}_$hash.json');
-        await file.writeAsBytes(bytes, flush: true);
+        final store = await _offlineStore();
+        await store.save(
+          translationID: chapter.translation.id,
+          bookID: chapter.book.id,
+          ownerID: owner,
+          manifest: manifest,
+          bytes: bytes,
+        );
         final prefs = ref.read(sharedPreferencesProvider);
-        final metadataKey = 'bible.offline.${chapter.translation.id}.${chapter.book.id}';
-        final secureStorage = ref.read(secureStorageProvider);
-        final previousRaw = await secureStorage.read(metadataKey);
-        if (previousRaw != null) {
-          try {
-            final previous = jsonDecode(previousRaw) as Map<String, dynamic>;
-            final previousPath = previous['path'] as String?;
-            if (previousPath != null && previousPath != file.path) { final previousFile = File(previousPath); if (await previousFile.exists()) await previousFile.delete(); }
-          } catch (_) { }
-        }
-        await secureStorage.write(metadataKey, jsonEncode({
-          'path': file.path,
-          'content_hash': hash,
-          'expires_at': manifest['offline_expires_at'],
-          'license_id': manifest['license_id'],
-          'owner_user_id': owner,
-          'attribution_required': manifest['attribution_required'],
-          'attribution_text': manifest['attribution_text'],
-        }));
+        final metadataKey = OfflineBiblePackageStore.metadataKey(
+          chapter.translation.id, chapter.book.id,
+        );
         final offlineIndex = prefs.getStringList('bible_offline_index') ?? <String>[];
         if (!offlineIndex.contains(metadataKey)) offlineIndex.add(metadataKey);
         await prefs.setStringList('bible_offline_index', offlineIndex);
       } finally {
         client.close(force: true);
       }
-      _snack('Offline book downloaded and integrity-checked.');
+      _snack('Offline book downloaded, verified, and encrypted on this device.');
     } catch (_) {
       _snack('The offline book could not be downloaded. Check rights, storage, and connection.');
     }
@@ -877,32 +1016,67 @@ class _BibleScreenState extends ConsumerState<BibleScreen> {
   Future<void> _removeLocalPackageForLicense(String licenseId) async {
     final prefs = ref.read(sharedPreferencesProvider);
     final storage = ref.read(secureStorageProvider);
+    final store = await _offlineStore();
     final index = prefs.getStringList('bible_offline_index') ?? <String>[];
     for (final key in List<String>.from(index)) {
-      try {
-        final raw = await storage.read(key);
-        if (raw == null) { index.remove(key); continue; }
-        final manifest = jsonDecode(raw) as Map<String, dynamic>;
-        if (manifest['license_id'] != licenseId) continue;
-        final path = manifest['path'] as String?;
-        if (path != null) { final file = File(path); if (await file.exists()) await file.delete(); }
-        await storage.delete(key);
-        index.remove(key);
-      } catch (_) {
-        await storage.delete(key);
-        index.remove(key);
-      }
+      final raw = await storage.read(key);
+      if (raw == null) { index.remove(key); continue; }
+      final metadata = jsonDecode(raw) as Map<String, dynamic>;
+      if (metadata['license_id'] != licenseId) continue;
+      await store.remove(key);
+      index.remove(key);
     }
     await prefs.setStringList('bible_offline_index', index);
   }
 
   Future<void> _showOfflineLicenses() async {
-    if (!await ref.read(apiClientProvider).hasSession()) { _snack('Sign in to manage personal offline licenses.'); return; }
+    if (!await ref.read(apiClientProvider).hasSession()) {
+      _snack('Sign in to manage personal offline licenses.');
+      return;
+    }
     try {
       final licenses = await _repository.offlineLicenses();
+      final active = licenses.where((item) => item['revoked_at'] == null &&
+          (item['package_status'] == null || item['package_status'] == 'ready') &&
+          (DateTime.tryParse(item['expires_at'] as String? ?? '')?.isAfter(DateTime.now().toUtc()) ?? false));
       if (!mounted) return;
-      await showModalBottomSheet<void>(context: context, showDragHandle: true, builder: (sheetContext) => SafeArea(child: SizedBox(height: MediaQuery.sizeOf(sheetContext).height * .65, child: ListView(children: [Padding(padding: const EdgeInsets.all(16), child: Text(_t('offline'), style: Theme.of(sheetContext).textTheme.titleLarge)), ...licenses.map((item) => ListTile(title: Text('${item['translation_id']} · ${item['book_id']}'), subtitle: Text('Expires ${item['expires_at']}'), trailing: IconButton(tooltip: 'Revoke license', icon: const Icon(Icons.delete_outline), onPressed: () async { try { await _repository.revokeOfflineLicense(item['id'] as String); await _removeLocalPackageForLicense(item['id'] as String); if (sheetContext.mounted) Navigator.pop(sheetContext); _snack('Offline license revoked and local package removed.'); } catch (_) { _snack('Could not revoke offline license.'); } }))]))));
-    } catch (_) { _snack('Could not load offline licenses.'); }
+      await showModalBottomSheet<void>(
+        context: context,
+        showDragHandle: true,
+        builder: (sheetContext) => SafeArea(child: SizedBox(
+          height: MediaQuery.sizeOf(sheetContext).height * .65,
+          child: ListView(children: [
+            Padding(padding: const EdgeInsets.all(16), child: Text(_t('offline'), style: Theme.of(sheetContext).textTheme.titleLarge)),
+            if (active.isEmpty) const ListTile(title: Text('No active offline licenses.')),
+            ...active.map((item) => ListTile(
+              title: Text('${item['translation_id']} · ${item['book_id']}'),
+              subtitle: Text('Expires ${item['expires_at']}'),
+              trailing: IconButton(
+                tooltip: 'Revoke license', icon: const Icon(Icons.delete_outline),
+                onPressed: () async {
+                  final id = item['id'] as String;
+                  try {
+                    await _repository.revokeOfflineLicense(id);
+                  } catch (_) {
+                    _snack('Could not revoke offline license.');
+                    return;
+                  }
+                  try {
+                    await _removeLocalPackageForLicense(id);
+                    if (sheetContext.mounted) Navigator.pop(sheetContext);
+                    _snack('Offline license revoked and local package removed.');
+                  } catch (_) {
+                    _snack('License revoked. Reopen the reader to retry local cleanup.');
+                  }
+                },
+              ),
+            )),
+          ]),
+        )),
+      );
+    } catch (_) {
+      _snack('Could not load offline licenses.');
+    }
   }
 
   Future<void> _openStudyMenu() async {
@@ -982,6 +1156,7 @@ class _BibleScreenState extends ConsumerState<BibleScreen> {
                   ]),
                 ),
                 if (_error != null) Padding(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6), child: Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error))),
+                if (_offlineStatus != null) Padding(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6), child: Text(_offlineStatus!, style: Theme.of(context).textTheme.bodySmall)),
                 if (_loading) const LinearProgressIndicator(minHeight: 2),
                 if (chapter != null) Expanded(
                   child: Directionality(

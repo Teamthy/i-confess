@@ -1,8 +1,8 @@
 // Package deletion implements account erasure with an explicit, auditable
-// per-table policy (§40, §50, §84, §85).
+// per-user-reference policy (§40, §50, §84, §85).
 //
 // The design rule: nothing is erased or retained by accident. Every table
-// holding user data appears in exactly one policy below, and a test asserts
+// holding user data appears in an explicit policy below, and a test asserts
 // that the union covers every table in the schema that references users. A new
 // table added without a policy fails that test rather than silently surviving a
 // user's deletion request — which is precisely the failure regulators care
@@ -123,13 +123,42 @@ var Policies = []TablePolicy{
 	{Table: "idempotency_keys", Action: Erase},
 	{Table: "user_templates", Action: Erase},
 
-	// ---- Scripture (migration 0020). A highlight and a bookmark are the
-	// listener's own reading marks, and the marks say what they were reading
-	// when they made them. Erased with the account, not anonymised: the
-	// coordinates are the personal data, so a row stripped of its user
-	// reference would still be "this person read and marked John 3:16".
-	{Table: "verse_highlights", Action: Erase},
-	{Table: "verse_bookmarks", Action: Erase},
+	// ---- Bible study and licenses (migrations 0021–0022). Reading and
+	// annotation coordinates are personal data even if no note text remains.
+	// Dependent plan days and collection items must go before their parents.
+	{Table: "user_bible_plan_day_progress", Action: Erase, Column: "enrollment_id",
+		Reason: "removed via the reader's enrollment"},
+	{Table: "user_bible_plan_enrollments", Action: Erase},
+	{Table: "user_bible_collection_items", Action: Erase},
+	{Table: "user_bible_collections", Action: Erase},
+	{Table: "user_bible_offline_licenses", Action: Erase},
+	{Table: "user_bible_sync_mutations", Action: Erase},
+	{Table: "user_bible_sync_devices", Action: Erase},
+	{Table: "user_bible_notes", Action: Erase},
+	{Table: "user_bible_history", Action: Erase},
+	{Table: "user_bible_progress", Action: Erase},
+	{Table: "user_bible_preferences", Action: Erase},
+
+	// Decisions and editorial references outlive an individual reviewer, but
+	// their authorship does not. The FK on rights reviews is nullable in 0023.
+	{Table: "bible_rights_reviews", Action: Anonymise, Column: "actor_id",
+		Reason: "retain the rights decision and evidence while detaching its reviewer"},
+	{Table: "bible_import_jobs", Action: Anonymise, Column: "requested_by",
+		Reason: "keep validation reports but remove the operator identifier"},
+	{Table: "bible_versions", Action: Anonymise, Column: "reviewed_by",
+		Reason: "retain source provenance and rights with reviewer identity detached"},
+	{Table: "bible_reading_plans", Action: Anonymise, Column: "created_by",
+		Reason: "preserve curated references with the creator detached"},
+	{Table: "bible_reading_plans", Action: Anonymise, Column: "reviewed_by",
+		Reason: "preserve the editorial status with the reviewer detached"},
+	{Table: "bible_cross_references", Action: Anonymise, Column: "created_by",
+		Reason: "preserve an editorial reference with its original proposer detached"},
+	{Table: "bible_cross_references", Action: Anonymise, Column: "reviewed_by",
+		Reason: "preserve approved canonical cross-references without reviewer identity"},
+	{Table: "bible_verse_of_day", Action: Anonymise, Column: "reviewed_by",
+		Reason: "preserve reviewed reference selections without reviewer identity"},
+	{Table: "bible_audio_assets", Action: Anonymise, Column: "rights_reviewed_by",
+		Reason: "retain asset rights checks while removing reviewer identity"},
 
 	// ---- Moderation. The *records* outlive the account because safety and
 	// accountability reviews depend on them, but the identity of the person
@@ -200,10 +229,13 @@ func Validate() error {
 		if p.Table == "" {
 			return fmt.Errorf("policy with empty table name")
 		}
-		if seen[p.Table] {
-			return fmt.Errorf("duplicate policy for table %q", p.Table)
+		// A table may have several distinct user references (e.g. a plan's
+		// creator and reviewer), each with its own independent erasure rule.
+		key := p.Table + "." + p.column()
+		if seen[key] {
+			return fmt.Errorf("duplicate policy for user reference %q", key)
 		}
-		seen[p.Table] = true
+		seen[key] = true
 
 		// Retention and anonymisation must be justified in writing. Erasure is
 		// the default and needs no defence.

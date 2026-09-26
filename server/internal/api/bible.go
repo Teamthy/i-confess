@@ -14,13 +14,17 @@ import (
 // SetBibleProvider installs the configured provider. Provider selection and all
 // upstream response normalization remain server-side.
 func (h *Handler) SetBibleProvider(provider bible.BibleProvider) {
-	if provider != nil { h.bible = provider }
+	if provider != nil {
+		h.bible = provider
+	}
 }
 
 // SetBibleDiscoveryProvider installs a server-only provider catalogue source.
 // It is used by the admin review workflow and is never exposed as application content.
 func (h *Handler) SetBibleDiscoveryProvider(provider bible.BibleProvider) {
-	if provider != nil { h.bibleDiscovery = provider }
+	if provider != nil {
+		h.bibleDiscovery = provider
+	}
 }
 
 func (h *Handler) readableBibleTranslation(ctx context.Context, id string) error {

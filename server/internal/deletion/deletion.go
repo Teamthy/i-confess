@@ -235,7 +235,7 @@ func (s *Service) Erase(ctx context.Context, userID string) (*ErasureReport, err
 			return nil, fmt.Errorf("apply policy for %s: %w", p.Table, err)
 		}
 		if n > 0 {
-			report.PerTable[p.Table] = n
+			report.PerTable[p.Table] += n
 			report.RowsDeleted += n
 		}
 	}
@@ -327,6 +327,8 @@ func parentTableFor(child string) string {
 	switch child {
 	case "user_collection_items":
 		return "user_collections"
+	case "user_bible_plan_day_progress":
+		return "user_bible_plan_enrollments"
 	case "session_items":
 		return "sessions"
 	case "user_confession_audio":

@@ -77,12 +77,24 @@ func (h *Handler) route(mux *http.ServeMux, pattern, auth, tag, summary string,
 		handler = authMW(fn)
 	}
 	method, path := splitPattern(pattern)
-	if strings.HasPrefix(tag, "bible") { handler = h.instrumentBibleRoute(method, path, handler) }
+	if strings.Contains(tag, "bible") {
+		handler = h.instrumentBibleRoute(method, path, handler)
+	}
 	mux.Handle(pattern, handler)
+	h.routes.add(Route{Method: method, Path: path, Auth: auth, Tag: tag, Summary: summary})
 
-	h.routes.add(Route{
-		Method: method, Path: path, Auth: auth, Tag: tag, Summary: summary,
-	})
+	// Bible routes are one contract with two compatible prefixes. Register
+	// both from the same declaration so a new capability cannot silently omit
+	// its /v1 alias (or the unversioned Flutter endpoint). The middleware and
+	// handler are identical on both paths, including the rights/auth checks.
+	if strings.Contains(tag, "bible") {
+		other := "/v1" + path
+		if strings.HasPrefix(path, "/v1/") {
+			other = strings.TrimPrefix(path, "/v1")
+		}
+		mux.Handle(method+" "+other, handler)
+		h.routes.add(Route{Method: method, Path: other, Auth: auth, Tag: tag, Summary: summary})
+	}
 }
 
 // splitPattern breaks "GET /me/profile" into its method and path.

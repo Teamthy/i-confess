@@ -8,51 +8,51 @@ import (
 
 var (
 	ErrUnavailable = errors.New("Bible content unavailable")
-	ErrNotFound   = errors.New("Bible content not found")
-	ErrRestricted = errors.New("translation is not available for this use")
+	ErrNotFound    = errors.New("Bible content not found")
+	ErrRestricted  = errors.New("translation is not available for this use")
 )
 
 // Translation is the provider-neutral application contract. Rights are
 // independent switches; unknown or unreviewed rights are always false.
 type Translation struct {
-	ID                     string    `json:"id"`
-	Provider               string    `json:"provider"`
-	ProviderTranslationID  string    `json:"provider_translation_id"`
-	Name                   string    `json:"name"`
-	Abbreviation           string    `json:"abbreviation"`
-	Language               string    `json:"language_code"`
-	LanguageName           string    `json:"language_name"`
-	Locale                 string    `json:"locale,omitempty"`
-	Country                string    `json:"country,omitempty"`
-	Dialect                string    `json:"dialect,omitempty"`
-	Direction              string    `json:"direction"`
-	Publisher              string    `json:"publisher,omitempty"`
-	Description            string    `json:"description,omitempty"`
-	Copyright              string    `json:"copyright,omitempty"`
-	License                string    `json:"license,omitempty"`
-	LicenseURL             string    `json:"license_url,omitempty"`
-	PublicDomain           bool      `json:"public_domain"`
-	CommercialUse          bool      `json:"commercial_use"`
-	RedistributionAllowed  bool      `json:"redistribution_allowed"`
+	ID                    string    `json:"id"`
+	Provider              string    `json:"provider"`
+	ProviderTranslationID string    `json:"provider_translation_id"`
+	Name                  string    `json:"name"`
+	Abbreviation          string    `json:"abbreviation"`
+	Language              string    `json:"language_code"`
+	LanguageName          string    `json:"language_name"`
+	Locale                string    `json:"locale,omitempty"`
+	Country               string    `json:"country,omitempty"`
+	Dialect               string    `json:"dialect,omitempty"`
+	Direction             string    `json:"direction"`
+	Publisher             string    `json:"publisher,omitempty"`
+	Description           string    `json:"description,omitempty"`
+	Copyright             string    `json:"copyright,omitempty"`
+	License               string    `json:"license,omitempty"`
+	LicenseURL            string    `json:"license_url,omitempty"`
+	PublicDomain          bool      `json:"public_domain"`
+	CommercialUse         bool      `json:"commercial_use"`
+	RedistributionAllowed bool      `json:"redistribution_allowed"`
 	ModificationAllowed   bool      `json:"modification_allowed"`
-	AudioAllowed           bool      `json:"audio_allowed"`
-	OfflineAllowed         bool      `json:"offline_allowed"`
-	CopyAllowed            bool      `json:"copy_allowed"`
-	ShareAllowed           bool      `json:"share_allowed"`
-	SearchIndexAllowed     bool      `json:"search_index_allowed"`
-	APIExposureAllowed     bool      `json:"api_exposure_allowed"`
-	AttributionRequired    bool      `json:"attribution_required"`
-	AttributionText        string    `json:"attribution_text,omitempty"`
-	SourceURL              string    `json:"source_url,omitempty"`
-	SourceVersion          string    `json:"source_version,omitempty"`
-	ImportVersion          string    `json:"import_version,omitempty"`
-	ContentHash            string    `json:"content_hash,omitempty"`
-	Status                 string    `json:"status"`
-	Coverage               string    `json:"coverage,omitempty"`
-	BookCount              int       `json:"book_count,omitempty"`
-	ChapterCount           int       `json:"chapter_count,omitempty"`
-	VerseCount             int       `json:"verse_count,omitempty"`
-	ImportedAt             time.Time `json:"imported_at,omitempty"`
+	AudioAllowed          bool      `json:"audio_allowed"`
+	OfflineAllowed        bool      `json:"offline_allowed"`
+	CopyAllowed           bool      `json:"copy_allowed"`
+	ShareAllowed          bool      `json:"share_allowed"`
+	SearchIndexAllowed    bool      `json:"search_index_allowed"`
+	APIExposureAllowed    bool      `json:"api_exposure_allowed"`
+	AttributionRequired   bool      `json:"attribution_required"`
+	AttributionText       string    `json:"attribution_text,omitempty"`
+	SourceURL             string    `json:"source_url,omitempty"`
+	SourceVersion         string    `json:"source_version,omitempty"`
+	ImportVersion         string    `json:"import_version,omitempty"`
+	ContentHash           string    `json:"content_hash,omitempty"`
+	Status                string    `json:"status"`
+	Coverage              string    `json:"coverage,omitempty"`
+	BookCount             int       `json:"book_count,omitempty"`
+	ChapterCount          int       `json:"chapter_count,omitempty"`
+	VerseCount            int       `json:"verse_count,omitempty"`
+	ImportedAt            time.Time `json:"imported_at,omitempty"`
 }
 
 type Language struct {
@@ -71,11 +71,11 @@ type Language struct {
 }
 
 type BookInfo struct {
-	ID           string `json:"id"`
-	Name         string `json:"name"`
-	Testament    string `json:"testament"`
-	CanonicalOrder int  `json:"canonical_order"`
-	ChapterCount int    `json:"chapter_count"`
+	ID             string `json:"id"`
+	Name           string `json:"name"`
+	Testament      string `json:"testament"`
+	CanonicalOrder int    `json:"canonical_order"`
+	ChapterCount   int    `json:"chapter_count"`
 }
 
 type Verse struct {
@@ -94,9 +94,9 @@ type Chapter struct {
 }
 
 type Passage struct {
-	Reference   string  `json:"reference"`
+	Reference   string      `json:"reference"`
 	Translation Translation `json:"translation"`
-	Verses      []Verse `json:"verses"`
+	Verses      []Verse     `json:"verses"`
 }
 
 type SearchResult struct {

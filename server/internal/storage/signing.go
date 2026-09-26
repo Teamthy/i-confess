@@ -73,7 +73,7 @@ func ParseSignedQuery(q url.Values) (expires int64, sig string, err error) {
 // allowedPrefixes are the namespaces objects may live under. An allowlist
 // rather than a denylist: a new caller must opt in deliberately instead of
 // being able to write anywhere the path checks happen not to forbid.
-var allowedPrefixes = []string{"audio/", "avatars/"}
+var allowedPrefixes = []string{"audio/", "avatars/", "bible/offline/", "bible/audio/"}
 
 // ValidKey rejects keys that could escape the permitted namespaces.
 //

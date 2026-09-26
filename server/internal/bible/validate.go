@@ -126,7 +126,7 @@ const maxVariancePercent = 1.0
 
 // Validate checks one parsed translation against its registry entry and the
 // canon.
-func Validate(t *Translation, v Version) *Report {
+func Validate(t *ParsedTranslation, v Version) *Report {
 	r := &Report{
 		VersionID: v.ID, Name: v.Name, Language: v.Language, LanguageName: v.LanguageName,
 		Licence: v.Licence, Coverage: v.Coverage, CoverageLabel: v.CoverageLabel(),

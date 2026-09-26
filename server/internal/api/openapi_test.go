@@ -1,15 +1,34 @@
 package api
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 )
 
 // The spec is generated from the route table, so these tests check that the
 // table is complete and that the description stays useful to a client author.
+
+// The checked-in contract is consumed by clients and must be regenerated when
+// routes change; testing only the live spec would miss a stale committed file.
+func TestCheckedInOpenAPIMatchesRoutes(t *testing.T) {
+	a := newAuthHarness(t)
+	generated, err := json.MarshalIndent(a.h.OpenAPISpec("https://api.iconfess.app"), "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkedIn, err := os.ReadFile("../../../contracts/openapi.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(append(generated, '\n'), checkedIn) {
+		t.Fatal("contracts/openapi.json is stale; run go run ./cmd/genspec ../contracts/openapi.json from server/")
+	}
+}
 
 // Every API route must be described. This is the test that stops the spec
 // drifting: adding an endpoint without going through h.route fails here.

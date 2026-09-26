@@ -49,17 +49,17 @@ const (
 // Rights are translation-specific permissions reviewed from that source's terms.
 // They are stored independently; API access does not imply any of these grants.
 type Rights struct {
-	PublicDomain bool
-	CommercialUse bool
+	PublicDomain          bool
+	CommercialUse         bool
 	RedistributionAllowed bool
-	ModificationAllowed bool
-	AudioAllowed bool
-	OfflineAllowed bool
-	CopyAllowed bool
-	ShareAllowed bool
-	SearchIndexAllowed bool
-	APIExposureAllowed bool
-	AttributionRequired bool
+	ModificationAllowed   bool
+	AudioAllowed          bool
+	OfflineAllowed        bool
+	CopyAllowed           bool
+	ShareAllowed          bool
+	SearchIndexAllowed    bool
+	APIExposureAllowed    bool
+	AttributionRequired   bool
 }
 
 // Version is one translation the importer knows how to load.
@@ -116,18 +116,18 @@ type Version struct {
 	Default bool
 	// The remaining values are reviewed registry data, not inferred from the
 	// provider's free API access.
-	Provider string
+	Provider              string
 	ProviderTranslationID string
-	Locale string
-	Country string
-	Dialect string
-	Publisher string
-	Description string
-	Copyright string
-	Rights Rights
-	AttributionRequired bool
-	SourceVersion string
-	Status string
+	Locale                string
+	Country               string
+	Dialect               string
+	Publisher             string
+	Description           string
+	Copyright             string
+	Rights                Rights
+	AttributionRequired   bool
+	SourceVersion         string
+	Status                string
 }
 
 // OpenBiblesBase is the upstream repository every version here is fetched

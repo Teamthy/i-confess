@@ -39,9 +39,9 @@ const (
 	FormatZefania = "zefania"
 )
 
-// Translation is a parsed Bible: its books in canonical order, with the verse
+// ParsedTranslation is a parsed Bible: its books in canonical order, with the verse
 // text keyed by chapter and verse number.
-type Translation struct {
+type ParsedTranslation struct {
 	// ID is the version identifier the API and the database use, e.g. "kjv".
 	ID string
 	// Books is in canonical order - the order the reader displays - not the
@@ -78,17 +78,17 @@ type BookText struct {
 // ChapterText is one chapter: a chapter number and its verses.
 type ChapterText struct {
 	Number int
-	Verses []Verse
+	Verses []ParsedVerse
 }
 
-// Verse is a single verse of a translation.
-type Verse struct {
+// ParsedVerse is a single verse of a translation.
+type ParsedVerse struct {
 	Number int
 	Text   string
 }
 
 // VerseCount is the total number of verses parsed.
-func (t *Translation) VerseCount() int {
+func (t *ParsedTranslation) VerseCount() int {
 	n := 0
 	for i := range t.Books {
 		for j := range t.Books[i].Chapters {
@@ -99,7 +99,7 @@ func (t *Translation) VerseCount() int {
 }
 
 // Book returns the named book, or nil.
-func (t *Translation) Book(id string) *BookText {
+func (t *ParsedTranslation) Book(id string) *BookText {
 	if t.byBook == nil {
 		return nil
 	}
@@ -107,7 +107,7 @@ func (t *Translation) Book(id string) *BookText {
 }
 
 // Chapter returns the named chapter, or nil.
-func (t *Translation) Chapter(book string, chapter int) *ChapterText {
+func (t *ParsedTranslation) Chapter(book string, chapter int) *ChapterText {
 	b := t.Book(book)
 	if b == nil {
 		return nil
@@ -123,7 +123,7 @@ func (t *Translation) Chapter(book string, chapter int) *ChapterText {
 // A translation that does not cover a book (the Swahili file is New Testament
 // only) misses cleanly instead of returning an empty string that a caller
 // might render as a blank verse.
-func (t *Translation) Text(book string, chapter, verse int) (string, bool) {
+func (t *ParsedTranslation) Text(book string, chapter, verse int) (string, bool) {
 	ch := t.Chapter(book, chapter)
 	if ch == nil {
 		return "", false
@@ -139,8 +139,8 @@ func (t *Translation) Text(book string, chapter, verse int) (string, bool) {
 //
 // id is the version identifier the result is filed under; format is one of
 // FormatOSIS, FormatUSFX or FormatZefania.
-func Parse(r io.Reader, format, id string) (*Translation, error) {
-	t := &Translation{ID: id, byBook: map[string]*BookText{}}
+func Parse(r io.Reader, format, id string) (*ParsedTranslation, error) {
+	t := &ParsedTranslation{ID: id, byBook: map[string]*BookText{}}
 	c := &collector{t: t}
 
 	dec := xml.NewDecoder(noBOM(r))
@@ -208,11 +208,11 @@ var skipSubtrees = map[string]bool{
 }
 
 type collector struct {
-	t *Translation
+	t *ParsedTranslation
 
 	curBook    *BookText
 	curChapter *ChapterText
-	curVerse   *Verse
+	curVerse   *ParsedVerse
 
 	buf     strings.Builder
 	skip    int
@@ -447,7 +447,7 @@ func (c *collector) startVerseNumber(n int) {
 	if c.curChapter == nil || n < 0 {
 		return
 	}
-	c.curChapter.Verses = append(c.curChapter.Verses, Verse{Number: n})
+	c.curChapter.Verses = append(c.curChapter.Verses, ParsedVerse{Number: n})
 	c.curVerse = &c.curChapter.Verses[len(c.curChapter.Verses)-1]
 	c.open = true
 	if c.milestone {
@@ -519,7 +519,7 @@ func (c *collector) finish() {
 
 // sortBooks orders the translation canonically, so a reader and a diff of two
 // translations agree on what comes first.
-func (t *Translation) sortBooks() {
+func (t *ParsedTranslation) sortBooks() {
 	pos := make(map[string]int, len(Canon))
 	for i, b := range Canon {
 		pos[b.ID] = i
