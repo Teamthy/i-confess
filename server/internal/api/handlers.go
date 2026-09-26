@@ -12,6 +12,7 @@ import (
 	"github.com/Teamthy/i-confess/internal/db"
 
 	"github.com/Teamthy/i-confess/internal/auth"
+	"github.com/Teamthy/i-confess/internal/bible"
 	"github.com/Teamthy/i-confess/internal/billing"
 	"github.com/Teamthy/i-confess/internal/cache"
 	"github.com/Teamthy/i-confess/internal/deletion"
@@ -34,6 +35,8 @@ import (
 // Handler bundles all stores and config needed by the API.
 type Handler struct {
 	cfg    Config
+	bible  bible.BibleProvider
+	bibleDiscovery bible.BibleProvider
 	users  *store.UserStore
 	trials *store.TrialStore
 	cont   *store.ContentStore
@@ -111,6 +114,8 @@ type Handler struct {
 	cacheOwner string
 	// metrics counts security-relevant events for alerting (S83, S84).
 	metrics *AuthMetrics
+	bibleMetrics *bibleOperationMetrics
+	bibleMetrics *bibleOperationMetrics
 	// Store notification collaborators (IC-003, PR B). Nil means "resolve from
 	// the environment", which is what production does; tests supply them
 	// directly, and a deployment that reads credentials from a secret manager
@@ -156,6 +161,8 @@ type Config struct {
 func NewHandler(cfg Config, db *db.DB) *Handler {
 	return &Handler{
 		cfg:       cfg,
+		bible:     &bible.LocalBibleProvider{DB: db},
+		bibleDiscovery: &bible.LocalBibleProvider{DB: db},
 		users:     store.NewUserStore(db),
 		analytics: store.NewAnalyticsStore(db),
 		blocks:    store.NewBlockStore(db),
@@ -187,6 +194,7 @@ func NewHandler(cfg Config, db *db.DB) *Handler {
 		voicesCache:  cache.New[[]models.Voice](5*time.Minute, 10*time.Minute),
 		cacheMeter:   &cache.Meter{},
 		metrics:      NewAuthMetrics(),
+		bibleMetrics: newBibleOperationMetrics(),
 		routes:       &routeRecorder{},
 		authMW:       make(map[string]func(http.Handler) http.Handler),
 	}

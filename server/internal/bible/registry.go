@@ -29,9 +29,10 @@ import "fmt"
 // have no public-domain text on any reachable source - the modern editions are
 // Bible Society copyright and the rest are unlicensed - so they are a data
 // drop to be added behind this same interface when licensed text is available,
-// not a gap in the feature. Twelve versions across seven languages is what
-// verifies today: six English editions, plus Swahili, Spanish, Portuguese,
-// French, Italian and Tagalog, all of them public domain.
+// not a gap in the feature. Eleven versions across six languages have explicit
+// active rights in the registry. The Swahili file is retained as a candidate,
+// but its ambiguous rights note leaves every usage permission disabled pending
+// a human review.
 
 // Coverage describes how much of the canon a version's scope promises.
 const (
@@ -44,6 +45,22 @@ const (
 	// still labelled new_testament; the extra books are reported, not hidden.
 	CoverageNewTestament = "new_testament"
 )
+
+// Rights are translation-specific permissions reviewed from that source's terms.
+// They are stored independently; API access does not imply any of these grants.
+type Rights struct {
+	PublicDomain bool
+	CommercialUse bool
+	RedistributionAllowed bool
+	ModificationAllowed bool
+	AudioAllowed bool
+	OfflineAllowed bool
+	CopyAllowed bool
+	ShareAllowed bool
+	SearchIndexAllowed bool
+	APIExposureAllowed bool
+	AttributionRequired bool
+}
 
 // Version is one translation the importer knows how to load.
 type Version struct {
@@ -97,6 +114,20 @@ type Version struct {
 	// Default marks the version a reader lands on when they have no stored
 	// preference.
 	Default bool
+	// The remaining values are reviewed registry data, not inferred from the
+	// provider's free API access.
+	Provider string
+	ProviderTranslationID string
+	Locale string
+	Country string
+	Dialect string
+	Publisher string
+	Description string
+	Copyright string
+	Rights Rights
+	AttributionRequired bool
+	SourceVersion string
+	Status string
 }
 
 // OpenBiblesBase is the upstream repository every version here is fetched
@@ -237,6 +268,39 @@ var Versions = []Version{
 		SHA256:      "c7567b9c234392d3538a889775412335e0ff5b04c18ebd237722eb6ffe37709d",
 		Bytes:       6258591, SortOrder: 12,
 	},
+}
+
+// init attaches explicit, audited use permissions to each source row. The
+// Swahili source's own rights statement is ambiguous, so it remains pending and
+// default-deny until a reviewer confirms terms. These are registry decisions,
+// not blanket conclusions drawn at request time from the string "free".
+func init() {
+	fullPublicDomain := Rights{
+		PublicDomain: true, CommercialUse: true, RedistributionAllowed: true,
+		ModificationAllowed: true, OfflineAllowed: true, CopyAllowed: true,
+		ShareAllowed: true, SearchIndexAllowed: true, APIExposureAllowed: true,
+		AttributionRequired: false,
+	}
+	rights := map[string]Rights{
+		"kjv": fullPublicDomain, "web": fullPublicDomain, "asv": fullPublicDomain,
+		"webbe": fullPublicDomain, "bsb": fullPublicDomain, "ylt": fullPublicDomain,
+		"rv1909": fullPublicDomain, "almeida": fullPublicDomain, "ostervald": fullPublicDomain,
+		"riveduta": fullPublicDomain, "tagalog": fullPublicDomain,
+		"swahili": {AttributionRequired: true},
+	}
+	for i := range Versions {
+		v := &Versions[i]
+		v.Provider = "open-bibles"
+		v.ProviderTranslationID = v.ID
+		v.Locale = v.Language
+		v.SourceVersion = v.SHA256
+		v.Rights = rights[v.ID]
+		v.AttributionRequired = v.Rights.AttributionRequired
+		v.Status = "active"
+		if v.ID == "swahili" {
+			v.Status = "pending_review"
+		}
+	}
 }
 
 // ExcludedSource records a candidate that was audited and left out, with the

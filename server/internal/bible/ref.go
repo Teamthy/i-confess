@@ -76,7 +76,10 @@ var aliases = func() map[string]string {
 
 	// Spellings the corpus uses that differ from the canon's display name.
 	extra := map[string]string{
-		"psalm": "Ps", "psalms": "Ps", "psa": "Ps",
+		"ps": "Ps", "psalm": "Ps", "psalms": "Ps", "psa": "Ps",
+		"jn": "John", "jhn": "John", "mt": "Matt", "mk": "Mark", "lk": "Luke",
+		"rom": "Rom", "1 cor": "1Cor", "2 cor": "2Cor", "1 thess": "1Thess", "2 thess": "2Thess",
+		"1 tim": "1Tim", "2 tim": "2Tim", "1 pet": "1Pet", "2 pet": "2Pet", "rev": "Rev",
 		"song of songs": "Song", "song of solomon": "Song", "canticles": "Song",
 		"revelation of john": "Rev", "revelations": "Rev", "apocalypse": "Rev",
 		"esias": "Isa", "isaiah": "Isa",

@@ -91,6 +91,10 @@ final libraryRepositoryProvider = Provider<LibraryRepository>(
   (ref) => LibraryRepository(ref.watch(apiClientProvider), ref.watch(jsonCacheProvider)),
 );
 
+final bibleRepositoryProvider = Provider<BibleRepository>(
+  (ref) => BibleRepository(ref.watch(apiClientProvider)),
+);
+
 final searchRepositoryProvider = Provider<SearchRepository>(
   (ref) => SearchRepository(ref.watch(apiClientProvider), ref.watch(jsonCacheProvider)),
 );

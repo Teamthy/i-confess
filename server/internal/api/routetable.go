@@ -76,9 +76,10 @@ func (h *Handler) route(mux *http.ServeMux, pattern, auth, tag, summary string,
 	} else if authMW := h.routeAuth(auth); authMW != nil {
 		handler = authMW(fn)
 	}
+	method, path := splitPattern(pattern)
+	if strings.HasPrefix(tag, "bible") { handler = h.instrumentBibleRoute(method, path, handler) }
 	mux.Handle(pattern, handler)
 
-	method, path := splitPattern(pattern)
 	h.routes.add(Route{
 		Method: method, Path: path, Auth: auth, Tag: tag, Summary: summary,
 	})

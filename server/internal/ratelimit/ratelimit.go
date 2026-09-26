@@ -44,6 +44,8 @@ var (
 	// EmailSend covers reset and verification resends, which cost money and
 	// can be used to spam a third party's inbox (§17).
 	EmailSend = Rule{Burst: 4, Window: 15 * time.Minute}
+	// BibleSearch allows interactive reading while bounding automated corpus scraping.
+	BibleSearch = Rule{Burst: 60, Window: time.Minute}
 	// ReportSubmission bounds how fast one account can create moderator work.
 	// Humans report occasionally; scripts report continuously.
 	ReportSubmission = Rule{Burst: 8, Window: 10 * time.Minute}
