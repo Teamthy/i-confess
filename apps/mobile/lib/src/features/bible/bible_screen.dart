@@ -197,8 +197,8 @@ class _BibleScreenState extends ConsumerState<BibleScreen> {
 
   Future<void> _restorePreferences() async {
     final prefs = ref.read(sharedPreferencesProvider);
-    final owner = await _offlineOwnerForCurrentSession();
-    final cursorOwner = owner ?? 'unbound';
+    final localOwner = await _offlineOwnerForCurrentSession();
+    final cursorOwner = localOwner ?? 'unbound';
     final storedCursor = prefs.getString('bible_sync_cursor_$cursorOwner') ?? '';
     if (!mounted) return;
     setState(() {
