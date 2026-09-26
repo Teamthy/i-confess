@@ -7,8 +7,8 @@ import (
 )
 
 var (
-	ErrUnavailable = errors.New("Bible content unavailable")
-	ErrNotFound    = errors.New("Bible content not found")
+	ErrUnavailable = errors.New("bible content unavailable")
+	ErrNotFound    = errors.New("bible content not found")
 	ErrRestricted  = errors.New("translation is not available for this use")
 )
 

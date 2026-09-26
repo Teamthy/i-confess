@@ -116,7 +116,7 @@ func (h *Handler) biblePlans(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) biblePlan(w http.ResponseWriter, r *http.Request) {
 	slug := r.PathValue("slug")
-	var out map[string]any = map[string]any{}
+	out := map[string]any{}
 	var id, title, description, language, source string
 	var duration int
 	err := h.db.QueryRowContext(r.Context(), `SELECT id,title,description,language,duration_days,source_note FROM bible_reading_plans WHERE slug=? AND status='published' AND reviewed_at IS NOT NULL AND deleted_at IS NULL`, slug).Scan(&id, &title, &description, &language, &duration, &source)

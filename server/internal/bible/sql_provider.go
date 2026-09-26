@@ -121,20 +121,21 @@ func (p *LocalBibleProvider) GetBooks(ctx context.Context, translationID string)
 	if err != nil {
 		return nil, err
 	}
+	defer rows.Close()
 	out := []BookInfo{}
 	for rows.Next() {
 		var b BookInfo
 		if err := rows.Scan(&b.ID, &b.Name, &b.Testament, &b.CanonicalOrder, &b.ChapterCount); err != nil {
-			rows.Close()
 			return nil, err
 		}
 		out = append(out, b)
 	}
 	if err := rows.Err(); err != nil {
-		rows.Close()
 		return nil, err
 	}
-	rows.Close()
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
 	if len(out) > 0 {
 		return out, nil
 	}

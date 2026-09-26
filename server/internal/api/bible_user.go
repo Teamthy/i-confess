@@ -327,7 +327,11 @@ func (h *Handler) listMyBibleCollections(w http.ResponseWriter, r *http.Request)
 			if translation.Valid {
 				translationID = translation.String
 			}
-			items := collection["items"].([]map[string]any)
+			items, ok := collection["items"].([]map[string]any)
+			if !ok {
+				httpx.WriteError(w, http.StatusInternalServerError, "Unable to load your Bible collections.")
+				return
+			}
 			items = append(items, map[string]any{"id": itemID.String, "translation_id": translationID, "book_id": book.String, "chapter": chapter.Int64, "verse": verse.Int64, "created_at": itemCreated.Time})
 			collection["items"] = items
 		}

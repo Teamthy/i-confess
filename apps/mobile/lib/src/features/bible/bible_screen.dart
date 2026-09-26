@@ -36,7 +36,6 @@ class _BibleScreenState extends ConsumerState<BibleScreen> {
   List<BibleBook> _books = const [];
   BibleTranslation? _translation;
   BibleChapter? _chapter;
-  BibleVerse? _selectedVerse;
   bool _loading = true;
   bool _initialReferenceResolved = false;
   String? _error;
@@ -204,8 +203,8 @@ class _BibleScreenState extends ConsumerState<BibleScreen> {
     if (!await api.hasSession()) return;
     final owner = await _refreshSyncOwner();
     if (owner != null) unawaited(_reconcileOfflineLicenses(owner));
-    final cursorOwner = owner ?? 'unbound';
-    final cursor = prefs.getString('bible_sync_cursor_$cursorOwner') ?? '';
+    final refreshedCursorOwner = owner ?? 'unbound';
+    final cursor = prefs.getString('bible_sync_cursor_$refreshedCursorOwner') ?? '';
     if (mounted) setState(() => _lastSync = cursor);
     try {
       final response = await _repository.preferences();
@@ -361,7 +360,7 @@ class _BibleScreenState extends ConsumerState<BibleScreen> {
   Future<void> _loadChapter(BibleBook? book, {int? chapter}) async {
     final translation = _translation;
     if (translation == null || book == null) return;
-    setState(() { _loading = true; _error = null; _offlineStatus = null; _selectedVerse = null; _chapter = null; });
+    setState(() { _loading = true; _error = null; _offlineStatus = null; _chapter = null; });
     final targetChapter = chapter ?? _chapterNumber;
     try {
       final result = await _repository.chapter(translation.id, book.id, targetChapter);
@@ -589,7 +588,6 @@ class _BibleScreenState extends ConsumerState<BibleScreen> {
     final sourceTranslation = _chapter?.translation;
     if (sourceTranslation == null) return;
     final copyAttribution = sourceTranslation.attributionRequired && sourceTranslation.attributionText.isNotEmpty ? '\n${sourceTranslation.attributionText}' : '';
-    setState(() => _selectedVerse = verse);
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
@@ -634,7 +632,7 @@ class _BibleScreenState extends ConsumerState<BibleScreen> {
           ),
         ),
       ),
-    ).whenComplete(() { if (mounted) setState(() => _selectedVerse = null); });
+    );
   }
 
   Future<void> _downloadCurrentBook() async {
@@ -942,12 +940,36 @@ class _BibleScreenState extends ConsumerState<BibleScreen> {
       final owner = hasSession ? await _refreshSyncOwner() : await storage.read('bible.sync.owner');
       final pending = (await _readOutbox(owner)).where((item) => item['entity'] == 'progress').toList();
       if (!mounted) return;
-      await showModalBottomSheet<void>(context: context, showDragHandle: true, builder: (sheetContext) => SafeArea(child: SizedBox(height: MediaQuery.sizeOf(sheetContext).height * .65, child: ListView(children: [
-        Padding(padding: const EdgeInsets.all(16), child: Text('Reading progress', style: Theme.of(sheetContext).textTheme.titleLarge)),
-        if (completed.isEmpty && pending.isEmpty) const ListTile(title: Text('No completed chapters yet.')),
-        ...completed.map((item) => ListTile(leading: const Icon(Icons.check_circle_outline), title: Text('${item['book_id']} ${item['chapter']}'), subtitle: Text('${item['translation_id']} · ${item['completed_at']}')),
-        ...pending.map((item) { final payload = Map<String, dynamic>.from(item['payload'] as Map? ?? const {}); return ListTile(leading: const Icon(Icons.cloud_upload_outlined), title: Text('${payload['book_id']} ${payload['chapter']}'), subtitle: const Text('Completed on this device · pending sync')); }),
-      ]))));
+      await showModalBottomSheet<void>(
+        context: context,
+        showDragHandle: true,
+        builder: (sheetContext) => SafeArea(
+          child: SizedBox(
+            height: MediaQuery.sizeOf(sheetContext).height * .65,
+            child: ListView(children: [
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text('Reading progress', style: Theme.of(sheetContext).textTheme.titleLarge),
+              ),
+              if (completed.isEmpty && pending.isEmpty)
+                const ListTile(title: Text('No completed chapters yet.')),
+              ...completed.map((item) => ListTile(
+                leading: const Icon(Icons.check_circle_outline),
+                title: Text('${item['book_id']} ${item['chapter']}'),
+                subtitle: Text('${item['translation_id']} · ${item['completed_at']}'),
+              )),
+              ...pending.map((item) {
+                final payload = Map<String, dynamic>.from(item['payload'] as Map? ?? const {});
+                return ListTile(
+                  leading: const Icon(Icons.cloud_upload_outlined),
+                  title: Text('${payload['book_id']} ${payload['chapter']}'),
+                  subtitle: const Text('Completed on this device · pending sync'),
+                );
+              }),
+            ]),
+          ),
+        ),
+      );
     } catch (_) { _snack('Could not load reading progress.'); }
   }
 

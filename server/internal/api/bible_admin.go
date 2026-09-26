@@ -99,14 +99,12 @@ func (h *Handler) adminBibleCatalog(w http.ResponseWriter, r *http.Request) {
 	}
 	defer stored.Close()
 	items := make([]map[string]any, 0, len(rows))
-	for _, t := range rows {
-		items = append(items, map[string]any{
-			"translation": t, "registry_id": helloAOAppID(t.ProviderTranslationID), "status": "not_synced",
-		})
-	}
 	byID := map[string]map[string]any{}
-	for _, item := range items {
-		byID[item["registry_id"].(string)] = item
+	for _, t := range rows {
+		id := helloAOAppID(t.ProviderTranslationID)
+		item := map[string]any{"translation": t, "registry_id": id, "status": "not_synced"}
+		items = append(items, item)
+		byID[id] = item
 	}
 	registry := make([]struct {
 		id, status string
@@ -340,10 +338,4 @@ func (h *Handler) adminReviewBibleRights(w http.ResponseWriter, r *http.Request)
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{"id": id, "status": status, "review_id": reviewID, "grants": grants, "reviewed_at": now})
 }
 
-func adminBoolean(v bool) string {
-	if v {
-		return "true"
-	}
-	return "false"
-}
 func sha256Hex(data []byte) string { sum := sha256.Sum256(data); return hex.EncodeToString(sum[:]) }
