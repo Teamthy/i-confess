@@ -9,7 +9,7 @@ import { useApp, mutate, track } from "@/lib/store";
 import { useAudio, useToast, useSearch } from "@/lib/ui";
 import { CATEGORIES, CONFESSIONS, PLANS as PLANS_LOCAL, catBySlug, confBySlug, sessionsFor, ALL_SESSIONS, sessionBySlug, buildQueue, motifStyle, queueItem, CAT_IMAGES, MOMENTS, PACKS, type Session, type QueueItem } from "@/lib/data";
 
-const SIDE: [string, string, string][] = [["/app", "home", "Home"], ["/app/explore", "compass", "Explore"], ["/app/categories", "book", "Categories"], ["/app/sessions", "clock", "Sessions"], ["/app/voices", "mic", "Voices"], ["/app/history", "clock", "History"], ["/app/journal", "edit", "Journal"], ["/app/memory", "ast", "Memory"], ["/app/favorites", "heart", "Favorites"], ["/app/routines", "spark", "Routines"], ["/app/schedule", "cal", "Schedule"]];
+const SIDE: [string, string, string][] = [["/app", "home", "Home"], ["/app/explore", "compass", "Explore"], ["/app/categories", "book", "Categories"], ["/app/sessions", "clock", "Sessions"], ["/app/voices", "mic", "Voices"], ["/app/history", "clock", "History"], ["/app/journal", "edit", "Journal"], ["/app/favorites", "heart", "Favorites"], ["/app/routines", "spark", "Routines"], ["/app/schedule", "cal", "Schedule"]];
 const BOTTOM: [string, string, string][] = [["/app", "home", "Home"], ["/app/explore", "compass", "Explore"], ["/app/community/create", "plus", "Create"], ["/app/history", "chart", "Activity"], ["/app/profile", "user", "Profile"]];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
