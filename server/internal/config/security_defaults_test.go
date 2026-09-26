@@ -131,6 +131,39 @@ func TestValidProductionConfigPasses(t *testing.T) {
 	}
 }
 
+func TestProductionSupportsPrivateR2WithoutCloudFrontKeys(t *testing.T) {
+	productionBase(t)
+	t.Setenv("STORAGE_PROVIDER", "s3")
+	t.Setenv("S3_BUCKET", "private-bible-media")
+	t.Setenv("S3_REGION", "auto")
+	t.Setenv("S3_ENDPOINT", "https://abcdef0123456789.r2.cloudflarestorage.com")
+	t.Setenv("S3_ACCESS_KEY", "test-r2-access")
+	t.Setenv("S3_SECRET_KEY", "test-r2-secret")
+	t.Setenv("MEDIA_BASE_URL", "")
+	t.Setenv("CLOUDFRONT_KEY_PAIR_ID", "")
+	t.Setenv("CLOUDFRONT_PRIVATE_KEY_PATH", "")
+	if err := Load().Validate(); err != nil {
+		t.Fatalf("valid private R2 deployment rejected: %v", err)
+	}
+	for _, endpoint := range []string{
+		"http://abcdef0123456789.r2.cloudflarestorage.com",
+		"https://abcdef0123456789.r2.cloudflarestorage.com.evil.test",
+		"https://example.test/media",
+		"https://user:pass@abcdef0123456789.r2.cloudflarestorage.com",
+	} {
+		t.Run(endpoint, func(t *testing.T) {
+			t.Setenv("S3_ENDPOINT", endpoint)
+			if err := Load().Validate(); err == nil {
+				t.Fatalf("unsafe or unsupported R2 origin accepted: %s", endpoint)
+			}
+		})
+	}
+	t.Setenv("S3_ACCESS_KEY", "")
+	if err := Load().Validate(); err == nil || !strings.Contains(err.Error(), "S3_ACCESS_KEY") {
+		t.Fatalf("missing R2 credential was accepted or misreported: %v", err)
+	}
+}
+
 // TestDevelopmentDefaultIsThePublishedSecret is what makes the gate above
 // matter. The development default is a literal in this repository, so anyone
 // who has read the source can sign a valid token with it. If the default ever
@@ -180,6 +213,15 @@ func TestProductionRefusesLocalStorage(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "local") {
 		t.Errorf("error should name the rejected provider, got: %v", err)
+	}
+}
+
+func TestStagingAlsoRefusesEphemeralBibleStorage(t *testing.T) {
+	productionBase(t)
+	t.Setenv("ENV", "staging")
+	t.Setenv("STORAGE_PROVIDER", "local")
+	if err := Load().Validate(); err == nil || !strings.Contains(err.Error(), "local") {
+		t.Fatalf("staging accepted local media: %v", err)
 	}
 }
 

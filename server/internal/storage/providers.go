@@ -110,15 +110,15 @@ func (s *S3Storage) Upload(ctx context.Context, key string, data []byte, metadat
 	if !ValidKey(key) {
 		return &StorageError{Op: "upload", Key: key, Err: fmt.Errorf("invalid storage key")}
 	}
+	cacheControl := "public, max-age=31536000, immutable"
+	if strings.HasPrefix(key, "bible/") {
+		// Bible rights/voice licenses can be withdrawn. A signed R2/S3 URL
+		// must not make a reader's offline book cacheable by a shared proxy.
+		cacheControl = "private, no-store"
+	}
 	input := &s3.PutObjectInput{
-		Bucket:      aws.String(s.bucket),
-		Key:         aws.String(key),
-		Body:        bytes.NewReader(data),
-		ContentType: aws.String(contentTypeForKey(key)),
-		// Audio objects are immutable: the key encodes content, version and
-		// voice, so a key never changes meaning once written. That is what
-		// makes aggressive caching safe.
-		CacheControl: aws.String("public, max-age=31536000, immutable"),
+		Bucket: aws.String(s.bucket), Key: aws.String(key), Body: bytes.NewReader(data),
+		ContentType: aws.String(contentTypeForKey(key)), CacheControl: aws.String(cacheControl),
 	}
 	if len(metadata) > 0 {
 		input.Metadata = metadata
@@ -587,7 +587,11 @@ func (l *LocalStorage) Handler(prefix string) http.Handler {
 		}
 		// Private only: a signed URL is a bearer credential for one listener,
 		// so shared caches must never retain it.
-		w.Header().Set("Cache-Control", "private, max-age=300")
+		if strings.HasPrefix(key, "bible/") {
+			w.Header().Set("Cache-Control", "private, no-store")
+		} else {
+			w.Header().Set("Cache-Control", "private, max-age=300")
+		}
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		// ServeContent gives range requests, which the audio element needs for
 		// seeking and for resuming mid-track.

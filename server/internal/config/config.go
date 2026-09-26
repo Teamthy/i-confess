@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -199,19 +200,39 @@ func (c Config) Validate() error {
 	if c.AudioSignSecret == "" || c.AudioSignSecret == "dev-only-audio-secret" {
 		return errors.New("AUDIO_SIGN_SECRET must be set to a non-default value in production")
 	}
-	if !strings.HasPrefix(c.MediaBaseURL, "https://") {
-		return errors.New("MEDIA_BASE_URL must be an absolute https CloudFront URL in production")
-	}
-	if c.CloudFrontKeyPairID == "" || c.CloudFrontPrivateKeyPath == "" {
-		return errors.New("CLOUDFRONT_KEY_PAIR_ID and CLOUDFRONT_PRIVATE_KEY_PATH are required in production")
-	}
 	if err := storage.ValidateProvider(&storage.StorageConfig{
 		Provider:      c.StorageProvider,
 		S3Bucket:      c.S3Bucket,
 		S3Region:      c.S3Region,
 		LocalRootPath: c.MediaDir,
-	}, c.IsProduction()); err != nil {
+	}, !c.unsafeDefaultsAllowed()); err != nil {
 		return fmt.Errorf("object storage: %w", err)
+	}
+	var directR2 bool
+	if c.S3Endpoint != "" {
+		endpoint, err := url.Parse(c.S3Endpoint)
+		if err != nil || endpoint.Scheme != "https" || endpoint.Host == "" ||
+			endpoint.User != nil || endpoint.RawQuery != "" || endpoint.Fragment != "" ||
+			(endpoint.Path != "" && endpoint.Path != "/") {
+			return errors.New("S3_ENDPOINT must be an absolute HTTPS storage origin")
+		}
+		directR2 = strings.HasSuffix(strings.ToLower(endpoint.Hostname()), ".r2.cloudflarestorage.com") &&
+			endpoint.Port() == "" && c.StorageProvider == "s3"
+	}
+	if c.CloudFrontKeyPairID != "" || c.CloudFrontPrivateKeyPath != "" {
+		if !strings.HasPrefix(c.MediaBaseURL, "https://") ||
+			c.CloudFrontKeyPairID == "" || c.CloudFrontPrivateKeyPath == "" {
+			return errors.New("CloudFront signing requires an HTTPS MEDIA_BASE_URL and both CLOUDFRONT signing settings")
+		}
+	} else if directR2 {
+		// R2 private buckets use the S3-compatible presigner, not an AWS
+		// CloudFront key. Render has no AWS instance role, so require explicit
+		// bucket-scoped R2 credentials before accepting this deployment mode.
+		if c.S3AccessKey == "" || c.S3SecretKey == "" {
+			return errors.New("R2 direct signing requires S3_ACCESS_KEY and S3_SECRET_KEY")
+		}
+	} else {
+		return errors.New("configure CloudFront signed HTTPS media or an HTTPS Cloudflare R2 endpoint with private presigned URLs")
 	}
 	// The log sender prints verification and reset links. In production that
 	// would write working credentials to the log stream, so it is refused.

@@ -35,30 +35,116 @@ func init() {
 // first query that touched a missing column, which is much harder to diagnose
 // than a startup failure that names the statement.
 //
-// Statements are split on ';' after stripping full-line comments. That is
-// sufficient for the committed schema, which contains no semicolons inside
-// string literals and no dollar-quoted function bodies. If either is ever
-// added, this needs a real SQL scanner — see the note in schema.postgres.sql.
+// Split on statement terminators only, not semicolons inside quoted values,
+// identifiers, comments or PostgreSQL dollar-quoted blocks. Migration 0022
+// contains punctuation inside an editorial note; changing that released SQL
+// would invalidate its checksum, so the migration runner must parse it safely.
 func InitSchema(conn schemaExecutor, schema string) error {
-	var lines []string
-	for _, line := range strings.Split(schema, "\n") {
-		if strings.HasPrefix(strings.TrimSpace(line), "--") {
-			continue
-		}
-		lines = append(lines, line)
+	statements, err := splitSQLStatements(schema)
+	if err != nil {
+		return fmt.Errorf("init schema: %w", err)
 	}
-	clean := strings.Join(lines, "\n")
-
-	for _, stmt := range strings.Split(clean, ";") {
-		stmt = strings.TrimSpace(stmt)
-		if stmt == "" {
-			continue
-		}
+	for _, stmt := range statements {
 		if _, err := conn.Exec(stmt); err != nil {
 			return fmt.Errorf("init schema: %w (stmt: %.60s...)", err, stmt)
 		}
 	}
 	return nil
+}
+
+func splitSQLStatements(schema string) ([]string, error) {
+	statements := []string{}
+	var statement strings.Builder
+	var single, double, lineComment bool
+	var blockDepth int
+	var dollarTag string
+	for i := 0; i < len(schema); i++ {
+		c := schema[i]
+		if lineComment {
+			if c == '\n' {
+				lineComment = false
+				statement.WriteByte(c)
+			}
+			continue
+		}
+		if blockDepth > 0 {
+			if strings.HasPrefix(schema[i:], "/*") {
+				blockDepth++
+				i++
+			} else if strings.HasPrefix(schema[i:], "*/") {
+				blockDepth--
+				i++
+			}
+			continue
+		}
+		if dollarTag != "" {
+			if strings.HasPrefix(schema[i:], dollarTag) {
+				statement.WriteString(dollarTag)
+				i += len(dollarTag) - 1
+				dollarTag = ""
+			} else {
+				statement.WriteByte(c)
+			}
+			continue
+		}
+		if single || double {
+			statement.WriteByte(c)
+			quote := byte('\'')
+			if double {
+				quote = '"'
+			}
+			if c == quote {
+				if i+1 < len(schema) && schema[i+1] == quote {
+					statement.WriteByte(quote)
+					i++
+				} else {
+					single, double = false, false
+				}
+			}
+			continue
+		}
+		switch {
+		case strings.HasPrefix(schema[i:], "--"):
+			lineComment = true
+			i++
+		case strings.HasPrefix(schema[i:], "/*"):
+			blockDepth = 1
+			i++
+		case c == '\'':
+			single = true
+			statement.WriteByte(c)
+		case c == '"':
+			double = true
+			statement.WriteByte(c)
+		case c == '$':
+			// Dollar quotes may be untagged ($$) or tagged ($body_1$).
+			j := i + 1
+			for j < len(schema) && (schema[j] >= 'a' && schema[j] <= 'z' || schema[j] >= 'A' && schema[j] <= 'Z' || schema[j] >= '0' && schema[j] <= '9' || schema[j] == '_') {
+				j++
+			}
+			if j < len(schema) && schema[j] == '$' && (j == i+1 || schema[i+1] < '0' || schema[i+1] > '9') {
+				dollarTag = schema[i : j+1]
+				statement.WriteString(dollarTag)
+				i = j
+			} else {
+				statement.WriteByte(c)
+			}
+		case c == ';':
+			if stmt := strings.TrimSpace(statement.String()); stmt != "" {
+				statements = append(statements, stmt)
+			}
+			statement.Reset()
+		default:
+			statement.WriteByte(c)
+		}
+	}
+	if single || double || dollarTag != "" || blockDepth > 0 {
+		return nil, fmt.Errorf("unterminated SQL quote or comment")
+	}
+	if stmt := strings.TrimSpace(statement.String()); stmt != "" {
+		statements = append(statements, stmt)
+	}
+	return statements, nil
 }
 
 // Open connects to PostgreSQL and applies the canonical schema.

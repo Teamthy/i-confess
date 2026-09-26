@@ -34,17 +34,17 @@ import (
 
 // Handler bundles all stores and config needed by the API.
 type Handler struct {
-	cfg    Config
-	bible  bible.BibleProvider
+	cfg            Config
+	bible          bible.BibleProvider
 	bibleDiscovery bible.BibleProvider
-	users  *store.UserStore
-	trials *store.TrialStore
-	cont   *store.ContentStore
-	audio  *store.AudioStore
-	sess   *store.SessionStore
-	sched  *store.ScheduleStore
-	eng    *store.EngagementStore
-	mod    *store.ModerationStore
+	users          *store.UserStore
+	trials         *store.TrialStore
+	cont           *store.ContentStore
+	audio          *store.AudioStore
+	sess           *store.SessionStore
+	sched          *store.ScheduleStore
+	eng            *store.EngagementStore
+	mod            *store.ModerationStore
 	// analytics persists the funnel events. Trial day completion, conversion
 	// and cancellation are recorded here rather than in a client batch, so the
 	// server is the source of truth for the numbers it reports about itself.
@@ -113,8 +113,7 @@ type Handler struct {
 	cacheBus   cache.Bus
 	cacheOwner string
 	// metrics counts security-relevant events for alerting (S83, S84).
-	metrics *AuthMetrics
-	bibleMetrics *bibleOperationMetrics
+	metrics      *AuthMetrics
 	bibleMetrics *bibleOperationMetrics
 	// Store notification collaborators (IC-003, PR B). Nil means "resolve from
 	// the environment", which is what production does; tests supply them
@@ -160,13 +159,13 @@ type Config struct {
 
 func NewHandler(cfg Config, db *db.DB) *Handler {
 	return &Handler{
-		cfg:       cfg,
-		bible:     &bible.LocalBibleProvider{DB: db},
+		cfg:            cfg,
+		bible:          &bible.LocalBibleProvider{DB: db},
 		bibleDiscovery: &bible.LocalBibleProvider{DB: db},
-		users:     store.NewUserStore(db),
-		analytics: store.NewAnalyticsStore(db),
-		blocks:    store.NewBlockStore(db),
-		signals:   store.NewSignalStore(db),
+		users:          store.NewUserStore(db),
+		analytics:      store.NewAnalyticsStore(db),
+		blocks:         store.NewBlockStore(db),
+		signals:        store.NewSignalStore(db),
 		// The trial store writes its own funnel events: expiry is a clock fact
 		// that no single handler reliably observes, so the transition records it.
 		trials:       store.NewTrialStore(db).WithAnalytics(store.NewAnalyticsStore(db)),

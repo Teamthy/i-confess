@@ -27,6 +27,7 @@ package main
 import (
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -326,7 +327,11 @@ func runVerify(args []string) error {
 	case missing > 0:
 		fmt.Printf("%d translations skipped (no source file); %d verified\n", missing, len(versions)-missing)
 	default:
-		fmt.Printf("All %d translations verified: checksums match, structure matches the canon, every verse has text.\n", len(versions))
+		if *skipChecksum {
+			fmt.Printf("All %d translations structurally checked; checksums were NOT verified. Do not treat these sources as loadable.\n", len(versions))
+		} else {
+			fmt.Printf("All %d translations verified: checksums match, structure matches the canon, every verse has text.\n", len(versions))
+		}
 	}
 	return nil
 }
@@ -518,9 +523,12 @@ func runLoad(args []string) error {
 	only := fs.String("only", "", "comma-separated version IDs")
 	dsn := fs.String("dsn", os.Getenv("DATABASE_URL"), "lib/pq connection string")
 	allowMissing := fs.Bool("allow-missing", false, "skip versions with no source file")
-	skipChecksum := fs.Bool("skip-checksum", false, "load without verifying the registry digest")
+	skipChecksum := fs.Bool("skip-checksum", false, "not permitted for load; retained only to reject unsafe invocations")
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+	if *skipChecksum {
+		return errors.New("loading Bible text without its registry checksum is forbidden")
 	}
 	versions, err := selected(*only)
 	if err != nil {
@@ -536,7 +544,7 @@ func runLoad(args []string) error {
 	// which.
 	type loaded struct {
 		v    bible.Version
-		text *bible.Translation
+		text *bible.ParsedTranslation
 		rep  *bible.Report
 	}
 	parsed := make([]loaded, 0, len(versions))
@@ -549,14 +557,12 @@ func runLoad(args []string) error {
 			}
 			return fmt.Errorf("%s: source file missing at %s", v.ID, path)
 		}
-		if !*skipChecksum {
-			sum, err := fileSHA256(path)
-			if err != nil {
-				return err
-			}
-			if sum != v.SHA256 {
-				return fmt.Errorf("%s: checksum mismatch (file %s, registry %s)", v.ID, sum, v.SHA256)
-			}
+		sum, err := fileSHA256(path)
+		if err != nil {
+			return err
+		}
+		if sum != v.SHA256 {
+			return fmt.Errorf("%s: checksum mismatch (file %s, registry %s)", v.ID, sum, v.SHA256)
 		}
 		rep, text, err := parseAndValidate(path, v)
 		if err != nil {
@@ -587,7 +593,7 @@ func runLoad(args []string) error {
 	return nil
 }
 
-func parseAndValidate(path string, v bible.Version) (*bible.Report, *bible.Translation, error) {
+func parseAndValidate(path string, v bible.Version) (*bible.Report, *bible.ParsedTranslation, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, nil, err
@@ -600,10 +606,13 @@ func parseAndValidate(path string, v bible.Version) (*bible.Report, *bible.Trans
 	return bible.Validate(t, v), t, nil
 }
 
-// loadVersion writes one translation. Everything for a version is replaced
-// inside one transaction: a reader mid-request either sees the old text or the
-// new text, never a chapter that has been emptied by a delete.
-func loadVersion(ctx context.Context, conn *db.DB, v bible.Version, t *bible.Translation, rep *bible.Report) error {
+// loadVersion imports a verified translation once. A second run with the same
+// digest is idempotent; a different source or partial content is refused. A
+// revised edition must get a new translation ID, never rewrite cited verses.
+func loadVersion(ctx context.Context, conn *db.DB, v bible.Version, t *bible.ParsedTranslation, rep *bible.Report) error {
+	if t == nil || rep == nil || !rep.OK || t.ID != v.ID || rep.Verses != t.VerseCount() || v.SHA256 == "" {
+		return fmt.Errorf("translation %s has not passed source verification", v.ID)
+	}
 	tx, err := conn.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -612,8 +621,31 @@ func loadVersion(ctx context.Context, conn *db.DB, v bible.Version, t *bible.Tra
 	// safe and covers every early return below.
 	defer func() { _ = tx.Rollback() }()
 
+	// The version row lock serializes concurrent imports of this ID. Checking
+	// before the UPSERT matters: otherwise an existing source hash could be
+	// overwritten before we notice a different, previously cited edition.
+	var provider, digest string
+	var existingVerses int
+	err = tx.QueryRowContext(ctx, `SELECT provider,COALESCE(content_hash,''),
+		(SELECT count(*) FROM bible_verses WHERE version_id=?)
+		FROM bible_versions WHERE id=? FOR UPDATE`, v.ID, v.ID).Scan(&provider, &digest, &existingVerses)
+	if err != nil && err != sql.ErrNoRows {
+		return fmt.Errorf("inspect existing translation: %w", err)
+	}
+	if err == nil && provider != v.Provider {
+		return fmt.Errorf("translation %s belongs to provider %s, not %s", v.ID, provider, v.Provider)
+	}
+	alreadyLoaded := existingVerses > 0
+	if alreadyLoaded && (digest != v.SHA256 || existingVerses != rep.Verses) {
+		return fmt.Errorf("translation %s already holds %d verses from source %s; revisions require a new translation ID", v.ID, existingVerses, digest)
+	}
+
 	{
 		now := time.Now().UTC().Format(time.RFC3339)
+		defaultFlag := 0
+		if v.Default {
+			defaultFlag = 1 // bible_versions.is_default is a legacy INTEGER, not a BOOLEAN.
+		}
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO bible_versions
 			  (id,name,abbrev,language,language_name,format,coverage,year,licence,licence_url,
@@ -638,7 +670,7 @@ func loadVersion(ctx context.Context, conn *db.DB, v bible.Version, t *bible.Tra
 			  content_hash=EXCLUDED.content_hash, updated_at=EXCLUDED.updated_at`,
 			v.ID, v.Name, v.Abbrev, v.Language, v.LanguageName, v.Format, rep.Coverage,
 			v.Year, v.Licence, v.LicenceURL, v.LicenceNote, v.Attribution, v.BlobURL(),
-			v.SHA256, v.Bytes, v.SortOrder, v.Default, rep.Books, rep.Chapters, rep.Verses,
+			v.SHA256, v.Bytes, v.SortOrder, defaultFlag, rep.Books, rep.Chapters, rep.Verses,
 			now, now, now, v.Provider, v.ProviderTranslationID, v.Locale, v.Country, v.Dialect,
 			v.Publisher, v.Description, v.Copyright, v.Rights.PublicDomain, v.Rights.CommercialUse,
 			v.Rights.RedistributionAllowed, v.Rights.ModificationAllowed, v.Rights.AudioAllowed,
@@ -649,45 +681,42 @@ func loadVersion(ctx context.Context, conn *db.DB, v bible.Version, t *bible.Tra
 			return fmt.Errorf("upsert version: %w", err)
 		}
 
-		if _, err := tx.ExecContext(ctx, `DELETE FROM bible_verses WHERE version_id = ?`, v.ID); err != nil {
-			return fmt.Errorf("clear verses: %w", err)
-		}
-
-		stmt, err := tx.Tx.PrepareContext(ctx, copyVersesSQL)
-		if err != nil {
-			return fmt.Errorf("prepare COPY: %w", err)
-		}
-		rows := 0
-		for order, b := range bible.Canon {
-			book := t.Book(b.ID)
-			if book == nil {
-				continue
+		if !alreadyLoaded {
+			stmt, err := tx.Tx.PrepareContext(ctx, copyVersesSQL)
+			if err != nil {
+				return fmt.Errorf("prepare COPY: %w", err)
 			}
-			for _, ch := range book.Chapters {
-				for _, vr := range ch.Verses {
-					if _, err := stmt.ExecContext(ctx, v.ID, b.ID, b.Name, b.Testament, order+1, ch.Number, vr.Number, vr.Text, now, now); err != nil {
-						_ = stmt.Close()
-						return fmt.Errorf("stage %s %d:%d: %w", b.ID, ch.Number, vr.Number, err)
+			rows := 0
+			for order, b := range bible.Canon {
+				book := t.Book(b.ID)
+				if book == nil {
+					continue
+				}
+				for _, ch := range book.Chapters {
+					for _, vr := range ch.Verses {
+						if _, err := stmt.ExecContext(ctx, v.ID, b.ID, b.Name, b.Testament, order+1, ch.Number, vr.Number, vr.Text, now, now); err != nil {
+							_ = stmt.Close()
+							return fmt.Errorf("stage %s %d:%d: %w", b.ID, ch.Number, vr.Number, err)
+						}
+						rows++
 					}
-					rows++
 				}
 			}
-		}
-		if _, err := stmt.ExecContext(ctx); err != nil { // flush
-			_ = stmt.Close()
-			return fmt.Errorf("flush COPY: %w", err)
-		}
-		if err := stmt.Close(); err != nil {
-			return fmt.Errorf("close COPY: %w", err)
-		}
-		if rows != rep.Verses {
-			return fmt.Errorf("wrote %d verses, verified %d", rows, rep.Verses)
+			if _, err := stmt.ExecContext(ctx); err != nil { // flush
+				_ = stmt.Close()
+				return fmt.Errorf("flush COPY: %w", err)
+			}
+			if err := stmt.Close(); err != nil {
+				return fmt.Errorf("close COPY: %w", err)
+			}
+			if rows != rep.Verses {
+				return fmt.Errorf("wrote %d verses, verified %d", rows, rep.Verses)
+			}
 		}
 	}
 
-	if _, err := tx.ExecContext(ctx, `DELETE FROM bible_translation_books WHERE version_id = ?`, v.ID); err != nil {
-		return fmt.Errorf("clear translation book map: %w", err)
-	}
+	// A legacy import may predate the book mapping; backfill it without
+	// modifying existing entries or the verified source verses.
 	for order, canonical := range bible.Canon {
 		book := t.Book(canonical.ID)
 		if book == nil {
@@ -695,7 +724,7 @@ func loadVersion(ctx context.Context, conn *db.DB, v bible.Version, t *bible.Tra
 		}
 		if _, err := tx.ExecContext(ctx, `INSERT INTO bible_translation_books
 			(version_id,book_id,display_name,testament,canonical_order,chapter_count,has_text)
-			VALUES(?,?,?,?,?,?,?)`, v.ID, canonical.ID, canonical.Name, canonical.Testament,
+			VALUES(?,?,?,?,?,?,?) ON CONFLICT(version_id,book_id) DO NOTHING`, v.ID, canonical.ID, canonical.Name, canonical.Testament,
 			order+1, len(book.Chapters), len(book.Chapters) > 0); err != nil {
 			return fmt.Errorf("map translated book %s: %w", canonical.ID, err)
 		}

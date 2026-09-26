@@ -114,7 +114,9 @@ func main() {
 	h := api.NewHandler(api.Config{JWTSecret: cfg.JWTSecret, TokenTTL: cfg.TokenTTL}, conn)
 	localBible := &bible.LocalBibleProvider{DB: conn}
 	helloAO, providerErr := bible.NewHelloAOBibleProvider(os.Getenv("HELLOAO_BASE_URL"), nil)
-	if providerErr != nil { log.Fatalf("bible provider configuration: %v", providerErr) }
+	if providerErr != nil {
+		log.Fatalf("bible provider configuration: %v", providerErr)
+	}
 	h.SetBibleDiscoveryProvider(helloAO)
 	// Provider choice is server-side. The local corpus is always the fallback;
 	// HelloAO content is exposed only after its database registry row is reviewed.

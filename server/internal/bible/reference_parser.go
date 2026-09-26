@@ -7,54 +7,61 @@ import (
 	"strings"
 )
 
-// Reference is a normalized scripture location. Book is the stable OSIS book
+// PassageReference is a normalized scripture location. Book is the stable OSIS book
 // identifier; StartVerse/EndVerse are zero only for a whole-chapter reference.
-type Reference struct {
-	Book      string `json:"book_id"`
-	Chapter   int    `json:"chapter"`
-	StartVerse int   `json:"start_verse,omitempty"`
-	EndVerse   int   `json:"end_verse,omitempty"`
+type PassageReference struct {
+	Book       string `json:"book_id"`
+	Chapter    int    `json:"chapter"`
+	StartVerse int    `json:"start_verse,omitempty"`
+	EndVerse   int    `json:"end_verse,omitempty"`
 }
 
 var referencePattern = regexp.MustCompile(`(?i)^(.+?)\s+(\d+)(?::(\d+)(?:\s*[-–—]\s*(\d+))?)?$`)
 
-// ParseReference supports full names, common abbreviations and canonical/USFM
-// IDs already understood by ParseBook: "John 3:16", "Jn 3:16", "JHN 3:16",
+// Accept USFM codes and the longest canonical OSIS book IDs (e.g. 1Thess).
+var canonicalVersePattern = regexp.MustCompile(`(?i)^([1-3]?[a-z]{2,5})\.(\d+)\.(\d+)$`)
+
+// ParseReference supports full names, common abbreviations, and USFM IDs:
+// "John 3:16", "JHN 3:16", the deep-link identity "JHN.3.16",
 // "Romans 8", "Psalm 23", and single-chapter verse ranges.
-func ParseReference(input string) (Reference, error) {
-	match := referencePattern.FindStringSubmatch(strings.TrimSpace(input))
+func ParseReference(input string) (PassageReference, error) {
+	input = strings.TrimSpace(input)
+	if canonical := canonicalVersePattern.FindStringSubmatch(input); canonical != nil {
+		input = canonical[1] + " " + canonical[2] + ":" + canonical[3]
+	}
+	match := referencePattern.FindStringSubmatch(input)
 	if match == nil {
-		return Reference{}, fmt.Errorf("invalid Bible reference")
+		return PassageReference{}, fmt.Errorf("invalid Bible reference")
 	}
 	bookID, ok := ParseBook(match[1])
 	if !ok {
-		return Reference{}, fmt.Errorf("unknown Bible book")
+		return PassageReference{}, fmt.Errorf("unknown Bible book")
 	}
 	chapter, err := strconv.Atoi(match[2])
 	if err != nil || chapter < 1 {
-		return Reference{}, fmt.Errorf("invalid chapter")
+		return PassageReference{}, fmt.Errorf("invalid chapter")
 	}
 	book, _ := BookByID(bookID)
 	if chapter > book.Chapters() {
-		return Reference{}, fmt.Errorf("chapter is outside the canonical book")
+		return PassageReference{}, fmt.Errorf("chapter is outside the canonical book")
 	}
-	ref := Reference{Book: bookID, Chapter: chapter}
+	ref := PassageReference{Book: bookID, Chapter: chapter}
 	if match[3] == "" {
 		return ref, nil
 	}
 	start, err := strconv.Atoi(match[3])
 	if err != nil || start < 1 {
-		return Reference{}, fmt.Errorf("invalid verse")
+		return PassageReference{}, fmt.Errorf("invalid verse")
 	}
 	end := start
 	if match[4] != "" {
 		end, err = strconv.Atoi(match[4])
 		if err != nil || end < start || end-start > 199 {
-			return Reference{}, fmt.Errorf("invalid verse range")
+			return PassageReference{}, fmt.Errorf("invalid verse range")
 		}
 	}
 	if start > book.Verses[chapter-1] || end > book.Verses[chapter-1] {
-		return Reference{}, fmt.Errorf("verse is outside the canonical chapter")
+		return PassageReference{}, fmt.Errorf("verse is outside the canonical chapter")
 	}
 	ref.StartVerse, ref.EndVerse = start, end
 	return ref, nil

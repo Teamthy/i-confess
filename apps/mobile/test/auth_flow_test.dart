@@ -14,6 +14,22 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/fake_api_client.dart';
 
+/// Auth now binds licensed offline content to the signing-in account in secure
+/// storage. Widget tests must use a keystore fake as well as a token-store fake;
+/// otherwise a platform-channel write never completes under pumpAndSettle.
+final class _MemorySecureStorage implements SecureStorage {
+  final values = <String, String>{};
+
+  @override
+  Future<String?> read(String key) async => values[key];
+
+  @override
+  Future<void> write(String key, String value) async { values[key] = value; }
+
+  @override
+  Future<void> delete(String key) async { values.remove(key); }
+}
+
 /// The auth flow, driven the way a listener drives it.
 ///
 /// These are widget tests rather than controller tests on purpose. The things
@@ -25,6 +41,7 @@ void main() {
   late ProviderContainer container;
   late FakeApiClient api;
   late InMemoryTokenStore tokens;
+  late _MemorySecureStorage offlineStorage;
   late DebugAnalytics analytics;
 
   // Built before the widget tree, so a test can script a response or seed a
@@ -32,6 +49,7 @@ void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({});
     tokens = InMemoryTokenStore();
+    offlineStorage = _MemorySecureStorage();
     api = FakeApiClient(tokens: tokens);
     analytics = DebugAnalytics(sink: (_) {});
   });
@@ -47,6 +65,7 @@ void main() {
       overrides: [
         sharedPreferencesProvider.overrideWithValue(prefs),
         tokenStoreProvider.overrideWithValue(tokens),
+        secureStorageProvider.overrideWithValue(offlineStorage),
         apiClientProvider.overrideWithValue(api),
         analyticsProvider.overrideWithValue(analytics),
         authControllerProvider.overrideWith(() => _FixedAuth(auth)),
@@ -112,6 +131,8 @@ void main() {
       // sign-in that set the state and never wrote the credential, so every
       // request after it went out unauthenticated.
       expect(await tokens.read(), 'session-token');
+      expect(await offlineStorage.read('bible.sync.owner'), 'u1',
+          reason: 'offline licenses must not carry across sign-ins');
       expect(find.text('Home'), findsWidgets, reason: 'routing followed the session');
       expect(
         analytics.events.map((e) => e.name),
@@ -463,6 +484,7 @@ void main() {
         (tester) async {
       api.respond('/auth/reset-password', {'message': 'password reset successfully'});
       await tokens.save('a-session-that-must-not-survive');
+      await offlineStorage.write('bible.sync.owner', 'u1');
 
       await pumpApp(tester);
       await goTo(tester, '${AppRoutes.resetPassword}?token=abc123');
@@ -480,8 +502,10 @@ void main() {
         'token': 'abc123',
         'password': 'a completely new one',
       });
-      // The server revoked every session; keeping this one would defeat it.
+      // The server revoked every session; keeping this one or its offline
+      // account binding would defeat account isolation.
       expect(await tokens.hasSession(), isFalse);
+      expect(await offlineStorage.read('bible.sync.owner'), isNull);
     });
 
     testWidgets('an expired token is reported and the form stays usable',

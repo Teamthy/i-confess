@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:iconfess_api/iconfess_api.dart';
@@ -59,6 +61,26 @@ class AuthController extends Notifier<AuthState> {
   @override
   AuthState build() => const AuthState.unknown();
 
+  Future<void> _forgetBibleOfflineOwner() async {
+    try {
+      await ref.read(secureStorageProvider).delete('bible.sync.owner');
+    } on Object {
+      // Offline reads also require a session and matching account identity.
+    }
+  }
+
+  Future<void> _bindBibleOfflineOwner(String? id) async {
+    try {
+      if (id == null || id.isEmpty) {
+        await _forgetBibleOfflineOwner();
+      } else {
+        await ref.read(secureStorageProvider).write('bible.sync.owner', id);
+      }
+    } on Object {
+      // Sign-in must not depend on this optional offline capability.
+    }
+  }
+
   /// Reads the keystore to find out whether a session exists.
   ///
   /// Called once at startup, before the first frame is routed. It only checks
@@ -90,6 +112,7 @@ class AuthController extends Notifier<AuthState> {
         .read(authRepositoryProvider)
         .signIn(email: email, password: password, code: code);
     if (outcome is SignedIn) {
+      await _bindBibleOfflineOwner(outcome.userId);
       state = AuthState.signedIn(userId: outcome.userId);
       if (outcome.userId case final id?) attachUser(id);
       ref.read(analyticsProvider).track(AnalyticsEvents.signInSucceeded);
@@ -125,6 +148,7 @@ class AuthController extends Notifier<AuthState> {
           timezone: timezone,
         );
     if (outcome is AccountCreated) {
+      await _bindBibleOfflineOwner(outcome.userId);
       state = AuthState.signedIn(userId: outcome.userId);
       if (outcome.userId case final id?) attachUser(id);
       ref.read(analyticsProvider).track(AnalyticsEvents.signUpSucceeded);
@@ -155,6 +179,7 @@ class AuthController extends Notifier<AuthState> {
         await ref.read(authRepositoryProvider).resetPassword(token: token, password: password);
     if (result.succeeded) {
       await ref.read(tokenStoreProvider).clear();
+      await _forgetBibleOfflineOwner();
       ref.read(analyticsProvider).reset();
       state = const AuthState.signedOut();
     }
@@ -182,6 +207,7 @@ class AuthController extends Notifier<AuthState> {
       // Deliberate: see above.
     }
     await ref.read(tokenStoreProvider).clear();
+    await _forgetBibleOfflineOwner();
     ref.read(analyticsProvider).reset();
     state = const AuthState.signedOut();
   }
@@ -189,6 +215,7 @@ class AuthController extends Notifier<AuthState> {
   /// Called when the server reports the session was lost mid-use.
   void onAuthenticationLost(AuthLossReason reason) {
     state = const AuthState.signedOut();
+    unawaited(_forgetBibleOfflineOwner());
     ref.read(analyticsProvider).track(
       AnalyticsEvents.signOut,
       properties: {'reason': reason.name},

@@ -104,7 +104,7 @@ final class BibleChapter {
         ),
         chapter: (json['chapter'] as num?)?.toInt() ?? 0,
         verses: (json['verses'] as List? ?? const [])
-            .whereType<Map>()
+            .whereType<Map<dynamic, dynamic>>()
             .map((item) => BibleVerse.fromJson(Map<String, dynamic>.from(item)))
             .toList(growable: false),
       );
@@ -120,7 +120,7 @@ final class BibleRepository {
       if (language.isNotEmpty) 'language': language,
     });
     return (json['translations'] as List? ?? const [])
-        .whereType<Map>()
+        .whereType<Map<dynamic, dynamic>>()
         .map((item) => BibleTranslation.fromJson(Map<String, dynamic>.from(item)))
         .toList(growable: false);
   }
@@ -128,7 +128,7 @@ final class BibleRepository {
   Future<List<BibleBook>> books(String translation) async {
     final json = await api.get('/v1/bible/books', query: {'translation': translation});
     return (json['books'] as List? ?? const [])
-        .whereType<Map>()
+        .whereType<Map<dynamic, dynamic>>()
         .map((item) => BibleBook.fromJson(Map<String, dynamic>.from(item)))
         .toList(growable: false);
   }
@@ -306,6 +306,6 @@ final class BibleRepository {
 
 List<Map<String, dynamic>> _maps(Object? value) =>
     (value as List? ?? const [])
-        .whereType<Map>()
+        .whereType<Map<dynamic, dynamic>>()
         .map((item) => Map<String, dynamic>.from(item))
         .toList(growable: false);

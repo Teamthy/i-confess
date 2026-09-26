@@ -240,17 +240,6 @@ func (h *Handler) Routes() http.Handler {
 	h.route(mux, "GET /v1/bible/{translation}/{book}/{chapter}/{verse}", "public", "bible", "Read a Bible verse", nil, h.bibleVerse)
 	// Compatibility aliases are kept in parity with the unversioned mobile
 	// client contract; browser /api/v1/* is reverse-proxied to the v1 routes.
-	h.route(mux, "GET /bible/languages", "public", "bible", "Available Bible languages", nil, h.bibleLanguages)
-	h.route(mux, "GET /bible/translations", "public", "bible", "Approved Bible translations with provenance and rights", nil, h.bibleTranslations)
-	h.route(mux, "GET /bible/translations/{id}", "public", "bible", "One translation and its licensing metadata", nil, h.bibleTranslation)
-	h.route(mux, "GET /bible/books", "public", "bible", "Books available in a translation", nil, h.bibleBooks)
-	h.route(mux, "GET /bible/books/{id}", "public", "bible", "Book metadata in a translation", nil, h.bibleBook)
-	h.route(mux, "GET /bible/books/{id}/chapters", "public", "bible", "Chapters available in a translation book", nil, h.bibleBookChapters)
-	h.route(mux, "GET /bible/passage", "public", "bible", "Read a normalized Bible passage", nil, h.biblePassage)
-	h.route(mux, "GET /bible/search", "public", "bible", "Search scripture or resolve a Bible reference", bibleSearchLimit, h.bibleSearch)
-	h.route(mux, "GET /bible/cross-references", "public", "bible", "Cross references for a canonical passage", nil, h.bibleCrossReferences)
-	h.route(mux, "GET /bible/{translation}/{book}/{chapter}", "public", "bible", "Read a Bible chapter", nil, h.bibleChapter)
-	h.route(mux, "GET /bible/{translation}/{book}/{chapter}/{verse}", "public", "bible", "Read a Bible verse", nil, h.bibleVerse)
 
 	// Bible rights, catalog and operations administration. Discovery metadata is
 	// separated from approved application content; every permission decision is audited.
@@ -267,6 +256,9 @@ func (h *Handler) Routes() http.Handler {
 	h.route(mux, "PUT /admin/bible/plans/{id}/days/{day}", "admin", "admin-bible", "Edit an unpublished Bible plan day", admin, h.adminAddBiblePlanDay)
 	h.route(mux, "GET /admin/bible/verse-of-day", "admin", "admin-bible", "List reviewed Bible verses of the day", admin, h.adminListBibleVerseOfDay)
 	h.route(mux, "PUT /admin/bible/verse-of-day/{day}", "admin", "admin-bible", "Review a verse-of-day reference", admin, h.adminSetBibleVerseOfDay)
+	h.route(mux, "GET /admin/bible/cross-references", "admin", "admin-bible", "List proposed and reviewed cross-references", admin, h.adminListBibleCrossReferences)
+	h.route(mux, "POST /admin/bible/cross-references", "admin", "admin-bible", "Propose a cross-reference for review", admin, h.adminCreateBibleCrossReference)
+	h.route(mux, "PATCH /admin/bible/cross-references/{id}", "admin", "admin-bible", "Approve or withdraw a cross-reference", admin, h.adminReviewBibleCrossReference)
 	h.route(mux, "GET /admin/bible/audio", "admin", "admin-bible", "List Bible audio rights-review assets", admin, h.adminBibleAudioList)
 	h.route(mux, "POST /admin/bible/audio", "admin", "admin-bible", "Register a checksum-verified Bible audio manifest", admin, h.adminRegisterBibleAudio)
 	h.route(mux, "POST /admin/bible/audio/{id}/review", "admin", "admin-bible", "Approve or withdraw rights-cleared Bible audio", admin, h.adminReviewBibleAudio)
@@ -301,16 +293,6 @@ func (h *Handler) Routes() http.Handler {
 	h.route(mux, "GET /v1/me/bible/plans", "user", "bible", "List personal reading plan enrollments", authed, h.myBiblePlans)
 	h.route(mux, "POST /v1/me/bible/plans/{id}/enroll", "user", "bible", "Enroll in a curated Bible reading plan", authed, h.enrollBiblePlan)
 	h.route(mux, "POST /v1/me/bible/plans/{id}/days/{day}", "user", "bible", "Complete a reading-plan day", authed, h.completeBiblePlanDay)
-	h.route(mux, "GET /me/bible/bookmarks", "user", "bible", "List private Bible bookmarks", authed, h.listMyBibleBookmarks)
-	h.route(mux, "POST /me/bible/bookmarks", "user", "bible", "Create or update a private Bible bookmark", authed, h.saveMyBibleBookmark)
-	h.route(mux, "DELETE /me/bible/bookmarks/{id}", "user", "bible", "Delete a private Bible bookmark", authed, h.deleteMyBibleBookmark)
-	h.route(mux, "GET /me/bible/highlights", "user", "bible", "List private Bible highlights", authed, h.listMyBibleHighlights)
-	h.route(mux, "POST /me/bible/highlights", "user", "bible", "Create or update a private Bible highlight", authed, h.saveMyBibleHighlight)
-	h.route(mux, "DELETE /me/bible/highlights/{id}", "user", "bible", "Delete a private Bible highlight", authed, h.deleteMyBibleHighlight)
-	h.route(mux, "GET /me/bible/notes", "user", "bible", "List private Bible notes", authed, h.listMyBibleNotes)
-	h.route(mux, "POST /me/bible/notes", "user", "bible", "Create a private Bible note", authed, h.createMyBibleNote)
-	h.route(mux, "PATCH /me/bible/notes/{id}", "user", "bible", "Update a private Bible note with row-version conflict protection", authed, h.patchMyBibleNote)
-	h.route(mux, "DELETE /me/bible/notes/{id}", "user", "bible", "Delete a private Bible note", authed, h.deleteMyBibleNote)
 
 	// Operational surfaces. Admin-only: failure counts reveal whether an attack
 	// is landing, which is what an attacker most wants to know (S83).

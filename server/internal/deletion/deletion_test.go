@@ -268,6 +268,84 @@ func TestErasureRemovesPersonalData(t *testing.T) {
 	}
 }
 
+// Bible annotations, study activity, and offline licenses are personal; audit
+// evidence and editorial references survive with both creator and reviewer
+// detached. Exercise the dependent plan-day path before its parent is erased.
+func TestErasureRemovesBibleDataAndDetachesReviewers(t *testing.T) {
+	conn := newDB(t)
+	s := newService(t, conn)
+	seedUser(t, conn, "bible-user", "bible-user@example.com")
+	ctx := context.Background()
+	exec := func(q string, args ...any) {
+		t.Helper()
+		if _, err := conn.ExecContext(ctx, q, args...); err != nil {
+			t.Fatalf("seed Bible data: %v\nSQL: %s", err, q)
+		}
+	}
+	exec(`INSERT INTO bible_versions
+		(id,name,abbrev,language,language_name,format,coverage,licence,attribution,blob_url,sha256,created_at,updated_at,reviewed_by)
+		VALUES ('test-bible','Test Bible','TST','en','English','osis','full','test terms','','test://source','abc','2026-01-01','2026-01-01',?)`, "bible-user")
+	exec(`INSERT INTO user_bible_notes(id,user_id,book_id,chapter,verse_start,verse_end,body)
+		VALUES ('bn','bible-user','John',3,16,16,'A private prayer')`)
+	exec(`INSERT INTO user_bible_collections(id,user_id,name) VALUES ('bc','bible-user','Saved')`)
+	exec(`INSERT INTO user_bible_collection_items(id,collection_id,user_id,book_id,chapter,verse)
+		VALUES ('bi','bc','bible-user','John',3,16)`)
+	exec(`INSERT INTO user_bible_plan_enrollments(id,user_id,plan_id,translation_id)
+		VALUES ('be','bible-user','bible-plan-rest-week','test-bible')`)
+	exec(`INSERT INTO user_bible_plan_day_progress(enrollment_id,day_number) VALUES ('be',1)`)
+	exec(`INSERT INTO bible_offline_packages(id,translation_id,book_id,content_hash,storage_key,file_size_bytes)
+		VALUES ('bp','test-bible','John','hash','bible/test',100)`)
+	exec(`INSERT INTO user_bible_offline_licenses(id,user_id,package_id,expires_at)
+		VALUES ('bl','bible-user','bp',now()+interval '1 day')`)
+	exec(`INSERT INTO bible_rights_reviews(id,translation_id,actor_id,decision,evidence_url,rationale)
+		VALUES ('br','test-bible','bible-user','approved','https://example.test/license','Reviewed source')`)
+	exec(`INSERT INTO bible_import_jobs(id,provider,provider_translation_id,status,requested_by)
+		VALUES ('bj','local','test-bible','validated','bible-user')`)
+	exec(`UPDATE bible_reading_plans SET created_by=?,reviewed_by=? WHERE id='bible-plan-rest-week'`, "bible-user", "bible-user")
+	exec(`UPDATE bible_cross_references SET created_by=?,reviewed_by=? WHERE id=(SELECT MIN(id) FROM bible_cross_references)`, "bible-user", "bible-user")
+	exec(`UPDATE bible_verse_of_day SET reviewed_by=? WHERE day_index=1`, "bible-user")
+
+	if _, err := s.Request(ctx, "bible-user", ""); err != nil {
+		t.Fatal(err)
+	}
+	report, err := s.Erase(ctx, "bible-user")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for table, want := range map[string]int{
+		"user_bible_notes": 1, "user_bible_collection_items": 1,
+		"user_bible_collections": 1, "user_bible_plan_day_progress": 1,
+		"user_bible_plan_enrollments": 1, "user_bible_offline_licenses": 1,
+		"bible_reading_plans":  2, // creator and reviewer are separate references
+		"bible_rights_reviews": 1, "bible_versions": 1,
+		"bible_cross_references": 2,
+	} {
+		if got := report.PerTable[table]; got != want {
+			t.Errorf("erasure report for %s = %d, want %d", table, got, want)
+		}
+	}
+	for _, table := range []string{"user_bible_notes", "user_bible_collections", "user_bible_collection_items",
+		"user_bible_plan_enrollments", "user_bible_plan_day_progress", "user_bible_offline_licenses"} {
+		if got := count(t, conn, table, ""); got != 0 {
+			t.Errorf("%s retained %d personal rows", table, got)
+		}
+	}
+	for _, pair := range [][2]string{
+		{"bible_versions", "reviewed_by"}, {"bible_rights_reviews", "actor_id"},
+		{"bible_import_jobs", "requested_by"}, {"bible_reading_plans", "created_by"},
+		{"bible_reading_plans", "reviewed_by"}, {"bible_cross_references", "created_by"},
+		{"bible_cross_references", "reviewed_by"},
+		{"bible_verse_of_day", "reviewed_by"},
+	} {
+		if got := count(t, conn, pair[0], pair[1]+" = ?", "bible-user"); got != 0 {
+			t.Errorf("%s.%s retains the reviewer", pair[0], pair[1])
+		}
+	}
+	if count(t, conn, "bible_rights_reviews", "id = ?", "br") != 1 {
+		t.Error("rights evidence must survive without the reviewer's identity")
+	}
+}
+
 // The identity must be destroyed, not merely flagged.
 func TestErasureTombstonesTheIdentity(t *testing.T) {
 	conn := newDB(t)
