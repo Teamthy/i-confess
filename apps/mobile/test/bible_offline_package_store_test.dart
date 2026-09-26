@@ -49,6 +49,24 @@ void main() {
     if (await directory.exists()) await directory.delete(recursive: true);
   });
 
+  test('a cold offline launch cannot mistake an old owner key for the new account', () {
+    final claims = base64Url.encode(utf8.encode(jsonEncode({'sub': 'account-b'})));
+    final token = 'e30.$claims.signature';
+    expect(bibleSessionSubject(token), 'account-b');
+    expect(bibleOfflineOwnerMatchesSession(
+      token: token, signedInID: null, storedOwner: 'account-a',
+    ), isFalse);
+    expect(bibleOfflineOwnerMatchesSession(
+      token: token, signedInID: 'account-a', storedOwner: 'account-b',
+    ), isFalse);
+    expect(bibleOfflineOwnerMatchesSession(
+      token: token, signedInID: null, storedOwner: 'account-b',
+    ), isTrue);
+    expect(bibleOfflineOwnerMatchesSession(
+      token: 'not-a-jwt', signedInID: null, storedOwner: 'account-b',
+    ), isFalse);
+  });
+
   test('startup cleanup removes only legacy Documents packages', () async {
     final legacy = Directory('${directory.path}/bible-offline');
     await legacy.create();

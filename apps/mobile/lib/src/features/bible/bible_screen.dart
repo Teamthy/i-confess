@@ -162,9 +162,20 @@ class _BibleScreenState extends ConsumerState<BibleScreen> {
         .whereType<Map>().map((item) => Map<String, dynamic>.from(item)).toList();
   }
 
+  Future<String?> _offlineOwnerForCurrentSession() async {
+    if (!ref.read(authControllerProvider).isSignedIn) return null;
+    final token = await ref.read(tokenStoreProvider).read();
+    final owner = await ref.read(secureStorageProvider).read('bible.sync.owner');
+    return bibleOfflineOwnerMatchesSession(
+      token: token, signedInID: ref.read(authControllerProvider).userId,
+      storedOwner: owner,
+    ) ? owner : null;
+  }
+
   Future<String?> _refreshSyncOwner() async {
     final storage = ref.read(secureStorageProvider);
-    if (!await ref.read(apiClientProvider).hasSession()) return null;
+    if (!ref.read(authControllerProvider).isSignedIn ||
+        !await ref.read(apiClientProvider).hasSession()) return null;
     try {
       final response = await ref.read(apiClientProvider).get('/v1/me');
       final user = Map<String, dynamic>.from(response['user'] as Map? ?? const {});
@@ -173,9 +184,7 @@ class _BibleScreenState extends ConsumerState<BibleScreen> {
     } catch (_) {
       // Keep the last known owner while offline; the account is verified again before sync.
     }
-    final owner = await storage.read('bible.sync.owner');
-    final authenticatedID = ref.read(authControllerProvider).userId;
-    return authenticatedID == null || authenticatedID == owner ? owner : null;
+    return _offlineOwnerForCurrentSession();
   }
 
   @override
@@ -188,8 +197,8 @@ class _BibleScreenState extends ConsumerState<BibleScreen> {
 
   Future<void> _restorePreferences() async {
     final prefs = ref.read(sharedPreferencesProvider);
-    final storedOwner = await ref.read(secureStorageProvider).read('bible.sync.owner');
-    final cursorOwner = storedOwner ?? 'unbound';
+    final owner = await _offlineOwnerForCurrentSession();
+    final cursorOwner = owner ?? 'unbound';
     final storedCursor = prefs.getString('bible_sync_cursor_$cursorOwner') ?? '';
     if (!mounted) return;
     setState(() {
@@ -230,12 +239,9 @@ class _BibleScreenState extends ConsumerState<BibleScreen> {
   }
 
   Future<List<OfflineBiblePackage>> _localPackages({String? translationID}) async {
-    if (!await ref.read(apiClientProvider).hasSession()) return const [];
+    final owner = await _offlineOwnerForCurrentSession();
+    if (owner == null) return const [];
     final storage = ref.read(secureStorageProvider);
-    final owner = await storage.read('bible.sync.owner');
-    final authenticatedID = ref.read(authControllerProvider).userId;
-    if (owner == null || owner.isEmpty ||
-        (authenticatedID != null && authenticatedID != owner)) return const [];
     final keys = ref.read(sharedPreferencesProvider).getStringList('bible_offline_index') ?? const <String>[];
     final store = await _offlineStore();
     final packages = <OfflineBiblePackage>[];
@@ -391,12 +397,10 @@ class _BibleScreenState extends ConsumerState<BibleScreen> {
 
   Future<bool> _loadOfflineChapter(String translationID, String bookID, int chapterNumber) async {
     try {
-      // A signed-out user is never implicitly the previous license owner.
-      if (!await ref.read(apiClientProvider).hasSession()) return false;
-      final owner = await ref.read(secureStorageProvider).read('bible.sync.owner');
-      final authenticatedID = ref.read(authControllerProvider).userId;
-      if (owner == null ||
-          (authenticatedID != null && authenticatedID != owner)) return false;
+      // A previous account's key is never an offline license for this session,
+      // including after a cold launch that cannot contact /v1/me.
+      final owner = await _offlineOwnerForCurrentSession();
+      if (owner == null) return false;
       final package = await (await _offlineStore()).load(
         translationID: translationID, bookID: bookID, ownerID: owner,
       );
@@ -895,7 +899,7 @@ class _BibleScreenState extends ConsumerState<BibleScreen> {
       final highlights = hasSession ? await _repository.highlights() : <Map<String, dynamic>>[];
       final notes = hasSession ? await _repository.notes() : <Map<String, dynamic>>[];
       final storage = ref.read(secureStorageProvider);
-      final owner = hasSession ? await _refreshSyncOwner() : await storage.read('bible.sync.owner');
+      final owner = hasSession ? await _refreshSyncOwner() : null;
       final outboxKey = _outboxKey(owner);
       final pending = await _readOutbox(owner);
       if (!mounted) return;
@@ -920,8 +924,7 @@ class _BibleScreenState extends ConsumerState<BibleScreen> {
     try {
       final hasSession = await ref.read(apiClientProvider).hasSession();
       final items = hasSession ? (await _repository.history()).toList() : <Map<String, dynamic>>[];
-      final storage = ref.read(secureStorageProvider);
-      final owner = hasSession ? await _refreshSyncOwner() : await storage.read('bible.sync.owner');
+      final owner = hasSession ? await _refreshSyncOwner() : null;
       final pending = (await _readOutbox(owner)).where((item) => item['entity'] == 'history').toList();
       for (final item in pending) {
         final payload = Map<String, dynamic>.from(item['payload'] as Map? ?? const {});
@@ -936,8 +939,7 @@ class _BibleScreenState extends ConsumerState<BibleScreen> {
     try {
       final hasSession = await ref.read(apiClientProvider).hasSession();
       final completed = hasSession ? await _repository.progress() : <Map<String, dynamic>>[];
-      final storage = ref.read(secureStorageProvider);
-      final owner = hasSession ? await _refreshSyncOwner() : await storage.read('bible.sync.owner');
+      final owner = hasSession ? await _refreshSyncOwner() : null;
       final pending = (await _readOutbox(owner)).where((item) => item['entity'] == 'progress').toList();
       if (!mounted) return;
       await showModalBottomSheet<void>(

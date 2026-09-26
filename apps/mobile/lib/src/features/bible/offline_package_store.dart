@@ -5,6 +5,36 @@ import 'package:crypto/crypto.dart';
 import 'package:cryptography/cryptography.dart';
 import 'package:iconfess_api/iconfess_api.dart';
 
+/// Offline access must be bound to the account in the *current* stored token,
+/// not only to an old owner key: after an interrupted account switch, the old
+/// key can survive a cold launch while the new token is already persisted.
+/// This is a local identity check, NOT JWT signature verification or a license
+/// grant; the API still authenticates the token whenever a connection exists.
+/// Unknown/malformed tokens have no offline identity and fail closed.
+String? bibleSessionSubject(String? token) {
+  if (token == null) return null;
+  final parts = token.split('.');
+  if (parts.length != 3) return null;
+  try {
+    final claims = jsonDecode(utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))));
+    if (claims is! Map<String, dynamic>) return null;
+    final subject = claims['sub'];
+    return subject is String && subject.isNotEmpty ? subject : null;
+  } on FormatException {
+    return null;
+  }
+}
+
+bool bibleOfflineOwnerMatchesSession({
+  required String? token,
+  required String? signedInID,
+  required String? storedOwner,
+}) {
+  final subject = bibleSessionSubject(token);
+  return subject != null && subject == storedOwner &&
+      (signedInID == null || signedInID == subject);
+}
+
 /// Remove downloads written by older releases to the Documents directory.
 /// This runs at app startup without needing a Keychain unlock, so plaintext
 /// does not wait for the user to open the Bible reader before cleanup.
