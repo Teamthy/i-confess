@@ -5838,6 +5838,40 @@
         ]
       }
     },
+    "/bible/random": {
+      "get": {
+        "operationId": "getBibleRandom",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Rate limited; honour Retry-After"
+          }
+        },
+        "summary": "A random passage from the reviewed corpus",
+        "tags": [
+          "bible"
+        ]
+      }
+    },
     "/bible/search": {
       "get": {
         "operationId": "getBibleSearch",
@@ -5901,6 +5935,84 @@
           }
         },
         "summary": "Canonical Bible structure: testaments, sections, books, chapters and reference verse counts",
+        "tags": [
+          "bible"
+        ]
+      }
+    },
+    "/bible/topics": {
+      "get": {
+        "operationId": "getBibleTopics",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Rate limited; honour Retry-After"
+          }
+        },
+        "summary": "Bible topics drawn from the reviewed confession corpus",
+        "tags": [
+          "bible"
+        ]
+      }
+    },
+    "/bible/topics/{slug}": {
+      "get": {
+        "operationId": "getBibleTopicsBySlug",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Rate limited; honour Retry-After"
+          }
+        },
+        "summary": "One Bible topic and the passages it stands on",
         "tags": [
           "bible"
         ]
@@ -20340,6 +20452,40 @@
         ]
       }
     },
+    "/v1/bible/random": {
+      "get": {
+        "operationId": "getV1BibleRandom",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Rate limited; honour Retry-After"
+          }
+        },
+        "summary": "A random passage from the reviewed corpus",
+        "tags": [
+          "bible"
+        ]
+      }
+    },
     "/v1/bible/search": {
       "get": {
         "operationId": "getV1BibleSearch",
@@ -20403,6 +20549,84 @@
           }
         },
         "summary": "Canonical Bible structure: testaments, sections, books, chapters and reference verse counts",
+        "tags": [
+          "bible"
+        ]
+      }
+    },
+    "/v1/bible/topics": {
+      "get": {
+        "operationId": "getV1BibleTopics",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Rate limited; honour Retry-After"
+          }
+        },
+        "summary": "Bible topics drawn from the reviewed confession corpus",
+        "tags": [
+          "bible"
+        ]
+      }
+    },
+    "/v1/bible/topics/{slug}": {
+      "get": {
+        "operationId": "getV1BibleTopicsBySlug",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Rate limited; honour Retry-After"
+          }
+        },
+        "summary": "One Bible topic and the passages it stands on",
         "tags": [
           "bible"
         ]

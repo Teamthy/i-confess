@@ -74,9 +74,12 @@ can draw the whole Bible and say plainly that the words behind it are not reacha
 Seventeen routes under `/bible`, all in `web/`:
 
 ```
-/bible                                  home: continue reading, verse of the day, reading stats,
-                                        the whole canon as navigation, chapters the corpus cites
+/bible                                  home: continue reading, verse of the day, a reviewed
+                                        random passage, reading stats, the whole canon as
+                                        navigation, chapters the corpus cites
 /bible/search                           phrase search and reference resolution, book filter
+/bible/topics  /bible/topics/{slug}     the topical system, derived from the reviewed corpus
+/bible/compare                          parallel reading, two to four translations
 /bible/translations                     approved editions, per-use rights chips, licence, source
 /bible/languages                        languages with an approved edition, RTL flagged
 /bible/plans  /bible/plans/{slug}       reviewed reading plans and their days
@@ -115,6 +118,60 @@ it survives a provider change. It is local to the browser under one key, and mir
 `/api/v1/me/bible/*` when a real session token is present; the page says which it is rather than
 implying an account.
 
+## 3a. Topics, random, and the parallel Bible
+
+Three more pieces of the brief landed after the first pass, and all three are
+built from content this platform has already reviewed rather than from a new
+editorial surface nobody maintains.
+
+**Topics (§41, §8).** `GET /v1/bible/topics` and `/v1/bible/topics/{slug}`
+derive a topic from the published confession corpus: every canon-validated
+citation a published confession makes, grouped by its published category, with
+the passages ranked by how many confessions stand on them. Nothing is authored
+twice, so adding a reviewed confession extends its topic automatically. Three
+properties make it safe to serve: a citation that no longer parses against the
+canon is **dropped, not guessed at**; a topic with no valid passage is absent
+rather than published empty; and the endpoint returns *references only*, so a
+topic page can never become a way around a translation's licence — the text is
+read back through the normal rights-gated endpoints. `/bible/topics` and
+`/bible/topics/{slug}` render it, and link across to the confessions in that
+same area.
+
+**Random (§8).** `GET /v1/bible/random` draws from that same reviewed citation
+pool, resolves it in a rights-checked translation, and is `Cache-Control:
+no-store`. Random is where a Bible app is most tempted to reach outside what it
+has reviewed; this one cannot. Without a translation it asks for one (400)
+rather than picking an edition on the reader's behalf.
+
+**Parallel Bible (§13).** `/bible/compare` renders two to four approved
+translations of one reference in responsive columns — one column on a phone,
+up to four on a wide screen — each with its own direction and attribution. The
+reference is the one thing every column shares.
+
+**Analytics (§57).** `bible_opened`, `chapter_opened`, `verse_opened`,
+`translation_selected`, `search_performed`, `highlight_created`,
+`bookmark_created`, `note_created`, `topic_opened`, `bible_compare_opened`,
+`reading_plan_started` and `bible_random_requested` go through the existing
+`track()` seam. Note contents are never in an event — only that a note
+happened.
+
+## 3b. Contract drift found and fixed
+
+Typing the client against the Go handlers surfaced four places where the web
+app would have worked against the fixture and broken against production. All
+four are now aligned in both the client and the fixture:
+
+| Endpoint | Real contract | What the client had assumed |
+|---|---|---|
+| `verse-of-day` | `{date, editor_note, translation, verse, reference}` — a single verse, `reference` being the canonical ID (`PRO.3.5`) | a `passage` with a verse array |
+| `compare` | `translations` is **required**, two to four names, else 400 | no `translations` parameter at all |
+| `plans` / `plans/{slug}` | `duration_days`, `reading_count`; detail nested under `plan` with `days[].day_number` / `.references` | `day_count`, `days[].day`, un-nested |
+| `audio` | `audio_url`, `alignment`, `expires_in_seconds` | `url` |
+
+This is the argument for the fixture mirroring the handler rather than being
+convenient: the fixture now enforces the same 2–4 rule and returns the same
+field names, so the failure shows up locally instead of in production.
+
 ## 4. The link back to iCONFESS
 
 `web/lib/bible.ts` indexes the reviewed confession corpus by canonical reference at load. That gives
@@ -151,9 +208,11 @@ Go cannot run in the sandbox the web preview runs in, so `scripts/dev-api.mjs` g
   (66 / 1,189 / 31,102), testaments and sections partitioning the canon exactly once per book, every
   published alias resolving the way `ParseBook` resolves it, the per-chapter verse bounds, USFM
   round-tripping to canonical verse IDs, and the `web/lib/canon.json` drift guard.
-- `go test ./internal/api/ -count=1` — green, including two new endpoint tests: the structure served
-  correctly with **no** translation imported and with a cacheable response, and an unapproved
-  translation answered 404 `BIBLE_NOT_FOUND` rather than 500.
+- `go test ./internal/api/ -count=1` — green, including five new endpoint tests: the structure served
+  correctly with **no** translation imported and with a cacheable response; an unapproved translation
+  answered 404 `BIBLE_NOT_FOUND` rather than 500; topics built only from *published* confessions in
+  *published* categories; a citation outside the canon (John 99) dropped from its topic rather than
+  linked; and `random` refusing both a missing translation (400) and an unapproved one (404).
 - `contracts/openapi.json` regenerated (`go run ./cmd/genspec ../contracts/openapi.json`);
   `TestCheckedInOpenAPIMatchesRoutes` and the route-parity tests pass.
 - `web`: `npx tsc --noEmit` clean; `npm run build` succeeds; all 17 `/bible` routes build.
@@ -176,6 +235,6 @@ Go cannot run in the sandbox the web preview runs in, so `scripts/dev-api.mjs` g
 - **No live deployment, no managed database, no R2.** The preview runs against the local fixture.
 - **Search is the API's** — the fixture scans its in-memory corpus, and production search remains
   the rights-scoped PostgreSQL index from `0023`. Semantic search is not built.
-- **Topics** (`/v1/bible/topics`) and `random` from the brief's §8 are still absent; cross references
-  are corpus-derived in the fixture and admin-reviewed in production.
+- **Semantic/AI search (§75)** is not built; cross references are corpus-derived in the fixture and
+  admin-reviewed in production.
 - Formal accessibility and RTL QA, and device testing, remain owed.

@@ -20,6 +20,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Icon } from "./ui";
 import { useToast } from "@/lib/ui";
+import { track } from "@/lib/store";
 import { Unavailable, useCatalog, StructureBrowser, CATALOG_UNAVAILABLE } from "./bible";
 import {
   BOOKS,
@@ -98,6 +99,7 @@ export function BibleReader({
         .then((data) => {
           setChapterData(data);
           study.recordRead(catalog.currentID, targetBook, targetChapter);
+          track("chapter_opened", { translation: catalog.currentID, book: targetBook, chapter: targetChapter });
           // Prefetch the next chapter so continuous reading does not wait.
           const following = nextChapter(targetBook, targetChapter);
           if (following) void bible.chapter(catalog.currentID, following.bookID, following.chapter).catch(() => undefined);
@@ -242,12 +244,24 @@ export function BibleReader({
       .catch(() => setCrossRefs([]));
   };
 
+  /* Comparison needs two to four named translations — the handler refuses
+     anything else. The reader's own edition leads, then whichever approved
+     editions come next in the catalogue. */
+  const comparisonSet = useMemo(() => {
+    const ids = [catalog.currentID, ...(catalog.translations || []).map((t) => t.id)];
+    return [...new Set(ids.filter(Boolean))].slice(0, 4);
+  }, [catalog.currentID, catalog.translations]);
+
   const loadComparison = () => {
-    if (!selected) return;
+    if (!selected || comparisonSet.length < 2) {
+      setComparison([]);
+      return;
+    }
     setComparing(true);
     setComparison(null);
+    track("bible_compare_opened", { translations: comparisonSet.length });
     bible
-      .compare(displayRef(bookID, chapter, selected))
+      .compare(displayRef(bookID, chapter, selected), comparisonSet)
       .then((data) => setComparison(data.passages || []))
       .catch(() => setComparison([]))
       .finally(() => setComparing(false));
@@ -292,7 +306,11 @@ export function BibleReader({
                 marked ? ", bookmarked" : ""
               }${hasNote ? ", has a note" : ""}`}
               aria-pressed={selected === v.number}
-              onClick={() => setSelected(selected === v.number ? null : v.number)}
+              onClick={() => {
+                const next = selected === v.number ? null : v.number;
+                setSelected(next);
+                if (next) track("verse_opened", { book: bookID, chapter, verse: next });
+              }}
             >
               {prefs.showVerseNumbers && <sup aria-hidden="true">{v.number}</sup>}
               <span>{v.text}</span>
@@ -332,14 +350,22 @@ export function BibleReader({
               style={{ background: c.swatch }}
               aria-label={`Highlight ${c.name}`}
               aria-pressed={active}
-              onClick={() => study.highlight(selectedID, selectedRef, c.id as HighlightColor)}
+              onClick={() => {
+                study.highlight(selectedID, selectedRef, c.id as HighlightColor);
+                track("highlight_created", { color: c.id });
+              }}
             />
           );
         })}
       </div>
 
       <div className="ba-row">
-        <button onClick={() => study.bookmark(selectedID, selectedRef)}>
+        <button
+          onClick={() => {
+            study.bookmark(selectedID, selectedRef);
+            track("bookmark_created", {});
+          }}
+        >
           <Icon n="book" s={14} /> {bookmarkFor(state, selectedID) ? "Bookmarked" : "Bookmark"}
         </button>
         <button onClick={copyVerse} disabled={!copyAllowed} title={copyAllowed ? "" : "This translation does not grant copying"}>
@@ -374,6 +400,8 @@ export function BibleReader({
             onClick={() => {
               if (!noteDraft.trim()) return;
               study.note(selectedID, selectedRef, noteDraft.trim());
+              // The event records that a note happened, never its contents.
+              track("note_created", {});
               toast("Note saved");
             }}
           >
@@ -432,6 +460,9 @@ export function BibleReader({
         </Link>
         <Link className="ba-link" href={`/bible/search?q=${encodeURIComponent(selectedRef)}`}>
           <Icon n="search" s={14} /> Search related
+        </Link>
+        <Link className="ba-link" href={`/bible/compare?reference=${encodeURIComponent(selectedRef)}`}>
+          <Icon n="grid" s={14} /> Open in parallel
         </Link>
       </div>
 
@@ -496,7 +527,10 @@ export function BibleReader({
           <select
             aria-label="Translation"
             value={catalog.currentID}
-            onChange={(e) => catalog.setTranslation(e.target.value)}
+            onChange={(e) => {
+              catalog.setTranslation(e.target.value);
+              track("translation_selected", { translation: e.target.value });
+            }}
             disabled={!catalog.translations?.length}
           >
             {(catalog.translations || []).length === 0 && <option value="">No approved translation</option>}

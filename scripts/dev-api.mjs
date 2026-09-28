@@ -58,10 +58,6 @@ function loadCorpus() {
 
 const { cats: RAW_CATS, confs: RAW_CONFS } = loadCorpus();
 
-// The Bible fixture reads the generated canon (web/lib/canon.json) and the
-// public-domain corpus scripts/dev-bible-corpus.py writes to /tmp. Cross
-// references are derived from the same confession corpus loaded above.
-const handleBible = createBibleFixture({ root: ROOT, confessions: RAW_CONFS });
 
 // Mirror the API projections exactly: categories carry the fields
 // cachedListCategories serves; confessions the fields GET /confessions/{id}
@@ -78,6 +74,10 @@ const CATS = RAW_CATS.map((c, i) => ({
   updated_at: "2026-01-01T00:00:00Z",
 }));
 const CAT_BY_NAME = new Map(RAW_CATS.map((c, i) => [c.name, CATS[i]]));
+// The Bible fixture reads the generated canon (web/lib/canon.json) and the
+// public-domain corpus scripts/dev-bible-corpus.py writes to /tmp. Cross
+// references are derived from the same confession corpus loaded above.
+const handleBible = createBibleFixture({ root: ROOT, confessions: RAW_CONFS, categories: CATS });
 const WORDS = (t) => Math.max(1, t.trim().split(/\s+/).length);
 const SECS = (t) => Math.max(20, Math.round((WORDS(t) / 150) * 60));
 const CONFS = RAW_CONFS.map((f, i) => {

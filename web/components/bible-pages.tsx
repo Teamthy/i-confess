@@ -14,6 +14,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Icon } from "./ui";
 import { useToast } from "@/lib/ui";
+import { track } from "@/lib/store";
 import { CATALOG_UNAVAILABLE, RightsChips, TranslationSelect, useCatalog } from "./bible";
 import {
   BOOKS,
@@ -30,6 +31,7 @@ import {
   useBible,
   type APIPassage,
   type BiblePlan,
+  type BibleTopic,
   type Language,
   type SearchHit,
   type Translation,
@@ -58,6 +60,7 @@ export function BibleSearchPage({ initialQuery, initialTranslation }: { initialQ
       setHits(null);
       setPassage(null);
       study.rememberSearch(q);
+      track("search_performed", { translation: catalog.currentID, scoped_to_book: !!book });
       bible
         .search(q, catalog.currentID, book || undefined, 40)
         .then((data) => {
@@ -555,22 +558,32 @@ export function BiblePlansPage() {
       )}
 
       <div className="bible-plans">
-        {(plans || []).map((p) => {
-          const key = p.slug || p.id || "";
+        {(plans || []).map((plan) => {
+          const key = plan.slug || plan.id || "";
           const enrolled = !!state.plans[key];
           return (
             <article className="bplan" key={key}>
-              <h3>{p.title || p.name}</h3>
-              {p.description && <p className="small">{p.description}</p>}
-              <div className="bplan-meta">{p.day_count || p.days?.length || 0} days</div>
+              <h3>{plan.title}</h3>
+              {plan.description && <p className="small">{plan.description}</p>}
+              <div className="bplan-meta">
+                {plan.duration_days || 0} days
+                {plan.reading_count ? ` · ${plan.reading_count} readings` : ""}
+              </div>
               <div className="btrans-actions">
                 <Link className="btn btn-ghost btn-sm" href={`/bible/plans/${encodeURIComponent(key)}`}>
                   Open plan
                 </Link>
-                <button className="btn btn-primary btn-sm" onClick={() => study.enrollPlan(key)}>
+                <button
+                  className="btn btn-primary btn-sm"
+                  onClick={() => {
+                    study.enrollPlan(key);
+                    track("reading_plan_started", { plan: key });
+                  }}
+                >
                   {enrolled ? "Enrolled" : "Start"}
                 </button>
               </div>
+              {plan.source_note && <p className="btrans-attr">{plan.source_note}</p>}
             </article>
           );
         })}
@@ -589,7 +602,7 @@ export function BiblePlanPage({ slug }: { slug: string }) {
     const controller = new AbortController();
     bible
       .plan(slug, controller.signal)
-      .then(setPlan)
+      .then((data) => setPlan(data.plan))
       .catch(() => setError(true));
     return () => controller.abort();
   }, [slug]);
@@ -600,19 +613,24 @@ export function BiblePlanPage({ slug }: { slug: string }) {
     <section className="container-wide bible-page">
       <header className="bible-page-head">
         <span className="scripture-eyebrow">Reading plan</span>
-        <h1 className="h1">{plan?.title || plan?.name || slug}</h1>
+        <h1 className="h1">{plan?.title || slug}</h1>
         {plan?.description && <p className="lede">{plan.description}</p>}
+        {plan?.duration_days ? (
+          <p className="small" style={{ marginTop: 10 }}>
+            {plan.duration_days} days · {Object.keys(progress?.days || {}).length} marked done
+          </p>
+        ) : null}
       </header>
 
       {error && <div className="bible-note">{CATALOG_UNAVAILABLE}</div>}
 
       <div className="bible-plan-days">
         {(plan?.days || []).map((day) => {
-          const references = day.references || (day.reference ? [day.reference] : []);
-          const done = !!progress?.days?.[day.day];
+          const references = day.references || [];
+          const done = !!progress?.days?.[day.day_number];
           return (
-            <div className={"bplan-day" + (done ? " done" : "")} key={day.day}>
-              <b>Day {day.day}</b>
+            <div className={"bplan-day" + (done ? " done" : "")} key={day.day_number}>
+              <b>{day.title || `Day ${day.day_number}`}</b>
               <div className="bpd-refs">
                 {references.map((reference) => {
                   const parsed = parseReference(reference);
@@ -625,7 +643,7 @@ export function BiblePlanPage({ slug }: { slug: string }) {
                   );
                 })}
               </div>
-              <button onClick={() => study.completePlanDay(slug, day.day)}>
+              <button onClick={() => study.completePlanDay(slug, day.day_number)}>
                 <Icon n="check" s={13} /> {done ? "Done" : "Mark done"}
               </button>
             </div>
@@ -813,7 +831,7 @@ export function BibleAudioPage() {
             setUrl("");
             bible
               .audio(catalog.currentID, reference)
-              .then((d) => setUrl(d.url))
+              .then((d) => setUrl(d.audio_url || ""))
               .catch(() =>
                 setError(
                   "No approved recording is registered for that passage in this translation. Readable text never implies audio rights."
@@ -833,6 +851,271 @@ export function BibleAudioPage() {
       )}
       {error && <div className="bible-note">{error}</div>}
       {url && <audio controls src={url} style={{ width: "100%", marginTop: 18 }} />}
+    </section>
+  );
+}
+
+/* ---------------------------------------------------------------- topics */
+
+/** Topics are not authored here and not hard-coded anywhere: the API derives
+ *  them from the passages the reviewed confession corpus actually stands on,
+ *  so this page renders whatever that corpus currently says. */
+export function BibleTopicsPage() {
+  const [topics, setTopics] = useState<BibleTopic[] | null>(null);
+  const [error, setError] = useState(false);
+  const [filter, setFilter] = useState("");
+
+  useEffect(() => {
+    const controller = new AbortController();
+    bible
+      .topics(controller.signal)
+      .then((d) => setTopics(d.topics || []))
+      .catch(() => setError(true));
+    return () => controller.abort();
+  }, []);
+
+  const shown = (topics || []).filter((t) =>
+    !filter.trim() ? true : t.name.toLowerCase().includes(filter.trim().toLowerCase())
+  );
+
+  return (
+    <section className="container-wide bible-page">
+      <header className="bible-page-head">
+        <span className="scripture-eyebrow">Topics</span>
+        <h1 className="h1">What Scripture says about it.</h1>
+        <p className="lede">
+          Every topic here is the set of passages the reviewed confession corpus stands on for that part of life —
+          ranked by how many confessions cite them. Nothing is hand-placed, and a citation that does not resolve
+          against the canon is dropped rather than guessed at.
+        </p>
+      </header>
+
+      <div className="bible-filter-row">
+        <input
+          value={filter}
+          placeholder="Filter topics"
+          aria-label="Filter topics"
+          onChange={(e) => setFilter(e.target.value)}
+        />
+      </div>
+
+      {error && <div className="bible-note">{CATALOG_UNAVAILABLE}</div>}
+      {!topics && !error && <div className="bible-note">Loading topics…</div>}
+      {topics?.length === 0 && (
+        <div className="bible-note">No reviewed confession cites Scripture yet, so there are no topics to show.</div>
+      )}
+
+      <div className="bible-topics">
+        {shown.map((topic) => (
+          <Link className="btopic" key={topic.slug} href={`/bible/topics/${encodeURIComponent(topic.slug)}`}>
+            <b>{topic.name}</b>
+            {topic.description && <span>{topic.description}</span>}
+            <em>
+              {topic.passage_count} passage{topic.passage_count === 1 ? "" : "s"}
+            </em>
+          </Link>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+export function BibleTopicPage({ slug }: { slug: string }) {
+  const catalog = useCatalog();
+  const [topic, setTopic] = useState<BibleTopic | null>(null);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    bible
+      .topic(slug, controller.signal)
+      .then((d) => {
+        setTopic(d.topic);
+        track("topic_opened", { topic: slug });
+      })
+      .catch(() => setError(true));
+    return () => controller.abort();
+  }, [slug]);
+
+  return (
+    <section className="container-wide bible-page">
+      <header className="bible-page-head">
+        <span className="scripture-eyebrow">Topic</span>
+        <h1 className="h1">{topic?.name || slug}</h1>
+        {topic?.description && <p className="lede">{topic.description}</p>}
+        <nav className="bible-lib-nav">
+          <Link href="/bible/topics">All topics</Link>
+          <Link href={`/categories/${encodeURIComponent(slug)}`}>Confessions in this area</Link>
+        </nav>
+      </header>
+
+      {error && (
+        <div className="bible-note">
+          That topic has no reviewed passages yet. Topics appear as the confession corpus cites Scripture.
+        </div>
+      )}
+
+      <div className="bible-results">
+        {(topic?.passages || []).map((passage) => {
+          const parsed = parseReference(passage.reference);
+          return (
+            <Link
+              className="bresult"
+              key={passage.reference}
+              href={
+                parsed
+                  ? readerHref(catalog.currentID, parsed.bookID, parsed.chapter, parsed.startVerse)
+                  : "/bible"
+              }
+            >
+              <b>{passage.reference}</b>
+              <p>
+                {passage.confession_count} confession{passage.confession_count === 1 ? "" : "s"} in this area stand
+                on it.
+              </p>
+              <span>{passage.canonical_id}</span>
+            </Link>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+/* -------------------------------------------------------- parallel Bible */
+
+/** Two to four translations of the same passage, side by side. The column
+ *  count follows the width; the reference is the one thing every column
+ *  shares, which is the point of reading this way. */
+export function BibleComparePage({ initialReference }: { initialReference?: string }) {
+  const catalog = useCatalog();
+  const [reference, setReference] = useState(initialReference || "John 3:16");
+  const [chosen, setChosen] = useState<string[]>([]);
+  const [passages, setPassages] = useState<APIPassage[] | null>(null);
+  const [error, setError] = useState<string>("");
+  const [loading, setLoading] = useState(false);
+
+  const translations = catalog.translations || [];
+  const parsed = useMemo(() => parseReference(reference), [reference]);
+
+  /* Default to the reader's edition plus the next approved one, because the
+     endpoint requires at least two and a page that opens empty teaches
+     nothing. */
+  useEffect(() => {
+    if (chosen.length > 0 || translations.length === 0) return;
+    const ids = [catalog.currentID, ...translations.map((t) => t.id)].filter(Boolean);
+    setChosen([...new Set(ids)].slice(0, 2));
+  }, [translations, catalog.currentID, chosen.length]);
+
+  const run = useCallback(() => {
+    if (!parsed || chosen.length < 2) {
+      setError(
+        chosen.length < 2
+          ? "Choose at least two translations — a parallel reading needs something to be parallel to."
+          : "Enter a reference such as John 3:16, Psalm 23 or 1 Corinthians 13:4-7."
+      );
+      setPassages(null);
+      return;
+    }
+    setError("");
+    setLoading(true);
+    bible
+      .compare(reference, chosen)
+      .then((data) => setPassages(data.passages || []))
+      .catch(() =>
+        setError("That passage is not available in every translation you chose. Try another combination.")
+      )
+      .finally(() => setLoading(false));
+  }, [parsed, chosen, reference]);
+
+  useEffect(() => {
+    if (chosen.length >= 2 && parsed) run();
+    // first render once a default pair exists
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chosen.length]);
+
+  const toggle = (id: string) => {
+    setChosen((current) => {
+      if (current.includes(id)) return current.filter((x) => x !== id);
+      if (current.length >= 4) return current;
+      return [...current, id];
+    });
+  };
+
+  return (
+    <section className="container-wide bible-page">
+      <header className="bible-page-head">
+        <span className="scripture-eyebrow">Parallel</span>
+        <h1 className="h1">The same verse, side by side.</h1>
+        <p className="lede">
+          Two to four approved translations of one reference. The reference never changes when you change the
+          column — that is the whole point of reading this way.
+        </p>
+      </header>
+
+      <form
+        className="bible-filter-row"
+        onSubmit={(e) => {
+          e.preventDefault();
+          run();
+        }}
+      >
+        <input
+          value={reference}
+          aria-label="Reference"
+          placeholder="John 3:16"
+          onChange={(e) => setReference(e.target.value)}
+        />
+        <button className="btn btn-primary btn-sm" type="submit" disabled={!parsed}>
+          Compare
+        </button>
+      </form>
+
+      <div className="bcompare-picker" role="group" aria-label="Translations to compare">
+        {translations.map((t) => (
+          <button
+            key={t.id}
+            aria-pressed={chosen.includes(t.id)}
+            className={chosen.includes(t.id) ? "on" : undefined}
+            onClick={() => toggle(t.id)}
+          >
+            {t.abbreviation || t.id}
+          </button>
+        ))}
+        {translations.length < 2 && (
+          <span className="small">Only one approved translation is available, so there is nothing to compare yet.</span>
+        )}
+      </div>
+
+      {error && <div className="bible-note">{error}</div>}
+      {loading && <div className="bible-note">Loading the passage…</div>}
+
+      {passages && passages.length > 0 && (
+        <div className="bcompare" style={{ ["--cols" as string]: String(Math.min(passages.length, 4)) }}>
+          {passages.map((passage) => (
+            <article className="bcompare-col" key={passage.translation?.id || passage.reference}>
+              <header>
+                <b>{passage.translation?.abbreviation || passage.translation?.name}</b>
+                <span>{passage.translation?.language_name}</span>
+              </header>
+              <div
+                className="bcompare-text"
+                dir={(passage.translation?.direction || "ltr").toLowerCase() === "rtl" ? "rtl" : "ltr"}
+              >
+                {(passage.verses || []).map((v) => (
+                  <p key={v.id || v.number}>
+                    <sup>{v.number}</sup>
+                    {v.text}
+                  </p>
+                ))}
+              </div>
+              {passage.translation?.attribution_required && (
+                <p className="btrans-attr">{passage.translation.attribution_text || passage.translation.copyright}</p>
+              )}
+            </article>
+          ))}
+        </div>
+      )}
     </section>
   );
 }

@@ -23,7 +23,7 @@ import path from "node:path";
 
 const CORPUS_PATH = process.env.IC_BIBLE_CORPUS || "/tmp/bible-corpus.json";
 
-export function createBibleFixture({ root, confessions = [] }) {
+export function createBibleFixture({ root, confessions = [], categories = [] }) {
   const canon = JSON.parse(readFileSync(path.join(root, "web", "lib", "canon.json"), "utf8"));
   const booksByID = new Map(canon.books.map((b) => [b.id, b]));
   const booksByUSFM = new Map(canon.books.map((b) => [b.usfm, b]));
@@ -150,6 +150,54 @@ export function createBibleFixture({ root, confessions = [] }) {
   /* The verse of the day rotates deterministically through the verses the
      reviewed corpus actually cites — never a random verse from anywhere. */
   const votdPool = [...crossRefs.keys()].sort();
+
+  /* Topics, derived the way the Go handler derives them: the passages the
+     published confession corpus cites, grouped by its category, ranked by how
+     many confessions stand on each. Nothing is authored twice. */
+  const categoryBySlugName = new Map(categories.map((c) => [c.name, c]));
+  const topics = (() => {
+    const grouped = new Map();
+    for (const confession of confessions) {
+      const category = categoryBySlugName.get(confession.category);
+      if (!category) continue;
+      let topic = grouped.get(category.slug);
+      if (!topic) {
+        topic = { id: category.id, slug: category.slug, name: category.name, description: category.description || "", passages: new Map() };
+        grouped.set(category.slug, topic);
+      }
+      for (const scripture of confession.scriptures || []) {
+        const book = resolveBook(scripture.book);
+        if (!book) continue;
+        const chapter = Number(scripture.chapter);
+        if (!chapter || chapter > book.chapter_count) continue;
+        const first = parseInt(String(scripture.verse), 10);
+        const reference = display(book, chapter, Number.isNaN(first) ? 0 : first);
+        const existing = topic.passages.get(reference);
+        if (existing) {
+          existing.confession_count += 1;
+          continue;
+        }
+        topic.passages.set(reference, {
+          reference,
+          book_id: book.id,
+          book_name: book.name,
+          chapter,
+          verses: Number.isNaN(first) ? "" : String(first),
+          canonical_id: Number.isNaN(first) ? "" : `${book.usfm}.${chapter}.${first}`,
+          confession_count: 1,
+        });
+      }
+    }
+    return [...grouped.values()]
+      .map((topic) => ({
+        ...topic,
+        passages: [...topic.passages.values()].sort(
+          (a, b) => b.confession_count - a.confession_count || a.reference.localeCompare(b.reference)
+        ),
+      }))
+      .map((topic) => ({ ...topic, passage_count: topic.passages.length }))
+      .filter((topic) => topic.passage_count > 0);
+  })();
 
   const plans = [
     {
@@ -417,13 +465,20 @@ export function createBibleFixture({ root, confessions = [] }) {
         json(res, 400, { code: "BIBLE_INVALID_REFERENCE", error: "Enter a valid Bible reference." });
         return true;
       }
+      // The Go handler requires between two and four explicitly named
+      // translations; a client that omits them must fail here too, or it
+      // would only break in production.
       const wanted = (url.searchParams.get("translations") || "")
         .split(",")
         .map((x) => x.trim().toLowerCase())
         .filter(Boolean);
+      if (wanted.length < 2 || wanted.length > 4) {
+        json(res, 400, { error: "Choose between two and four translations." });
+        return true;
+      }
       const passages = [];
       for (const translation of translations) {
-        if (wanted.length && !wanted.includes(translation.id.toLowerCase())) continue;
+        if (!wanted.includes(translation.id.toLowerCase())) continue;
         const all = versesFor(translation.id, parsed.book.id, parsed.chapter);
         if (all.length === 0) continue;
         const from = parsed.start || 1;
@@ -433,6 +488,10 @@ export function createBibleFixture({ root, confessions = [] }) {
           translation,
           verses: all.slice(from - 1, to).map((bodyText, i) => verseDTO(parsed.book, parsed.chapter, from + i, bodyText)),
         });
+      }
+      if (passages.length < 2) {
+        json(res, 400, { error: "Choose at least two distinct translations." });
+        return true;
       }
       json(res, 200, { reference: display(parsed.book, parsed.chapter, parsed.start, parsed.end), passages });
       return true;
@@ -450,26 +509,94 @@ export function createBibleFixture({ root, confessions = [] }) {
       const verses = book ? versesFor(translation.id, book.id, Number(chapter)) : [];
       const number = Math.min(Number(verse) || 1, verses.length);
       if (!book || verses.length === 0) return notFound(json, res) || true;
+      // Shape parity with the Go handler: a single verse, and the canonical
+      // verse ID as the reference.
+      const dto = verseDTO(book, Number(chapter), number, verses[number - 1]);
       json(res, 200, {
         date: today.toISOString().slice(0, 10),
-        reference: display(book, Number(chapter), number),
+        editor_note: "Selected from the passages the reviewed confession corpus cites.",
+        translation,
+        verse: dto,
+        reference: dto.id,
+      });
+      return true;
+    }
+
+    if (rest === "/topics") {
+      json(res, 200, {
+        topics: topics.map(({ passages, ...summary }) => summary),
+      });
+      return true;
+    }
+    if ((m = rest.match(/^\/topics\/([^/]+)$/))) {
+      const topic = topics.find((t) => t.slug === decodeURIComponent(m[1]));
+      if (!topic) {
+        json(res, 404, { code: "BIBLE_NOT_FOUND", error: "That topic has no reviewed passages yet." });
+        return true;
+      }
+      json(res, 200, { topic });
+      return true;
+    }
+
+    if (rest === "/random") {
+      const translation = translationByID.get((url.searchParams.get("translation") || "").toLowerCase());
+      if (!translation) {
+        json(res, 400, { code: "BIBLE_TRANSLATION_REQUIRED", error: "Choose a Bible translation." });
+        return true;
+      }
+      const pool = topics.flatMap((topic) => topic.passages.map((p2) => ({ ...p2, topic })));
+      if (pool.length === 0) return notFound(json, res) || true;
+      const pick = pool[Math.floor(Math.random() * pool.length)];
+      const book = booksByID.get(pick.book_id);
+      const all = versesFor(translation.id, pick.book_id, pick.chapter);
+      const number = Math.min(Number(pick.verses) || 1, all.length);
+      if (!book || all.length === 0) return notFound(json, res) || true;
+      json(res, 200, {
+        reference: pick.reference,
         passage: {
-          reference: display(book, Number(chapter), number),
+          reference: pick.reference,
           translation,
-          verses: [verseDTO(book, Number(chapter), number, verses[number - 1])],
+          verses: [verseDTO(book, pick.chapter, number, all[number - 1])],
         },
+        topic: { slug: pick.topic.slug, name: pick.topic.name },
       });
       return true;
     }
 
     if (rest === "/plans") {
-      json(res, 200, { plans: plans.map((p2) => ({ ...p2, day_count: 30 })) });
+      json(res, 200, {
+        plans: plans.map((entry) => ({
+          id: entry.id,
+          slug: entry.slug,
+          title: entry.title,
+          description: entry.description,
+          language: "en",
+          duration_days: 30,
+          reading_count: planDays(entry.slug).length,
+          source_note: "Fixture plan generated from the canon for local development.",
+        })),
+      });
       return true;
     }
     if ((m = rest.match(/^\/plans\/([^/]+)$/))) {
       const plan = plans.find((x) => x.slug === decodeURIComponent(m[1]));
       if (!plan) return notFound(json, res) || true;
-      json(res, 200, { ...plan, day_count: 30, days: planDays(plan.slug) });
+      json(res, 200, {
+        plan: {
+          id: plan.id,
+          slug: plan.slug,
+          title: plan.title,
+          description: plan.description,
+          language: "en",
+          duration_days: 30,
+          source_note: "Fixture plan generated from the canon for local development.",
+          days: planDays(plan.slug).map((day) => ({
+            day_number: day.day,
+            title: `Day ${day.day}`,
+            references: day.references,
+          })),
+        },
+      });
       return true;
     }
 

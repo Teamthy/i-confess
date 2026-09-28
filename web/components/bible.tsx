@@ -13,6 +13,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Icon } from "./ui";
+import { track } from "@/lib/store";
 import {
   BOOKS,
   CANON,
@@ -24,14 +25,15 @@ import {
   citedChapters,
   confessionsForChapter,
   displayRef,
+  parseCanonicalVerseID,
   parseReference,
   readerHref,
   readingStats,
   study,
   useBible,
-  type APIPassage,
   type CanonBook,
   type Translation,
+  type VerseOfDay,
 } from "@/lib/bible";
 
 export const CATALOG_UNAVAILABLE =
@@ -357,9 +359,9 @@ export function BiblePage() {
   const stats = readingStats(state);
 
   const [available, setAvailable] = useState<Set<string> | null>(null);
-  const [votd, setVotd] = useState<APIPassage | null>(null);
-  const [votdRef, setVotdRef] = useState<string>("");
+  const [votd, setVotd] = useState<VerseOfDay | null>(null);
   const [votdError, setVotdError] = useState(false);
+  const [random, setRandom] = useState<{ reference: string; text: string; topic?: string } | null>(null);
 
   /* Which books this translation carries — the structure endpoint answers it
      in one request and the reader greys out the rest. */
@@ -379,13 +381,21 @@ export function BiblePage() {
     setVotdError(false);
     bible
       .verseOfDay(catalog.currentID, controller.signal)
-      .then((data) => {
-        setVotd(data.passage || null);
-        setVotdRef(data.reference || data.passage?.reference || "");
-      })
+      .then(setVotd)
       .catch(() => setVotdError(true));
     return () => controller.abort();
   }, [catalog.currentID]);
+
+  useEffect(() => {
+    track("bible_opened", { translation: catalog.currentID || "none" });
+  }, [catalog.currentID]);
+
+  /* The API answers with the canonical verse ID (JHN.3.16); the reader
+     spells it the way a person reads it. */
+  const votdParsed = votd?.reference ? parseCanonicalVerseID(votd.reference) : null;
+  const votdReference = votdParsed
+    ? displayRef(votdParsed.bookID, votdParsed.chapter, votdParsed.verse)
+    : votd?.reference || "";
 
   const resume = state.history[0];
   const resumeBook = resume ? bookByID(resume.bookID) : undefined;
@@ -408,6 +418,8 @@ export function BiblePage() {
           <div className="bible-quick">
             <Link href="/bible/search">Search</Link>
             <Link href="/bible/translations">Translations</Link>
+            <Link href="/bible/topics">Topics</Link>
+            <Link href="/bible/compare">Compare</Link>
             <Link href="/bible/plans">Reading plans</Link>
             <Link href="/bible/highlights">Highlights</Link>
             <Link href="/bible/notes">Notes</Link>
@@ -481,19 +493,23 @@ export function BiblePage() {
 
         <div className="bible-card votd">
           <span className="bc-eyebrow">Verse of the day</span>
-          {votd && votd.verses?.length ? (
+          {votd?.verse ? (
             <>
               <blockquote>
-                {votd.verses.map((v) => (
-                  <span key={v.id || v.number}>
-                    <sup>{v.number}</sup>
-                    {v.text}{" "}
-                  </span>
-                ))}
+                <sup>{votd.verse.number}</sup>
+                {votd.verse.text}
               </blockquote>
               <p className="small">
-                {votd.reference || votdRef} · {votd.translation?.abbreviation || catalog.current?.abbreviation}
+                {votdReference} · {votd.translation?.abbreviation || catalog.current?.abbreviation}
               </p>
+              {votdParsed && (
+                <Link
+                  className="textlink"
+                  href={readerHref(catalog.currentID, votdParsed.bookID, votdParsed.chapter, votdParsed.verse)}
+                >
+                  Read it in context <Icon n="arrow" s={12} />
+                </Link>
+              )}
             </>
           ) : (
             <p className="small">
@@ -532,6 +548,44 @@ export function BiblePage() {
             in.
           </p>
         </div>
+      </section>
+
+      <section className="container-wide bible-random">
+        <div>
+          <span className="bc-eyebrow">Somewhere to start</span>
+          {random ? (
+            <>
+              <p>{random.text}</p>
+              <p className="small">
+                {random.reference}
+                {random.topic ? ` · ${random.topic}` : ""}
+              </p>
+            </>
+          ) : (
+            <p className="small">
+              A passage drawn from the ones the reviewed corpus stands on — never an arbitrary verse.
+            </p>
+          )}
+        </div>
+        <button
+          className="btn btn-ghost btn-sm"
+          disabled={!catalog.currentID}
+          onClick={() => {
+            track("bible_random_requested", { translation: catalog.currentID });
+            bible
+              .random(catalog.currentID)
+              .then((data) =>
+                setRandom({
+                  reference: data.reference,
+                  text: (data.passage?.verses || []).map((v) => v.text).join(" "),
+                  topic: data.topic?.name,
+                })
+              )
+              .catch(() => setRandom(null));
+          }}
+        >
+          Show me a passage
+        </button>
       </section>
 
       <section className="container-wide" style={{ paddingBottom: 24 }}>

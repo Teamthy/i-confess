@@ -31,6 +31,8 @@ export default function sitemap(): MetadataRoute.Sitemap {
     "/bible/search",
     "/bible/translations",
     "/bible/languages",
+    "/bible/topics",
+    "/bible/compare",
     "/bible/plans",
     "/bible/audio",
   ].map((path) => ({

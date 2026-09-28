@@ -210,33 +210,84 @@ export const bible = {
       `/search${q({ q: query, translation, book, limit })}`,
       signal
     ),
-  compare: (reference: string, translations?: string[], signal?: AbortSignal) =>
+  /** The handler requires two to four named translations and refuses
+   *  anything else, so the client names them rather than hoping for a
+   *  default it would only discover was missing in production. */
+  compare: (reference: string, translations: string[], signal?: AbortSignal) =>
     get<{ reference: string; passages: APIPassage[] }>(
-      `/compare${q({ reference, translations: translations?.join(",") })}`,
+      `/compare${q({ reference, translations: translations.slice(0, 4).join(",") })}`,
       signal
     ),
   crossReferences: (reference: string, signal?: AbortSignal) =>
     get<{ reference: string; references: string[] }>(`/cross-references${q({ reference })}`, signal),
-  verseOfDay: (translation?: string, signal?: AbortSignal) =>
-    get<{ date?: string; reference?: string; passage?: APIPassage }>(`/verse-of-day${q({ translation })}`, signal),
-  plans: (signal?: AbortSignal) => get<{ plans: BiblePlan[] }>("/plans", signal),
-  plan: (slug: string, signal?: AbortSignal) => get<BiblePlan>(`/plans/${encodeURIComponent(slug)}`, signal),
-  audio: (translation: string, reference: string, signal?: AbortSignal) =>
-    get<{ url: string; expires_at?: string; alignment?: { verse: number; start_ms: number; end_ms: number }[] }>(
-      `/audio${q({ translation, reference })}`,
+  verseOfDay: (translation: string, signal?: AbortSignal) =>
+    get<VerseOfDay>(`/verse-of-day${q({ translation })}`, signal),
+  topics: (signal?: AbortSignal) => get<{ topics: BibleTopic[] }>("/topics", signal),
+  topic: (slug: string, signal?: AbortSignal) =>
+    get<{ topic: BibleTopic }>(`/topics/${encodeURIComponent(slug)}`, signal),
+  random: (translation: string, signal?: AbortSignal) =>
+    get<{ reference: string; passage: APIPassage; topic?: { slug: string; name: string } }>(
+      `/random${q({ translation })}`,
       signal
     ),
+  plans: (signal?: AbortSignal) => get<{ plans: BiblePlan[] }>("/plans", signal),
+  plan: (slug: string, signal?: AbortSignal) => get<{ plan: BiblePlan }>(`/plans/${encodeURIComponent(slug)}`, signal),
+  audio: (translation: string, reference: string, signal?: AbortSignal) =>
+    get<BibleAudio>(`/audio${q({ translation, reference })}`, signal),
 };
 
+/** The reading-plan shapes the Go handlers serve: a list carries counts, the
+ *  detail carries days, and a day carries canon-validated references. */
 export type BiblePlan = {
   id?: string;
   slug?: string;
   title?: string;
-  name?: string;
   description?: string;
-  day_count?: number;
-  days?: { day: number; reference?: string; references?: string[]; title?: string }[];
-  status?: string;
+  language?: string;
+  duration_days?: number;
+  reading_count?: number;
+  source_note?: string;
+  days?: { day_number: number; title?: string; references: string[] }[];
+};
+
+export type BibleTopicPassage = {
+  reference: string;
+  book_id: string;
+  book_name?: string;
+  chapter: number;
+  verses?: string;
+  canonical_id?: string;
+  confession_count: number;
+};
+export type BibleTopic = {
+  id: string;
+  slug: string;
+  name: string;
+  description?: string;
+  passage_count: number;
+  passages?: BibleTopicPassage[];
+};
+
+/** Verse of the day. The API answers with a single verse and the canonical
+ *  verse ID as its reference — not a passage — so that is what is typed. */
+export type VerseOfDay = {
+  date?: string;
+  editor_note?: string;
+  translation?: Translation;
+  verse?: APIVerse;
+  reference?: string;
+};
+
+export type BibleAudio = {
+  id?: string;
+  reference?: string;
+  translation?: Translation;
+  voice_id?: string;
+  duration_ms?: number;
+  checksum_sha256?: string;
+  alignment?: { verse: number; start_ms: number; end_ms: number }[];
+  audio_url?: string;
+  expires_in_seconds?: number;
 };
 
 /* ------------------------------------------------------- the study store */
