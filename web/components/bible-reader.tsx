@@ -518,7 +518,7 @@ export function BibleReader({
   const chapterConfessions = confessionsForChapter(bookID, chapter);
 
   return (
-    <div className={`bible-shell mode-${mode}`} data-reader-theme={prefs.theme === "system" ? undefined : prefs.theme}>
+    <div className={`bible-shell mode-${mode}`}>
       <div className="bible-toolbar container-wide">
         <div className="btb-left">
           <button className="btb-book" onClick={() => setShowNav((v) => !v)} aria-expanded={showNav}>

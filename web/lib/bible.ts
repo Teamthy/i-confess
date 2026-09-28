@@ -320,7 +320,7 @@ export type BiblePreferences = {
   fontFamily: "sans" | "serif";
   layout: "verse" | "paragraph";
   showVerseNumbers: boolean;
-  theme: "system" | "light" | "dark" | "sepia";
+  theme: "light" | "dark";
   mode: ReaderMode;
   audioSpeed: number;
 };
@@ -349,7 +349,7 @@ const defaults = (): BibleState => ({
     fontFamily: "serif",
     layout: "verse",
     showVerseNumbers: true,
-    theme: "system",
+    theme: "light",
     mode: "standard",
     audioSpeed: 1,
   },
@@ -368,7 +368,10 @@ function load(): BibleState {
   try {
     const stored = JSON.parse(window.localStorage.getItem(KEY) || "{}");
     const base = defaults();
-    return { ...base, ...stored, prefs: { ...base.prefs, ...(stored.prefs || {}) } };
+    const merged = { ...base, ...stored, prefs: { ...base.prefs, ...(stored.prefs || {}) } };
+    // Retired palette names from older builds resolve into the two that remain.
+    if (merged.prefs.theme !== "dark" && merged.prefs.theme !== "light") merged.prefs.theme = "light";
+    return merged;
   } catch {
     return defaults();
   }
@@ -579,7 +582,14 @@ export const readingStats = (s: BibleState) => {
 export const readerHref = (translation: string, bookID: string, chapter: number, verse?: number) =>
   `/bible/${encodeURIComponent(translation || "-")}/${encodeURIComponent(bookID)}/${chapter}${verse ? `#v${verse}` : ""}`;
 
-/** The reading palette applies to the reader only; the site theme is separate
- *  so a reader can read dark on a light site. */
-export const readerThemeAttr = (theme: BiblePreferences["theme"]): string | undefined =>
-  theme === "system" ? undefined : theme;
+/** The appearance applies to the whole surface — header toggle and reader
+ *  settings write the same light/dark state, so the two can never disagree. */
+export function applyTheme(theme: BiblePreferences["theme"]) {
+  if (typeof document === "undefined") return;
+  document.documentElement.setAttribute("data-theme", theme);
+  try { window.localStorage.setItem("ic-theme", theme); } catch { }
+}
+export function currentTheme(): BiblePreferences["theme"] {
+  if (typeof document === "undefined") return "light";
+  return document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
+}

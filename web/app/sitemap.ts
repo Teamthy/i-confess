@@ -29,6 +29,8 @@ export default function sitemap(): MetadataRoute.Sitemap {
     "/about",
     "/bible",
     "/bible/search",
+    "/bible/books",
+    "/bible/verse-of-the-day",
     "/bible/translations",
     "/bible/languages",
     "/bible/topics",

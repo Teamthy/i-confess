@@ -25,6 +25,8 @@ export type AppState = {
   family: { id: number; name: string; role: string; band: string }[];
   partnerQueue: string[];
   annotations: Record<string, string>;
+  /** Set when the reader hides the sidebar tour card (persisted locally). */
+  promoHidden?: boolean;
 };
 
 const defaults = (): AppState => ({

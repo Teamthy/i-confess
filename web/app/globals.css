@@ -308,13 +308,61 @@ mark{background:var(--tint1);color:var(--deep);padding:0 .18em;border-radius:4px
    APP SHELL
    ============================================================ */
 .app-shell{display:flex;min-height:100vh;background:var(--light)}
-.app-side{width:250px;flex:none;background:var(--deep);color:#fff;padding:24px 18px;display:flex;flex-direction:column;position:sticky;top:0;height:100vh}
-.app-side .logo{color:#fff;margin:6px 8px 28px}
+.app-side{width:272px;flex:none;background:var(--deep);color:#fff;padding:0;display:flex;flex-direction:column;position:sticky;top:0;height:100vh;overflow:hidden}
+.app-side .logo{color:#fff}
+.side-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:18px 16px 12px;flex:none}
+.side-collapse{flex:none;width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;border-radius:8px;border:1px solid rgba(255,255,255,.16);background:transparent;color:var(--tint2);cursor:pointer}
+.side-collapse:hover{background:rgba(255,255,255,.08);color:#fff}
+.side-primary{display:flex;flex-direction:column;gap:2px;padding:4px 14px 14px;border-bottom:1px solid rgba(255,255,255,.08);flex:none}
+.side-item{display:flex;align-items:center;gap:12px;width:100%;padding:10px 12px;border:0;background:transparent;border-radius:10px;font-family:inherit;font-size:13.5px;font-weight:550;color:var(--tint2);cursor:pointer;text-align:left}
+.side-item:hover{background:rgba(255,255,255,.06);color:#fff}
+.side-item[aria-current="page"]{background:var(--blue);color:#fff}
+.side-badge{margin-left:auto;font-style:normal;font-size:9.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;background:var(--blue2);color:#fff;border-radius:var(--r-pill);padding:3px 8px;flex:none}
+.side-scroll{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:14px 14px 10px;display:flex;flex-direction:column;gap:18px;scrollbar-width:thin}
+.side-scroll::-webkit-scrollbar{width:6px}
+.side-scroll::-webkit-scrollbar-thumb{background:rgba(255,255,255,.14);border-radius:99px}
+.side-group{display:flex;flex-direction:column;gap:2px}
+.side-group-title{font-size:10px;font-weight:750;letter-spacing:.14em;text-transform:uppercase;color:rgba(255,255,255,.36);padding:0 12px;margin-bottom:7px}
+.side-recent{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:9px;color:var(--tint2);font-size:12.5px;min-width:0}
+.side-recent:hover{background:rgba(255,255,255,.06);color:#fff}
+.sr-tile{flex:none;width:26px;height:26px;border-radius:7px;background:rgba(255,255,255,.08);display:inline-flex;align-items:center;justify-content:center;color:#fff}
+.sr-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .app-side nav{display:flex;flex-direction:column;gap:2px}
 .app-side nav a{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:10px;font-size:13.5px;font-weight:550;color:var(--tint2)}
 .app-side nav a:hover{background:rgba(255,255,255,.06);color:#fff}
 .app-side nav a[aria-current="page"]{background:var(--blue);color:#fff}
-.app-side .side-bottom{margin-top:auto;display:flex;flex-direction:column;gap:2px}
+/* Sidebar tour card — an honest frame linking to the real tour page, not a video. */
+.side-promo{position:relative;margin:4px 14px 10px;padding:12px;border-radius:16px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);flex:none}
+.side-promo-media{display:block;position:relative;aspect-ratio:16/9;border-radius:11px;overflow:hidden;background:linear-gradient(135deg,var(--navy),var(--blue))}
+.side-promo-media::after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(115deg,rgba(255,255,255,.08) 0 12px,transparent 12px 30px)}
+.spm-play{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:1;width:44px;height:44px;border-radius:50%;background:var(--white);color:var(--navy);display:inline-flex;align-items:center;justify-content:center;box-shadow:0 8px 22px rgba(0,0,0,.35)}
+.spm-note{position:absolute;left:10px;bottom:9px;z-index:1;font-size:10px;font-weight:700;letter-spacing:.04em;color:#fff;background:rgba(0,0,0,.5);padding:4px 9px;border-radius:var(--r-pill)}
+.spm-body{display:flex;flex-direction:column;gap:6px;padding-top:10px}
+.spm-body b{font-size:13px;line-height:1.4}
+.spm-body p{font-size:12px;line-height:1.55;color:var(--tint2)}
+.spm-actions{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:2px}
+.textlink.on-dark{color:var(--white)}
+.side-promo-hide{position:absolute;top:9px;right:9px;z-index:2;border:0;background:rgba(0,0,0,.45);color:#fff;font-size:10px;font-weight:700;letter-spacing:.06em;padding:4px 9px;border-radius:var(--r-pill);cursor:pointer;opacity:0;transition:opacity .15s}
+.side-promo:hover .side-promo-hide,.side-promo-hide:focus-visible{opacity:1}
+.side-account{display:flex;align-items:center;gap:10px;padding:12px 16px calc(12px + env(safe-area-inset-bottom));border-top:1px solid rgba(255,255,255,.08);flex:none}
+.side-avatar{flex:none;width:32px;height:32px;border-radius:50%;background:var(--blue2);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:750}
+.side-email{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:var(--tint2)}
+.side-gear{flex:none;display:inline-flex;padding:7px;border-radius:9px;color:var(--tint2)}
+.side-gear:hover{background:rgba(255,255,255,.08);color:#fff}
+/* Collapsed rail: 74px of icons only. */
+.app-side.rail-collapsed{width:74px}
+.rail-collapsed .side-head{justify-content:center;padding:18px 8px 12px}
+.rail-collapsed .side-head .logo .lw{display:none}
+.rail-collapsed .side-label,.rail-collapsed .side-badge,.rail-collapsed .side-group-title,
+.rail-collapsed .side-promo,.rail-collapsed .side-email{display:none}
+.rail-collapsed .side-primary,.rail-collapsed .side-account{padding-left:10px;padding-right:10px}
+.rail-collapsed .side-scroll{padding-left:10px;padding-right:10px}
+.rail-collapsed .side-item,.rail-collapsed .side-recent{justify-content:center;padding:10px 0;gap:0}
+.rail-collapsed .side-recent{padding:7px 0}
+.rail-collapsed .app-side nav a,.rail-collapsed .side-scroll nav a{justify-content:center;padding:10px 0}
+.rail-collapsed .side-scroll nav a .side-label{display:none}
+.rail-collapsed .side-account{justify-content:center;flex-wrap:wrap;gap:6px}
+.rail-collapsed .side-gear{margin:0 auto}
 .app-main{flex:1;min-width:0;padding:32px clamp(20px,3vw,44px) 120px}
 .app-top{display:flex;align-items:center;gap:16px;margin-bottom:28px}
 .app-top .h2{flex:1}
@@ -908,6 +956,37 @@ h1,h2,h3,h4,.h-display,.h1,.h2,.h3,.h4,.logo{font-family:var(--disp);font-weight
 .tgrid .tcard{width:auto}
 
 /* full-bleed split */
+/* ---------- home: scripture band ---------- */
+.home-bible{display:grid;grid-template-columns:1.05fr .95fr;gap:clamp(32px,5vw,64px);align-items:center;background:var(--deep);color:#fff;padding:clamp(56px,7vw,96px) clamp(20px,5vw,72px)}
+.home-bible .eyebrow{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.26);color:var(--tint1)}
+.home-bible h2{color:#fff;max-width:16ch}
+.home-bible .lede{color:var(--tint2);max-width:54ch}
+.hb-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:30px}
+.hb-stats>div{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:15px 16px}
+.hb-stats b{display:block;font-family:var(--disp);font-size:clamp(20px,2.1vw,27px);font-weight:600;color:#fff}
+.hb-stats span{font-size:11px;letter-spacing:.05em;color:var(--tint2)}
+.hb-actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:28px}
+.hb-links{display:flex;gap:20px;flex-wrap:wrap;margin-top:22px}
+.hb-links a{font-size:13px;font-weight:600;color:var(--tint2);text-decoration:none}
+.hb-links a:hover{color:#fff;text-decoration:underline}
+.hb-preview{display:flex;justify-content:flex-end}
+.hbp-card{width:100%;max-width:520px;background:var(--paper);color:var(--deep);border-radius:20px;overflow:hidden;box-shadow:0 30px 60px rgba(0,7,45,.45)}
+.hbp-bar{display:flex;align-items:center;gap:12px;padding:14px 18px;background:var(--n50);border-bottom:1px solid var(--n100);font-size:12px;font-weight:600;color:var(--n600)}
+.hbp-dots{display:inline-flex;gap:6px}
+.hbp-dots i{width:9px;height:9px;border-radius:50%;background:var(--n200)}
+.hbp-body{display:grid;gap:14px;padding:22px 24px}
+.hbp-body p{margin:0;font-family:Georgia,"Iowan Old Style",serif;font-size:16px;line-height:1.7;color:var(--deep)}
+.hbp-body sup{color:var(--blue2);font-size:10px;font-weight:700;margin-right:6px}
+.hbp-body .hbp-mark{background:#D3DDEF;border-radius:8px;padding:7px 11px;margin:0 -11px}
+.hbp-foot{display:flex;gap:8px;flex-wrap:wrap;padding:14px 18px;background:var(--n50);border-top:1px solid var(--n100)}
+.hbp-chip{font-size:11px;font-weight:600;border:1px solid var(--n200);border-radius:var(--r-pill);padding:6px 12px;color:var(--n600);background:var(--white)}
+.hbp-chip.on{background:var(--deep);border-color:var(--deep);color:#fff}
+@media (max-width:900px){
+  .home-bible{grid-template-columns:1fr}
+  .hb-preview{justify-content:flex-start}
+  .hb-stats{grid-template-columns:repeat(2,1fr)}
+}
+
 .split-full{display:grid;grid-template-columns:1.05fr .95fr;min-height:600px;position:relative}
 .split-full .split-img{height:100%}
 .split-full .split-img img{width:100%;height:100%;object-fit:cover}
@@ -988,20 +1067,10 @@ html{scroll-behavior:smooth}
 .care-note .b-ic{width:34px;height:34px;border-radius:50%;background:var(--blue2);color:#fff;display:flex;align-items:center;justify-content:center;flex:none}
 .care-note p{font-size:13px;color:var(--n600);margin-top:4px}
 .care-note a{color:var(--blue2);font-weight:600;text-decoration:underline}
-/* high contrast theme */
-[data-theme="contrast"]{--paper:#fff;--n50:#fff;--n100:#000;--n200:#000;--n400:#000;--n500:#000;--n600:#000;--n700:#000;--deep:#000;--navy:#000;--blue2:#0026ff}
-[data-theme="contrast"] body{background:#fff;color:#000}
-[data-theme="contrast"] h1,[data-theme="contrast"] h2,[data-theme="contrast"] h3,[data-theme="contrast"] h4{color:#000}
-[data-theme="contrast"] .btn-primary,[data-theme="contrast"] .btn-accent{background:#000;color:#fff}
-[data-theme="contrast"] .btn-ghost{border-color:#000;color:#000}
-[data-theme="contrast"] .site-header.scrolled{background:#fff;border-color:#000}
-[data-theme="contrast"] a{text-decoration:underline}
-[data-theme="contrast"] .tcard,[data-theme="contrast"] .form-card,[data-theme="contrast"] .tile{border:2px solid #000}
-/* dyslexia-friendly theme */
-[data-theme="dys"] body{letter-spacing:.03em;word-spacing:.08em;line-height:1.9}
-[data-theme="dys"] h1,[data-theme="dys"] h2,[data-theme="dys"] h3,[data-theme="dys"] .h-display{letter-spacing:.01em;line-height:1.5}
-[data-theme="dys"] .lede,[data-theme="dys"] p{line-height:2}
-[data-theme="dys"] body{background:#FBF7EE;color:#222}
+/* The extra reading palettes were retired; the readability affordances live
+   on as reader controls (text size, leading, typeface) plus the OS-level
+   preferences the sheet already honours. The two themes that remain are
+   light and dark. */
 
 /* ============ v9 music-platform features ============ */
 .mini-player .mp-hide{position:absolute;right:8px;top:-14px;width:26px;height:16px;border:0;border-radius:8px 8px 0 0;background:var(--navy);color:#fff;font-size:9px;cursor:pointer}
@@ -1074,8 +1143,10 @@ html{scroll-behavior:smooth}
 /* ============================================================
    Bible platform — structure browser, reader, study panel,
    verse actions, library, plans and settings.
-   The reader owns its own palette so Scripture can be read on
-   sepia or dark paper without changing the rest of the site.
+   The extra reading palettes were retired; the readability
+   affordances live on as reader controls plus the OS-level
+   preferences the sheet already honours. The reader now
+   follows the site's light/dark theme.
    ============================================================ */
 .bible-quick{display:flex;flex-wrap:wrap;gap:8px;margin-top:20px}
 .bible-quick a{font-size:12px;font-weight:600;letter-spacing:.02em;border:1px solid var(--n200);border-radius:var(--r-pill);padding:8px 14px;color:var(--n600);background:var(--white);transition:border-color .2s,color .2s}
@@ -1129,6 +1200,12 @@ html{scroll-behavior:smooth}
 .bible-chapters a.read,.bible-chapters button.read{background:var(--light);border-color:var(--tint2);color:var(--blue)}
 .bible-structure.compact{border:0;padding:0}
 
+.bible-books-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;margin-bottom:22px}
+.bbook{border:1px solid var(--n100);border-radius:var(--r-12);background:var(--white);padding:14px 16px;display:grid;gap:4px}
+.bbook:hover{border-color:var(--blue2)}
+.bbook b{font-size:15px;color:var(--deep)}
+.bbook span{font-size:11px;color:var(--n500);letter-spacing:.03em}
+[data-theme="dark"] .bbook{background:var(--n50);border-color:var(--n100)}
 .bible-cited{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}
 .bcited{border:1px solid var(--n100);border-radius:var(--r-12);padding:16px;background:var(--white);display:flex;flex-direction:column;gap:6px}
 .bcited:hover{border-color:var(--blue2)}
@@ -1138,9 +1215,6 @@ html{scroll-behavior:smooth}
 
 /* ---------- reader shell ---------- */
 .bible-shell{--paper-bg:var(--white);--paper-ink:var(--deep);--paper-soft:var(--n500);padding-top:var(--header-h)}
-.bible-shell[data-reader-theme="sepia"]{--paper-bg:#FBF5E9;--paper-ink:#2E2A22;--paper-soft:#6F6656}
-.bible-shell[data-reader-theme="dark"]{--paper-bg:#0B1230;--paper-ink:#E9ECF7;--paper-soft:#9AA3C2}
-.bible-shell[data-reader-theme="light"]{--paper-bg:#FFFFFF;--paper-ink:#00072D;--paper-soft:#667270}
 .bible-toolbar{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;padding-top:20px;padding-bottom:14px;border-bottom:1px solid var(--n100)}
 .btb-left,.btb-right{display:flex;align-items:center;gap:10px}
 .btb-book{display:inline-flex;align-items:center;gap:10px;border:1px solid var(--n200);border-radius:var(--r-pill);background:var(--white);padding:10px 16px;font-size:14px;color:var(--deep)}
@@ -1183,13 +1257,6 @@ html{scroll-behavior:smooth}
 .bverse.hl-love>.bverse-hit{background:#F6D8D8}
 .bverse.hl-promise>.bverse-hit{background:#D9EAF7}
 .bverse.hl-personal>.bverse-hit{background:#E9EDEC}
-.bible-shell[data-reader-theme="dark"] .bverse.hl-hope>.bverse-hit{background:rgba(211,221,239,.22)}
-.bible-shell[data-reader-theme="dark"] .bverse.hl-faith>.bverse-hit{background:rgba(75,181,144,.22)}
-.bible-shell[data-reader-theme="dark"] .bverse.hl-prayer>.bverse-hit{background:rgba(160,120,220,.24)}
-.bible-shell[data-reader-theme="dark"] .bverse.hl-wisdom>.bverse-hit{background:rgba(201,162,39,.24)}
-.bible-shell[data-reader-theme="dark"] .bverse.hl-love>.bverse-hit{background:rgba(220,120,120,.24)}
-.bible-shell[data-reader-theme="dark"] .bverse.hl-promise>.bverse-hit{background:rgba(110,170,220,.22)}
-.bible-shell[data-reader-theme="dark"] .bverse.hl-personal>.bverse-hit{background:rgba(233,237,236,.14)}
 
 .bible-skeleton{display:grid;gap:14px;margin:24px 0}
 .bible-skeleton span{height:16px;border-radius:6px;background:linear-gradient(90deg,var(--n100),var(--n50),var(--n100));background-size:200% 100%;animation:bskel 1.4s linear infinite}
@@ -1271,6 +1338,16 @@ html{scroll-behavior:smooth}
 .btrans-meta{font-size:12px;color:var(--n500)}
 .btrans-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:auto}
 .btrans-attr{font-size:11px;color:var(--n400);line-height:1.5}
+/* Reviewed registry — provenance cards generated from
+   server/internal/bible/registry.go (scripts/gen-bible-registry.py). */
+.bible-versions{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;margin-top:8px}
+.bversion{border:1px solid var(--n100);border-radius:var(--r-16);padding:20px;background:var(--white);display:flex;flex-direction:column;gap:10px}
+.bversion h3{font-size:19px}
+.bversion-badge{display:inline-flex;align-items:center;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;border-radius:var(--r-pill);padding:6px 12px}
+.bversion-badge.on{color:var(--ok);background:rgba(31,126,94,.12)}
+.bversion-badge.off{color:var(--n500);background:var(--n100)}
+[data-theme="dark"] .bversion-badge.on{color:var(--ok-2);background:rgba(75,181,144,.14)}
+[data-theme="dark"] .bversion-badge.off{color:var(--n300);background:rgba(255,255,255,.08)}
 .bible-langs{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}
 .blang{border:1px solid var(--n100);border-radius:var(--r-12);padding:16px;background:var(--white);display:grid;gap:4px}
 .blang:hover{border-color:var(--blue2)}
@@ -1333,7 +1410,7 @@ html{scroll-behavior:smooth}
 [data-theme="dark"] .bible-filter-row input,[data-theme="dark"] .bible-filter-row select,
 [data-theme="dark"] .btb-book,[data-theme="dark"] .btb-left select,[data-theme="dark"] .btb-icon,
 [data-theme="dark"] .bible-structure,[data-theme="dark"] .bible-book,[data-theme="dark"] .bcited,
-[data-theme="dark"] .btrans,[data-theme="dark"] .blang,[data-theme="dark"] .bmark,[data-theme="dark"] .bnote,
+[data-theme="dark"] .btrans,[data-theme="dark"] .bversion,[data-theme="dark"] .blang,[data-theme="dark"] .bmark,[data-theme="dark"] .bnote,
 [data-theme="dark"] .bcoll,[data-theme="dark"] .bplan,[data-theme="dark"] .bplan-day,[data-theme="dark"] .bset,
 [data-theme="dark"] .bresult,[data-theme="dark"] .bible-actions,[data-theme="dark"] .bible-card,
 [data-theme="dark"] .bible-panel,[data-theme="dark"] .ba-row button,[data-theme="dark"] .ba-link,
@@ -1429,3 +1506,107 @@ html{scroll-behavior:smooth}
 [data-theme="dark"] .adm-card,[data-theme="dark"] .adm-stat,[data-theme="dark"] .adm-note,
 [data-theme="dark"] .adm-empty,[data-theme="dark"] .adm-input,[data-theme="dark"] .adm-chip{background:var(--n50);border-color:var(--n100);color:var(--tint1)}
 [data-theme="dark"] .adm-stat b,[data-theme="dark"] .adm-table td b{color:#fff}
+
+/* ============================================================================
+   RESPONSIVE PASS — one block at the end of the sheet, so the cascade order
+   stays obvious: everything below this line wins over the rules above it.
+
+   Guards first (nothing should ever escape horizontally or hyphen-shatter a
+   Bible reference), then the width steps — 1024 / 760 / 420 — then short
+   landscape screens and coarse pointers.
+   ========================================================================== */
+
+/* --- guards --------------------------------------------------------------- */
+html,
+body{max-width:100%;overflow-x:hidden}
+img,
+video,
+canvas,
+table,
+pre{max-width:100%}
+/* Prose may break long words anywhere so a narrow column never overflows —
+   except scripture, which keeps whole words together and hyphenates instead:
+   a broken "Jerusa-lem" mid-verse reads worse than a slightly wide line. */
+p,
+li,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+blockquote,
+figcaption,
+.small,
+.lede{overflow-wrap:anywhere}
+.bible-verses,
+.bible-verses *,
+.bcompare-text,
+.bcompare-text *,
+.votd-card blockquote{overflow-wrap:normal;hyphens:auto}
+
+/* --- ≤1024: two-column layouts give way ----------------------------------- */
+@media (max-width:1024px){
+  .bible-hero{grid-template-columns:1fr;gap:28px}
+  .bible-panel{position:static}
+  .adm-grid{grid-template-columns:1fr}
+  /* Lead with the preview card once the home Scripture section narrows. */
+  .home-bible .hb-preview{order:-1}
+}
+
+/* --- ≤760: single column, scrolling pickers, sheets ----------------------- */
+@media (max-width:760px){
+  /* Reader toolbar wraps to two rows, with the mode switch on its own. */
+  .bible-toolbar{flex-wrap:wrap;row-gap:10px}
+  .btb-left{flex:1;min-width:0}
+  .btb-modes{order:3;width:100%;justify-content:space-between}
+  /* The reading pane sits flush edge to edge instead of floating as a card. */
+  .bible-main{margin:0;max-width:none;border-radius:0;padding:14px 4px}
+  /* Chapter navigation stacks above the text rather than beside it. */
+  .bible-chapter-head{flex-direction:column;align-items:stretch;gap:10px}
+  /* The verse action sheet clears the home indicator. */
+  .bible-actions{bottom:calc(0px + env(safe-area-inset-bottom))}
+  /* Bible card grids and the settings board go one-up. */
+  .bible-books-grid,
+  .bible-translations,
+  .bible-versions,
+  .bible-settings{grid-template-columns:1fr}
+  /* The compare picker and the admin nav scroll sideways instead of wrapping. */
+  .bcompare-picker{flex-wrap:nowrap;overflow-x:auto;overscroll-behavior-x:contain;padding-bottom:6px}
+  .bcompare-picker>*{flex:none}
+  .adm-nav{flex-wrap:nowrap;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:none}
+  .adm-nav::-webkit-scrollbar{display:none}
+  .adm-input{width:100%;min-width:0}
+  .adm-table{font-size:12.5px}
+}
+
+/* --- ≤420: tight phones --------------------------------------------------- */
+@media (max-width:420px){
+  .container,
+  .container-wide,
+  .app-main{padding-left:16px;padding-right:16px}
+  .hb-stats,
+  .adm-stats{grid-template-columns:1fr}
+}
+
+/* --- short landscape screens: stop sticking, start scrolling -------------- */
+@media (max-height:520px) and (orientation:landscape){
+  .bible-panel,
+  .app-side{position:static}
+  .app-side{height:auto;overflow-y:auto}
+}
+
+/* --- coarse pointers: real tap targets ------------------------------------ */
+@media (pointer:coarse){
+  .btn,
+  .chip,
+  .icon-btn,
+  .btb-icon,
+  .side-item,
+  .side-recent,
+  .bottom-nav a,
+  .adm-nav a{min-height:44px}
+  .btn-sm{min-height:42px}
+  .icon-btn,
+  .btb-icon{min-width:44px}
+}
