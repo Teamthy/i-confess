@@ -4,6 +4,12 @@ import { Icon, SessionTile, ArticleCard, SectionHead, PhoneMock, EmptyState, Log
 import { PlayChip, PlayBtn, PlaySessionBtn, FavBtn, ShareBtn, VoicePreviewBtn, ConfTile, ConfessionFilter, ConfDetailTabs, FaqList, NewsletterForm, ContactForm, RailScroll, SearchBtn, HeroCtas, StoryTabs, ReviewLog, RadioBtn, SnippetBtn, Annotations, SnippetAuto } from "./islands";
 import { CATEGORIES, CONFESSIONS, ARTICLES, VOICES, PLANS, FAQS, catBySlug, confBySlug, artBySlug, sessionsFor, ALL_SESSIONS, sessionBySlug, motifStyle, CAT_IMAGES } from "@/lib/data";
 import type { Category } from "@/lib/data";
+import { CANON } from "@/lib/canon";
+
+/* The canon totals on the home page come from the generated canon, never from
+   typed numbers — a structure change upstream has to move this copy too. */
+const CANON_CHAPTERS = CANON.chapter_count;
+const CANON_VERSES = CANON.verse_count;
 
 /* ================= HOME ================= */
 export function Home() {
@@ -111,6 +117,54 @@ export function Home() {
               <div className="v-div"><div><h3>In curation</h3><span className="v-role">Voice slot · rights pending</span></div><span className="v-arrow"><Icon n="ne" s={15} /></span></div>
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* 07c SCRIPTURE */}
+      <section className="home-bible">
+        <div className="hb-copy">
+          <span className="eyebrow on-dark">Scripture</span>
+          <h2 className="h1" style={{ marginTop: 18 }}>The whole Bible, inside the practice.</h2>
+          <p className="lede" style={{ marginTop: 16 }}>
+            {CANON.book_count} books, {CANON_CHAPTERS.toLocaleString()} chapters and{" "}
+            {CANON_VERSES.toLocaleString()} verses — the reference distribution the reader draws from, open beside
+            every confession on the platform.
+          </p>
+          <div className="hb-stats">
+            <div><b>{CANON.book_count}</b><span>books</span></div>
+            <div><b>{CANON_CHAPTERS.toLocaleString()}</b><span>chapters</span></div>
+            <div><b>{CANON_VERSES.toLocaleString()}</b><span>verses</span></div>
+            <div><b>7</b><span>highlight colours</span></div>
+          </div>
+          <div className="hb-actions">
+            <Link className="btn btn-light" href="/bible">Read the Bible</Link>
+            <Link className="btn btn-ghost on-dark" href="/bible/topics">Browse topics</Link>
+          </div>
+          <div className="hb-links">
+            <Link href="/bible/search">Search</Link>
+            <Link href="/bible/compare">Compare</Link>
+            <Link href="/bible/plans">Plans</Link>
+            <Link href="/bible/translations">Translations</Link>
+          </div>
+        </div>
+        <div className="hb-preview" aria-hidden="true">
+          <div className="hbp-card">
+            <div className="hbp-bar">
+              <span className="hbp-dots"><i /><i /><i /></span>
+              <span>John 3 · KJV</span>
+            </div>
+            <div className="hbp-body">
+              <p><sup>15</sup>That whosoever believeth…</p>
+              <p className="hbp-mark"><sup>16</sup>For God so loved the world…</p>
+              <p><sup>17</sup>For God sent not his Son…</p>
+            </div>
+            <div className="hbp-foot">
+              <span className="hbp-chip">Highlight</span>
+              <span className="hbp-chip">Note</span>
+              <span className="hbp-chip">Compare</span>
+              <span className="hbp-chip on">Confess from this verse</span>
+            </div>
+          </div>
         </div>
       </section>
 

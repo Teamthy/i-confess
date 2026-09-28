@@ -14,14 +14,87 @@ const BOTTOM: [string, string, string][] = [["/app", "home", "Home"], ["/app/exp
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const path = usePathname();
+  const st = useApp();
+  const openSearch = useSearch();
+  const [rail, setRail] = useState(false);
+  useEffect(() => {
+    try { setRail(localStorage.getItem("ic-rail") === "1"); } catch { }
+  }, []);
+  const toggleRail = () => setRail((v) => {
+    const next = !v;
+    try { localStorage.setItem("ic-rail", next ? "1" : "0"); } catch { }
+    return next;
+  });
+  const recent = st.history.slice(0, 14);
+  const todayKey = new Date().toDateString();
+  const recents: [string, typeof recent][] = [
+    ["Today", recent.filter((h) => new Date(h.at).toDateString() === todayKey)],
+    ["Earlier", recent.filter((h) => new Date(h.at).toDateString() !== todayKey)],
+  ];
+  const initial = ((st.user?.name || st.user?.email || "?").trim().charAt(0) || "?").toUpperCase();
   return (
     <div className="app-shell">
-      <aside className="app-side">
-        <Logo onDark />
-        <nav aria-label="App">{SIDE.map(([h, ic, l]) => <Link key={h} href={h} aria-current={path === h ? "page" : undefined}><Icon n={ic} s={16} /> {l}</Link>)}</nav>
-        <div className="side-bottom">
-          <Link href="/app/profile" aria-current={path.startsWith("/app/profile") ? "page" : undefined}><Icon n="user" s={16} /> Profile</Link>
-          <Link href="/app/settings" aria-current={path.startsWith("/app/settings") ? "page" : undefined}><Icon n="gear" s={16} /> Settings</Link>
+      <aside className={"app-side" + (rail ? " rail-collapsed" : "")}>
+        <div className="side-head">
+          <Logo onDark />
+          <button className="side-collapse" aria-expanded={!rail} aria-label={rail ? "Expand navigation" : "Collapse navigation"} onClick={toggleRail}>
+            <Icon n={rail ? "arrow" : "arrowL"} s={16} />
+          </button>
+        </div>
+
+        <div className="side-primary">
+          <Link className="side-item" href="/app/session-builder"><Icon n="plus" s={16} /> <span className="side-label">New session</span></Link>
+          <Link className="side-item" href="/app/explore" aria-current={path.startsWith("/app/explore") ? "page" : undefined}>
+            <Icon n="compass" s={16} /> <span className="side-label">Explore</span> <em className="side-badge">New</em>
+          </Link>
+          <button className="side-item" onClick={openSearch}><Icon n="search" s={16} /> <span className="side-label">Search</span></button>
+        </div>
+
+        <div className="side-scroll">
+          {recent.length > 0 && recents.map(([label, items]) => items.length > 0 && (
+            <div className="side-group" key={label}>
+              <span className="side-group-title">{label}</span>
+              {items.map((h, i) => (
+                <Link className="side-recent" href={`/app/confessions/${h.slug}`} key={`${h.slug}-${h.at}-${i}`} title={h.title}>
+                  <span className="sr-tile"><Icon n="play" s={12} /></span>
+                  <span className="sr-title">{h.title}</span>
+                </Link>
+              ))}
+            </div>
+          ))}
+          <div className="side-group">
+            <span className="side-group-title">Library</span>
+            <nav aria-label="Library">
+              {SIDE.map(([h, ic, l]) => (
+                <Link key={h} href={h} aria-current={path === h ? "page" : undefined}><Icon n={ic} s={16} /> <span className="side-label">{l}</span></Link>
+              ))}
+              <Link href="/bible" aria-current={path.startsWith("/bible") ? "page" : undefined}><Icon n="book" s={16} /> <span className="side-label">Bible</span></Link>
+            </nav>
+          </div>
+        </div>
+
+        {!st.promoHidden && (
+          <div className="side-promo">
+            <button className="side-promo-hide" onClick={() => mutate((s) => { s.promoHidden = true; })} aria-label="Hide tour card">Hide</button>
+            <Link className="side-promo-media" href="/how-it-works" aria-label="Take the 90-second tour">
+              <span className="spm-play"><Icon n="play" s={16} /></span>
+              <span className="spm-note">Tour · 90 seconds</span>
+            </Link>
+            <div className="spm-body">
+              <b>See the whole thing in ninety seconds.</b>
+              <p>How confessions, sessions and the reviewed library fit together — no account needed.</p>
+              <div className="spm-actions">
+                <Link className="textlink on-dark" href="/how-it-works">Learn more <Icon n="arrow" s={12} /></Link>
+                <Link className="btn btn-light btn-sm" href="/app/session-builder">Try it now</Link>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="side-account">
+          <span className="side-avatar" aria-hidden="true">{initial}</span>
+          <span className="side-email">{st.user ? st.user.email : "Not signed in"}</span>
+          <Link className="side-gear" href="/app/profile" aria-label="Profile and settings"><Icon n="gear" s={16} /></Link>
         </div>
       </aside>
       <main className="app-main">{children}</main>

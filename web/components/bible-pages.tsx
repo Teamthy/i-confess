@@ -17,10 +17,13 @@ import { useToast } from "@/lib/ui";
 import { track } from "@/lib/store";
 import { usePlayer } from "@/lib/player";
 import { CATALOG_UNAVAILABLE, RightsChips, TranslationSelect, useCatalog } from "./bible";
+import REGISTRY from "@/lib/versions.json";
 import {
   BOOKS,
   CANON,
   HIGHLIGHT_COLORS,
+  TESTAMENTS,
+  applyTheme,
   bible,
   bookByID,
   displayRef,
@@ -36,6 +39,7 @@ import {
   type Language,
   type SearchHit,
   type Translation,
+  type VerseOfDay,
 } from "@/lib/bible";
 
 /* --------------------------------------------------------------- search */
@@ -214,6 +218,40 @@ export function BibleSearchPage({ initialQuery, initialTranslation }: { initialQ
 
 /* --------------------------------------------------------- translations */
 
+/* The reviewed registry is generated (scripts/gen-bible-registry.py from
+   server/internal/bible/registry.go) so the provenance of every reviewed
+   edition — file, digest, licence — renders without the API. It holds no
+   scripture text. The JSON is a union of differently-shaped entries (only
+   some carry a year or declared omissions), so it is read through this
+   explicit shape rather than inferred. */
+type ReviewedVersion = {
+  id: string;
+  name: string;
+  abbreviation: string;
+  language: string;
+  language_name: string;
+  coverage: string;
+  year?: string;
+  licence: string;
+  licence_url?: string;
+  licence_note?: string;
+  omitted_books?: string[];
+  omitted_chapters?: string[];
+  attribution: string;
+  source_file: string;
+  sha256: string;
+  bytes: number;
+  format: string;
+  sort_order: number;
+  default?: boolean;
+  status?: string;
+};
+const REVIEWED = REGISTRY as {
+  version_count: number;
+  language_count: number;
+  versions: ReviewedVersion[];
+};
+
 export function BibleTranslationsPage() {
   const catalog = useCatalog();
   const [filter, setFilter] = useState("");
@@ -297,6 +335,50 @@ export function BibleTranslationsPage() {
             {t.attribution_required && <p className="btrans-attr">{t.attribution_text || t.copyright}</p>}
           </article>
         ))}
+      </div>
+
+      <div className="bible-section-head">
+        <h2 className="h2">Reviewed registry</h2>
+        <p className="small">
+          Every edition the platform has reviewed — {REVIEWED.version_count} versions across {REVIEWED.language_count}{" "}
+          languages — with the source file, SHA-256 digest and licence each one was reviewed under. “Readable here”
+          means this deployment&apos;s catalogue carries it; a reviewed edition the catalogue does not import is listed
+          as absent rather than hidden.
+        </p>
+      </div>
+
+      <div className="bible-versions">
+        {REVIEWED.versions.map((v) => {
+          const imported = translations.some((t) => t.id === v.id);
+          const omissions = [
+            ...(v.omitted_books || []).map((id) => bookByID(id)?.name || id),
+            ...(v.omitted_chapters || []).map((c) => c.replace(".", " ")),
+          ];
+          return (
+            <article className="bversion" key={v.id}>
+              <div className="btrans-top">
+                <b>{v.abbreviation}</b>
+                <span>{v.language_name}</span>
+              </div>
+              <h3>{v.name}</h3>
+              <p className="small">
+                {v.coverage === "new_testament" ? "New Testament" : "Full Bible"}
+                {v.year ? ` · ${v.year}` : ""} · {v.licence}
+              </p>
+              {omissions.length > 0 && <p className="small">Declared omissions: {omissions.join(", ")}</p>}
+              {v.licence_note && <p className="btrans-attr">{v.licence_note}</p>}
+              <p className="btrans-attr">{v.attribution}</p>
+              <div className="btrans-meta">
+                sha256 {v.sha256.slice(0, 12)}… · {v.source_file}
+              </div>
+              <div className="btrans-actions">
+                <span className={"bversion-badge" + (imported ? " on" : " off")}>
+                  {imported ? "Readable here" : "Not imported here"}
+                </span>
+              </div>
+            </article>
+          );
+        })}
       </div>
     </section>
   );
@@ -745,18 +827,23 @@ export function BibleSettingsPage() {
             Show verse numbers
           </label>
           <label className="bt-label" htmlFor="set-theme">
-            Reading palette
+            Appearance
           </label>
           <select
             id="set-theme"
             value={prefs.theme}
-            onChange={(e) => study.setPrefs({ theme: e.target.value as typeof prefs.theme })}
+            onChange={(e) => {
+              const theme = e.target.value as typeof prefs.theme;
+              study.setPrefs({ theme });
+              applyTheme(theme);
+            }}
           >
-            <option value="system">Follow the site</option>
             <option value="light">Light</option>
-            <option value="sepia">Sepia</option>
             <option value="dark">Dark</option>
           </select>
+          <p className="small">
+            The same light/dark setting as the header toggle — change one and the other follows.
+          </p>
         </div>
 
         <div className="bset">
@@ -1141,6 +1228,236 @@ export function BibleComparePage({ initialReference }: { initialReference?: stri
           ))}
         </div>
       )}
+    </section>
+  );
+}
+
+/* ---------------------------------------------------------------- books */
+
+/** The canon as a book list: pure structure from lib/canon, no API involved.
+ *  Two testaments, their sections, every book — each opening the reader at
+ *  chapter one of whatever translation is currently chosen. */
+export function BibleBooksPage() {
+  const catalog = useCatalog();
+
+  return (
+    <section className="container-wide bible-page">
+      <header className="bible-page-head">
+        <span className="scripture-eyebrow">Books</span>
+        <h1 className="h1">Every book, in order.</h1>
+        <p className="lede">
+          The canon as the reader navigates it — {CANON.book_count} books across two testaments and their sections.
+          This page is the generated structure itself: no request is needed to draw it, and it stays complete even
+          when the catalogue is unreachable.
+        </p>
+      </header>
+
+      {TESTAMENTS.map((testament) => (
+        <div key={testament.id}>
+          <div className="bible-section-head">
+            <h2 className="h2">{testament.name}</h2>
+            <p className="small">
+              {testament.book_count} books · {testament.chapter_count.toLocaleString()} chapters
+            </p>
+          </div>
+          {testament.sections.map((section) => (
+            <div key={section.id}>
+              <div className="bs-section">
+                <h4>
+                  {section.name}
+                  <span>
+                    {section.book_count} books · {section.chapter_count} chapters
+                  </span>
+                </h4>
+              </div>
+              <div className="bible-books-grid">
+                {section.book_ids.map((bookID) => {
+                  const book = bookByID(bookID);
+                  if (!book) return null;
+                  return (
+                    <Link className="bbook" key={book.id} href={readerHref(catalog.currentID, book.id, 1)}>
+                      <b>{book.name}</b>
+                      <span>
+                        {book.chapter_count} ch · {book.verse_count.toLocaleString()} v
+                      </span>
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      ))}
+    </section>
+  );
+}
+
+/* ------------------------------------------------------- verse of the day */
+
+/** One reviewed verse a day, served by the API. The reference it carries is
+ *  the canonical verse ID (PRO.3.5), which is spelled the way a person reads
+ *  it before it reaches the page. */
+export function BibleVerseOfDayPage() {
+  const catalog = useCatalog();
+  const [votd, setVotd] = useState<VerseOfDay | null>(null);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    if (!catalog.currentID) return;
+    const controller = new AbortController();
+    setError(false);
+    bible
+      .verseOfDay(catalog.currentID, controller.signal)
+      .then(setVotd)
+      .catch(() => setError(true));
+    return () => controller.abort();
+  }, [catalog.currentID]);
+
+  const parsed = votd?.reference ? parseCanonicalVerseID(votd.reference) : null;
+  const reference = parsed
+    ? displayRef(parsed.bookID, parsed.chapter, parsed.verse)
+    : votd?.reference || "";
+  const href = parsed ? readerHref(catalog.currentID, parsed.bookID, parsed.chapter, parsed.verse) : null;
+  const abbrev = votd?.translation?.abbreviation || catalog.current?.abbreviation || catalog.currentID;
+
+  return (
+    <section className="container-wide bible-page">
+      <header className="bible-page-head">
+        <span className="scripture-eyebrow">Verse of the day</span>
+        <h1 className="h1">Today's verse.</h1>
+        <p className="lede">
+          One verse a day, chosen and reviewed by the editorial team and served through the API — never generated,
+          never random. Actions below open the same verse in context.
+        </p>
+      </header>
+
+      {error ? (
+        <div className="bible-note">
+          The reviewed verse of the day is served by the API and is not reachable from this deployment. Nothing is
+          substituted for it.
+        </div>
+      ) : !votd?.verse ? (
+        <div className="bible-note">Loading today's reviewed verse…</div>
+      ) : (
+        <div className="bible-card votd votd-card">
+          <span className="bc-eyebrow">{votd.date || "Verse of the day"}</span>
+          <blockquote>
+            <sup>{votd.verse.number}</sup>
+            {votd.verse.text}
+          </blockquote>
+          <p className="small">
+            {reference}
+            {abbrev ? ` · ${abbrev}` : ""}
+          </p>
+          {votd.editor_note && <p className="small">{votd.editor_note}</p>}
+          <div className="btrans-actions">
+            {href && (
+              <Link className="btn btn-primary btn-sm" href={href}>
+                Read it in context
+              </Link>
+            )}
+            <Link
+              className="btn btn-ghost btn-sm"
+              href={`/app/journal?ref=${encodeURIComponent(reference)}`}
+            >
+              Reflect
+            </Link>
+            <Link
+              className="btn btn-ghost btn-sm"
+              href={`/app/confessions?ref=${encodeURIComponent(reference)}`}
+            >
+              Confess from it
+            </Link>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+/* ------------------------------------------------------------- random */
+
+/** A passage drawn on request. The pool is exactly the verses the reviewed
+ *  corpus cites — the same citation set the topics are built from — so
+ *  "random" never means "arbitrary": if the pool is empty the API says so
+ *  rather than inventing a reference. */
+export function BibleRandomPage() {
+  const catalog = useCatalog();
+  const [drawn, setDrawn] = useState<{ reference: string; text: string; topic?: string } | null>(null);
+  const [error, setError] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const draw = useCallback(() => {
+    if (!catalog.currentID) return;
+    setLoading(true);
+    setError(false);
+    track("bible_random_requested", { translation: catalog.currentID });
+    bible
+      .random(catalog.currentID)
+      .then((data) =>
+        setDrawn({
+          reference: data.reference,
+          text: (data.passage?.verses || []).map((v) => v.text).join(" "),
+          topic: data.topic?.name,
+        })
+      )
+      .catch(() => setError(true))
+      .finally(() => setLoading(false));
+  }, [catalog.currentID]);
+
+  useEffect(() => {
+    if (catalog.currentID) draw();
+    // one draw when the catalogue resolves; later draws come from the button
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [catalog.currentID]);
+
+  const parsed = drawn ? parseReference(drawn.reference) : null;
+
+  return (
+    <section className="container-wide bible-page">
+      <header className="bible-page-head">
+        <span className="scripture-eyebrow">Random passage</span>
+        <h1 className="h1">A passage to start from.</h1>
+        <p className="lede">
+          The pool is the set of verses the reviewed confession corpus cites — the same canon-validated citations the
+          topics are built from, never an arbitrary verse. Draw one, read it in context, and every confession that
+          stands on it is waiting beside the text.
+        </p>
+      </header>
+
+      <div className="bible-random">
+        <div>
+          {error ? (
+            <p className="small">
+              No reviewed passage could be drawn right now — the API is not reachable from this deployment, or the
+              pool is empty. Nothing is substituted for it.
+            </p>
+          ) : drawn ? (
+            <>
+              <p>{drawn.text}</p>
+              <p className="small">
+                {drawn.reference}
+                {drawn.topic ? ` · ${drawn.topic}` : ""}
+              </p>
+            </>
+          ) : (
+            <p className="small">{loading ? "Drawing…" : "Preparing the pool of cited verses…"}</p>
+          )}
+        </div>
+        <div className="btrans-actions">
+          <button className="btn btn-primary btn-sm" disabled={!catalog.currentID || loading} onClick={draw}>
+            Another
+          </button>
+          {parsed && (
+            <Link
+              className="btn btn-ghost btn-sm"
+              href={readerHref(catalog.currentID, parsed.bookID, parsed.chapter, parsed.startVerse)}
+            >
+              Read in context
+            </Link>
+          )}
+        </div>
+      </div>
     </section>
   );
 }

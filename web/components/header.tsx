@@ -18,8 +18,11 @@ export default function Header() {
   }, []);
   useEffect(() => {
     const saved = window.localStorage.getItem("ic-theme");
-    if (saved && saved !== "light") document.documentElement.setAttribute("data-theme", saved);
-    else if (!saved && window.matchMedia?.("(prefers-color-scheme: dark)").matches) document.documentElement.setAttribute("data-theme", "dark");
+    // "contrast" and "dys" are retired; they resolve into the two that remain.
+    const resolved = saved === "dark" || saved === "contrast" ? "dark" : saved ? "light" : null;
+    if (resolved) document.documentElement.setAttribute("data-theme", resolved);
+    else if (window.matchMedia?.("(prefers-color-scheme: dark)").matches)
+      document.documentElement.setAttribute("data-theme", "dark");
   }, []);
   useEffect(() => { setOpen(false); }, [pathname]);
   const links = [
@@ -87,26 +90,38 @@ export default function Header() {
 }
 
 function ThemeToggle() {
-  const [mode, setMode] = useState("light");
+  const [mode, setMode] = useState<"light" | "dark">("light");
+
   useEffect(() => {
-    setMode(window.localStorage.getItem("ic-theme") || (document.documentElement.getAttribute("data-theme") ?? "light"));
+    const stored = window.localStorage.getItem("ic-theme");
+    const resolved: "light" | "dark" =
+      stored === "dark" || stored === "contrast"
+        ? "dark"
+        : stored === "light" || stored === "dys"
+          ? "light"
+          : document.documentElement.getAttribute("data-theme") === "dark"
+            ? "dark"
+            : "light";
+    setMode(resolved);
+    if (stored && stored !== resolved) {
+      // Migrate the retired themes once, so attribute and store agree.
+      document.documentElement.setAttribute("data-theme", resolved);
+      window.localStorage.setItem("ic-theme", resolved);
+    }
   }, []);
-  const order = ["light", "dark", "contrast", "dys"];
+
   const toggle = () => {
-    const next = order[(order.indexOf(mode) + 1) % order.length];
+    const next = mode === "light" ? "dark" : "light";
     setMode(next);
-    if (next === "light") document.documentElement.removeAttribute("data-theme");
-    else document.documentElement.setAttribute("data-theme", next);
+    document.documentElement.setAttribute("data-theme", next);
     window.localStorage.setItem("ic-theme", next);
   };
-  const dark = mode !== "light";
+
+  const dark = mode === "dark";
   return (
-    <button className="theme-toggle" onClick={toggle} aria-label={"Theme: " + mode + " — tap to change"} title={"Theme: " + mode}>
-      {mode === "contrast" ? (
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 3v18" fill="currentColor" /><path d="M12 3a9 9 0 0 1 0 18Z" fill="currentColor" stroke="none" /></svg>
-      ) : mode === "dys" ? (
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M4 7h16M4 12h10M4 17h16" /></svg>
-      ) : dark ? (
+    <button className="theme-toggle" onClick={toggle} role="switch" aria-checked={dark}
+      aria-label="Dark mode" title={dark ? "Switch to light" : "Switch to dark"}>
+      {dark ? (
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg>
       ) : (
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" /></svg>

@@ -299,6 +299,94 @@ func StructureJSON() ([]byte, error) {
 	return append(document, '\n'), nil
 }
 
+// RegistryEntry is one reviewed version's provenance: identity, coverage and
+// the exact file its text came from — never the text itself. It is the
+// honest list a reader-facing surface can show about versions that are
+// reviewed but not imported: what the edition is, what licence it carries,
+// and which source file was verified against which digest.
+type RegistryEntry struct {
+	ID              string   `json:"id"`
+	Name            string   `json:"name"`
+	Abbreviation    string   `json:"abbreviation"`
+	Language        string   `json:"language"`
+	LanguageName    string   `json:"language_name"`
+	Coverage        string   `json:"coverage"`
+	Year            string   `json:"year,omitempty"`
+	Licence         string   `json:"licence"`
+	LicenceURL      string   `json:"licence_url,omitempty"`
+	LicenceNote     string   `json:"licence_note,omitempty"`
+	OmittedBooks    []string `json:"omitted_books,omitempty"`
+	OmittedChapters []string `json:"omitted_chapters,omitempty"`
+	Attribution     string   `json:"attribution"`
+	SourceFile      string   `json:"source_file"`
+	SHA256          string   `json:"sha256"`
+	Bytes           int64    `json:"bytes"`
+	Format          string   `json:"format"`
+	SortOrder       int      `json:"sort_order"`
+	Default         bool     `json:"default,omitempty"`
+	Status          string   `json:"status,omitempty"`
+}
+
+// RegistryDocument is the whole reviewed registry as one JSON document — the
+// shape scripts/gen-bible-registry.py writes to web/lib/versions.json and the
+// shape TestWebRegistryJSONIsCurrent decodes it into.
+type RegistryDocument struct {
+	VersionCount  int             `json:"version_count"`
+	LanguageCount int             `json:"language_count"`
+	Versions      []RegistryEntry `json:"versions"`
+}
+
+// PublishedRegistry projects Versions into provenance-only entries: twelve
+// versions, seven languages, sorted by sort order, carrying no scripture
+// text. The web app renders this as its "reviewed registry" so a reader can
+// see every edition the platform has reviewed, imported here or not.
+func PublishedRegistry() RegistryDocument {
+	entries := make([]RegistryEntry, 0, len(Versions))
+	for _, v := range Versions {
+		entries = append(entries, RegistryEntry{
+			ID:              v.ID,
+			Name:            v.Name,
+			Abbreviation:    v.Abbrev,
+			Language:        v.Language,
+			LanguageName:    v.LanguageName,
+			Coverage:        v.Coverage,
+			Year:            v.Year,
+			Licence:         v.Licence,
+			LicenceURL:      v.LicenceURL,
+			LicenceNote:     v.LicenceNote,
+			OmittedBooks:    v.OmittedBooks,
+			OmittedChapters: v.OmittedChapters,
+			Attribution:     v.Attribution,
+			SourceFile:      v.SourceFile,
+			SHA256:          v.SHA256,
+			Bytes:           v.Bytes,
+			Format:          v.Format,
+			SortOrder:       v.SortOrder,
+			Default:         v.Default,
+			Status:          v.Status,
+		})
+	}
+	sort.SliceStable(entries, func(i, j int) bool { return entries[i].SortOrder < entries[j].SortOrder })
+	return RegistryDocument{
+		VersionCount:  len(entries),
+		LanguageCount: len(Languages()),
+		Versions:      entries,
+	}
+}
+
+// RegistryJSON renders the published registry the way the checked-in
+// web/lib/versions.json holds it: indented and newline-terminated. The Go
+// test compares that file by decoded content rather than bytes, so a second
+// generator (scripts/gen-bible-registry.py, which parses registry.go) may
+// format it differently as long as the content agrees.
+func RegistryJSON() ([]byte, error) {
+	document, err := json.MarshalIndent(PublishedRegistry(), "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	return append(document, '\n'), nil
+}
+
 // StructureBookByID returns one book's structure entry.
 func StructureBookByID(id string) (StructureBook, bool) {
 	for _, b := range CanonStructure().Books {

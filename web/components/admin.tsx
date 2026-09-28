@@ -568,3 +568,355 @@ export function AdminAudit() {
     </>
   );
 }
+
+/* ------------------------------------------------------------ audio QA */
+
+type AdminAudioJob = {
+  id: string;
+  confession_id: string;
+  voice_id: string;
+  status: string;
+  audio_asset_id?: string;
+  error_code?: string;
+  created_at?: string;
+};
+
+/** Generation jobs with the QA actions for a render that reached the bench.
+ *  The server owns every transition: Approve, Reject and Publish are three
+ *  separate endpoints on the asset, and each answer is shown as given. */
+export function AdminAudio() {
+  const { token } = useAuth();
+  const jobs = useAdminResource<AdminAudioJob[]>("/admin/audio/jobs");
+  const [notes, setNotes] = useState<Record<string, string>>({});
+  const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState("");
+
+  const act = async (jobID: string, assetID: string, action: "qa/approve" | "qa/reject" | "publish", note: string) => {
+    const trimmed = note.trim();
+    if ((action === "qa/reject" || action === "qa/approve") && trimmed.length < 4) {
+      setMessage("A QA note of at least four characters is required — the decision is recorded against your account.");
+      return;
+    }
+    setBusy(jobID);
+    const result = await adminApi<unknown>(`/admin/audio/${encodeURIComponent(assetID)}/${action}`, token, {
+      method: "POST",
+      body: trimmed ? { note: trimmed } : undefined,
+    });
+    setBusy("");
+    setMessage(result.ok ? `Recorded: ${action.replace("/", " ")}.` : result.message);
+    if (result.ok) {
+      setNotes((n) => ({ ...n, [jobID]: "" }));
+      jobs.reload();
+    }
+  };
+
+  return (
+    <>
+      {message && <div className="adm-note">{message}</div>}
+      {jobs.error && <div className="adm-note error">{jobs.error}</div>}
+      {jobs.loading && <div className="adm-note">Loading generation jobs…</div>}
+
+      <section className="adm-card">
+        <div className="adm-card-head">
+          <h3>Generation jobs</h3>
+          <button className="btn btn-ghost btn-sm" onClick={() => jobs.reload()}>
+            Refresh
+          </button>
+        </div>
+        {!jobs.loading && !jobs.error && (Array.isArray(jobs.data) ? jobs.data : []).length === 0 && (
+          <p className="small">No audio has been requested yet.</p>
+        )}
+        <div className="adm-table-wrap">
+          <table className="adm-table">
+            <thead>
+              <tr>
+                <th>Confession</th>
+                <th>Voice</th>
+                <th>Status</th>
+                <th>QA</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(Array.isArray(jobs.data) ? jobs.data : []).slice(0, 50).map((job) => {
+                const pendingQA = job.status === "succeeded" && !!job.audio_asset_id;
+                const note = (notes[job.id] || "").trim();
+                const assetID = job.audio_asset_id || "";
+                return (
+                  <tr key={job.id}>
+                    <td>
+                      <b>{job.confession_id}</b>
+                      <small>{(job.created_at || "").slice(0, 19).replace("T", " ")}</small>
+                    </td>
+                    <td>{job.voice_id || "—"}</td>
+                    <td>
+                      <span className="adm-status">{job.status}</span>
+                      {job.error_code && <small>{job.error_code}</small>}
+                    </td>
+                    <td>
+                      {pendingQA ? (
+                        <div className="adm-row-actions">
+                          <input
+                            className="adm-input"
+                            placeholder="QA note (required)"
+                            aria-label={`QA note for ${job.id}`}
+                            value={notes[job.id] || ""}
+                            onChange={(e) => setNotes({ ...notes, [job.id]: e.target.value })}
+                          />
+                          <button
+                            className="btn btn-primary btn-sm"
+                            disabled={note.length < 4 || busy === job.id}
+                            onClick={() => act(job.id, assetID, "qa/approve", note)}
+                          >
+                            Approve
+                          </button>
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            disabled={note.length < 4 || busy === job.id}
+                            onClick={() => act(job.id, assetID, "qa/reject", note)}
+                          >
+                            Reject
+                          </button>
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            disabled={busy === job.id}
+                            onClick={() => act(job.id, assetID, "publish", "")}
+                          >
+                            Publish
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="small">{job.audio_asset_id ? "asset recorded" : "no asset"}</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        {(Array.isArray(jobs.data) ? jobs.data : []).length > 50 && (
+          <p className="small">Showing the first 50 of {jobs.data!.length}.</p>
+        )}
+      </section>
+    </>
+  );
+}
+
+/* -------------------------------------------------------------- pricing */
+
+type AdminPlan = {
+  id?: string;
+  code?: string;
+  name: string;
+  interval: string;
+  trial_days?: number;
+  prices?: Record<string, { currency?: string; minor?: number; display?: string }>;
+};
+
+/** Pricing is admin-edited, never hard-coded: the form writes one plan back
+ *  to PUT /admin/plans and the table shows what the API now serves. Amounts
+ *  are in minor units (kobo, cents) because that is what the API stores —
+ *  the display strings are formatting, not the source of truth. */
+export function AdminPricing() {
+  const { token } = useAuth();
+  const plans = useAdminResource<{ plans?: AdminPlan[]; currencies?: string[] }>("/admin/plans");
+  const currencies = plans.data?.currencies || ["NGN", "USD", "GBP", "EUR", "PHP"];
+  const [code, setCode] = useState("");
+  const [name, setName] = useState("");
+  const [interval, setInterval] = useState("month");
+  const [trial, setTrial] = useState(7);
+  const [amounts, setAmounts] = useState<Record<string, string>>({});
+  const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!code.trim() || !name.trim()) {
+      setMessage("A plan code and name are required.");
+      return;
+    }
+    const prices: Record<string, { currency: string; minor: number }> = {};
+    for (const cur of currencies) {
+      const raw = (amounts[cur] || "").trim();
+      if (raw === "" || Number.isNaN(Number(raw))) {
+        setMessage(`${cur} needs an amount in minor units — the API refuses a plan with a missing price.`);
+        return;
+      }
+      prices[cur] = { currency: cur, minor: Number(raw) };
+    }
+    setBusy(true);
+    const id = code.trim();
+    const result = await adminApi<unknown>("/admin/plans", token, {
+      method: "PUT",
+      body: { code: id, id, name: name.trim(), interval, trial_days: trial, prices },
+    });
+    setBusy(false);
+    setMessage(result.ok ? `Plan ${id} saved.` : result.message);
+    if (result.ok) plans.reload();
+  };
+
+  const rows = Array.isArray(plans.data?.plans) ? plans.data!.plans! : [];
+
+  return (
+    <>
+      {message && <div className="adm-note">{message}</div>}
+
+      <section className="adm-card">
+        <h3>Create or update a plan</h3>
+        <p className="small">
+          Prices are written in minor units — kobo, cents — exactly as the API stores them. Every known currency
+          must carry a value; the server refuses a plan missing one.
+        </p>
+        <form onSubmit={submit} style={{ display: "grid", gap: 12, maxWidth: 640 }}>
+          <div className="adm-row-actions">
+            <input className="adm-input" placeholder="Code — monthly, annual…" aria-label="Plan code" value={code} onChange={(e) => setCode(e.target.value)} />
+            <input className="adm-input" placeholder="Display name" aria-label="Plan name" value={name} onChange={(e) => setName(e.target.value)} />
+            <select className="adm-input" aria-label="Interval" value={interval} onChange={(e) => setInterval(e.target.value)}>
+              <option value="month">Monthly</option>
+              <option value="year">Yearly</option>
+            </select>
+            <input className="adm-input" type="number" min={0} aria-label="Trial days" value={trial} onChange={(e) => setTrial(Number(e.target.value))} />
+          </div>
+          <div className="adm-row-actions">
+            {currencies.map((cur) => (
+              <label key={cur} style={{ display: "grid", gap: 4, fontSize: 11, color: "var(--n500)" }}>
+                {cur} (minor units)
+                <input
+                  className="adm-input"
+                  type="number"
+                  min={0}
+                  placeholder="499"
+                  aria-label={`${cur} amount in minor units`}
+                  value={amounts[cur] || ""}
+                  onChange={(e) => setAmounts({ ...amounts, [cur]: e.target.value })}
+                />
+              </label>
+            ))}
+          </div>
+          <div>
+            <button className="btn btn-primary btn-sm" type="submit" disabled={busy}>
+              Save plan
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <section className="adm-card">
+        <div className="adm-card-head">
+          <h3>Existing plans</h3>
+          <button className="btn btn-ghost btn-sm" onClick={() => plans.reload()}>
+            Refresh
+          </button>
+        </div>
+        {plans.error && <p className="small">{plans.error}</p>}
+        {plans.loading && <p className="small">Loading plans…</p>}
+        <div className="adm-table-wrap">
+          <table className="adm-table">
+            <thead>
+              <tr>
+                <th>Code</th>
+                <th>Name</th>
+                <th>Interval</th>
+                <th>Trial</th>
+                <th>Prices (minor units)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((p) => (
+                <tr key={p.code || p.id}>
+                  <td>
+                    <b>{p.code || p.id}</b>
+                  </td>
+                  <td>{p.name}</td>
+                  <td>{p.interval}</td>
+                  <td>{p.trial_days ?? "—"} days</td>
+                  <td>
+                    {Object.entries(p.prices || {})
+                      .map(([cur, a]) => `${cur} ${a.minor ?? "—"}`)
+                      .join(" · ")}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {rows.length === 0 && !plans.loading && !plans.error && <p className="small">No plan is configured yet.</p>}
+      </section>
+    </>
+  );
+}
+
+/* ---------------------------------------------------------------- queue */
+
+type AdminQueueView = { stats?: Record<string, number>; types?: string[]; durable?: boolean };
+
+/** What the background queue is holding: counts by status, the dead-letter
+ *  release button for jobs that gave up, and the job types this process runs.
+ *  A queue with no window into it is a queue nobody operates. */
+export function AdminQueue() {
+  const { token } = useAuth();
+  const queue = useAdminResource<AdminQueueView>("/admin/queue");
+  const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const stats = queue.data?.stats || {};
+  const dead = stats.dead_letter || 0;
+
+  const requeue = async () => {
+    setBusy(true);
+    const result = await adminApi<{ requeued?: number }>("/admin/queue/requeue", token, { method: "POST" });
+    setBusy(false);
+    setMessage(result.ok ? `Requeued ${result.data?.requeued ?? 0} job(s).` : result.message);
+    if (result.ok) queue.reload();
+  };
+
+  return (
+    <>
+      {message && <div className="adm-note">{message}</div>}
+      {queue.error && <div className="adm-note error">{queue.error}</div>}
+      {queue.loading && <div className="adm-note">Loading queue statistics…</div>}
+
+      <div className="adm-stats">
+        {Object.entries(stats).map(([status, count]) => (
+          <div className="adm-stat" key={status}>
+            <span>{status.replace(/_/g, " ")}</span>
+            <b>{count}</b>
+          </div>
+        ))}
+        {Object.keys(stats).length === 0 && !queue.loading && !queue.error && (
+          <div className="adm-stat">
+            <span>empty</span>
+            <b>0</b>
+          </div>
+        )}
+      </div>
+
+      <section className="adm-card">
+        <h3>Dead letter</h3>
+        <p className="small">
+          {dead === 0
+            ? "No job has dead-lettered. Parked jobs stay parked until a human releases them."
+            : `${dead} job${dead === 1 ? "" : "s"} gave up and are parked. Releasing them puts the work back into the queue once the cause is fixed.`}
+        </p>
+        <button className="btn btn-primary btn-sm" disabled={dead === 0 || busy} onClick={requeue}>
+          Requeue dead-lettered jobs
+        </button>
+      </section>
+
+      <section className="adm-card">
+        <h3>Job types</h3>
+        <div className="adm-chips">
+          {(queue.data?.types || []).map((t) => (
+            <span className="adm-chip" key={t}>
+              {t}
+            </span>
+          ))}
+          {!queue.loading && (queue.data?.types || []).length === 0 && <span className="adm-chip">none reported</span>}
+        </div>
+        <p className="small" style={{ marginTop: 12 }}>
+          Transport: {queue.data?.durable ? "durable queue — jobs survive a restart" : "in-memory queue — jobs live in this process only"}.
+        </p>
+      </section>
+    </>
+  );
+}

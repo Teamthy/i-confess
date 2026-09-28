@@ -2,7 +2,9 @@ package bible
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
+	"reflect"
 	"testing"
 )
 
@@ -188,5 +190,56 @@ func TestWebCanonJSONIsCurrent(t *testing.T) {
 	}
 	if !bytes.Equal(generated, checkedIn) {
 		t.Fatalf("%s is stale; regenerate it with:\n\tcd server && go run ./cmd/bible-structure ../web/lib/canon.json", path)
+	}
+}
+
+// Every registry entry must stand on its own: a reader seeing a version
+// listed but not imported here needs the full SHA-256 of the source file it
+// was reviewed from, the file itself, the attribution and the licence —
+// provenance is the whole point of publishing the registry.
+func TestRegistryEntriesCarryFullProvenance(t *testing.T) {
+	reg := PublishedRegistry()
+	if reg.VersionCount != len(reg.Versions) {
+		t.Errorf("VersionCount is %d but the document lists %d versions", reg.VersionCount, len(reg.Versions))
+	}
+	if reg.LanguageCount != len(Languages()) {
+		t.Errorf("LanguageCount is %d but Languages() reports %d", reg.LanguageCount, len(Languages()))
+	}
+	if reg.VersionCount == 0 {
+		t.Fatal("published registry is empty")
+	}
+	for _, e := range reg.Versions {
+		if len(e.SHA256) != 64 {
+			t.Errorf("%s: sha256 is %d characters, want 64", e.ID, len(e.SHA256))
+		}
+		if e.SourceFile == "" {
+			t.Errorf("%s: missing source file", e.ID)
+		}
+		if e.Attribution == "" {
+			t.Errorf("%s: missing attribution", e.ID)
+		}
+		if e.Licence == "" {
+			t.Errorf("%s: missing licence", e.ID)
+		}
+	}
+}
+
+// web/lib/versions.json feeds the translations page's "reviewed registry"
+// section. Two generators legitimately produce it — Go's RegistryJSON and
+// scripts/gen-bible-registry.py, which parses registry.go directly so the web
+// app can regenerate it without a Go toolchain — so the file is compared by
+// decoded content, not by bytes.
+func TestWebRegistryJSONIsCurrent(t *testing.T) {
+	const path = "../../../web/lib/versions.json"
+	checkedIn, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	var document RegistryDocument
+	if err := json.Unmarshal(checkedIn, &document); err != nil {
+		t.Fatalf("decode %s: %v", path, err)
+	}
+	if !reflect.DeepEqual(document, PublishedRegistry()) {
+		t.Fatalf("%s no longer matches PublishedRegistry(); regenerate it with:\n\tmake bible-registry\nor:\n\tcd server && go run ./cmd/bible-registry ../web/lib/versions.json", path)
 	}
 }

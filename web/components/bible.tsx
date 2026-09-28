@@ -417,8 +417,10 @@ export function BiblePage() {
           </div>
           <div className="bible-quick">
             <Link href="/bible/search">Search</Link>
+            <Link href="/bible/books">Books</Link>
             <Link href="/bible/translations">Translations</Link>
             <Link href="/bible/topics">Topics</Link>
+            <Link href="/bible/verse-of-the-day">Verse of the day</Link>
             <Link href="/bible/compare">Compare</Link>
             <Link href="/bible/plans">Reading plans</Link>
             <Link href="/bible/highlights">Highlights</Link>
