@@ -119,6 +119,33 @@ const VOICES = [
   { id: "voice-faith", name: "Faith", description: "Uplifting, resonant expressive voice.", type: "professional", provider: "i-confess", gender: "female", language: "en", premium: true, status: "active", sample_url: "/media/sample.wav", created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z" },
 ];
 
+// Mirror the Go billing.DefaultPlans response used by the admin pricing page.
+const ADMIN_CURRENCIES = ["NGN", "USD", "GBP", "EUR", "PHP"];
+const DEFAULT_ADMIN_PLANS = [
+  {
+    id: "monthly", name: "Premium Monthly", interval: "month", trial_days: 7,
+    prices: {
+      NGN: { currency: "NGN", minor: 150000, display: "₦1,500" },
+      USD: { currency: "USD", minor: 499, display: "$4.99" },
+      GBP: { currency: "GBP", minor: 399, display: "£3.99" },
+      EUR: { currency: "EUR", minor: 499, display: "€4.99" },
+      PHP: { currency: "PHP", minor: 29900, display: "₱299" },
+    },
+    features: ["premium_voices", "offline_downloads", "long_sessions"],
+  },
+  {
+    id: "annual", name: "Premium Annual", interval: "year", trial_days: 7,
+    prices: {
+      NGN: { currency: "NGN", minor: 1200000, display: "₦12,000" },
+      USD: { currency: "USD", minor: 3999, display: "$39.99" },
+      GBP: { currency: "GBP", minor: 3299, display: "£32.99" },
+      EUR: { currency: "EUR", minor: 3999, display: "€39.99" },
+      PHP: { currency: "PHP", minor: 199900, display: "₱1,999" },
+    },
+    features: ["premium_voices", "offline_downloads", "long_sessions", "annual_saving"],
+  },
+];
+
 // ------------------------------------------------------------- app state
 
 const DEV_TOKEN = "dev-token-" + "fixture";
@@ -126,6 +153,7 @@ const NOW = () => new Date().toISOString();
 
 const state = {
   user: { id: "user-dev", email: "dev@iconfess.test", display_name: "Dev Listener", timezone: "UTC", status: "active", email_verified: true },
+  adminPlans: DEFAULT_ADMIN_PLANS.map((plan) => ({ ...plan, prices: { ...plan.prices } })),
   profile: {
     id: "profile-dev", user_id: "user-dev", display_name: "Dev Listener", username: "devlistener",
     bio: "", avatar_url: "", timezone: "UTC", locale: "en", country_code: "", language: "en",
@@ -326,8 +354,52 @@ const server = http.createServer(async (req, res) => {
         voices: VOICES.length, confessions_by_status: byStatus,
       });
     }
+    if (method === "GET" && p === "/admin/plans") {
+      return json(res, 200, { plans: state.adminPlans, currencies: ADMIN_CURRENCIES });
+    }
+    if (method === "PUT" && p === "/admin/plans") {
+      const id = String(body?.id || body?.code || "").trim();
+      const name = String(body?.name || "").trim();
+      const currencies = {};
+      if (!id || !name) return json(res, 400, { error: "plan id and name are required" });
+      for (const currency of ADMIN_CURRENCIES) {
+        const amount = body?.prices?.[currency];
+        const minor = Number(amount?.minor);
+        if (!Number.isInteger(minor) || minor < 0) return json(res, 400, { error: `plan is missing a valid ${currency} price` });
+        currencies[currency] = { currency, minor, display: String(amount?.display || minor) };
+      }
+      const plan = {
+        id, name, description: String(body?.description || ""),
+        interval: body?.interval === "year" ? "year" : "month",
+        trial_days: Math.max(0, Number(body?.trial_days) || 0),
+        prices: currencies, features: Array.isArray(body?.features) ? body.features : [],
+      };
+      const index = state.adminPlans.findIndex((item) => item.id === id);
+      if (index < 0) state.adminPlans.push(plan); else state.adminPlans[index] = plan;
+      return json(res, 200, { plan });
+    }
+    if (method === "GET" && p === "/admin/audio/jobs") {
+      const status = url.searchParams.get("status") || "";
+      if (status && !["queued", "processing", "succeeded", "failed", "cancelled"].includes(status)) {
+        return json(res, 400, { error: "status must be one of: queued, processing, succeeded, failed, cancelled" });
+      }
+      return json(res, 200, []);
+    }
+    if (method === "GET" && p.startsWith("/admin/audio/jobs/") && p.length > "/admin/audio/jobs/".length) {
+      return json(res, 404, { error: "generation job not found" });
+    }
     if (method === "GET" && p === "/admin/queue") {
-      return json(res, 200, { stats: { queued: 0, running: 0, done: 128, dead: 0 }, types: ["audio_render", "email", "push", "retention"], durable: false });
+      return json(res, 200, {
+        stats: { queued: 0, running: 0, completed: 0, failed: 0, dead_letter: 0, total: 0 },
+        types: ["audio.generate", "notification.send", "audio.process"],
+        durable: false,
+      });
+    }
+    if (method === "POST" && p === "/admin/queue/requeue") {
+      return json(res, 200, {
+        requeued: 0,
+        stats: { queued: 0, running: 0, completed: 0, failed: 0, dead_letter: 0, total: 0 },
+      });
     }
     if (method === "GET" && p === "/admin/metrics") {
       return json(res, 200, { auth_failures: 0, rate_limited: 0, admin_actions: (state.adminActions || []).length, cache_invalidations: 0 });

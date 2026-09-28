@@ -61,12 +61,12 @@ export function ShareBtn({ slug }: { slug: string }) {
 }
 export function VoicePreviewBtn({ light }: { light?: boolean }) {
   const audio = useAudio(); const toast = useToast();
+  const sample = CONFESSIONS[0];
   return (
     <button className={"btn " + (light ? "btn-light" : "btn-primary")} onClick={() => {
-      track("voice_played", { voice: "grace" });
-      audio.play([{ slug: "voice-preview", title: "Grace — voice preview", category: "peace", text: "Peace beyond understanding. Speak it, hear it, and let the words return to you." }]);
-      toast("Playing voice preview — Grace");
-    }}><Icon n="play" s={13} /> Preview voice</button>
+      audio.play([{ slug: `voice-preview-${sample.slug}`, title: `Device speech sample · ${sample.title}`, category: sample.category, text: sample.medium }]);
+      toast("Playing a device-speech sample — this is not a recording of Grace.");
+    }}><Icon n="play" s={13} /> Listen to a sample</button>
   );
 }
 export function ConfTile({ c }: { c: Confession }) {
@@ -148,7 +148,7 @@ export function ContactForm() {
 
 export function StoryTabs() {
   const TABS = [
-    "iCONFESS is built by people who keep a practice themselves — curated words, licensed voices, and a library checked line by line before you ever see it.",
+    "iCONFESS is built by people who keep a practice themselves — curated words, a licensed narration voice, and a library checked line by line before you ever see it.",
     "Every confession is drafted, edited and verified against the Scripture it claims to stand on. Nothing publishes automatically — not ever.",
     "The design is quiet on purpose: no streak guilt, no autoplay, no noise. The loudest thing in iCONFESS should be the words themselves.",
   ];

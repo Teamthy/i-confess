@@ -18,11 +18,12 @@ export default function Header() {
   }, []);
   useEffect(() => {
     const saved = window.localStorage.getItem("ic-theme");
-    // "contrast" and "dys" are retired; they resolve into the two that remain.
-    const resolved = saved === "dark" || saved === "contrast" ? "dark" : saved ? "light" : null;
-    if (resolved) document.documentElement.setAttribute("data-theme", resolved);
-    else if (window.matchMedia?.("(prefers-color-scheme: dark)").matches)
-      document.documentElement.setAttribute("data-theme", "dark");
+    // Light is the product default. Dark is applied only when a person has
+    // explicitly chosen it; the operating-system preference never overrides
+    // the first visit. "contrast" and "dys" are retired theme values.
+    const resolved = saved === "dark" || saved === "contrast" ? "dark" : "light";
+    document.documentElement.setAttribute("data-theme", resolved);
+    if (saved === "contrast" || saved === "dys") window.localStorage.setItem("ic-theme", resolved);
   }, []);
   useEffect(() => { setOpen(false); }, [pathname]);
   const links = [

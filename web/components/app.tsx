@@ -8,8 +8,23 @@ import { TCard } from "./marketing";
 import { useApp, mutate, track } from "@/lib/store";
 import { useAudio, useToast, useSearch } from "@/lib/ui";
 import { CATEGORIES, CONFESSIONS, PLANS as PLANS_LOCAL, catBySlug, confBySlug, sessionsFor, ALL_SESSIONS, sessionBySlug, buildQueue, motifStyle, queueItem, CAT_IMAGES, MOMENTS, PACKS, type Session, type QueueItem } from "@/lib/data";
+import { VoiceLibrary } from "@/components/voices";
 
-const SIDE: [string, string, string][] = [["/app", "home", "Home"], ["/app/explore", "compass", "Explore"], ["/app/categories", "book", "Categories"], ["/app/sessions", "clock", "Sessions"], ["/app/voices", "mic", "Voices"], ["/app/history", "clock", "History"], ["/app/journal", "edit", "Journal"], ["/app/favorites", "heart", "Favorites"], ["/app/routines", "spark", "Routines"], ["/app/schedule", "cal", "Schedule"]];
+const SIDE_LIBRARY: [string, string, string][] = [
+  ["/app", "home", "Home"],
+  ["/app/categories", "book", "Categories"],
+  ["/app/sessions", "clock", "Sessions"],
+  ["/app/downloads", "dl", "Downloads"],
+  ["/bible", "book", "Bible"],
+  ["/app/voices", "mic", "Voices"],
+];
+const SIDE_PRACTICE: [string, string, string][] = [
+  ["/app/favorites", "heart", "Favorites"],
+  ["/app/history", "clock", "History"],
+  ["/app/journal", "edit", "Journal"],
+  ["/app/routines", "spark", "Routines"],
+  ["/app/schedule", "cal", "Schedule"],
+];
 const BOTTOM: [string, string, string][] = [["/app", "home", "Home"], ["/app/explore", "compass", "Explore"], ["/app/community/create", "plus", "Create"], ["/app/history", "chart", "Activity"], ["/app/profile", "user", "Profile"]];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -32,6 +47,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     ["Earlier", recent.filter((h) => new Date(h.at).toDateString() !== todayKey)],
   ];
   const initial = ((st.user?.name || st.user?.email || "?").trim().charAt(0) || "?").toUpperCase();
+  const current = (href: string) => href === "/app" ? path === "/app" : path === href || path.startsWith(`${href}/`);
   return (
     <div className="app-shell">
       <aside className={"app-side" + (rail ? " rail-collapsed" : "")}>
@@ -42,13 +58,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </button>
         </div>
 
-        <div className="side-primary">
-          <Link className="side-item" href="/app/session-builder"><Icon n="plus" s={16} /> <span className="side-label">New session</span></Link>
-          <Link className="side-item" href="/app/explore" aria-current={path.startsWith("/app/explore") ? "page" : undefined}>
+        <nav className="side-primary" aria-label="Quick actions">
+          <Link className="side-item side-item-strong" href="/app/session-builder" aria-current={current("/app/session-builder") ? "page" : undefined}>
+            <Icon n="plus" s={16} /> <span className="side-label">New session</span>
+          </Link>
+          <Link className="side-item" href="/app/explore" aria-current={current("/app/explore") ? "page" : undefined}>
             <Icon n="compass" s={16} /> <span className="side-label">Explore</span> <em className="side-badge">New</em>
           </Link>
           <button className="side-item" onClick={openSearch}><Icon n="search" s={16} /> <span className="side-label">Search</span></button>
-        </div>
+        </nav>
 
         <div className="side-scroll">
           {recent.length > 0 && recents.map(([label, items]) => items.length > 0 && (
@@ -65,10 +83,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <div className="side-group">
             <span className="side-group-title">Library</span>
             <nav aria-label="Library">
-              {SIDE.map(([h, ic, l]) => (
-                <Link key={h} href={h} aria-current={path === h ? "page" : undefined}><Icon n={ic} s={16} /> <span className="side-label">{l}</span></Link>
+              {SIDE_LIBRARY.map(([h, ic, l]) => (
+                <Link key={h} href={h} aria-current={current(h) ? "page" : undefined} title={l}><Icon n={ic} s={16} /> <span className="side-label">{l}</span></Link>
               ))}
-              <Link href="/bible" aria-current={path.startsWith("/bible") ? "page" : undefined}><Icon n="book" s={16} /> <span className="side-label">Bible</span></Link>
+            </nav>
+          </div>
+          <div className="side-group">
+            <span className="side-group-title">Your practice</span>
+            <nav aria-label="Your practice">
+              {SIDE_PRACTICE.map(([h, ic, l]) => (
+                <Link key={h} href={h} aria-current={current(h) ? "page" : undefined} title={l}><Icon n={ic} s={16} /> <span className="side-label">{l}</span></Link>
+              ))}
             </nav>
           </div>
         </div>
@@ -116,6 +141,45 @@ const NeedAuth = () => (
 const greet = () => { const h = new Date().getHours(); return h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening"; };
 const slugOfName = (name: string) => CATEGORIES.find((c) => c.name === name)?.slug || "";
 const isGentleTime = (st: ReturnType<typeof useApp>) => new Date().getHours() >= 21 || (st.history.length > 0 && Date.now() - st.history[0].at > 6 * 864e5);
+const MOODS = [
+  { name: "Calm", hint: "Find room to breathe.", icon: "wave", cats: ["peace", "rest", "gratitude"] },
+  { name: "Focus", hint: "Choose the next faithful step.", icon: "compass", cats: ["discipline", "productivity", "direction"] },
+  { name: "Sleep", hint: "Set the day down gently.", icon: "moon", cats: ["rest", "peace", "prayer"] },
+  { name: "Courage", hint: "Meet the hard thing with hope.", icon: "shield", cats: ["confidence", "overcoming-fear", "breakthrough"] },
+];
+
+function MomentCard({ moment, index }: { moment: (typeof MOMENTS)[number]; index: number }) {
+  return (
+    <article className={`moment-card moment-${moment.id}`}>
+      <div className="moment-card-meta"><span className="moment-number">{String(index + 1).padStart(2, "0")}</span><span>For this moment</span></div>
+      <h4>{moment.title}</h4>
+      <p>{moment.desc}</p>
+      <div className="moment-card-categories" aria-label="Related categories">
+        {moment.cats.slice(0, 3).map((slug) => {
+          const category = catBySlug(slug);
+          return category ? <span key={slug}>{category.name}</span> : null;
+        })}
+      </div>
+      <MixBtn cats={moment.cats} label="Queue moment" />
+    </article>
+  );
+}
+
+function MoodCard({ mood }: { mood: (typeof MOODS)[number] }) {
+  return (
+    <article className={`mood-card mood-${mood.name.toLowerCase()}`}>
+      <div className="mood-card-top"><span className="mood-icon"><Icon n={mood.icon} s={18} /></span><span className="mood-overline">A mood to meet</span></div>
+      <h4>{mood.name}</h4>
+      <p>{mood.hint}</p>
+      <div className="mood-categories" aria-label={`${mood.name} categories`}>
+        {mood.cats.map((slug) => {
+          const category = catBySlug(slug);
+          return category ? <Link className="mood-chip" key={slug} href={`/app/categories/${slug}`}>{category.name}</Link> : null;
+        })}
+      </div>
+    </article>
+  );
+}
 
 export function AppPage({ kind, slug, token }: { kind: string; slug?: string; token?: string }) {
   const st = useApp();
@@ -124,21 +188,30 @@ export function AppPage({ kind, slug, token }: { kind: string; slug?: string; to
   if (needsAuth && !st.user) return <NeedAuth />;
   switch (kind) {
     case "home": return <AppHome />;
-    case "explore": return <><Head title="Explore" />
-      <div className="app-section"><div className="section-head"><h3>Moments</h3></div><div className="card-row snap">{MOMENTS.map((m) => <div className="tile" key={m.id}><h4>{m.title}</h4><p>{m.desc}</p><div style={{ marginTop: 10 }}><MixBtn cats={m.cats} label="Queue moment" /></div></div>)}</div></div>
-      <div className="app-section"><div className="section-head"><h3>Moods</h3></div><div className="card-row snap">{[["Calm", ["peace", "rest", "gratitude"]], ["Focus", ["discipline", "productivity", "direction"]], ["Sleep", ["rest", "peace", "prayer"]], ["Courage", ["confidence", "overcoming-fear", "breakthrough"]]].map(([m, cats]) => <div className="tile" key={m as string}><h4>{m}</h4><div className="chip-row" style={{ marginTop: 8 }}>{(cats as string[]).map((c) => <Link className="chip" key={c} href={`/categories/${c}`}>{catBySlug(c)?.name}</Link>)}</div></div>)}</div></div>
-      <div className="app-section"><div className="tgrid snap">{CATEGORIES.slice(0, 8).map((c) => <TCard key={c.slug} c={c} />)}</div></div><div className="app-section"><div className="section-head"><h3>Sessions</h3></div><div className="card-row three snap">{ALL_SESSIONS.slice(0, 6).map((s) => <SessionTile key={s.slug} s={s} />)}</div></div></>;
+    case "explore": return <>
+      <Head title="Explore" sub="Choose a moment, a mood, or a path through the library." right={<Link className="btn btn-primary btn-sm" href="/app/session-builder"><Icon n="plus" s={13} /> Build a session</Link>} />
+      <section className="app-section explore-section" aria-labelledby="moments-title">
+        <div className="explore-section-head"><div><span className="explore-overline">Start where you are</span><h3 id="moments-title">Moments</h3></div><p>Short, ready-made queues for the point you are at today.</p></div>
+        <div className="moment-grid">{MOMENTS.map((moment, index) => <MomentCard key={moment.id} moment={moment} index={index} />)}</div>
+      </section>
+      <section className="app-section explore-section" aria-labelledby="moods-title">
+        <div className="explore-section-head"><div><span className="explore-overline">Follow a feeling</span><h3 id="moods-title">Moods</h3></div><p>Open a category that fits what you need more of.</p></div>
+        <div className="mood-grid">{MOODS.map((mood) => <MoodCard key={mood.name} mood={mood} />)}</div>
+      </section>
+      <div className="app-section"><div className="section-head"><h3>Categories</h3><Link className="textlink" href="/app/categories">View all <Icon n="arrow" s={12} /></Link></div><div className="tgrid snap">{CATEGORIES.slice(0, 8).map((c) => <TCard key={c.slug} c={c} />)}</div></div>
+      <div className="app-section"><div className="section-head"><h3>Sessions</h3><Link className="textlink" href="/app/sessions">View all <Icon n="arrow" s={12} /></Link></div><div className="card-row three snap">{ALL_SESSIONS.slice(0, 6).map((s) => <SessionTile key={s.slug} s={s} />)}</div></div>
+    </>;
     case "categories": return <><Head title="Categories" sub="39 areas of life" /><div className="tgrid">{CATEGORIES.map((c) => <TCard key={c.slug} c={c} />)}</div></>;
     case "category": return <AppCategory slug={slug!} />;
     case "confessions": return <><Head title="Confessions" sub="The reviewed library" /><div className="grid4">{CONFESSIONS.map((c) => <ConfTile key={c.slug} c={c} />)}</div></>;
     case "confession": return <AppConfession slug={slug!} />;
     case "sessions": return <><Head title="Sessions" sub="Assembled to fit your minutes" right={<Link className="btn btn-primary btn-sm" href="/app/session-builder"><Icon n="plus" s={12} /> Build</Link>} />
       <div className="app-section" style={{ marginTop: 0, marginBottom: 24 }}><div className="section-head"><h3>Offline mixtapes · Premium</h3></div><div className="card-row snap">{PACKS.map((p) => <PackCard key={p.id} id={p.id} title={p.title} desc={p.desc} cats={p.cats} />)}</div></div>
-      <div className="card-row three" style={{ gridTemplateColumns: "repeat(3,1fr)" }}>{ALL_SESSIONS.map((s) => <SessionTile key={s.slug} s={s} />)}</div></>;
+      <div className="card-row three">{ALL_SESSIONS.map((s) => <SessionTile key={s.slug} s={s} />)}</div></>;
     case "session": return <AppSession slug={slug!} />;
     case "builder": return <Builder />;
     case "player": return <Player />;
-    case "voices": return <><Head title="Voices" sub="Licensed narration" /><div className="voice-grid" style={{ gridTemplateColumns: "repeat(4,1fr)" }}><Link className="v-card" href="/app/voices/grace"><img className="avatar" src="/assets/voice-grace.jpg" alt="" /><h3>Grace</h3><span className="v-style">Warm · Calm</span><VoicePrev /></Link>{[1, 2, 3].map((i) => <div className="v-card locked" key={i}><span className="avatar-slot"><Icon n="lock" s={18} /></span><h3>In curation</h3></div>)}</div></>;
+    case "voices": return <VoiceLibrary inApp />;
     case "voice": return <AppPage kind="voices" />;
     case "journal": return <JournalApp />;
     case "memory": return <MemoryApp />;
@@ -151,9 +224,9 @@ export function AppPage({ kind, slug, token }: { kind: string; slug?: string; to
       {chart.length > 0 && <div className="app-section" style={{ marginTop: 0, marginBottom: 24 }}><div className="section-head"><h3>Your chart — most returned to</h3></div><div className="form-card">{chart.map((x, i) => <div className="list-row" key={x.c!.slug}><div className="lr-main"><h4>{i + 1}. {x.c!.title}</h4><p>{x.c!.category} · {x.n} return{x.n === 1 ? "" : "s"}</p></div><PlayChip slug={x.c!.slug} /></div>)}</div><p className="small" style={{ marginTop: 8 }}>Your data only. We never publish global charts.</p></div>}{st.history.length ? st.history.map((h, i) => <div className="list-row" key={i}><div className="lr-main"><h4>{h.title}</h4><p>{h.category} · {new Date(h.at).toLocaleString()}</p></div><PlayChip slug={h.slug} /></div>) : <EmptyState icon="clock" title="No history yet" sub="Play a confession or start a session and it will appear here." cta={<Link className="btn btn-primary" href="/app/explore">Explore</Link>} />}</>; }
     case "favorites": { const favs = st.favs.map(confBySlug).filter(Boolean); return <><Head title="Favorites" sub="Saved words" />{favs.length ? <div className="grid4">{favs.map((c) => <ConfTile key={c!.slug} c={c!} />)}</div> : <EmptyState icon="heart" title="No favorites yet" sub="Tap the heart on any confession to keep it here." />}</>; }
     case "downloads": { const dl = st.downloads.filter((d) => !d.includes(":")).map(sessionBySlug).filter(Boolean); const pins = st.downloads.filter((d) => d.startsWith("cat:")); const packs = st.downloads.filter((d) => d.startsWith("pack:")); return <><Head title="Downloads" sub="Premium · available offline on this device" />
-      {packs.length > 0 && <div className="app-section" style={{ marginTop: 0 }}><div className="section-head"><h3>Mixtapes</h3></div><div className="card-row snap">{packs.map((p) => { const pk = PACKS.find((x) => "pack:" + x.id === p); return pk ? <div className="tile" key={p}><span className="t-meta">Pack</span><h4>{pk.title}</h4><p>{pk.desc}</p></div> : null; })}</div></div>}
-      {pins.length > 0 && <div className="app-section"><div className="section-head"><h3>Pinned categories</h3></div><div className="tgrid snap">{pins.map((p) => { const c = catBySlug(p.slice(4)); return c ? <TCard key={p} c={c} /> : null; })}</div></div>}
-      {dl.length ? <div className="app-section"><div className="section-head"><h3>Sessions</h3></div><div className="card-row three" style={{ gridTemplateColumns: "repeat(3,1fr)" }}>{dl.map((x) => <SessionTile key={x!.slug} s={x!} />)}</div></div> : !pins.length && !packs.length ? <EmptyState icon="dl" title="Nothing saved offline yet" sub="Pin a category, grab a mixtape pack, or save any session — Premium keeps it on this device for bad-network mornings." cta={<Link className="btn btn-primary" href="/app/sessions">Browse sessions</Link>} /> : null}</>; }
+      {packs.length > 0 && <div className="app-section" style={{ marginTop: 0 }}><div className="section-head"><h3>Mixtapes</h3></div><div className="downloads-grid">{packs.map((p) => { const pk = PACKS.find((x) => "pack:" + x.id === p); return pk ? <div className="tile" key={p}><span className="t-meta">Pack</span><h4>{pk.title}</h4><p>{pk.desc}</p></div> : null; })}</div></div>}
+      {pins.length > 0 && <div className="app-section"><div className="section-head"><h3>Pinned categories</h3></div><div className="downloads-grid downloads-categories">{pins.map((p) => { const c = catBySlug(p.slice(4)); return c ? <TCard key={p} c={c} /> : null; })}</div></div>}
+      {dl.length ? <div className="app-section"><div className="section-head"><h3>Sessions</h3></div><div className="downloads-grid">{dl.map((x) => <SessionTile key={x!.slug} s={x!} />)}</div></div> : !pins.length && !packs.length ? <EmptyState icon="dl" title="Nothing saved offline yet" sub="Pin a category, grab a mixtape pack, or save any session — Premium keeps it on this device for bad-network mornings." cta={<Link className="btn btn-primary" href="/app/sessions">Browse sessions</Link>} /> : null}</>; }
     case "schedule": return <Schedule />;
     case "routines": return <Routines />;
     case "notifications": return <><Head title="Notifications" /><div className="form-card" style={{ maxWidth: 560 }}><Switch title="Daily words" sub="A quiet nudge with today's confession" path="notifications.daily" /><Switch title="Reminders" sub="If you miss a morning, we offer the words again at midday" path="notifications.reminders" /><Switch title="Community" sub="When a submission you follow is approved" path="notifications.community" /><Switch title="Weekly review digest" sub="One optional Sunday email: the words you returned to, plus a journal prompt. Never more." path="notifications.digest" /><div className="setting-row"><div><b>Quiet hours</b><span>A hard blackout. Nothing can nudge you inside this window.</span></div><div style={{ display: "flex", gap: 8, alignItems: "center" }}><input type="time" defaultValue={st.settings.notifications.quietStart} style={{ width: 110 }} onChange={(e) => mutate((x) => { x.settings.notifications.quietStart = e.target.value; })} aria-label="Quiet hours start" /><span>–</span><input type="time" defaultValue={st.settings.notifications.quietEnd} style={{ width: 110 }} onChange={(e) => mutate((x) => { x.settings.notifications.quietEnd = e.target.value; })} aria-label="Quiet hours end" /></div></div></div></>;
@@ -185,7 +258,6 @@ export function AppPage({ kind, slug, token }: { kind: string; slug?: string; to
   }
 }
 
-function VoicePrev() { const audio = useAudio(); return <button className="btn btn-primary btn-sm" onClick={() => audio.play([{ slug: "voice-preview", title: "Grace — voice preview", category: "peace", text: "Peace beyond understanding. Speak it, hear it, and let the words return to you." }])}><Icon n="play" s={12} /> Preview</button>; }
 function ExportBtn() { const toast = useToast(); return <button className="btn btn-ghost btn-sm" onClick={() => toast("Export queued — you'll receive a download link (demo).")}>Export</button>; }
 
 function AppHome() {
@@ -196,7 +268,11 @@ function AppHome() {
   const openSearch = useSearch();
   return (
     <>
-      <Head title={`${greet()}, ${u.name.split(" ")[0]}.`} sub="What do you want to return to today?" right={<><button className="icon-btn" onClick={openSearch} aria-label="Search"><Icon n="search" s={16} /></button><Link className="icon-btn" href="/app/notifications" aria-label="Notifications"><Icon n="bell" s={16} /></Link></>} />
+      <div className="app-home-tools" role="toolbar" aria-label="Home tools">
+        <button className="icon-btn" onClick={openSearch} aria-label="Search" title="Search"><Icon n="search" s={17} /></button>
+        <Link className="icon-btn" href="/app/notifications" aria-label="Notifications" title="Notifications"><Icon n="bell" s={17} /></Link>
+      </div>
+      <Head title={`${greet()}, ${u.name.split(" ")[0]}.`} sub="What do you want to return to today?" />
       <HandoffCard />
       <div className="app-section"><div className="section-head"><h3>Morning Mix</h3><Link className="textlink" href="/app/recommendations">Why? <Icon n="arrow" s={12} /></Link></div>
         <div className="big-tile rv in" style={{ background: "linear-gradient(140deg, var(--navy), var(--deep))" }}><div><span className="eyebrow on-dark">Made for you</span><h3 style={{ marginTop: 8 }}>Built from the categories you follow</h3><p>One confession from each of your areas — queued, never autoplayed.</p></div><MixBtn cats={recCats.map((c) => c!.slug)} label="Play Morning Mix" /></div></div>
@@ -338,14 +414,14 @@ function Player() {
   return (
     <div className="player-stage">
       {it && CAT_IMAGES[catSlug] && <img className="ps-canvas" src={`/assets/${CAT_IMAGES[catSlug]}`} alt="" aria-hidden="true" />}
-      <div className="ps-voice"><img src="/assets/voice-grace.jpg" alt="" /> Voice · Grace</div>
+      <div className="ps-voice"><span className="ps-voice-icon"><Icon n="wave" s={15} /></span><span>{it?.slug.startsWith("voice-preview-") ? "Device speech preview" : "Browser speech"}</span></div>
       <Link className="btn btn-ghost on-dark btn-sm ps-exit" href="/app"><Icon n="exit" s={14} /> Exit</Link>
       <span className="ps-cat">{it ? it.category : "—"}</span>
       <h1>{it ? it.title : "Nothing playing"}</h1>
       {it && st.settings.accessibility.captions ? (
         <p className="ps-text tr-sync">{sents.map((sn, i) => <span key={i} className={"tr-line" + (i === activeLine && audio.status === "playing" ? " on" : "")}>{sn} </span>)}</p>
       ) : (
-        <p className="ps-text">{it ? "“" + it.text + "”" : "Start a session from Sessions or the Builder, or play any confession — the words appear here as Grace speaks them."}</p>
+        <p className="ps-text">{it ? "“" + it.text + "”" : "Start a session from Sessions or the Builder, or play any confession — the words appear here as your browser’s speech engine reads them."}</p>
       )}
       <div className="player-controls">
         <button className="pc-btn" onClick={audio.prev} aria-label="Previous"><Icon n="prev" s={18} /></button>
@@ -508,10 +584,10 @@ function Playback() {
     <>
       <Head title="Playback" />
       <div className="form-card" style={{ maxWidth: 560 }}>
-        <div className="setting-row"><div><b>Narration voice</b><span>Grace — more voices as they license</span></div><span className="tag private">Grace</span></div>
+        <div className="setting-row"><div><b>Web narration</b><span>Your browser or device supplies the speech voice; availability varies.</span></div><span className="tag private">Device</span></div>
         <div className="setting-row"><div><b>Speed</b><span>Current: {st.settings.rate}×</span></div><SpeedChips /></div>
         <div className="setting-row"><div><b>Volume</b><span>Browser speech volume</span></div><input type="range" min={0} max={1} step={0.1} defaultValue={st.settings.volume} style={{ width: 140 }} onChange={(e) => { mutate((s) => { s.settings.volume = Number(e.target.value); }); toast("Volume saved"); }} /></div>
-        <div className="setting-row"><div><b>Voice EQ</b><span>Tone shaping for Grace</span></div><div className="chip-row">{[["warm", "Warm"], ["bright", "Bright"], ["calm", "Calm"]].map(([v, l]) => <button className="chip" key={v} aria-pressed={st.settings.eq === v} onClick={() => { mutate((x) => { x.settings.eq = v; }); toast(l + " EQ"); }}>{l}</button>)}</div></div>
+        <div className="setting-row"><div><b>Voice EQ</b><span>Tone shaping for browser speech</span></div><div className="chip-row">{[["warm", "Warm"], ["bright", "Bright"], ["calm", "Calm"]].map(([v, l]) => <button className="chip" key={v} aria-pressed={st.settings.eq === v} onClick={() => { mutate((x) => { x.settings.eq = v; }); toast(l + " EQ"); }}>{l}</button>)}</div></div>
         <Switch title="Loudness normalisation" sub="Even volume across every confession and session" path="normalize" />
         <div className="setting-row"><div><b>Voice warmth preset</b><span>Premium · pace and tone per part of day</span></div><div className="chip-row">{[["dawn", "Calm dawn"], ["steady", "Steady midday"], ["night", "Soft night"]].map(([v, l]) => <button className="chip" key={v} aria-pressed={st.settings.preset === v} onClick={() => { if (st.user?.plan === "free") { toast("Presets are a Premium feature"); return; } mutate((x) => { x.settings.preset = v; x.settings.rate = v === "night" ? 0.9 : 1; }); toast(l + " preset on"); }}>{l}</button>)}</div></div>
         <div className="setting-row"><div><b>Offline quality</b><span>Premium · lossless packs for saved sessions</span></div><div className="chip-row">{[["std", "Standard"], ["lossless", "Lossless"]].map(([v, l]) => <button className="chip" key={v} aria-pressed={st.settings.dlQuality === v} onClick={() => { if (st.user?.plan === "free") { toast("Lossless downloads are Premium"); return; } mutate((x) => { x.settings.dlQuality = v; }); toast(l + " quality"); }}>{l}</button>)}</div></div>
@@ -532,7 +608,7 @@ function Sub({ manage }: { manage?: boolean }) {
       <Head title={manage ? "Manage subscription" : "Subscription"} sub={prem ? "Premium active — 7-day trial" : "Free plan"} />
       {prem && (
         <div className="form-card" style={{ maxWidth: 640, marginBottom: 24 }}>
-          {[["Current plan", st.user!.plan === "annual" ? "Premium Annual" : "Premium Monthly"], ["Renewal", "In 30 days (demo)"], ["Benefits", "Premium voices · offline downloads · long sessions"]].map(([b, s]) => <div className="setting-row" key={b}><div><b>{b}</b><span>{s}</span></div></div>)}
+          {[["Current plan", st.user!.plan === "annual" ? "Premium Annual" : "Premium Monthly"], ["Renewal", "In 30 days (demo)"], ["Benefits", "Additional licensed voices when available · offline downloads · long sessions"]].map(([b, s]) => <div className="setting-row" key={b}><div><b>{b}</b><span>{s}</span></div></div>)}
           <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
             <button className="btn btn-ghost btn-sm" onClick={() => { mutate((s) => { s.user!.plan = "free"; }); track("subscription_cancelled"); toast("Subscription cancelled — you keep Premium until period end"); }}>Cancel subscription</button>
             <button className="btn btn-ghost btn-sm" onClick={() => toast("Purchase restore checked — nothing to restore (demo).")}>Restore purchase</button>
@@ -544,7 +620,7 @@ function Sub({ manage }: { manage?: boolean }) {
           <div className={"plan-card" + (p.interval === "year" ? " gold" : "")} key={p.id}>
             <h3 className="h3">{p.name}</h3>
             <div><span className="price">{p.prices.USD}</span> <span className="per">/ {p.interval} · {p.prices.NGN}</span></div>
-            <ul>{["Premium voices", "Offline downloads (mobile)", "Longer sessions", "7-day trial"].map((f) => <li key={f}><Icon n="check" s={14} /> {f}</li>)}</ul>
+            <ul>{["Additional licensed voices when available", "Offline downloads (mobile)", "Longer sessions", "7-day trial"].map((f) => <li key={f}><Icon n="check" s={14} /> {f}</li>)}</ul>
             <button className={"btn " + (p.interval === "year" ? "btn-light" : "btn-primary")} onClick={() => { mutate((s) => { s.user!.plan = p.id; }); track("subscription_started", { plan: p.id }); toast("Premium trial started"); }}>{prem ? "Switch to " + p.name : "Start 7-day trial"}</button>
           </div>
         ))}

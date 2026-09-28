@@ -1,15 +1,7 @@
-import React from "react";
-import Header from "@/components/header";
-import Footer from "@/components/footer";
+import BibleRouteLayout from "@/components/bible-layout";
 
-/* The Bible section is part of the site, not a detached reader: it carries the
-   same header and footer as every other public route. */
+/* Signed-in readers get the product shell and its sidebar; public readers keep
+   the site's normal navigation and footer. */
 export default function BibleLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <>
-      <Header />
-      {children}
-      <Footer />
-    </>
-  );
+  return <BibleRouteLayout>{children}</BibleRouteLayout>;
 }
