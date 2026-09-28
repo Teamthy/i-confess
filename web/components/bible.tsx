@@ -1,156 +1,404 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+/* ============================================================================
+   iCONFESS web — Bible home, and the pieces every Bible route shares.
+
+   The structure (books, chapters, sections, verse bounds) is local and always
+   available: it comes from lib/canon.json, generated from the Go canon. The
+   text is not — it is fetched from the iCONFESS API, which is the only place
+   translation rights are evaluated. So this page can always draw the whole
+   Bible, and says plainly when the words behind it cannot be served.
+   ========================================================================= */
+
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { Icon } from "./ui";
-import { useApp } from "@/lib/store";
+import { track } from "@/lib/store";
+import {
+  BOOKS,
+  CANON,
+  TESTAMENTS,
+  BibleUnavailable,
+  bible,
+  bookByID,
+  chapterComplete,
+  citedChapters,
+  confessionsForChapter,
+  displayRef,
+  parseCanonicalVerseID,
+  parseReference,
+  readerHref,
+  readingStats,
+  study,
+  useBible,
+  type CanonBook,
+  type Translation,
+  type VerseOfDay,
+} from "@/lib/bible";
 
-/*
- * Bible reader (original design, reference screenshot 2026-09-25).
- *
- * Scripture text is never bundled with the website: translations, books,
- * chapters and verses all arrive from the Go API over the same-origin proxy
- * (/api/v1/bible/*), which is the only place translation rights are evaluated
- * (approved translations only, per-translation rights flags). When the catalog
- * is unreachable the page says so and shows nothing, rather than falling back
- * to hardcoded verse text.
- */
+export const CATALOG_UNAVAILABLE =
+  "The Scripture catalogue is served rights-gated from the iCONFESS API and is not reachable from this deployment. The structure below is the canon itself; no verse text is bundled with the website.";
 
-type Translation = {
-  id: string;
-  name: string;
-  abbreviation: string;
-  language_name: string;
-  public_domain: boolean;
-  coverage?: string;
-  license?: string;
-  copyright?: string;
-  verse_count?: number;
-  book_count?: number;
-  source_url?: string;
-  attribution_required?: boolean;
-  attribution_text?: string;
+/* ------------------------------------------------------------- catalogue */
+
+export type Catalog = {
+  translations: Translation[] | null;
+  current: Translation | null;
+  currentID: string;
+  setTranslation: (id: string) => void;
+  error: boolean;
+  loading: boolean;
 };
 
-type Book = {
-  id: string;
-  name: string;
-  testament: string;
-  canonical_order: number;
-  chapter_count: number;
-};
-
-type Verse = { id: string; number: number; text: string };
-
-type Chapter = { translation: Translation; book: Book; chapter: number; verses: Verse[] };
-
-const UNAVAILABLE =
-  "The Scripture catalog is served rights-gated from the iCONFESS API and is not reachable from this deployment. No verse text is bundled with the website.";
-
-async function getJSON<T>(url: string): Promise<T> {
-  const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok) throw new Error(`${url} -> ${res.status}`);
-  return (await res.json()) as T;
-}
-
-export function BiblePage() {
-  const { user } = useApp();
-
+/** Loads the approved translations once and remembers the reader's choice.
+ *  Preference order: the reader's saved translation, then the one the page
+ *  asked for, then an English public-domain edition, then whatever the server
+ *  approved first. The server decides what is in the list; this only chooses
+ *  within it. */
+export function useCatalog(preferred?: string): Catalog {
+  const { prefs } = useBible();
   const [translations, setTranslations] = useState<Translation[] | null>(null);
-  const [catalogError, setCatalogError] = useState(false);
-  const [translationID, setTranslationID] = useState("");
+  const [error, setError] = useState(false);
+  const [chosen, setChosen] = useState("");
 
-  const [books, setBooks] = useState<Book[] | null>(null);
-  const [bookID, setBookID] = useState("");
-
-  const [chapterCount, setChapterCount] = useState(0);
-  const [chapter, setChapter] = useState(1);
-
-  const [chapterData, setChapterData] = useState<Chapter | null>(null);
-  const [readerError, setReaderError] = useState(false);
-  const [loadingChapter, setLoadingChapter] = useState(false);
-
-  /* Approved translations, once. Prefer the abbreviation the reference shows
-     if the server approves it; rights still come from the server response. */
   useEffect(() => {
-    let live = true;
-    getJSON<{ translations: Translation[] }>("/api/v1/bible/translations")
-      .then((d) => {
-        if (!live) return;
-        const list = d.translations || [];
+    const controller = new AbortController();
+    bible
+      .translations(undefined, undefined, controller.signal)
+      .then((data) => {
+        const list = data.translations || [];
         setTranslations(list);
-        if (list.length === 0) {
-          setCatalogError(true);
-          return;
-        }
-        const preferred = list.find((t) => /kjv/i.test(t.abbreviation || t.id)) || list[0];
-        setTranslationID(preferred.id);
+        setError(list.length === 0);
       })
-      .catch(() => live && setCatalogError(true));
-    return () => {
-      live = false;
-    };
+      .catch((err) => {
+        if ((err as Error)?.name === "AbortError") return;
+        setTranslations([]);
+        setError(true);
+      });
+    return () => controller.abort();
   }, []);
 
-  /* Books for the selected translation. */
   useEffect(() => {
-    if (!translationID) return;
-    let live = true;
-    setBooks(null);
-    setBookID("");
-    getJSON<{ books: Book[] }>(`/api/v1/bible/books?translation=${encodeURIComponent(translationID)}`)
-      .then((d) => {
-        if (!live) return;
-        const sorted = [...(d.books || [])].sort((a, b) => a.canonical_order - b.canonical_order);
-        setBooks(sorted);
-        if (sorted.length > 0) setBookID(sorted[0].id);
-      })
-      .catch(() => live && setCatalogError(true));
-    return () => {
-      live = false;
-    };
-  }, [translationID]);
+    if (!translations || translations.length === 0) return;
+    const wanted = [preferred, prefs.translation].filter(Boolean) as string[];
+    const match =
+      translations.find((t) => wanted.some((w) => w.toLowerCase() === t.id.toLowerCase())) ||
+      translations.find((t) => wanted.some((w) => w.toLowerCase() === (t.abbreviation || "").toLowerCase())) ||
+      translations.find((t) => /kjv|web|asv/i.test(t.abbreviation || t.id)) ||
+      translations[0];
+    setChosen(match.id);
+  }, [translations, preferred, prefs.translation]);
 
-  /* Chapter count for the selected book. */
-  useEffect(() => {
-    if (!translationID || !bookID) return;
-    let live = true;
-    getJSON<{ book: Book; chapters: number[] }>(
-      `/api/v1/bible/books/${encodeURIComponent(bookID)}/chapters?translation=${encodeURIComponent(translationID)}`
-    )
-      .then((d) => {
-        if (!live) return;
-        setChapterCount(d.book?.chapter_count || (d.chapters || []).length);
-        setChapter(1);
-      })
-      .catch(() => live && setCatalogError(true));
-    return () => {
-      live = false;
-    };
-  }, [translationID, bookID]);
+  const setTranslation = useCallback((id: string) => {
+    setChosen(id);
+    study.setPrefs({ translation: id });
+  }, []);
 
-  /* The chapter itself. */
-  const loadChapter = useCallback(
-    (n: number) => {
-      if (!translationID || !bookID) return;
-      setLoadingChapter(true);
-      setReaderError(false);
-      getJSON<Chapter>(`/api/v1/bible/${encodeURIComponent(translationID)}/${encodeURIComponent(bookID)}/${n}`)
-        .then((d) => {
-          setChapterData(d);
-          setChapter(n);
-        })
-        .catch(() => setReaderError(true))
-        .finally(() => setLoadingChapter(false));
-    },
-    [translationID, bookID]
+  const current = useMemo(
+    () => (translations || []).find((t) => t.id === chosen) || null,
+    [translations, chosen]
   );
 
-  useEffect(() => {
-    if (translationID && bookID) loadChapter(1);
-  }, [translationID, bookID, loadChapter]);
+  return { translations, current, currentID: chosen, setTranslation, error, loading: translations === null };
+}
 
-  const translation = (translations || []).find((t) => t.id === translationID) || null;
-  const book = (books || []).find((b) => b.id === bookID) || null;
+export function TranslationSelect({
+  catalog,
+  id = "bible-translation",
+  label = "Translation",
+}: {
+  catalog: Catalog;
+  id?: string;
+  label?: string;
+}) {
+  return (
+    <>
+      <label className="bt-label" htmlFor={id}>
+        {label}
+      </label>
+      <select
+        id={id}
+        value={catalog.currentID}
+        disabled={!catalog.translations || catalog.translations.length === 0}
+        onChange={(e) => catalog.setTranslation(e.target.value)}
+      >
+        {(catalog.translations || []).length === 0 && <option value="">No approved translation</option>}
+        {(catalog.translations || []).map((t) => (
+          <option key={t.id} value={t.id}>
+            {t.abbreviation || t.id} · {t.language_name || t.language_code || "—"}
+          </option>
+        ))}
+      </select>
+    </>
+  );
+}
+
+export function RightsChips({ t }: { t: Translation }) {
+  const chips: string[] = [];
+  if (t.coverage) chips.push(t.coverage === "new_testament" ? "New Testament" : "Full Bible");
+  chips.push(t.public_domain ? "Public domain" : t.license || "Licensed");
+  if (t.audio_allowed) chips.push("Audio");
+  if (t.offline_allowed) chips.push("Offline");
+  return (
+    <div className="bt-chips">
+      {chips.map((c) => (
+        <span className="rights-chip" key={c}>
+          {c}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/** One honest sentence per failure, never a status code. */
+export function Unavailable({ error, children }: { error: unknown; children?: React.ReactNode }) {
+  const notFound = error instanceof BibleUnavailable && error.notFound;
+  return (
+    <div className="bible-note" role="status">
+      {notFound
+        ? "That passage is not available in this translation. Try another translation, or another reference."
+        : CATALOG_UNAVAILABLE}
+      {children}
+    </div>
+  );
+}
+
+/* --------------------------------------------------------- reference bar */
+
+export function ReferenceSearch({
+  translation,
+  placeholder = "Search Scripture or type a reference — John 3:16, Psalm 23, 1 Cor 13:4-7",
+  autoFocus,
+}: {
+  translation?: string;
+  placeholder?: string;
+  autoFocus?: boolean;
+}) {
+  const [value, setValue] = useState("");
+  const parsed = useMemo(() => parseReference(value), [value]);
+
+  return (
+    <form
+      className="bible-search-bar"
+      role="search"
+      onSubmit={(e) => {
+        e.preventDefault();
+        const query = value.trim();
+        if (!query) return;
+        study.rememberSearch(query);
+        if (parsed) {
+          window.location.href = readerHref(translation || "-", parsed.bookID, parsed.chapter, parsed.startVerse);
+          return;
+        }
+        window.location.href = `/bible/search?q=${encodeURIComponent(query)}${
+          translation ? `&translation=${encodeURIComponent(translation)}` : ""
+        }`;
+      }}
+    >
+      <span className="bsb-icon">
+        <Icon n="search" s={16} />
+      </span>
+      <input
+        aria-label="Search Scripture or enter a reference"
+        value={value}
+        autoFocus={autoFocus}
+        placeholder={placeholder}
+        onChange={(e) => setValue(e.target.value)}
+      />
+      {parsed && (
+        <span className="bsb-hint" aria-live="polite">
+          Open {displayRef(parsed.bookID, parsed.chapter, parsed.startVerse, parsed.endVerse)}
+        </span>
+      )}
+      <button className="btn btn-primary btn-sm" type="submit">
+        Search
+      </button>
+    </form>
+  );
+}
+
+/* ------------------------------------------------------ structure browser */
+
+/** The canon as navigation: two testaments, ten sections, 66 books, every
+ *  chapter. Rendered from local data, so it is complete before — and without —
+ *  any request. `available` marks the books the chosen translation carries. */
+export function StructureBrowser({
+  translation,
+  available,
+  onPick,
+  compact,
+}: {
+  translation: string;
+  available?: Set<string> | null;
+  onPick?: (book: CanonBook, chapter: number) => void;
+  compact?: boolean;
+}) {
+  const state = useBible();
+  const [testament, setTestament] = useState<"old" | "new">("old");
+  const [openBook, setOpenBook] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+
+  const filtered = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) return null;
+    return BOOKS.filter(
+      (b) =>
+        b.name.toLowerCase().includes(needle) ||
+        b.abbreviation.toLowerCase().includes(needle) ||
+        b.id.toLowerCase().includes(needle) ||
+        (b.aliases || []).some((a) => a.startsWith(needle))
+    );
+  }, [query]);
+
+  const testamentData = TESTAMENTS.find((t) => t.id === testament)!;
+  const isAvailable = (book: CanonBook) => !available || available.has(book.id);
+
+  const bookButton = (book: CanonBook) => {
+    const open = openBook === book.id;
+    const unavailable = !isAvailable(book);
+    return (
+      <div className={"bible-book" + (open ? " open" : "") + (unavailable ? " unavailable" : "")} key={book.id}>
+        <button
+          className="bb-head"
+          aria-expanded={open}
+          onClick={() => setOpenBook(open ? null : book.id)}
+          title={unavailable ? `${book.name} is not in this translation` : `${book.name} — ${book.chapter_count} chapters`}
+        >
+          <span className="bb-name">{book.name}</span>
+          <span className="bb-meta">{book.chapter_count}</span>
+        </button>
+        {open && (
+          <div className="bible-chapters" role="group" aria-label={`${book.name} chapters`}>
+            {Array.from({ length: book.chapter_count }, (_, i) => i + 1).map((n) =>
+              onPick ? (
+                <button
+                  key={n}
+                  className={chapterComplete(state, book.id, n) ? "read" : undefined}
+                  onClick={() => onPick(book, n)}
+                >
+                  {n}
+                </button>
+              ) : (
+                <Link
+                  key={n}
+                  href={readerHref(translation || "-", book.id, n)}
+                  className={chapterComplete(state, book.id, n) ? "read" : undefined}
+                >
+                  {n}
+                </Link>
+              )
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div className={"bible-structure" + (compact ? " compact" : "")}>
+      <div className="bs-controls">
+        <div className="bs-tabs" role="tablist" aria-label="Testament">
+          {TESTAMENTS.map((t) => (
+            <button
+              key={t.id}
+              role="tab"
+              aria-selected={testament === t.id && !filtered}
+              onClick={() => {
+                setTestament(t.id);
+                setQuery("");
+              }}
+            >
+              {t.name}
+              <span>{t.book_count}</span>
+            </button>
+          ))}
+        </div>
+        <input
+          className="bs-filter"
+          value={query}
+          placeholder="Find a book"
+          aria-label="Find a book"
+          onChange={(e) => setQuery(e.target.value)}
+        />
+      </div>
+
+      {filtered ? (
+        <div className="bs-section">
+          <h4>
+            {filtered.length} book{filtered.length === 1 ? "" : "s"}
+          </h4>
+          <div className="bs-books">{filtered.map(bookButton)}</div>
+        </div>
+      ) : (
+        testamentData.sections.map((section) => (
+          <div className="bs-section" key={section.id}>
+            <h4>
+              {section.name}
+              <span>
+                {section.book_count} books · {section.chapter_count} chapters
+              </span>
+            </h4>
+            <div className="bs-books">
+              {section.book_ids.map((bookID) => {
+                const book = bookByID(bookID);
+                return book ? bookButton(book) : null;
+              })}
+            </div>
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------- the home */
+
+export function BiblePage() {
+  const catalog = useCatalog();
+  const state = useBible();
+  const stats = readingStats(state);
+
+  const [available, setAvailable] = useState<Set<string> | null>(null);
+  const [votd, setVotd] = useState<VerseOfDay | null>(null);
+  const [votdError, setVotdError] = useState(false);
+  const [random, setRandom] = useState<{ reference: string; text: string; topic?: string } | null>(null);
+
+  /* Which books this translation carries — the structure endpoint answers it
+     in one request and the reader greys out the rest. */
+  useEffect(() => {
+    if (!catalog.currentID) return;
+    const controller = new AbortController();
+    bible
+      .structure(catalog.currentID, controller.signal)
+      .then((data) => setAvailable(new Set(data.translation?.available_book_ids || BOOKS.map((b) => b.id))))
+      .catch(() => setAvailable(null));
+    return () => controller.abort();
+  }, [catalog.currentID]);
+
+  useEffect(() => {
+    if (!catalog.currentID) return;
+    const controller = new AbortController();
+    setVotdError(false);
+    bible
+      .verseOfDay(catalog.currentID, controller.signal)
+      .then(setVotd)
+      .catch(() => setVotdError(true));
+    return () => controller.abort();
+  }, [catalog.currentID]);
+
+  useEffect(() => {
+    track("bible_opened", { translation: catalog.currentID || "none" });
+  }, [catalog.currentID]);
+
+  /* The API answers with the canonical verse ID (JHN.3.16); the reader
+     spells it the way a person reads it. */
+  const votdParsed = votd?.reference ? parseCanonicalVerseID(votd.reference) : null;
+  const votdReference = votdParsed
+    ? displayRef(votdParsed.bookID, votdParsed.chapter, votdParsed.verse)
+    : votd?.reference || "";
+
+  const resume = state.history[0];
+  const resumeBook = resume ? bookByID(resume.bookID) : undefined;
 
   return (
     <>
@@ -160,137 +408,227 @@ export function BiblePage() {
           <h1 className="h-display" style={{ marginTop: 22, maxWidth: "12ch" }}>
             The verses behind the words.
           </h1>
-          <p className="lede" style={{ marginTop: 22, maxWidth: "46ch" }}>
-            Every confession on iCONFESS stands on Scripture you can open, read and keep. Pick a
-            translation, read the passage, mark the verse that stays with you, and follow it back
-            to the confession it belongs to.
+          <p className="lede" style={{ marginTop: 22, maxWidth: "48ch" }}>
+            The whole canon — {CANON.book_count} books, {CANON.chapter_count.toLocaleString()} chapters — open to read,
+            mark and keep. Every confession on iCONFESS stands on Scripture you can follow back to its source.
           </p>
+          <div style={{ marginTop: 26 }}>
+            <ReferenceSearch translation={catalog.currentID} />
+          </div>
+          <div className="bible-quick">
+            <Link href="/bible/search">Search</Link>
+            <Link href="/bible/translations">Translations</Link>
+            <Link href="/bible/topics">Topics</Link>
+            <Link href="/bible/compare">Compare</Link>
+            <Link href="/bible/plans">Reading plans</Link>
+            <Link href="/bible/highlights">Highlights</Link>
+            <Link href="/bible/notes">Notes</Link>
+            <Link href="/bible/settings">Reader settings</Link>
+          </div>
         </div>
 
         <aside className="bible-translation-card" aria-label="Translation">
-          <label className="bt-label" htmlFor="bible-translation">
-            Translation
-          </label>
-          <select
-            id="bible-translation"
-            value={translationID}
-            disabled={!translations || translations.length === 0}
-            onChange={(e) => setTranslationID(e.target.value)}
-          >
-            {(translations || []).length === 0 && <option value="">No approved translation</option>}
-            {(translations || []).map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.abbreviation || t.id} · {t.language_name || "English"}
-              </option>
-            ))}
-          </select>
-
-          {catalogError ? (
+          <TranslationSelect catalog={catalog} />
+          {catalog.error ? (
             <p className="bt-meta" style={{ marginTop: 14 }}>
-              {UNAVAILABLE}
+              {CATALOG_UNAVAILABLE}
             </p>
-          ) : translation ? (
+          ) : catalog.current ? (
             <>
-              <div className="bt-name">{translation.name}</div>
-              <div className="bt-chips">
-                {translation.coverage && <span className="rights-chip">{translation.coverage}</span>}
-                <span className="rights-chip">
-                  {translation.public_domain ? "Public domain" : translation.license || "Licensed"}
-                </span>
-              </div>
+              <div className="bt-name">{catalog.current.name}</div>
+              <RightsChips t={catalog.current} />
               <div className="bt-meta">
-                {(translation.verse_count || 0).toLocaleString()} verses ·{" "}
-                {translation.book_count || (books || []).length} books
-                {translation.source_url && (
+                {(catalog.current.verse_count || 0).toLocaleString()} verses ·{" "}
+                {catalog.current.book_count || available?.size || CANON.book_count} books
+                {catalog.current.source_url && (
                   <>
                     {" · "}
-                    <a href={translation.source_url} target="_blank" rel="noopener noreferrer">
+                    <a href={catalog.current.source_url} target="_blank" rel="noopener noreferrer">
                       source
                     </a>
                   </>
                 )}
               </div>
+              <Link className="btn btn-primary btn-sm" style={{ marginTop: 16 }} href="/bible/translations">
+                All translations <Icon n="arrow" s={12} />
+              </Link>
             </>
           ) : (
             <p className="bt-meta" style={{ marginTop: 14 }}>
-              Loading translation…
+              Loading the catalogue…
             </p>
           )}
         </aside>
       </section>
 
-      <section className="bible-reader container-wide">
-        <aside className="bible-rail" aria-label="Book and chapter">
-          <label className="bt-label" htmlFor="bible-book">
-            Book
-          </label>
-          <select
-            id="bible-book"
-            value={bookID}
-            disabled={!books || books.length === 0}
-            onChange={(e) => setBookID(e.target.value)}
-          >
-            {(books || []).length === 0 && <option value="">—</option>}
-            {(books || []).map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.name}
-              </option>
-            ))}
-          </select>
-
-          <div className="bible-chapters" role="group" aria-label="Chapters">
-            {Array.from({ length: chapterCount }, (_, i) => i + 1).map((n) => (
-              <button
-                key={n}
-                aria-current={n === chapter ? "page" : undefined}
-                onClick={() => loadChapter(n)}
+      <section className="container-wide bible-home-grid">
+        <div className="bible-card continue">
+          <span className="bc-eyebrow">Continue reading</span>
+          {resume && resumeBook ? (
+            <>
+              <h3>
+                {resumeBook.name} {resume.chapter}
+              </h3>
+              <p className="small">
+                Last opened {new Date(resume.at).toLocaleDateString(undefined, { month: "long", day: "numeric" })} ·{" "}
+                {resume.translation || catalog.currentID}
+              </p>
+              <Link
+                className="btn btn-primary btn-sm"
+                href={readerHref(resume.translation || catalog.currentID, resume.bookID, resume.chapter)}
               >
-                {n}
-              </button>
-            ))}
-          </div>
-        </aside>
-
-        <div className="bible-main">
-          {!user && <div className="bible-signin">Sign in to keep highlights and bookmarks on your account.</div>}
-
-          {readerError ? (
-            <div className="bible-note">
-              {catalogError || !translation
-                ? UNAVAILABLE
-                : "This passage is not available from the Scripture service right now. The website never ships verse text of its own."}
-            </div>
-          ) : !chapterData ? (
-            <div className="bible-note">{loadingChapter ? "Loading…" : "Choose a book to begin reading."}</div>
+                Keep reading <Icon n="arrow" s={12} />
+              </Link>
+            </>
           ) : (
             <>
-              <div className="bible-chapter-head">
-                <h2>
-                  {chapterData.book?.name || book?.name} {chapterData.chapter}
-                </h2>
-                {chapter < chapterCount && (
-                  <button className="bible-next" onClick={() => loadChapter(chapter + 1)}>
-                    {chapterData.book?.name || book?.name} {chapter + 1} <Icon n="arrow" s={14} />
-                  </button>
-                )}
-              </div>
-              <ol className="bible-verses">
-                {chapterData.verses.map((v) => (
-                  <li key={v.id || v.number}>
-                    <sup>{v.number}</sup>
-                    {v.text}
-                  </li>
-                ))}
-              </ol>
-              {(chapterData.translation?.attribution_required || chapterData.translation?.copyright) && (
-                <p className="bt-meta" style={{ marginTop: 24 }}>
-                  {chapterData.translation.attribution_text || chapterData.translation.copyright}
-                </p>
-              )}
+              <h3>Genesis 1</h3>
+              <p className="small">Start at the beginning, or open any book below.</p>
+              <Link className="btn btn-primary btn-sm" href={readerHref(catalog.currentID, "Gen", 1)}>
+                Begin <Icon n="arrow" s={12} />
+              </Link>
             </>
           )}
         </div>
+
+        <div className="bible-card votd">
+          <span className="bc-eyebrow">Verse of the day</span>
+          {votd?.verse ? (
+            <>
+              <blockquote>
+                <sup>{votd.verse.number}</sup>
+                {votd.verse.text}
+              </blockquote>
+              <p className="small">
+                {votdReference} · {votd.translation?.abbreviation || catalog.current?.abbreviation}
+              </p>
+              {votdParsed && (
+                <Link
+                  className="textlink"
+                  href={readerHref(catalog.currentID, votdParsed.bookID, votdParsed.chapter, votdParsed.verse)}
+                >
+                  Read it in context <Icon n="arrow" s={12} />
+                </Link>
+              )}
+            </>
+          ) : (
+            <p className="small">
+              {votdError || catalog.error
+                ? "The reviewed verse of the day is served by the API and is not reachable from this deployment. Nothing is substituted for it."
+                : "Loading today's reviewed verse…"}
+            </p>
+          )}
+        </div>
+
+        <div className="bible-card stats">
+          <span className="bc-eyebrow">Your reading</span>
+          <div className="bc-stats">
+            <div>
+              <b>{stats.chapters}</b>
+              <span>chapters read</span>
+            </div>
+            <div>
+              <b>{stats.booksComplete}</b>
+              <span>books complete</span>
+            </div>
+            <div>
+              <b>{stats.highlights}</b>
+              <span>highlights</span>
+            </div>
+            <div>
+              <b>{stats.notes}</b>
+              <span>notes</span>
+            </div>
+          </div>
+          <div className="bc-progress" aria-hidden="true">
+            <span style={{ width: `${Math.min(100, stats.percent)}%` }} />
+          </div>
+          <p className="small">
+            {stats.percent}% of {CANON.chapter_count.toLocaleString()} chapters. Private to this browser until you sign
+            in.
+          </p>
+        </div>
       </section>
+
+      <section className="container-wide bible-random">
+        <div>
+          <span className="bc-eyebrow">Somewhere to start</span>
+          {random ? (
+            <>
+              <p>{random.text}</p>
+              <p className="small">
+                {random.reference}
+                {random.topic ? ` · ${random.topic}` : ""}
+              </p>
+            </>
+          ) : (
+            <p className="small">
+              A passage drawn from the ones the reviewed corpus stands on — never an arbitrary verse.
+            </p>
+          )}
+        </div>
+        <button
+          className="btn btn-ghost btn-sm"
+          disabled={!catalog.currentID}
+          onClick={() => {
+            track("bible_random_requested", { translation: catalog.currentID });
+            bible
+              .random(catalog.currentID)
+              .then((data) =>
+                setRandom({
+                  reference: data.reference,
+                  text: (data.passage?.verses || []).map((v) => v.text).join(" "),
+                  topic: data.topic?.name,
+                })
+              )
+              .catch(() => setRandom(null));
+          }}
+        >
+          Show me a passage
+        </button>
+      </section>
+
+      <section className="container-wide" style={{ paddingBottom: 24 }}>
+        <div className="bible-section-head">
+          <h2 className="h2">The whole Bible</h2>
+          <p className="small">
+            {CANON.book_count} books · {CANON.chapter_count.toLocaleString()} chapters ·{" "}
+            {CANON.verse_count.toLocaleString()} verses in the reference distribution. Grey books are not in the
+            selected translation.
+          </p>
+        </div>
+        <StructureBrowser translation={catalog.currentID} available={available} />
+      </section>
+
+      {citedChapters.length > 0 && (
+        <section className="container-wide" style={{ paddingBottom: 96 }}>
+          <div className="bible-section-head">
+            <h2 className="h2">Chapters iCONFESS stands on</h2>
+            <p className="small">
+              The passages the reviewed confession corpus cites most. Open one and every confession written from it is
+              listed beside the text.
+            </p>
+          </div>
+          <div className="bible-cited">
+            {citedChapters.slice(0, 12).map(({ bookID, chapter, count }) => {
+              const book = bookByID(bookID);
+              if (!book) return null;
+              const confessions = confessionsForChapter(bookID, chapter);
+              return (
+                <Link className="bcited" key={`${bookID}.${chapter}`} href={readerHref(catalog.currentID, bookID, chapter)}>
+                  <b>
+                    {book.name} {chapter}
+                  </b>
+                  <span>
+                    {count} confession{count === 1 ? "" : "s"}
+                  </span>
+                  <em>{confessions[0]?.confession.title}</em>
+                </Link>
+              );
+            })}
+          </div>
+        </section>
+      )}
     </>
   );
 }

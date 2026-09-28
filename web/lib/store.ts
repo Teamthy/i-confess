@@ -50,11 +50,26 @@ export function useApp(): AppState {
     () => state
   );
 }
+/**
+ * Product events.
+ *
+ * Two pipelines used to exist: a local ring buffer here, and the consented
+ * server pipeline in lib/analytics.ts that batches to POST /analytics/batch.
+ * They are one seam now — this records locally (so the site works with no API
+ * and no account), and forwards to the server pipeline when a real session
+ * exists and the reader has consented. Event names are the contract; payloads
+ * never carry private content.
+ */
 export function track(name: string, props?: Record<string, unknown>) {
   try {
     const evs = JSON.parse(localStorage.getItem("iconfess:events") || "[]");
     evs.push({ name, props: props || {}, at: Date.now() });
     localStorage.setItem("iconfess:events", JSON.stringify(evs.slice(-400)));
   } catch { }
-  console.debug("[analytics]", name, props || {});
+  try {
+    const token = localStorage.getItem("ic_token");
+    if (token) {
+      void import("./analytics").then((m) => m.track(token, name as never, props));
+    }
+  } catch { }
 }

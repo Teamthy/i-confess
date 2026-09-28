@@ -222,6 +222,7 @@ func (h *Handler) Routes() http.Handler {
 	// Bible platform (first reader/API slice). Public reads are served only by the
 	// normalized BibleProvider boundary; client apps never call a source provider.
 	bibleSearchLimit := perIP(ratelimit.BibleSearch, "bible-search")
+	h.route(mux, "GET /v1/bible/structure", "public", "bible", "Canonical Bible structure: testaments, sections, books, chapters and reference verse counts", nil, h.bibleStructure)
 	h.route(mux, "GET /v1/bible/languages", "public", "bible", "Available Bible languages", nil, h.bibleLanguages)
 	h.route(mux, "GET /v1/bible/translations", "public", "bible", "Approved Bible translations with provenance and rights", nil, h.bibleTranslations)
 	h.route(mux, "GET /v1/bible/translations/{id}", "public", "bible", "One translation and its licensing metadata", nil, h.bibleTranslation)
@@ -231,6 +232,9 @@ func (h *Handler) Routes() http.Handler {
 	h.route(mux, "GET /v1/bible/passage", "public", "bible", "Read a normalized Bible passage", nil, h.biblePassage)
 	h.route(mux, "GET /v1/bible/search", "public", "bible", "Search scripture or resolve a Bible reference", bibleSearchLimit, h.bibleSearch)
 	h.route(mux, "GET /v1/bible/cross-references", "public", "bible", "Cross references for a canonical passage", nil, h.bibleCrossReferences)
+	h.route(mux, "GET /v1/bible/topics", "public", "bible", "Bible topics drawn from the reviewed confession corpus", nil, h.bibleTopics)
+	h.route(mux, "GET /v1/bible/topics/{slug}", "public", "bible", "One Bible topic and the passages it stands on", nil, h.bibleTopic)
+	h.route(mux, "GET /v1/bible/random", "public", "bible", "A random passage from the reviewed corpus", nil, h.bibleRandom)
 	h.route(mux, "GET /v1/bible/compare", "public", "bible", "Compare a canonical passage across licensed translations", nil, h.bibleCompare)
 	h.route(mux, "GET /v1/bible/verse-of-day", "public", "bible", "Get the reviewed verse of the day", nil, h.bibleVerseOfDay)
 	h.route(mux, "GET /v1/bible/plans", "public", "bible", "List curated Bible reading plans", nil, h.biblePlans)

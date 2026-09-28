@@ -32,7 +32,10 @@ func TestTrialLifecycle(t *testing.T) {
 	trials := NewTrialStore(db)
 	userID := trialUser(t, users, "trial-lifecycle@example.com")
 
-	at := time.Date(2026, 9, 21, 9, 0, 0, 0, time.UTC)
+	// Anchored to now rather than to a calendar date: a fixed start date
+	// silently becomes an already-expired trial once the wall clock passes
+	// it, and the entitlement projection reads the current time.
+	at := time.Now().UTC().Add(-time.Hour)
 	eligible, err := trials.Current(ctx, userID)
 	if err != nil {
 		t.Fatalf("current: %v", err)
@@ -94,7 +97,7 @@ func TestTrialConversionDoesNotGrantPaidPremium(t *testing.T) {
 	users := NewUserStore(db)
 	trials := NewTrialStore(db)
 	userID := trialUser(t, users, "trial-convert@example.com")
-	at := time.Date(2026, 9, 21, 9, 0, 0, 0, time.UTC)
+	at := time.Now().UTC().Add(-time.Hour)
 	if _, err := trials.Start(ctx, userID, at); err != nil {
 		t.Fatalf("start: %v", err)
 	}

@@ -209,6 +209,39 @@ jobs:
           severity: CRITICAL,HIGH
           exit-code: '1'
 
+  web:
+    name: Typecheck & build (web)
+    runs-on: ubuntu-latest
+    # The web app was never built in CI while two Next.js projects existed and
+    # neither was authoritative. There is one now, it serves the public site,
+    # the authenticated app and the admin console, and a broken build there is
+    # a broken product - so it is compiled on every run like everything else.
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        id: dependencies
+        run: ../scripts/ci-check.sh npm ci
+
+      - name: Typecheck
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        run: ../scripts/ci-check.sh npm run typecheck
+
+      - name: Build
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        run: ../scripts/ci-check.sh npm run build
+
   dart-client:
     name: Dart test (clients/dart)
     runs-on: ubuntu-latest

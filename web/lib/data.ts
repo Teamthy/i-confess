@@ -3,7 +3,7 @@
    server/internal/seed/confessions_canonical.go (78 confessions)
    server/internal/seed/seed.go (voice "Grace" + licence)
    server/internal/billing/pricing.go (plan catalog)
-   apps/web/content/articles.ts (journal essays)               */
+   the retired apps/web content/articles.ts (journal essays)  */
 import catsJson from "./cats.json";
 import confsJson from "./confs.json";
 
@@ -53,7 +53,7 @@ export const catBySlug = (s: string) => CATEGORIES.find((c) => c.slug === s);
 export const confBySlug = (s: string) => CONFESSIONS.find((c) => c.slug === s);
 export const artBySlug = (s: string) => ARTICLES.find((a) => a.slug === s);
 
-/* deterministic navy motif per slug — port of apps/web/lib/categoryColor.ts */
+/* deterministic navy motif per slug — ported from the retired app */
 const TONES = ["#00072D", "#051650", "#081D61", "#0A2472", "#123499", "#141918", "#0A0E0D", "#051650"];
 export function railColor(slug: string) { let h = 0; for (const ch of slug) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return TONES[h % TONES.length]; }
 const PAIRS: Record<string, [string, string]> = { "#00072D": ["#123499", "#00072D"], "#051650": ["#425EAF", "#051650"], "#081D61": ["#123499", "#081D61"], "#0A2472": ["#7288C4", "#0A2472"], "#123499": ["#A3B3DA", "#123499"], "#141918": ["#425EAF", "#141918"], "#0A0E0D": ["#123499", "#0A0E0D"] };

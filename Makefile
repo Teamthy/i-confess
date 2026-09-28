@@ -22,7 +22,8 @@ SERVER  := server
 LINT    := golangci-lint
 
 .PHONY: help build test race vet lint lint-fix fmt fmt-check tidy verify clean \
-	design design-check design-contrast routes mobile-check dart-symbols
+	design design-check design-contrast routes mobile-check dart-symbols \
+	bible-structure bible-corpus
 
 PY ?= python3
 DESIGN := design
@@ -73,6 +74,12 @@ design-check: ## Fail if generated design code is stale, section 12 or the IA is
 
 design-contrast: ## Report WCAG contrast for every text pairing
 	$(PY) $(DESIGN)/check_contrast.py
+
+bible-structure: ## Regenerate web/lib/canon.json from the Go canon
+	cd $(SERVER) && $(GO) run ./cmd/bible-structure ../web/lib/canon.json
+
+bible-corpus: ## Fetch the public-domain Bible corpus the dev fixture serves (writes /tmp, never committed)
+	$(PY) scripts/dev-bible-corpus.py
 
 routes: ## Re-export the live route table to design/routes.json
 	cd $(SERVER) && EXPORT_ROUTES=1 EXPORT_ROUTES_PATH=$(CURDIR)/$(DESIGN)/routes.json \
