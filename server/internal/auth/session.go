@@ -110,6 +110,71 @@ func RequireRoleWithSessions(secret string, v SessionValidator, allowed ...strin
 	}
 }
 
+// RequirePermission checks that the authenticated role grants a specific permission.
+// Super admin bypasses all permission checks.
+func RequirePermission(secret string, v SessionValidator, perm Permission) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			c, err := fromRequest(secret, r)
+			if err != nil {
+				forbidden(w, "admin access required")
+				return
+			}
+			role := c.Role
+			if v != nil {
+				state := v.ValidateSession(r.Context(), c.Sub, c.SessionID)
+				if !state.Valid {
+					unauthorized(w, state.Reason, reasonMessage(state.Reason))
+					return
+				}
+				role = state.Role
+			}
+			if role == "" {
+				forbidden(w, "admin access required")
+				return
+			}
+			if !HasPermission(role, perm) {
+				forbidden(w, "your role does not permit this action: "+string(perm))
+				return
+			}
+			c.Role = role
+			next.ServeHTTP(w, withClaims(r, c))
+		})
+	}
+}
+
+// RequireAnyPermission checks that role has any of the given permissions.
+func RequireAnyPermission(secret string, v SessionValidator, perms ...Permission) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			c, err := fromRequest(secret, r)
+			if err != nil {
+				forbidden(w, "admin access required")
+				return
+			}
+			role := c.Role
+			if v != nil {
+				state := v.ValidateSession(r.Context(), c.Sub, c.SessionID)
+				if !state.Valid {
+					unauthorized(w, state.Reason, reasonMessage(state.Reason))
+					return
+				}
+				role = state.Role
+			}
+			if role == "" {
+				forbidden(w, "admin access required")
+				return
+			}
+			if !HasAnyPermission(role, perms...) {
+				forbidden(w, "your role does not permit this action")
+				return
+			}
+			c.Role = role
+			next.ServeHTTP(w, withClaims(r, c))
+		})
+	}
+}
+
 func unauthorized(w http.ResponseWriter, code, msg string) {
 	if code == "" {
 		code = ReasonTokenInvalid

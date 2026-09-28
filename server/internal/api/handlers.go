@@ -130,6 +130,8 @@ type Handler struct {
 	authMW   map[string]func(http.Handler) http.Handler
 	authMWmu sync.Mutex
 	isProd   bool
+	// rbac owns custom roles and user-role assignments for the super admin console.
+	rbac *store.RBACStore
 }
 
 // SetLimiter installs a rate limiter. Production passes a Redis-backed
@@ -185,7 +187,7 @@ func NewHandler(cfg Config, db *db.DB) *Handler {
 		profiles:     store.NewProfileStore(db),
 		verifiers:    map[string]oauth.Verifier{},
 		library:      store.NewLibraryStore(db),
-		deletion:     deletion.NewService(db),
+		deletion:   deletion.NewService(db),
 		downloads:    store.NewDownloadStore(db),
 		idem:         store.NewIdempotencyStore(db),
 		catCache:     cache.New[[]models.Category](5*time.Minute, 10*time.Minute),
@@ -196,6 +198,7 @@ func NewHandler(cfg Config, db *db.DB) *Handler {
 		bibleMetrics: newBibleOperationMetrics(),
 		routes:       &routeRecorder{},
 		authMW:       make(map[string]func(http.Handler) http.Handler),
+		rbac:         store.NewRBACStore(db),
 	}
 }
 
@@ -943,9 +946,13 @@ func (h *Handler) adminSetUserStatus(w http.ResponseWriter, r *http.Request) {
 
 // Helper functions
 func isValidAdminRole(role string) bool {
-	switch role {
-	case auth.RoleSuperAdmin, auth.RoleContentAdmin, auth.RoleAudioProducer,
-		auth.RoleTheologicalRev, auth.RoleSupportAdmin, auth.RoleAnalyticsAdmin:
+	// Use RBAC system roles plus legacy admin
+	if _, ok := auth.SystemRoles[role]; ok {
+		return true
+	}
+	// Also allow custom roles that exist in DB will be checked elsewhere, but for this helper we allow any non-empty
+	// that matches role name pattern - the RBAC store will validate existence
+	if role == "admin" {
 		return true
 	}
 	return false

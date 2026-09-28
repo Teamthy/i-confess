@@ -95,6 +95,26 @@ export function useAdminResource<T>(path: string, enabled = true) {
 
 export function AdminGate({ children }: { children: React.ReactNode }) {
   const { user, token, loading } = useAuth();
+  const me = useAdminResource<{ user?: any; roles?: any[]; permissions?: string[]; role?: string }>(
+    "/admin/users/" + (user ? "" : "") /* placeholder to avoid hook conditional */,
+    !!token && !!user
+  );
+  // Actually load current user detail via dedicated endpoint if available, fallback to token user
+  const [current, setCurrent] = useState<{ role?: string; permissions?: string[] } | null>(null);
+
+  useEffect(() => {
+    if (!token || !user) return;
+    // Try to get current user's roles via /admin/users/me or via bootstrap - for now use /me and /admin/rbac
+    // We will fetch roles for current user by searching users
+    adminApi<{ users: any[] }>(`/admin/users?search=${encodeURIComponent(user.email || "")}&limit=1`, token).then((res) => {
+      if (res.ok && res.data.users && res.data.users.length > 0) {
+        const u = res.data.users[0];
+        adminApi<any>(`/admin/users/${encodeURIComponent(u.id)}/roles`, token).then((r2) => {
+          if (r2.ok) setCurrent({ role: (r2.data.roles || [])[0]?.name || u.admin_role, permissions: r2.data.permissions });
+        });
+      }
+    });
+  }, [token, user]);
 
   if (loading) {
     return (
@@ -119,9 +139,15 @@ export function AdminGate({ children }: { children: React.ReactNode }) {
   }
   return (
     <>
-      <p className="adm-who">
-        Signed in as <b>{user?.email}</b>. Every action below is audited and re-authorised by the API.
-      </p>
+      <div className="adm-who" style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+        <span>
+          Signed in as <b>{user?.email}</b>
+        </span>
+        {current?.role && <span className="adm-pill blue">{current.role}</span>}
+        {current?.role === "super_admin" && <span className="adm-pill green">SUPER ADMIN · full access</span>}
+        {current?.permissions && <span className="small">{current.permissions.length} permissions</span>}
+        <span className="small">Every action is audited and re-authorised server-side.</span>
+      </div>
       {children}
     </>
   );

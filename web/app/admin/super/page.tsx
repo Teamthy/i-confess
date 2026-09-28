@@ -1,7 +1,7 @@
-import { AdminGate, AdminOverview } from "@/components/admin";
+import { AdminGate } from "@/components/admin";
 import { SuperAdminOverview } from "@/components/super-admin";
 
-export const metadata = { title: "Overview" };
+export const metadata = { title: "Super Admin" };
 
 export default function Page() {
   return (

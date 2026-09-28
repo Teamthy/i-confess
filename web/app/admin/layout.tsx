@@ -3,51 +3,104 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { Mark } from "@/components/ui";
 
-/* The admin console shares this app, its design system and its session with
-   the public site — it is a section, not a second product. It is never
-   indexed, and the API authorises every request it makes. */
-
 export const metadata: Metadata = {
   title: { default: "Admin console", template: "%s — iCONFESS admin" },
   robots: { index: false, follow: false },
 };
 
-const NAV: [string, string][] = [
-  ["/admin", "Overview"],
-  ["/admin/content", "Content"],
-  ["/admin/bible", "Bible"],
-  ["/admin/audio", "Audio"],
-  ["/admin/pricing", "Pricing"],
-  ["/admin/queue", "Queue"],
-  ["/admin/moderation", "Moderation"],
-  ["/admin/users", "People"],
-  ["/admin/audit", "Audit"],
+const NAV_GROUPS: { label: string; items: [string, string, string][] }[] = [
+  {
+    label: "Platform",
+    items: [
+      ["/admin", "Overview", "grid"],
+      ["/admin/super", "Super Admin", "shield"],
+      ["/admin/system", "System Health", "chart"],
+      ["/admin/security", "Security", "shield"],
+      ["/admin/audit", "Audit Log", "bell"],
+    ],
+  },
+  {
+    label: "Content",
+    items: [
+      ["/admin/content", "Content", "book"],
+      ["/admin/bible", "Bible", "book"],
+      ["/admin/audio", "Audio & Voices", "mic"],
+      ["/admin/moderation", "Moderation", "eye"],
+    ],
+  },
+  {
+    label: "People",
+    items: [
+      ["/admin/users", "Users & Access", "user"],
+      ["/admin/rbac", "Roles & RBAC", "lock"],
+      ["/admin/support", "Support & Impersonate", "user"],
+      ["/admin/erase", "Immediate Erase", "shield"],
+    ],
+  },
+  {
+    label: "Business",
+    items: [
+      ["/admin/pricing", "Billing & Plans", "spark"],
+      ["/admin/billing", "Billing", "spark"],
+      ["/admin/queue", "Job Queue", "clock"],
+    ],
+  },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="adm">
-      <header className="adm-bar">
-        <Link className="adm-brand" href="/">
-          <Mark s={24} />
-          <span>
-            iCONFESS <b>admin</b>
-          </span>
-        </Link>
-        <nav className="adm-nav" aria-label="Admin sections">
-          {NAV.map(([href, label]) => (
-            <Link key={href} href={href}>
-              {label}
-            </Link>
+    <div className="adm-layout">
+      <aside className="adm-sidebar">
+        <div className="adm-sidebar-head">
+          <Link className="adm-brand" href="/">
+            <Mark s={28} />
+            <span>
+              iCONFESS <b>admin</b>
+            </span>
+          </Link>
+          <span className="adm-badge">SUPER ADMIN CONSOLE</span>
+        </div>
+
+        <nav className="adm-sidebar-nav" aria-label="Admin sections">
+          {NAV_GROUPS.map((group) => (
+            <div key={group.label} className="adm-nav-group">
+              <span className="adm-nav-label">{group.label}</span>
+              {group.items.map(([href, label]) => (
+                <Link key={href} href={href} className="adm-nav-item">
+                  <span className="adm-nav-dot" />
+                  {label}
+                </Link>
+              ))}
+            </div>
           ))}
         </nav>
-        <Link className="adm-exit" href="/app">
-          Back to the app
-        </Link>
-      </header>
-      <main className="adm-main" id="main">
-        {children}
-      </main>
+
+        <div className="adm-sidebar-foot">
+          <Link className="adm-exit" href="/app">
+            Back to the app
+          </Link>
+          <p className="adm-footnote">
+            Every action is audited. RBAC is enforced server-side. Super admin has full access.
+          </p>
+        </div>
+      </aside>
+
+      <div className="adm-content">
+        <header className="adm-topbar">
+          <div className="adm-topbar-left">
+            <span className="adm-topbar-title">Admin Console</span>
+            <span className="adm-topbar-sub">RBAC · Audit · System · Content</span>
+          </div>
+          <div className="adm-topbar-right">
+            <Link href="/admin/super" className="adm-topbar-badge">
+              Super Admin Mode
+            </Link>
+          </div>
+        </header>
+        <main className="adm-main" id="main">
+          {children}
+        </main>
+      </div>
     </div>
   );
 }

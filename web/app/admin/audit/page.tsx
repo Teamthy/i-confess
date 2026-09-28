@@ -1,15 +1,12 @@
-import { AdminAudit, AdminGate } from "@/components/admin";
+import { AdminGate } from "@/components/admin";
+import { AuditConsole } from "@/components/super-admin";
 
-export const metadata = { title: "Audit" };
+export const metadata = { title: "Audit Log" };
 
 export default function Page() {
   return (
-    <>
-      <h1 className="adm-title">Audit</h1>
-      <p className="adm-lede">Security counters and the most recent privileged actions, newest first.</p>
-      <AdminGate>
-        <AdminAudit />
-      </AdminGate>
-    </>
+    <AdminGate>
+      <AuditConsole />
+    </AdminGate>
   );
 }

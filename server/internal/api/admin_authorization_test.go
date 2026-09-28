@@ -233,10 +233,12 @@ func TestRoleScopingIsEnforced(t *testing.T) {
 	srv := httptest.NewServer(h.Routes())
 	defer srv.Close()
 
-	// A route the generic admin wrapper serves: super admins only.
-	const superOnly = "/admin/categories"
-	// A route wrapped for voice managers (router.go:217).
+	// A route the generic admin wrapper serves: super admins only — RBAC management is super_admin only.
+	const superOnly = "/admin/rbac/roles"
+	// A route wrapped for voice managers.
 	const voiceOnly = "/admin/voices/00000000-0000-0000-0000-000000000000/rights"
+	// Content route now admits content_admin via contentMgr wrapper.
+	const contentRoute = "/admin/categories"
 
 	cases := []struct {
 		name    string
@@ -246,8 +248,10 @@ func TestRoleScopingIsEnforced(t *testing.T) {
 	}{
 		{"content admin denied a super-admin route", auth.RoleContentAdmin, superOnly, true},
 		{"content admin denied a voice-manager route", auth.RoleContentAdmin, voiceOnly, true},
+		{"content admin admitted to content route", auth.RoleContentAdmin, contentRoute, false},
 		{"voice manager admitted to a voice-manager route", auth.RoleVoiceManager, voiceOnly, false},
 		{"super admin admitted everywhere", auth.RoleSuperAdmin, superOnly, false},
+		{"super admin admitted to content route", auth.RoleSuperAdmin, contentRoute, false},
 	}
 
 	for _, tc := range cases {

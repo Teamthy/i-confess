@@ -1,12 +1,12 @@
 import { AdminGate } from "@/components/admin";
-import { BillingConsole } from "@/components/super-admin";
+import { SecurityConsole } from "@/components/super-admin";
 
-export const metadata = { title: "Pricing" };
+export const metadata = { title: "Security" };
 
 export default function Page() {
   return (
     <AdminGate>
-      <BillingConsole />
+      <SecurityConsole />
     </AdminGate>
   );
 }
