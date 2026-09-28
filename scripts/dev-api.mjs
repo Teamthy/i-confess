@@ -28,6 +28,7 @@ import http from "node:http";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { createBibleFixture } from "./dev-bible.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const TMP = "/tmp";
@@ -56,6 +57,11 @@ function loadCorpus() {
 }
 
 const { cats: RAW_CATS, confs: RAW_CONFS } = loadCorpus();
+
+// The Bible fixture reads the generated canon (web/lib/canon.json) and the
+// public-domain corpus scripts/dev-bible-corpus.py writes to /tmp. Cross
+// references are derived from the same confession corpus loaded above.
+const handleBible = createBibleFixture({ root: ROOT, confessions: RAW_CONFS });
 
 // Mirror the API projections exactly: categories carry the fields
 // cachedListCategories serves; confessions the fields GET /confessions/{id}
@@ -265,6 +271,10 @@ const server = http.createServer(async (req, res) => {
   const method = req.method;
   const body = method === "GET" || method === "DELETE" ? {} : await readBody(req);
   if (method !== "GET" && body === null) return json(res, 400, { error: "invalid request body" });
+
+  // Bible: structure from the generated canon, text from the public-domain
+  // corpus in /tmp. Same shapes the Go handlers serve; see dev-bible.mjs.
+  if (handleBible({ method, path: p, url, body, json, res, authed: authed(req) })) return;
 
   // media (signed URL target) — silence for everyone, token ignored
   if (p.startsWith("/media/")) {

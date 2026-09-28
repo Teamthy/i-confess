@@ -2,7 +2,7 @@ import React from "react";
 import Link from "next/link";
 import { Logo, Icon } from "./ui";
 
-const LINKS: [string, string][] = [["/explore", "Explore"], ["/categories", "Categories"], ["/voices", "Voices"], ["/journal", "Journal"], ["/faq", "FAQ"], ["/about", "About"]];
+const LINKS: [string, string][] = [["/explore", "Explore"], ["/bible", "Bible"], ["/categories", "Categories"], ["/voices", "Voices"], ["/journal", "Journal"], ["/faq", "FAQ"], ["/about", "About"]];
 export default function Footer() {
   return (
     <footer className="site-footer">

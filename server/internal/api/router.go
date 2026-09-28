@@ -222,6 +222,7 @@ func (h *Handler) Routes() http.Handler {
 	// Bible platform (first reader/API slice). Public reads are served only by the
 	// normalized BibleProvider boundary; client apps never call a source provider.
 	bibleSearchLimit := perIP(ratelimit.BibleSearch, "bible-search")
+	h.route(mux, "GET /v1/bible/structure", "public", "bible", "Canonical Bible structure: testaments, sections, books, chapters and reference verse counts", nil, h.bibleStructure)
 	h.route(mux, "GET /v1/bible/languages", "public", "bible", "Available Bible languages", nil, h.bibleLanguages)
 	h.route(mux, "GET /v1/bible/translations", "public", "bible", "Approved Bible translations with provenance and rights", nil, h.bibleTranslations)
 	h.route(mux, "GET /v1/bible/translations/{id}", "public", "bible", "One translation and its licensing metadata", nil, h.bibleTranslation)

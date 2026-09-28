@@ -7,6 +7,10 @@ const apiOrigin = process.env.IC_API_URL || "http://127.0.0.1:8080";
 
 const nextConfig = {
   reactStrictMode: true,
+  // Development only: the sandbox preview serves the dev server through a
+  // proxied host, and Next refuses cross-origin dev asset requests it has not
+  // been told about. Production builds are unaffected.
+  allowedDevOrigins: ["*.e2b.app", "*.app.github.dev", "localhost", "127.0.0.1"],
   async rewrites() {
     return [
       { source: "/500", destination: "/sys500" },

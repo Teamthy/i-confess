@@ -5872,6 +5872,40 @@
         ]
       }
     },
+    "/bible/structure": {
+      "get": {
+        "operationId": "getBibleStructure",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Rate limited; honour Retry-After"
+          }
+        },
+        "summary": "Canonical Bible structure: testaments, sections, books, chapters and reference verse counts",
+        "tags": [
+          "bible"
+        ]
+      }
+    },
     "/bible/translations": {
       "get": {
         "operationId": "getBibleTranslations",
@@ -20335,6 +20369,40 @@
           }
         },
         "summary": "Search scripture or resolve a Bible reference",
+        "tags": [
+          "bible"
+        ]
+      }
+    },
+    "/v1/bible/structure": {
+      "get": {
+        "operationId": "getV1BibleStructure",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Rate limited; honour Retry-After"
+          }
+        },
+        "summary": "Canonical Bible structure: testaments, sections, books, chapters and reference verse counts",
         "tags": [
           "bible"
         ]
