@@ -170,18 +170,41 @@ export class BibleUnavailable extends Error {
   }
 }
 
+const TRANSIENT_BIBLE_STATUSES = new Set([408, 425, 429]);
+const RETRY_DELAYS_MS = [250, 750];
+
 async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
-  let response: Response;
-  try {
-    response = await fetch(`/api/v1/bible${path}`, { cache: "no-store", signal, headers: { accept: "application/json" } });
-  } catch {
-    throw new BibleUnavailable(0);
-  }
-  if (!response.ok) {
+  for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt += 1) {
+    if (signal?.aborted) throw new DOMException("The request was aborted", "AbortError");
+
+    let response: Response;
+    try {
+      response = await fetch(`/api/v1/bible${path}`, {
+        cache: "no-store",
+        signal,
+        headers: { accept: "application/json" },
+      });
+    } catch (error) {
+      if (signal?.aborted || (error instanceof Error && error.name === "AbortError")) throw error;
+      if (attempt === RETRY_DELAYS_MS.length) throw new BibleUnavailable(0);
+      await new Promise((resolve) => setTimeout(resolve, RETRY_DELAYS_MS[attempt]));
+      continue;
+    }
+
+    if (response.ok) return (await response.json()) as T;
+
     const body = await response.json().catch(() => ({}));
+    const transient = TRANSIENT_BIBLE_STATUSES.has(response.status) || response.status >= 500;
+    if (transient && attempt < RETRY_DELAYS_MS.length) {
+      await new Promise((resolve) => setTimeout(resolve, RETRY_DELAYS_MS[attempt]));
+      continue;
+    }
     throw new BibleUnavailable(response.status, typeof body?.code === "string" ? body.code : undefined);
   }
-  return (await response.json()) as T;
+
+  // The loop always returns or throws. Keep a typed fail-closed fallback in
+  // case a future edit changes the retry condition.
+  throw new BibleUnavailable(0);
 }
 
 const q = (params: Record<string, string | number | undefined>) => {

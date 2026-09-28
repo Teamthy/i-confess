@@ -10,7 +10,7 @@
    Bible, and says plainly when the words behind it cannot be served.
    ========================================================================= */
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Icon } from "./ui";
 import { track } from "@/lib/store";
@@ -37,46 +37,108 @@ import {
 } from "@/lib/bible";
 
 export const CATALOG_UNAVAILABLE =
-  "The Scripture catalogue is served rights-gated from the iCONFESS API and is not reachable from this deployment. The structure below is the canon itself; no verse text is bundled with the website.";
+  "The approved Scripture catalogue is temporarily unreachable. Verse text is served by the iCONFESS API and is not bundled with this website.";
+const VERSE_UNAVAILABLE =
+  "Verse text is temporarily unavailable from the approved Scripture service. Nothing is substituted for it.";
 
 /* ------------------------------------------------------------- catalogue */
 
+export type CatalogStatus = "loading" | "ready" | "empty" | "unreachable";
 export type Catalog = {
   translations: Translation[] | null;
   current: Translation | null;
   currentID: string;
   setTranslation: (id: string) => void;
+  retry: () => void;
+  status: CatalogStatus;
+  /** Kept as a convenience for older Bible subpages. */
   error: boolean;
+  empty: boolean;
   loading: boolean;
 };
 
-/** Loads the approved translations once and remembers the reader's choice.
- *  Preference order: the reader's saved translation, then the one the page
- *  asked for, then an English public-domain edition, then whatever the server
- *  approved first. The server decides what is in the list; this only chooses
- *  within it. */
+/** Load only the translations the API has approved. A successful empty list is
+ *  different from an unreachable API; the former is an editorial/rights state,
+ *  while the latter is a network/service failure. Transient failures get a
+ *  short backoff and unresolved states are checked again when the reader
+ *  returns to the tab. */
+export function useFocusRetry(enabled: boolean, retry: () => void, cooldownMs = 1500) {
+  const retryRef = useRef(retry);
+
+  useEffect(() => {
+    retryRef.current = retry;
+  }, [retry]);
+
+  useEffect(() => {
+    if (!enabled) return;
+    let lastRetry = 0;
+    const recover = () => {
+      if (document.visibilityState === "hidden" || Date.now() - lastRetry < cooldownMs) return;
+      lastRetry = Date.now();
+      retryRef.current();
+    };
+    window.addEventListener("focus", recover);
+    document.addEventListener("visibilitychange", recover);
+    return () => {
+      window.removeEventListener("focus", recover);
+      document.removeEventListener("visibilitychange", recover);
+    };
+  }, [enabled, cooldownMs]);
+}
+
 export function useCatalog(preferred?: string): Catalog {
   const { prefs } = useBible();
   const [translations, setTranslations] = useState<Translation[] | null>(null);
-  const [error, setError] = useState(false);
+  const [status, setStatus] = useState<CatalogStatus>("loading");
   const [chosen, setChosen] = useState("");
+  const [refreshKey, setRefreshKey] = useState(0);
+  const retryCount = useRef(0);
+  const retryTimer = useRef<number | null>(null);
+
+  const retry = useCallback(() => {
+    retryCount.current = 0;
+    if (retryTimer.current !== null) window.clearTimeout(retryTimer.current);
+    retryTimer.current = null;
+    setRefreshKey((key) => key + 1);
+  }, []);
 
   useEffect(() => {
+    let alive = true;
     const controller = new AbortController();
+    if (retryTimer.current !== null) window.clearTimeout(retryTimer.current);
+    retryTimer.current = null;
+    setStatus((current) => current === "ready" ? current : "loading");
+
     bible
       .translations(undefined, undefined, controller.signal)
       .then((data) => {
-        const list = data.translations || [];
+        if (!alive) return;
+        const list = Array.isArray(data.translations) ? data.translations : [];
         setTranslations(list);
-        setError(list.length === 0);
+        setStatus(list.length ? "ready" : "empty");
+        retryCount.current = 0;
       })
       .catch((err) => {
-        if ((err as Error)?.name === "AbortError") return;
+        if (!alive || (err as Error)?.name === "AbortError") return;
         setTranslations([]);
-        setError(true);
+        setStatus("unreachable");
+        const retryIndex = retryCount.current;
+        const backoff = [1800, 5000, 15000][retryIndex];
+        if (backoff !== undefined) {
+          retryCount.current += 1;
+          retryTimer.current = window.setTimeout(() => setRefreshKey((key) => key + 1), backoff);
+        }
       });
-    return () => controller.abort();
-  }, []);
+
+    return () => {
+      alive = false;
+      controller.abort();
+      if (retryTimer.current !== null) window.clearTimeout(retryTimer.current);
+      retryTimer.current = null;
+    };
+  }, [refreshKey]);
+
+  useFocusRetry(status === "empty" || status === "unreachable", retry);
 
   useEffect(() => {
     if (!translations || translations.length === 0) return;
@@ -99,7 +161,30 @@ export function useCatalog(preferred?: string): Catalog {
     [translations, chosen]
   );
 
-  return { translations, current, currentID: chosen, setTranslation, error, loading: translations === null };
+  return {
+    translations,
+    current,
+    currentID: chosen,
+    setTranslation,
+    retry,
+    status,
+    error: status === "unreachable",
+    empty: status === "empty",
+    loading: status === "loading",
+  };
+}
+
+export function CatalogNotice({ catalog }: { catalog: Catalog }) {
+  if (catalog.status !== "empty" && catalog.status !== "unreachable") return null;
+  const message = catalog.status === "empty"
+    ? "No approved translation is available right now. Verse text is not bundled with this website, so a passage can only appear after an edition is approved and served by the API."
+    : `${CATALOG_UNAVAILABLE} We’ll keep checking when you return.`;
+  return (
+    <div className="bible-note bible-catalog-notice" role="status">
+      <p>{message}</p>
+      <button className="btn btn-ghost btn-sm" type="button" onClick={catalog.retry}>Check again</button>
+    </div>
+  );
 }
 
 export function TranslationSelect({
@@ -111,18 +196,21 @@ export function TranslationSelect({
   id?: string;
   label?: string;
 }) {
+  const emptyLabel = catalog.status === "unreachable"
+    ? "Catalogue unavailable"
+    : catalog.status === "empty"
+      ? "No approved translation"
+      : "Loading translations…";
   return (
     <>
-      <label className="bt-label" htmlFor={id}>
-        {label}
-      </label>
+      <label className="bt-label" htmlFor={id}>{label}</label>
       <select
         id={id}
         value={catalog.currentID}
         disabled={!catalog.translations || catalog.translations.length === 0}
         onChange={(e) => catalog.setTranslation(e.target.value)}
       >
-        {(catalog.translations || []).length === 0 && <option value="">No approved translation</option>}
+        {(catalog.translations || []).length === 0 && <option value="">{emptyLabel}</option>}
         {(catalog.translations || []).map((t) => (
           <option key={t.id} value={t.id}>
             {t.abbreviation || t.id} · {t.language_name || t.language_code || "—"}
@@ -151,13 +239,19 @@ export function RightsChips({ t }: { t: Translation }) {
 }
 
 /** One honest sentence per failure, never a status code. */
-export function Unavailable({ error, children }: { error: unknown; children?: React.ReactNode }) {
-  const notFound = error instanceof BibleUnavailable && error.notFound;
+export function Unavailable({ error, children, onRetry }: { error: unknown; children?: React.ReactNode; onRetry?: () => void }) {
+  const apiError = error instanceof BibleUnavailable ? error : null;
+  const notFound = !!apiError?.notFound;
+  const transient = !apiError || apiError.status === 0 || apiError.status >= 500 || [408, 425, 429].includes(apiError.status);
+  const message = notFound
+    ? "That passage is not available in this translation. Try another approved translation, or another reference."
+    : apiError && !transient
+      ? "This translation cannot serve that passage. Choose another approved edition or check the reference."
+      : `${VERSE_UNAVAILABLE} We’ll try again when you return.`;
   return (
     <div className="bible-note" role="status">
-      {notFound
-        ? "That passage is not available in this translation. Try another translation, or another reference."
-        : CATALOG_UNAVAILABLE}
+      <p>{message}</p>
+      {transient && onRetry && <button className="btn btn-ghost btn-sm" type="button" onClick={onRetry}>Try again</button>}
       {children}
     </div>
   );
@@ -359,31 +453,111 @@ export function BiblePage() {
   const stats = readingStats(state);
 
   const [available, setAvailable] = useState<Set<string> | null>(null);
+  const [structureError, setStructureError] = useState(false);
+  const [structureRetry, setStructureRetry] = useState(0);
   const [votd, setVotd] = useState<VerseOfDay | null>(null);
   const [votdError, setVotdError] = useState(false);
+  const [votdRetry, setVotdRetry] = useState(0);
   const [random, setRandom] = useState<{ reference: string; text: string; topic?: string } | null>(null);
+  const [randomError, setRandomError] = useState<unknown>(null);
+  const randomRequest = useRef<AbortController | null>(null);
+
+  const retryStructure = useCallback(() => setStructureRetry((value) => value + 1), []);
 
   /* Which books this translation carries — the structure endpoint answers it
      in one request and the reader greys out the rest. */
   useEffect(() => {
-    if (!catalog.currentID) return;
+    if (!catalog.currentID) {
+      setAvailable(null);
+      setStructureError(false);
+      return;
+    }
     const controller = new AbortController();
+    setAvailable(null);
+    setStructureError(false);
     bible
       .structure(catalog.currentID, controller.signal)
-      .then((data) => setAvailable(new Set(data.translation?.available_book_ids || BOOKS.map((b) => b.id))))
-      .catch(() => setAvailable(null));
+      .then((data) => {
+        if (controller.signal.aborted) return;
+        setAvailable(new Set(data.translation?.available_book_ids || BOOKS.map((b) => b.id)));
+      })
+      .catch((error) => {
+        if (!controller.signal.aborted && (error as Error)?.name !== "AbortError") setStructureError(true);
+      });
     return () => controller.abort();
-  }, [catalog.currentID]);
+  }, [catalog.currentID, structureRetry]);
+
+  useFocusRetry(structureError, retryStructure);
 
   useEffect(() => {
-    if (!catalog.currentID) return;
+    if (!catalog.currentID) {
+      setVotd(null);
+      setVotdError(false);
+      return;
+    }
     const controller = new AbortController();
+    setVotd(null);
     setVotdError(false);
     bible
       .verseOfDay(catalog.currentID, controller.signal)
-      .then(setVotd)
-      .catch(() => setVotdError(true));
+      .then((verse) => {
+        if (!controller.signal.aborted) {
+          setVotd(verse);
+          setVotdError(false);
+        }
+      })
+      .catch((error) => {
+        if (!controller.signal.aborted && (error as Error)?.name !== "AbortError") setVotdError(true);
+      });
     return () => controller.abort();
+  }, [catalog.currentID, votdRetry]);
+
+  useFocusRetry(votdError, () => setVotdRetry((value) => value + 1));
+
+  const showRandom = useCallback(() => {
+    if (!catalog.currentID) return;
+    randomRequest.current?.abort();
+    const controller = new AbortController();
+    randomRequest.current = controller;
+    setRandom(null);
+    setRandomError(null);
+    track("bible_random_requested", { translation: catalog.currentID });
+    bible
+      .random(catalog.currentID, controller.signal)
+      .then((data) => {
+        if (controller.signal.aborted || randomRequest.current !== controller) return;
+        setRandom({
+          reference: data.reference,
+          text: (data.passage?.verses || []).map((verse) => verse.text).join(" "),
+          topic: data.topic?.name,
+        });
+      })
+      .catch((error) => {
+        if (!controller.signal.aborted && randomRequest.current === controller && (error as Error)?.name !== "AbortError") {
+          setRandomError(error);
+        }
+      })
+      .finally(() => {
+        if (randomRequest.current === controller) randomRequest.current = null;
+      });
+  }, [catalog.currentID]);
+  const randomErrorTransient = !!randomError && (
+    !(randomError instanceof BibleUnavailable) ||
+    randomError.status === 0 ||
+    randomError.status >= 500 ||
+    [408, 425, 429].includes(randomError.status)
+  );
+  useFocusRetry(randomErrorTransient, showRandom);
+
+  useEffect(() => {
+    randomRequest.current?.abort();
+    randomRequest.current = null;
+    setRandom(null);
+    setRandomError(null);
+    return () => {
+      randomRequest.current?.abort();
+      randomRequest.current = null;
+    };
   }, [catalog.currentID]);
 
   useEffect(() => {
@@ -431,11 +605,7 @@ export function BiblePage() {
 
         <aside className="bible-translation-card" aria-label="Translation">
           <TranslationSelect catalog={catalog} />
-          {catalog.error ? (
-            <p className="bt-meta" style={{ marginTop: 14 }}>
-              {CATALOG_UNAVAILABLE}
-            </p>
-          ) : catalog.current ? (
+          {catalog.current ? (
             <>
               <div className="bt-name">{catalog.current.name}</div>
               <RightsChips t={catalog.current} />
@@ -457,11 +627,13 @@ export function BiblePage() {
             </>
           ) : (
             <p className="bt-meta" style={{ marginTop: 14 }}>
-              Loading the catalogue…
+              {catalog.loading ? "Loading the approved catalogue…" : catalog.empty ? "No approved translation is available." : "The catalogue is unavailable. Try again shortly."}
             </p>
           )}
         </aside>
       </section>
+
+      <div className="container-wide bible-status-wrap"><CatalogNotice catalog={catalog} /></div>
 
       <section className="container-wide bible-home-grid">
         <div className="bible-card continue">
@@ -514,11 +686,16 @@ export function BiblePage() {
               )}
             </>
           ) : (
-            <p className="small">
-              {votdError || catalog.error
-                ? "The reviewed verse of the day is served by the API and is not reachable from this deployment. Nothing is substituted for it."
-                : "Loading today's reviewed verse…"}
-            </p>
+            <>
+              <p className="small">
+                {catalog.status === "empty"
+                  ? "No approved translation is available, so there is no verse to display yet. Text is not bundled with this site."
+                  : catalog.status === "unreachable" || votdError
+                    ? "The reviewed verse is temporarily unavailable from the API. Nothing is substituted; we will check again when you return."
+                    : "Loading today's reviewed verse…"}
+              </p>
+              {votdError && catalog.currentID && <button className="btn btn-ghost btn-sm" style={{ marginTop: 12 }} onClick={() => setVotdRetry((value) => value + 1)}>Try again</button>}
+            </>
           )}
         </div>
 
@@ -563,6 +740,12 @@ export function BiblePage() {
                 {random.topic ? ` · ${random.topic}` : ""}
               </p>
             </>
+          ) : randomError ? (
+            <p className="small" role="status">
+              {randomError instanceof BibleUnavailable && randomError.notFound
+                ? "No reviewed passage is available from the citation pool yet. Nothing is substituted."
+                : "The approved Scripture service is temporarily unavailable. Nothing is substituted; we’ll check again when you return."}
+            </p>
           ) : (
             <p className="small">
               A passage drawn from the ones the reviewed corpus stands on — never an arbitrary verse.
@@ -571,22 +754,10 @@ export function BiblePage() {
         </div>
         <button
           className="btn btn-ghost btn-sm"
-          disabled={!catalog.currentID}
-          onClick={() => {
-            track("bible_random_requested", { translation: catalog.currentID });
-            bible
-              .random(catalog.currentID)
-              .then((data) =>
-                setRandom({
-                  reference: data.reference,
-                  text: (data.passage?.verses || []).map((v) => v.text).join(" "),
-                  topic: data.topic?.name,
-                })
-              )
-              .catch(() => setRandom(null));
-          }}
+          disabled={!catalog.currentID || (randomError instanceof BibleUnavailable && randomError.notFound)}
+          onClick={showRandom}
         >
-          Show me a passage
+          {randomError && randomErrorTransient ? "Try again" : random ? "Show another passage" : "Show me a passage"}
         </button>
       </section>
 
@@ -599,6 +770,12 @@ export function BiblePage() {
             selected translation.
           </p>
         </div>
+        {structureError && (
+          <div className="bible-note bible-catalog-notice" role="status">
+            <p>Translation coverage details are temporarily unavailable. The canon remains browsable, but book availability cannot be confirmed yet.</p>
+            <button className="btn btn-ghost btn-sm" type="button" onClick={retryStructure}>Try again</button>
+          </div>
+        )}
         <StructureBrowser translation={catalog.currentID} available={available} />
       </section>
 

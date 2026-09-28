@@ -21,7 +21,7 @@ import { useRouter } from "next/navigation";
 import { Icon } from "./ui";
 import { useToast } from "@/lib/ui";
 import { track } from "@/lib/store";
-import { Unavailable, useCatalog, StructureBrowser, CATALOG_UNAVAILABLE } from "./bible";
+import { CatalogNotice, Unavailable, useCatalog, useFocusRetry, StructureBrowser } from "./bible";
 import {
   BOOKS,
   HIGHLIGHT_COLORS,
@@ -74,12 +74,15 @@ export function BibleReader({
   const [chapterData, setChapterData] = useState<APIChapter | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [loading, setLoading] = useState(false);
+  const chapterRequest = useRef<AbortController | null>(null);
   const [selected, setSelected] = useState<number | null>(parsedInitial?.startVerse ?? initialVerse ?? null);
   const [noteDraft, setNoteDraft] = useState("");
   const [showNav, setShowNav] = useState(false);
   const [crossRefs, setCrossRefs] = useState<string[] | null>(null);
   const [comparison, setComparison] = useState<APIPassage[] | null>(null);
   const [comparing, setComparing] = useState(false);
+  const crossRefRequest = useRef<AbortController | null>(null);
+  const comparisonRequest = useRef<AbortController | null>(null);
 
   const book = bookByID(bookID) || BOOKS[42];
   const mode = prefs.mode;
@@ -91,31 +94,68 @@ export function BibleReader({
   const load = useCallback(
     (targetBook: string, targetChapter: number) => {
       if (!catalog.currentID) return;
+      chapterRequest.current?.abort();
       const controller = new AbortController();
+      chapterRequest.current = controller;
+      const translationID = catalog.currentID;
       setLoading(true);
       setError(null);
+      setChapterData(null);
       bible
-        .chapter(catalog.currentID, targetBook, targetChapter, controller.signal)
+        .chapter(translationID, targetBook, targetChapter, controller.signal)
         .then((data) => {
+          if (controller.signal.aborted || chapterRequest.current !== controller) return;
           setChapterData(data);
-          study.recordRead(catalog.currentID, targetBook, targetChapter);
-          track("chapter_opened", { translation: catalog.currentID, book: targetBook, chapter: targetChapter });
+          study.recordRead(translationID, targetBook, targetChapter);
+          track("chapter_opened", { translation: translationID, book: targetBook, chapter: targetChapter });
           // Prefetch the next chapter so continuous reading does not wait.
           const following = nextChapter(targetBook, targetChapter);
-          if (following) void bible.chapter(catalog.currentID, following.bookID, following.chapter).catch(() => undefined);
+          if (following) void bible.chapter(translationID, following.bookID, following.chapter).catch(() => undefined);
         })
         .catch((err) => {
-          if ((err as Error)?.name === "AbortError") return;
+          if (controller.signal.aborted || chapterRequest.current !== controller || (err as Error)?.name === "AbortError") return;
           setChapterData(null);
           setError(err);
         })
-        .finally(() => setLoading(false));
-      return () => controller.abort();
+        .finally(() => {
+          if (chapterRequest.current === controller) {
+            chapterRequest.current = null;
+            setLoading(false);
+          }
+        });
+      return () => {
+        controller.abort();
+        if (chapterRequest.current === controller) chapterRequest.current = null;
+      };
     },
     [catalog.currentID]
   );
 
   useEffect(() => load(bookID, chapter), [load, bookID, chapter]);
+  useEffect(() => () => {
+    chapterRequest.current?.abort();
+    crossRefRequest.current?.abort();
+    comparisonRequest.current?.abort();
+  }, []);
+  useEffect(() => {
+    crossRefRequest.current?.abort();
+    comparisonRequest.current?.abort();
+    crossRefRequest.current = null;
+    comparisonRequest.current = null;
+    setCrossRefs(null);
+    setComparison(null);
+    setComparing(false);
+  }, [catalog.currentID]);
+
+  const retryChapter = useCallback(() => {
+    if (!catalog.currentID) {
+      catalog.retry();
+      return;
+    }
+    load(bookID, chapter);
+  }, [catalog.currentID, catalog.retry, load, bookID, chapter]);
+
+  useFocusRetry(!!error, () => load(bookID, chapter));
 
   /* Keep the URL honest: a deep link always names what is on screen. */
   useEffect(() => {
@@ -127,11 +167,17 @@ export function BibleReader({
   }, [catalog.currentID, bookID, chapter, router]);
 
   const go = useCallback((targetBook: string, targetChapter: number, verse?: number) => {
+    chapterRequest.current?.abort();
+    crossRefRequest.current?.abort();
+    comparisonRequest.current?.abort();
+    crossRefRequest.current = null;
+    comparisonRequest.current = null;
     setBookID(targetBook);
     setChapter(targetChapter);
     setSelected(verse ?? null);
     setCrossRefs(null);
     setComparison(null);
+    setComparing(false);
     if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
   }, []);
 
@@ -237,11 +283,21 @@ export function BibleReader({
 
   const loadCrossRefs = () => {
     if (!selected) return;
+    crossRefRequest.current?.abort();
+    const controller = new AbortController();
+    crossRefRequest.current = controller;
     setCrossRefs(null);
     bible
-      .crossReferences(`${book.usfm}.${chapter}.${selected}`)
-      .then((data) => setCrossRefs(data.references || []))
-      .catch(() => setCrossRefs([]));
+      .crossReferences(`${book.usfm}.${chapter}.${selected}`, controller.signal)
+      .then((data) => {
+        if (!controller.signal.aborted && crossRefRequest.current === controller) setCrossRefs(data.references || []);
+      })
+      .catch((failure) => {
+        if (!controller.signal.aborted && crossRefRequest.current === controller && (failure as Error)?.name !== "AbortError") setCrossRefs([]);
+      })
+      .finally(() => {
+        if (crossRefRequest.current === controller) crossRefRequest.current = null;
+      });
   };
 
   /* Comparison needs two to four named translations — the handler refuses
@@ -253,18 +309,32 @@ export function BibleReader({
   }, [catalog.currentID, catalog.translations]);
 
   const loadComparison = () => {
+    comparisonRequest.current?.abort();
+    comparisonRequest.current = null;
     if (!selected || comparisonSet.length < 2) {
+      setComparing(false);
       setComparison([]);
       return;
     }
+    const controller = new AbortController();
+    comparisonRequest.current = controller;
     setComparing(true);
     setComparison(null);
     track("bible_compare_opened", { translations: comparisonSet.length });
     bible
-      .compare(displayRef(bookID, chapter, selected), comparisonSet)
-      .then((data) => setComparison(data.passages || []))
-      .catch(() => setComparison([]))
-      .finally(() => setComparing(false));
+      .compare(displayRef(bookID, chapter, selected), comparisonSet, controller.signal)
+      .then((data) => {
+        if (!controller.signal.aborted && comparisonRequest.current === controller) setComparison(data.passages || []);
+      })
+      .catch((failure) => {
+        if (!controller.signal.aborted && comparisonRequest.current === controller && (failure as Error)?.name !== "AbortError") setComparison([]);
+      })
+      .finally(() => {
+        if (comparisonRequest.current === controller) {
+          comparisonRequest.current = null;
+          setComparing(false);
+        }
+      });
   };
 
   /* ---------------------------------------------------------------- view */
@@ -308,6 +378,13 @@ export function BibleReader({
               aria-pressed={selected === v.number}
               onClick={() => {
                 const next = selected === v.number ? null : v.number;
+                crossRefRequest.current?.abort();
+                comparisonRequest.current?.abort();
+                crossRefRequest.current = null;
+                comparisonRequest.current = null;
+                setCrossRefs(null);
+                setComparison(null);
+                setComparing(false);
                 setSelected(next);
                 if (next) track("verse_opened", { book: bookID, chapter, verse: next });
               }}
@@ -599,7 +676,7 @@ export function BibleReader({
           </div>
 
           {error ? (
-            <Unavailable error={error} />
+            <Unavailable error={error} onRetry={retryChapter} />
           ) : loading && !chapterData ? (
             <div className="bible-skeleton" aria-busy="true">
               {Array.from({ length: 8 }, (_, i) => (
@@ -608,8 +685,12 @@ export function BibleReader({
             </div>
           ) : chapterData ? (
             chapterBody
+          ) : catalog.status === "empty" || catalog.status === "unreachable" ? (
+            <CatalogNotice catalog={catalog} />
+          ) : catalog.loading ? (
+            <div className="bible-note">Loading approved translations…</div>
           ) : (
-            <div className="bible-note">{catalog.error ? CATALOG_UNAVAILABLE : "Choose a translation to begin reading."}</div>
+            <div className="bible-note">Choose a translation to begin reading.</div>
           )}
 
           {(translation?.attribution_required || translation?.copyright) && chapterData && (

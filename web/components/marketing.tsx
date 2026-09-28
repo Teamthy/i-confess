@@ -5,6 +5,7 @@ import { PlayChip, PlayBtn, PlaySessionBtn, FavBtn, ShareBtn, VoicePreviewBtn, C
 import { CATEGORIES, CONFESSIONS, ARTICLES, VOICES, PLANS, FAQS, catBySlug, confBySlug, artBySlug, sessionsFor, ALL_SESSIONS, sessionBySlug, motifStyle, CAT_IMAGES } from "@/lib/data";
 import type { Category } from "@/lib/data";
 import { CANON } from "@/lib/canon";
+import { VoiceLibrary } from "@/components/voices";
 
 /* The canon totals on the home page come from the generated canon, never from
    typed numbers — a structure change upstream has to move this copy too. */
@@ -96,27 +97,26 @@ export function Home() {
         </div>
       </section>
 
-      {/* 07 FEATURED VOICES */}
+      {/* 07 VOICE & LICENSING */}
       <section className="section container">
         <div className="c-head rv in">
-          <span className="eyebrow">Featured Voices</span>
-          <h2 className="h1" style={{ marginTop: 18 }}>Hear <span className="accent">the right</span><br />voice for the words.</h2>
+          <span className="eyebrow">Voice &amp; licensing</span>
+          <h2 className="h1" style={{ marginTop: 18 }}>A voice, built on <span className="accent">trust.</span></h2>
           <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 26, flexWrap: "wrap", justifyContent: "center" }}>
-            <span className="small" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>Voice rights <Link className="orb sm" href="/voices" aria-label="Voice rights"><Icon n="ne" s={12} /></Link></span>
-            <Link className="btn btn-primary" href="/voices">View All</Link>
+            <span className="small" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>Rights before release <Link className="orb sm" href="/voices" aria-label="Voice licensing"><Icon n="ne" s={12} /></Link></span>
+            <Link className="btn btn-primary" href="/voices">Explore the voice library</Link>
           </div>
         </div>
-        <div className="voice-grid snap" style={{ gridTemplateColumns: "repeat(4,1fr)" }}>
+        <div className="voice-feature-grid">
           <Link className="v-card highlight rv in" href="/voices/grace">
             <div className="v-top"><img className="avatar" src="/assets/voice-grace.jpg" alt="Portrait of Grace, iCONFESS narration voice" /></div>
             <div className="v-div"><div><h3>Grace</h3><span className="v-role">Warm · Calm · Licensed</span></div><span className="v-arrow"><Icon n="ne" s={15} /></span></div>
           </Link>
-          {[1, 2, 3].map((k) => (
-            <div className="v-card locked rv in" key={k} style={{ background: "#fff" }}>
-              <div className="v-top"><span className="avatar-slot" style={{ width: 120, height: 120 }}><Icon n="lock" s={20} /></span></div>
-              <div className="v-div"><div><h3>In curation</h3><span className="v-role">Voice slot · rights pending</span></div><span className="v-arrow"><Icon n="ne" s={15} /></span></div>
-            </div>
-          ))}
+          <Link className="v-card voice-policy-card rv in" href="/voices">
+            <div className="v-top"><span className="avatar-slot" style={{ width: 120, height: 120 }}><Icon n="shield" s={22} /></span></div>
+            <div className="v-div"><div><h3>Rights come first</h3><span className="v-role">Review before release</span></div><span className="v-arrow"><Icon n="ne" s={15} /></span></div>
+            <p className="v-desc">No placeholder listings. A voice appears only after its identity, sample and usage rights are cleared.</p>
+          </Link>
         </div>
       </section>
 
@@ -333,9 +333,9 @@ export function Explore() {
         <div className="grid4 snap">{CONFESSIONS.slice(0, 4).map((c) => <ConfTile key={c.slug} c={c} />)}</div></div>
       <div className="app-section"><div className="section-head"><h3 className="h3">Sessions</h3><Link className="textlink" href="/sessions">All sessions <Icon n="arrow" s={12} /></Link></div>
         <div className="card-row three snap">{ALL_SESSIONS.slice(0, 3).map((s) => <SessionTile key={s.slug} s={s} />)}</div></div>
-      <div className="app-section"><div className="section-head"><h3 className="h3">Voices</h3><Link className="textlink" href="/voices">Voice library <Icon n="arrow" s={12} /></Link></div>
-        <div className="big-tile"><div><h3>Grace — warm, calm, steady.</h3><p>Our first licensed narration voice. More voices enter curation soon.</p></div><Link className="btn btn-light" href="/voices/grace">Meet Grace</Link></div></div>
-      <PageStats items={[[String(CATEGORIES.length), "categories"], [String(CONFESSIONS.length), "reviewed confessions"], [String(ALL_SESSIONS.length), "ready sessions"], ["1", "licensed voice, more in curation"]]} />
+      <div className="app-section"><div className="section-head"><h3 className="h3">Voice &amp; licensing</h3><Link className="textlink" href="/voices">Voice library <Icon n="arrow" s={12} /></Link></div>
+        <div className="big-tile"><div><h3>Grace — warm, calm, licensed.</h3><p>Grace is the licensed voice listed today. Any future voice will be named only after its identity, sample and usage rights are approved.</p></div><Link className="btn btn-light" href="/voices">Explore the library</Link></div></div>
+      <PageStats items={[[String(CATEGORIES.length), "categories"], [String(CONFESSIONS.length), "reviewed confessions"], [String(ALL_SESSIONS.length), "ready sessions"], ["Rights", "reviewed before release"]]} />
       <CtaBand title="Not sure where to start? Begin with one honest sentence." />
     </section>
   );
@@ -500,17 +500,7 @@ export function SessionDetail({ slug }: { slug: string }) {
 }
 
 export function Voices() {
-  return (
-    <section className="section container" style={{ paddingTop: "calc(var(--header-h) + 56px)" }}>
-      <SectionHead eyebrow="Voice Library" title={<>Hear the words <span className="accent">differently.</span></>} lede="Every voice is licensed, reviewed and consistent — the same on the fortieth morning as the first." />
-      <div className="voice-grid" style={{ gridTemplateColumns: "repeat(4,1fr)" }}>
-        <Link className="v-card" href="/voices/grace"><img className="avatar" src="/assets/voice-grace.jpg" alt="" /><h3>Grace</h3><span className="v-style">Warm · Calm · Professional</span><p className="v-desc">English · Licensed for iCONFESS, worldwide.</p><span className="textlink">Explore voice <Icon n="arrow" s={12} /></span></Link>
-        {[1, 2, 3].map((i) => <div className="v-card locked" key={i}><span className="avatar-slot"><Icon n="lock" s={18} /></span><h3>In curation</h3><span className="v-style">Voice slot</span><p className="v-desc">Rights clearance in progress. We never ship an unlicensed voice.</p></div>)}
-      </div>
-      <PageStats items={[["1", "voice live today"], ["3", "slots in curation"], ["Licensed", "worldwide, for iCONFESS"], ["Consistent", "same voice, fortieth morning"]]} />
-      <CtaBand title="Hear a confession in Grace's voice right now." cta="Play a preview" href="/voices/grace" />
-    </section>
-  );
+  return <VoiceLibrary />;
 }
 
 export function VoiceDetail({ slug }: { slug: string }) {
@@ -522,13 +512,15 @@ export function VoiceDetail({ slug }: { slug: string }) {
         <img src="/assets/voice-grace.jpg" alt="Grace" style={{ width: 140, height: 140, borderRadius: "50%", objectFit: "cover" }} />
         <div>
           <h1 className="h1">Grace</h1>
-          <p className="lede" style={{ marginTop: 8 }}>Warm, calm professional narration voice. English.</p>
-          <div style={{ display: "flex", gap: 10, marginTop: 14 }}><span className="tag shared">Active</span><span className="tag private">Licensed · i-confess studio · global TTS</span></div>
+          <p className="lede" style={{ marginTop: 8 }}>Warm, calm licensed narration voice. English.</p>
+          <div style={{ display: "flex", gap: 10, marginTop: 14 }}><span className="tag shared">Listed</span><span className="tag private">Licensed · i-confess studio · global TTS</span></div>
           <div style={{ marginTop: 18 }}><VoicePreviewBtn /></div>
+          <p className="small" style={{ marginTop: 10, maxWidth: "52ch" }}>This web sample uses your device’s speech engine; it is not a studio recording of Grace.</p>
         </div>
       </div>
       <div className="app-section" style={{ marginTop: 64 }}>
-        <div className="section-head"><h3 className="h3">Narrated by Grace</h3></div>
+        <div className="section-head"><h3 className="h3">Sample words</h3></div>
+        <p className="small" style={{ marginBottom: 16 }}>These reviewed confessions also play through browser speech on the web.</p>
         <div className="grid4 snap">{CONFESSIONS.slice(0, 4).map((c) => <ConfTile key={c.slug} c={c} />)}</div>
       </div>
     </section>
@@ -540,13 +532,13 @@ export function HowItWorks() {
     <section className="section container" style={{ paddingTop: "calc(var(--header-h) + 56px)" }}>
       <SectionHead eyebrow="How It Works" title={<>Three movements. <span className="accent">One practice.</span></>} />
       <div className="principle-grid snap" style={{ gridTemplateColumns: "repeat(3,1fr)" }}>
-        <div className="p-card rv in"><span className="venn v1"><i /><i /></span><div className="p-in"><h3>Hear it</h3><p>A curated voice reads the confession at a human pace. Listening is the invitation.</p></div></div>
+        <div className="p-card rv in"><span className="venn v1"><i /><i /></span><div className="p-in"><h3>Hear it</h3><p>On the web, your browser’s speech engine reads the confession in a voice available on your device. Listening is the invitation.</p></div></div>
         <div className="p-card active rv in"><span className="venn v3"><i /><i /></span><div className="p-in"><h3>Speak it</h3><p>Then you say it — out loud, at speaking volume. The words have to survive your own voice.</p></div></div>
         <div className="p-card rv in"><span className="venn v4"><i /><i /></span><div className="p-in"><h3>Return</h3><p>Daily, in a routine you build. Repetition turns a quote into a posture.</p></div></div>
       </div>
       <div className="band rv in" style={{ marginTop: 72 }}>
         <img src="/assets/immersive.jpg" alt="" loading="lazy" />
-        <div className="band-card"><h3>Five minutes is <mark>a complete practice</mark>.</h3><p>A confession, its Scripture, a voice, and a moment of stillness at the end. Nothing withheld.</p><Link className="btn btn-primary" href="/sessions">Browse Sessions</Link></div>
+        <div className="band-card"><h3>Five minutes is <mark>a complete practice</mark>.</h3><p>A confession, its Scripture, browser speech, and a moment of stillness at the end. Nothing withheld.</p><Link className="btn btn-primary" href="/sessions">Browse Sessions</Link></div>
       </div>
       <div className="app-section" style={{ marginTop: 64 }}>
         <div className="section-head"><h3 className="h3">What happens in your first week</h3></div>
@@ -562,7 +554,7 @@ export function HowItWorks() {
 }
 
 export function Premium() {
-  const feats = (yearly: boolean) => ["Premium voices as they license", "Offline downloads on mobile", yearly ? "Two months free vs monthly" : "Longer guided sessions", "7-day trial, cancel anytime"];
+  const feats = (yearly: boolean) => ["Additional licensed voices when available", "Offline downloads on mobile", yearly ? "Two months free vs monthly" : "Longer guided sessions", "7-day trial, cancel anytime"];
   const plan = (p: typeof PLANS[0], gold: boolean) => (
     <div className={"plan-card rv in" + (gold ? " gold" : "")}>
       <div className="pc-top">
@@ -592,13 +584,13 @@ export function Premium() {
         <div className="premium-duo">
           <div className="form-card rv in">
             <h3 className="h4" style={{ marginBottom: 14 }}>Free vs Premium</h3>
-            {[["39 categories & full library", "✓", "✓"], ["Sessions up to 15 minutes", "✓", "✓"], ["Grace voice", "✓", "✓"], ["Premium voices", "—", "✓"], ["Offline downloads (mobile)", "—", "✓"], ["Extended sessions", "—", "✓"]].map(([f, a, b], i) => (
+            {[["39 categories & full library", "✓", "✓"], ["Sessions up to 15 minutes", "✓", "✓"], ["Grace voice", "✓", "✓"], ["Additional licensed voices (when available)", "—", "As approved"], ["Offline downloads (mobile)", "—", "✓"], ["Extended sessions", "—", "✓"]].map(([f, a, b], i) => (
               <div className="setting-row" key={i}><b>{f}</b><span style={{ display: "flex", gap: 40 }}><span>{a}</span><span>{b}</span></span></div>
             ))}
           </div>
           <div className="form-card rv in">
             <h3 className="h4" style={{ marginBottom: 12 }}>Premium, honestly</h3>
-            <div className="prose"><p>The free practice is not a teaser — it is complete. Premium adds depth: more licensed voices as they clear, offline downloads for bad-network mornings, and longer guided sessions. The 7-day trial converts only with notice, and cancelling keeps your library and history intact.</p></div>
+            <div className="prose"><p>The free practice is not a teaser — it is complete. Premium adds offline downloads for bad-network mornings and longer guided sessions; additional licensed voices appear only after their rights are approved. The 7-day trial converts only with notice, and cancelling keeps your library and history intact.</p></div>
             <div style={{ marginTop: 20 }}><Link className="btn btn-primary" href="/register">Start 7-day trial</Link></div>
           </div>
         </div>
@@ -639,7 +631,7 @@ export function About() {
     <section className="section container" style={{ paddingTop: "calc(var(--header-h) + 56px)" }}>
       <div className="story"><div className="rv in"><span className="eyebrow">About</span><h1 className="h1" style={{ marginTop: 16 }}>Built for a few <span className="accent">honest minutes</span> a day.</h1>
         <p className="lede" style={{ marginTop: 20 }}>iCONFESS began with a simple observation: every meaningful commitment in history was spoken before it was written. Speech is slower than reading. It costs breath. It makes words harder to dismiss.</p>
-        <p className="lede" style={{ marginTop: 16 }}>So we built a home for that practice — curated confessions checked against the Scripture they stand on, licensed voices, and sessions sized to real days.</p>
+        <p className="lede" style={{ marginTop: 16 }}>So we built a home for that practice — curated confessions checked against the Scripture they stand on, a licensed narration voice, and sessions sized to real days.</p>
         <div className="story-cta"><Link className="btn btn-primary" href="/mission">Our Mission</Link></div></div>
         <aside className="story-side rv in"><p>We do not use streak guilt. Motion is sparing. Nothing autoplays. The loudest thing in iCONFESS should be the words themselves.</p><p className="small" style={{ marginTop: 16 }}>Design principle, from “Designing a quiet app on purpose” — the iCONFESS journal.</p></aside></div>
       <div className="brand-panel rv in" style={{ marginTop: 72 }}>

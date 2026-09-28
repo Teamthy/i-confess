@@ -2,11 +2,44 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Logo } from "./ui";
+import { Icon, Logo } from "./ui";
 import { useApp, mutate, track } from "@/lib/store";
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/lib/ui";
 import { CATEGORIES } from "@/lib/data";
+
+type PasswordFieldProps = Omit<React.InputHTMLAttributes<HTMLInputElement>, "type"> & {
+  label: string;
+  hint?: string;
+};
+
+/** Passwords remain hidden by default, with an explicit, keyboard-accessible
+ * reveal control wherever the auth flow asks a person to enter one. */
+function PasswordField({ label, hint, id, ...inputProps }: PasswordFieldProps) {
+  const [visible, setVisible] = useState(false);
+  const generatedID = React.useId();
+  const fieldID = id || generatedID;
+  const hintID = hint ? `${fieldID}-hint` : undefined;
+  const describedBy = [inputProps["aria-describedby"], hintID].filter(Boolean).join(" ") || undefined;
+  return (
+    <div className="field password-field">
+      <label htmlFor={fieldID}>{label}</label>
+      <div className="password-control">
+        <input {...inputProps} id={fieldID} aria-describedby={describedBy} type={visible ? "text" : "password"} />
+        <button
+          className="password-toggle"
+          type="button"
+          aria-label={visible ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`}
+          aria-pressed={visible}
+          onClick={() => setVisible((shown) => !shown)}
+        >
+          <Icon n={visible ? "eyeOff" : "eye"} s={17} />
+        </button>
+      </div>
+      {hint && <p id={hintID} className="password-hint">{hint}</p>}
+    </div>
+  );
+}
 
 export default function AuthPage({ kind }: { kind: string }) {
   const router = useRouter(); const toast = useToast(); const st = useApp();
@@ -82,7 +115,7 @@ export default function AuthPage({ kind }: { kind: string }) {
         <Logo /><h1>Welcome back</h1><p className="sub">Your words are where you left them.</p>
         <form onSubmit={(e) => submit(e, (fd) => { void signIn(String(fd.get("email")), String(fd.get("pw"))); })}>
           <div className="field"><label>Email</label><input name="email" type="email" required autoComplete="email" /></div>
-          <div className="field"><label>Password</label><input name="pw" type="password" required minLength={6} autoComplete="current-password" /><div className="err">At least 6 characters.</div></div>
+          <PasswordField label="Password" name="pw" required minLength={6} autoComplete="current-password" hint="At least 6 characters." />
           <button className="btn btn-primary btn-lg" style={{ width: "100%", justifyContent: "center", marginTop: 22 }} type="submit">Log In</button>
         </form>
         <p className="auth-foot"><Link href="/forgot-password">Forgot password?</Link></p>
@@ -104,8 +137,8 @@ export default function AuthPage({ kind }: { kind: string }) {
       <>
         <Logo /><h1>Choose a new password</h1>
         <form onSubmit={(e) => submit(e, (fd) => { if (fd.get("p1") !== fd.get("p2")) { toast("Passwords don't match"); return; } toast("Password updated"); router.push("/login"); })}>
-          <div className="field"><label>New password</label><input name="p1" type="password" minLength={6} required /></div>
-          <div className="field"><label>Repeat password</label><input name="p2" type="password" minLength={6} required /></div>
+          <PasswordField label="New password" name="p1" minLength={6} required autoComplete="new-password" hint="Use at least 6 characters." />
+          <PasswordField label="Repeat password" name="p2" minLength={6} required autoComplete="new-password" />
           <button className="btn btn-primary btn-lg" style={{ width: "100%", justifyContent: "center", marginTop: 20 }} type="submit">Save Password</button>
         </form>
       </>
@@ -174,7 +207,7 @@ function Onboarding() {
           <form onSubmit={account}>
             <div className="field"><label>Name</label><input value={name} onChange={(e) => setName(e.target.value)} required autoComplete="name" /></div>
             <div className="field"><label>Email</label><input value={email} onChange={(e) => setEmail(e.target.value)} type="email" required autoComplete="email" /></div>
-            <div className="field"><label>Password</label><input type="password" required minLength={6} autoComplete="new-password" /><div className="err">At least 6 characters.</div></div>
+            <PasswordField label="Password" name="password" required minLength={6} autoComplete="new-password" hint="At least 6 characters." />
             <label style={{ display: "flex", gap: 10, alignItems: "flex-start", marginTop: 16, fontSize: 12.5, color: "var(--n600)" }}><input type="checkbox" required style={{ width: "auto", marginTop: 2 }} /> I consent to product analytics and understand my private content is never reviewed unless I submit it.</label>
             <button className="btn btn-primary btn-lg" style={{ width: "100%", justifyContent: "center", marginTop: 20 }} type="submit">Continue</button>
           </form>

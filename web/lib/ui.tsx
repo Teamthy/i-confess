@@ -76,7 +76,11 @@ export function UiProvider({ children }: { children: React.ReactNode }) {
   function speak(q: QueueItem[], idx: number) {
     const synth = synthRef.current; const item = q[idx];
     if (!synth) return;
-    if (!item) { set({ status: "completed", progress: 0 }); track("session_completed", { items: q.length }); return; }
+    if (!item) {
+      set({ status: "completed", progress: 0 });
+      if (!q.some((queued) => queued.slug.startsWith("voice-preview-"))) track("session_completed", { items: q.length });
+      return;
+    }
     synth.cancel();
     const u = new SpeechSynthesisUtterance(item.text);
     const v = pickVoice(); if (v) u.voice = v;
@@ -87,9 +91,10 @@ export function UiProvider({ children }: { children: React.ReactNode }) {
     u.volume = st.settings.normalize ? (st.settings.volume ?? 1) : Math.min(1, (st.settings.volume ?? 1) * (0.8 + inten * 0.07));
     if (idx !== ref.current.idx || repeatLeft.current === 0) repeatLeft.current = Math.max(0, (st.settings.repeat || 1) - 1);
     u.onboundary = (e: any) => set({ progress: Math.min(1, (e.charIndex || 0) / Math.max(1, item.text.length)) });
-    u.onend = () => { if (ref.current.status === "playing") { if (repeatLeft.current > 0) { repeatLeft.current -= 1; speak(q, idx); return; } record(item); speak(q, idx + 1); set({ idx: idx + 1, progress: 0 }); } };
+    const previewOnly = item.slug.startsWith("voice-preview-");
+    u.onend = () => { if (ref.current.status === "playing") { if (repeatLeft.current > 0) { repeatLeft.current -= 1; speak(q, idx); return; } if (!previewOnly) record(item); speak(q, idx + 1); set({ idx: idx + 1, progress: 0 }); } };
     u.onerror = () => set({ status: "error" });
-    record(item);
+    if (!previewOnly) record(item);
     synth.speak(u);
   }
 
@@ -111,7 +116,7 @@ export function UiProvider({ children }: { children: React.ReactNode }) {
                 <div className="mp-art" style={motifStyle(catBySlug(item.category)?.slug || "peace")}>{<Icon n="wave" s={16} />}</div>
                 <div className="mp-main">
                   <div className="mp-title">{item.title}</div>
-                  <div className="mp-sub">{item.category} · Voice: Grace · {audio.status}</div>
+                  <div className="mp-sub">{item.category} · {item.slug.startsWith("voice-preview-") ? "Device speech preview" : "Browser speech"} · {audio.status}</div>
                   <div className="progress"><i style={{ width: Math.round(audio.progress * 100) + "%" }} /></div>
                 </div>
                 <button className="icon-btn ghost-dark" onClick={api.prev} aria-label="Previous"><Icon n="prev" s={16} /></button>
