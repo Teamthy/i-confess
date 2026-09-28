@@ -219,6 +219,28 @@ func (h *Handler) Routes() http.Handler {
 	h.route(mux, "POST /admin/users/status", "admin", "admin-users", "Suspend or restore an account", admin, h.adminSetUserStatus)
 	h.route(mux, "POST /admin/users/subscription", "admin", "admin-users", "Set a subscription plan", admin, h.adminSetSubscription)
 
+	// Enhanced user management for super admin console
+	h.route(mux, "GET /admin/users", "admin", "admin-users", "List users with roles (super admin)", admin, h.adminListUsers)
+	h.route(mux, "GET /admin/users/{id}", "admin", "admin-users", "Get user detail with roles and permissions", admin, h.adminGetUserDetail)
+	h.route(mux, "GET /admin/users/{id}/roles", "admin", "admin-users", "Get user roles and permissions", admin, h.adminGetUserRoles)
+	h.route(mux, "POST /admin/users/{id}/roles", "admin", "admin-users", "Assign a role to a user", admin, h.adminAssignUserRole)
+	h.route(mux, "DELETE /admin/users/{id}/roles", "admin", "admin-users", "Remove a role from a user", admin, h.adminRemoveUserRole)
+	h.route(mux, "GET /admin/users/{id}/sessions", "admin", "admin-users", "List user sessions", admin, h.adminListUserSessions)
+	h.route(mux, "POST /admin/users/{id}/sessions/revoke", "admin", "admin-users", "Revoke all user sessions", admin, h.adminRevokeUserSessions)
+
+	// RBAC management - super admin only (admin wrapper admits super_admin only)
+	h.route(mux, "GET /admin/rbac/roles", "admin", "admin-rbac", "List all roles with permissions", admin, h.adminListRoles)
+	h.route(mux, "GET /admin/rbac/roles/{name}", "admin", "admin-rbac", "Get role by name", admin, h.adminGetRole)
+	h.route(mux, "POST /admin/rbac/roles", "admin", "admin-rbac", "Create custom role", admin, h.adminCreateRole)
+	h.route(mux, "PUT /admin/rbac/roles/{name}", "admin", "admin-rbac", "Update custom role", admin, h.adminUpdateRole)
+	h.route(mux, "DELETE /admin/rbac/roles/{name}", "admin", "admin-rbac", "Delete custom role", admin, h.adminDeleteRole)
+	h.route(mux, "GET /admin/rbac/permissions", "admin", "admin-rbac", "List all permissions grouped by category", admin, h.adminListPermissions)
+
+	// System & security for super admin
+	h.route(mux, "GET /admin/system/health", "admin", "admin-ops", "System health and inventory", admin, h.adminSystemHealth)
+	h.route(mux, "GET /admin/security/overview", "admin", "admin-ops", "Security overview and recent events", admin, h.adminSecurityOverview)
+	h.route(mux, "GET /admin/audit/export", "admin", "admin-ops", "Export audit logs", admin, h.adminAuditExport)
+
 	// Bible platform (first reader/API slice). Public reads are served only by the
 	// normalized BibleProvider boundary; client apps never call a source provider.
 	bibleSearchLimit := perIP(ratelimit.BibleSearch, "bible-search")
@@ -590,6 +612,24 @@ func (h *Handler) Routes() http.Handler {
 	h.route(mux, "POST /v1/admin/audio/{id}/qa/reject", "audio_producer,voice_manager", "admin-audio", "Reject a render; a note is required", audioMgr, h.adminRejectAudio)
 	h.route(mux, "POST /v1/admin/audio/{id}/publish", "audio_producer,voice_manager", "admin-audio", "Surface an approved render in discovery", audioMgr, h.adminPublishAudio)
 	h.route(mux, "POST /v1/admin/audio/{id}/archive", "audio_producer,voice_manager", "admin-audio", "Withdraw a render, including from existing sessions", audioMgr, h.adminArchiveAudio)
+
+	// RBAC & enhanced user management (v1)
+	h.route(mux, "GET /v1/admin/users", "admin", "admin-users", "List users with roles (super admin)", admin, h.adminListUsers)
+	h.route(mux, "GET /v1/admin/users/{id}", "admin", "admin-users", "Get user detail with roles", admin, h.adminGetUserDetail)
+	h.route(mux, "GET /v1/admin/users/{id}/roles", "admin", "admin-users", "Get user roles and permissions", admin, h.adminGetUserRoles)
+	h.route(mux, "POST /v1/admin/users/{id}/roles", "admin", "admin-users", "Assign a role to a user", admin, h.adminAssignUserRole)
+	h.route(mux, "DELETE /v1/admin/users/{id}/roles", "admin", "admin-users", "Remove a role from a user", admin, h.adminRemoveUserRole)
+	h.route(mux, "GET /v1/admin/users/{id}/sessions", "admin", "admin-users", "List user sessions", admin, h.adminListUserSessions)
+	h.route(mux, "POST /v1/admin/users/{id}/sessions/revoke", "admin", "admin-users", "Revoke all user sessions", admin, h.adminRevokeUserSessions)
+	h.route(mux, "GET /v1/admin/rbac/roles", "admin", "admin-rbac", "List all roles with permissions", admin, h.adminListRoles)
+	h.route(mux, "GET /v1/admin/rbac/roles/{name}", "admin", "admin-rbac", "Get role by name", admin, h.adminGetRole)
+	h.route(mux, "POST /v1/admin/rbac/roles", "admin", "admin-rbac", "Create custom role", admin, h.adminCreateRole)
+	h.route(mux, "PUT /v1/admin/rbac/roles/{name}", "admin", "admin-rbac", "Update custom role", admin, h.adminUpdateRole)
+	h.route(mux, "DELETE /v1/admin/rbac/roles/{name}", "admin", "admin-rbac", "Delete custom role", admin, h.adminDeleteRole)
+	h.route(mux, "GET /v1/admin/rbac/permissions", "admin", "admin-rbac", "List all permissions grouped by category", admin, h.adminListPermissions)
+	h.route(mux, "GET /v1/admin/system/health", "admin", "admin-ops", "System health and inventory", admin, h.adminSystemHealth)
+	h.route(mux, "GET /v1/admin/security/overview", "admin", "admin-ops", "Security overview and recent events", admin, h.adminSecurityOverview)
+	h.route(mux, "GET /v1/admin/audit/export", "admin", "admin-ops", "Export audit logs", admin, h.adminAuditExport)
 
 	return RequestIDMiddleware(tracing.Middleware(SecurityHeadersMiddleware(logRequests(mux), h.isProd)))
 }

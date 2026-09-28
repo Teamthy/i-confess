@@ -1,18 +1,12 @@
-import { AdminGate, AdminUsers } from "@/components/admin";
+import { AdminGate } from "@/components/admin";
+import { SuperAdminUsers } from "@/components/super-admin";
 
-export const metadata = { title: "People" };
+export const metadata = { title: "Users & RBAC" };
 
 export default function Page() {
   return (
-    <>
-      <h1 className="adm-title">People</h1>
-      <p className="adm-lede">
-        Admin roles are re-read from the database on every request, so granting and revoking take effect
-        immediately — including for a session already in flight.
-      </p>
-      <AdminGate>
-        <AdminUsers />
-      </AdminGate>
-    </>
+    <AdminGate>
+      <SuperAdminUsers />
+    </AdminGate>
   );
 }

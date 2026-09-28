@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/Teamthy/i-confess/internal/audio"
+	"github.com/Teamthy/i-confess/internal/auth"
 	"github.com/Teamthy/i-confess/internal/content"
 	"github.com/Teamthy/i-confess/internal/httpx"
 	"github.com/Teamthy/i-confess/internal/models"
@@ -341,10 +342,17 @@ func (h *Handler) adminSetRole(w http.ResponseWriter, r *http.Request) {
 }
 
 func validRole(s string) bool {
-	switch s {
-	case "super_admin", "content_admin", "audio_producer", "theological_reviewer", "support_admin", "analytics_admin":
+	if s == "" {
+		return false
+	}
+	if _, ok := auth.SystemRoles[s]; ok {
 		return true
 	}
+	if s == "admin" {
+		return true
+	}
+	// Allow custom roles - they will be validated against DB in RBAC handlers
+	// For legacy endpoint, only allow system roles
 	return false
 }
 
