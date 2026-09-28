@@ -15,6 +15,7 @@ import Link from "next/link";
 import { Icon } from "./ui";
 import { useToast } from "@/lib/ui";
 import { track } from "@/lib/store";
+import { usePlayer } from "@/lib/player";
 import { CATALOG_UNAVAILABLE, RightsChips, TranslationSelect, useCatalog } from "./bible";
 import {
   BOOKS,
@@ -794,6 +795,7 @@ export function BibleSettingsPage() {
 
 export function BibleAudioPage() {
   const catalog = useCatalog();
+  const player = usePlayer();
   const [reference, setReference] = useState("John 3");
   const [url, setUrl] = useState("");
   const [error, setError] = useState<string>("");
@@ -831,7 +833,25 @@ export function BibleAudioPage() {
             setUrl("");
             bible
               .audio(catalog.currentID, reference)
-              .then((d) => setUrl(d.audio_url || ""))
+              .then((d) => {
+                setUrl(d.audio_url || "");
+                // Real recordings play through the shared player, which owns
+                // the Media Session controls — lock screen, headset and
+                // Bluetooth transport all address this one element.
+                if (d.audio_url) {
+                  player.load(
+                    {
+                      itemId: d.id || reference,
+                      sessionId: "bible",
+                      title: d.reference || reference,
+                      subtitle: d.translation?.abbreviation || catalog.currentID,
+                      src: d.audio_url,
+                      durationHint: d.duration_ms ? Math.round(d.duration_ms / 1000) : undefined,
+                    },
+                    true
+                  );
+                }
+              })
               .catch(() =>
                 setError(
                   "No approved recording is registered for that passage in this translation. Readable text never implies audio rights."
@@ -850,7 +870,12 @@ export function BibleAudioPage() {
         </div>
       )}
       {error && <div className="bible-note">{error}</div>}
-      {url && <audio controls src={url} style={{ width: "100%", marginTop: 18 }} />}
+      {url && (
+        <div className="bible-note" role="status">
+          Playing {player.track?.title || reference} through the session player — lock-screen and headset controls
+          are live. {player.failed && "This recording could not be played."}
+        </div>
+      )}
     </section>
   );
 }

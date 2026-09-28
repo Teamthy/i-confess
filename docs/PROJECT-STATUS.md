@@ -13,6 +13,15 @@ not run: the golangci-lint release CDN is unreachable from this sandbox, so that
 one is owed to CI. The ledger 45 record below is unchanged and still describes
 `apps/web`.)
 
+**Web surfaces (2026-09-28, ledger 54):** there is now exactly one Next.js
+application — `web/` — serving the public site, the authenticated app, the
+Bible platform and the admin console at `/admin`. `apps/web` and `apps/admin`
+were folded into it and deleted; their API, auth, analytics and Media Session
+player layers moved to `web/lib`. The Go binary's embedded fallback SPAs
+(`internal/webapp`, `internal/adminui`) are unchanged. CI now typechecks and
+builds the web app, which nothing did while two projects existed. See
+`docs/54-WEB-CONSOLIDATION.md`.
+
 **Previously verified:** 2026-09-21, at ledger 45 (master-plan PHASE 38 — the
 public marketing website. `apps/web` was rebuilt in place against the PHASE 05
 design system: `styles/tokens.css` is a symlink to `design/generated/tokens.css`,

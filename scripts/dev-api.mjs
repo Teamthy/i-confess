@@ -20,7 +20,7 @@
 //    server enforces everything for real; never ship this.
 //
 // Start:  node scripts/dev-api.mjs [--port 8081]
-// Wire:   IC_API_URL=http://127.0.0.1:8081 npm run dev (apps/web)
+// Wire:   IC_API_URL=http://127.0.0.1:8081 npm run dev (from web/)
 
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
@@ -308,6 +308,73 @@ const server = http.createServer(async (req, res) => {
     for (const c of CONFS) if (!q || c.title.toLowerCase().includes(q)) results.push({ id: c.id, type: "confession", title: c.title, description: c.short_text });
     for (const c of CATS) if (!q || c.name.toLowerCase().includes(q)) results.push({ id: c.id, type: "category", title: c.name, description: c.description });
     return json(res, 200, { results: results.slice(0, 20), count: Math.min(results.length, 20) });
+  }
+
+  // ---- admin console (fixture)
+  // The console is part of the one web app now, so the fixture has to answer
+  // its reads or the preview shows nothing but error states. Shapes mirror the
+  // Go handlers; authorisation is modelled (401 without a token) but not
+  // enforced by role - the real API re-checks the role on every request.
+  if (p.startsWith("/admin")) {
+    if (!authed(req)) return json(res, 401, { error: "authentication required" });
+    const byStatus = {};
+    for (const c of CONFS) byStatus[c.status] = (byStatus[c.status] || 0) + 1;
+    if (method === "GET" && p === "/admin/stats") {
+      return json(res, 200, {
+        categories: CATS.length, confessions: CONFS.length,
+        published: CONFS.filter((c) => c.status === "published").length,
+        voices: VOICES.length, confessions_by_status: byStatus,
+      });
+    }
+    if (method === "GET" && p === "/admin/queue") {
+      return json(res, 200, { stats: { queued: 0, running: 0, done: 128, dead: 0 }, types: ["audio_render", "email", "push", "retention"], durable: false });
+    }
+    if (method === "GET" && p === "/admin/metrics") {
+      return json(res, 200, { auth_failures: 0, rate_limited: 0, admin_actions: (state.adminActions || []).length, cache_invalidations: 0 });
+    }
+    if (method === "GET" && p === "/admin/audit") {
+      return json(res, 200, (state.adminActions || []).slice(-50).reverse());
+    }
+    if (method === "GET" && p === "/admin/categories") return json(res, 200, CATS);
+    if (method === "GET" && p === "/admin/confessions") return json(res, 200, CONFS);
+    if (method === "GET" && p === "/admin/users/admins") {
+      return json(res, 200, [{ id: state.user.id, email: state.user.email, display_name: state.user.display_name, role: "super_admin", status: "active" }]);
+    }
+    if (method === "GET" && p === "/admin/moderation/queue") {
+      return json(res, 200, {
+        user_confessions: (state.userConfessions || []).filter((x) => x.status === "submitted"),
+        reports: [], appeals: [],
+      });
+    }
+    if ((m = p.match(/^\/admin\/confessions\/([^/]+)$/)) && method === "PATCH") {
+      const c = CONFS.find((x) => x.id === m[1]);
+      if (!c) return json(res, 404, { error: "confession not found" });
+      c.status = String(body?.status || c.status);
+      state.adminActions = state.adminActions || [];
+      state.adminActions.push({ id: `audit-${state.adminActions.length + 1}`, actor_email: state.user.email, action: "confession.status", target_id: c.id, created_at: NOW() });
+      return json(res, 200, c);
+    }
+    if (p === "/admin/users/role" && (method === "POST" || method === "DELETE")) {
+      state.adminActions = state.adminActions || [];
+      state.adminActions.push({ id: `audit-${state.adminActions.length + 1}`, actor_email: state.user.email, action: method === "POST" ? "role.grant" : "role.revoke", target_id: String(body?.email || ""), created_at: NOW() });
+      return json(res, 200, { message: "role updated" });
+    }
+    if (p.startsWith("/admin/bible/")) {
+      // The Bible console reads six queues; the fixture has a catalogue and a
+      // canon, not a review workflow, so it answers with what it truly holds.
+      if (p === "/admin/bible/overview") {
+        return json(res, 200, { translations: 2, active: 2, pending_review: 0, failed_imports: 0, published_audio: 0, offline_packages: 0 });
+      }
+      if (p === "/admin/bible/health") return json(res, 200, { database: "ok", provider: "fixture", canon: "66 books / 1189 chapters" });
+      if (p === "/admin/bible/metrics") return json(res, 200, { chapter_reads: 0, searches: 0, note: "Fixture process aggregates only." });
+      if (p === "/admin/bible/catalog") return json(res, 200, { provider_available: false, translations: [] });
+      if (p === "/admin/bible/plans") return json(res, 200, { plans: [] });
+      if (p === "/admin/bible/audio") return json(res, 200, { assets: [] });
+      if (p === "/admin/bible/verse-of-day") return json(res, 200, { entries: [] });
+      if (p === "/admin/bible/cross-references") return json(res, 200, { references: [] });
+      return json(res, 404, { error: "not implemented in the fixture" });
+    }
+    return json(res, 404, { error: "not implemented in the fixture" });
   }
 
   // ---- auth endpoints (fixture-strict on shape, lenient on credentials)

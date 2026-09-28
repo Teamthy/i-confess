@@ -2,6 +2,8 @@ import React from "react";
 import type { Metadata } from "next";
 import "./globals.css";
 import { UiProvider } from "@/lib/ui";
+import { AuthProvider } from "@/lib/auth-context";
+import { PlayerProvider } from "@/lib/player";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://iconfess.app"),
@@ -23,7 +25,19 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
       </head>
       <body>
-        <UiProvider>{children}</UiProvider>
+        {/* The real API session wraps everything: the public site renders
+            signed-out, the app hydrates from it, and the admin console needs
+            it. Local UI state (player, toasts, preferences) stays in
+            UiProvider. */}
+        <AuthProvider>
+          {/* Two audio paths, deliberately: UiProvider drives the local
+              speech engine the demo surfaces use, PlayerProvider drives real
+              API-served audio files and owns the Media Session controls
+              (lock screen, headset, Bluetooth). */}
+          <PlayerProvider>
+            <UiProvider>{children}</UiProvider>
+          </PlayerProvider>
+        </AuthProvider>
       </body>
     </html>
   );

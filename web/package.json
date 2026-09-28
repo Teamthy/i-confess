@@ -4,7 +4,11 @@
   "scripts": {
     "dev": "next dev -H 0.0.0.0 -p 3000",
     "build": "next build",
-    "start": "next start -H 0.0.0.0 -p 3000"
+    "start": "next start -H 0.0.0.0 -p 3000",
+    "typecheck": "tsc --noEmit",
+    "lint": "next lint",
+    "dev:api": "node ../scripts/dev-api.mjs",
+    "bible:corpus": "python3 ../scripts/dev-bible-corpus.py"
   },
   "dependencies": {
     "next": "15.5.26",
@@ -20,5 +24,6 @@
   "overrides": {
     "postcss": "8.5.28",
     "sharp": "0.35.4"
-  }
+  },
+  "description": "iCONFESS web \u2014 the public site, the authenticated app and the admin console in one Next.js application. Consumes the Go API through the same-origin /api proxy."
 }

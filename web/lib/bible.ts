@@ -416,7 +416,7 @@ function mirror(path: string, method: string, body?: unknown) {
   if (typeof window === "undefined") return;
   let token = "";
   try {
-    token = window.localStorage.getItem("iconfess:token") || "";
+    token = window.localStorage.getItem("ic_token") || "";
   } catch {
     return;
   }

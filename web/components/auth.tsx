@@ -4,12 +4,50 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Logo } from "./ui";
 import { useApp, mutate, track } from "@/lib/store";
+import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/lib/ui";
 import { CATEGORIES } from "@/lib/data";
 
 export default function AuthPage({ kind }: { kind: string }) {
   const router = useRouter(); const toast = useToast(); const st = useApp();
+  const auth = useAuth();
   const [interests, setInterests] = useState<string[]>(st.user?.interests || []);
+
+  /**
+   * Sign in for real, and fall back honestly.
+   *
+   * The merged app is both the marketing site and the product: it has to work
+   * as a browsable site with no backend in front of it, and as the real client
+   * when the API is there. So the form calls the API first — a wrong password
+   * is a wrong password, and the server says so — and only when the API cannot
+   * be reached at all (status 0) does it open a local, clearly-labelled
+   * session so the demo surfaces stay walkable. It never pretends a failed
+   * password succeeded.
+   */
+  const localSession = (email: string) => {
+    mutate((s) => { s.user = { name: email.split("@")[0].replace(/[._]/g, " "), email, plan: "free", interests: s.user?.interests || [] }; });
+  };
+
+  const signIn = async (email: string, password: string) => {
+    const result = await auth.login(email, password);
+    if (result.ok) {
+      localSession(email);
+      track("account_created", { type: "login" });
+      toast("Welcome back");
+      const next = new URLSearchParams(window.location.search).get("next");
+      router.push(next && next.startsWith("/") ? next : "/app");
+      return;
+    }
+    if (result.mfaRequired) { toast(result.error || "Enter the code from your authenticator app."); return; }
+    // status 0 is "no API reachable", which is the demo deployment.
+    if (result.error && /couldn't reach the service/i.test(result.error)) {
+      localSession(email);
+      toast("No API here — opened a local demo session");
+      router.push("/app");
+      return;
+    }
+    toast(result.error || "That didn't work.");
+  };
 
   const submit = (e: React.FormEvent, fn: (fd: FormData) => void) => {
     e.preventDefault();
@@ -42,7 +80,7 @@ export default function AuthPage({ kind }: { kind: string }) {
     login: (
       <>
         <Logo /><h1>Welcome back</h1><p className="sub">Your words are where you left them.</p>
-        <form onSubmit={(e) => submit(e, (fd) => { const email = String(fd.get("email")); mutate((s) => { s.user = { name: email.split("@")[0].replace(/[._]/g, " "), email, plan: "free", interests: s.user?.interests || [] }; }); track("account_created", { type: "login" }); toast("Welcome back"); router.push("/app"); })}>
+        <form onSubmit={(e) => submit(e, (fd) => { void signIn(String(fd.get("email")), String(fd.get("pw"))); })}>
           <div className="field"><label>Email</label><input name="email" type="email" required autoComplete="email" /></div>
           <div className="field"><label>Password</label><input name="pw" type="password" required minLength={6} autoComplete="current-password" /><div className="err">At least 6 characters.</div></div>
           <button className="btn btn-primary btn-lg" style={{ width: "100%", justifyContent: "center", marginTop: 22 }} type="submit">Log In</button>
