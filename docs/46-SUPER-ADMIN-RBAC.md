@@ -49,6 +49,30 @@ Granular permissions are defined as `resource:action` strings, e.g.:
 
 See `PermissionDescriptions` in `rbac.go` for full catalog grouped by category.
 
+## Router enforcement (updated)
+
+`server/internal/api/router.go` now uses RBAC-aware wrappers, not just generic super_admin:
+
+- `admin` — super_admin only (stats, metrics, audit, rbac, system, security, erase, role assignment)
+- `contentMgr` — content_admin, bible_admin, theological_reviewer, admin (legacy) — categories, confessions, QA, bible overview/health/catalog
+- `moderationMgr` — support_admin, moderator, content_admin, admin — moderation queue, user-confession review, report decisions, appeal decisions
+- `audioMgr` — audio_producer, voice_manager — voices list/create, audio attach, generation
+- `voiceMgr` — voice_manager only (rights sensitive)
+- `supportMgr` — support_admin, admin — user listing, user detail, roles read, sessions list/revoke, admin accounts list, suspend/restore
+- `billingMgr` — content_admin, admin — plans read (write remains super_admin)
+
+Super_admin is admitted everywhere because `RequireRoleWithSessions` always allows super_admin bypass (see `rbac.go`).
+
+Both `/admin/*` and `/v1/admin/*` aliases use the same wrappers.
+
+### Impersonation
+
+`POST /admin/users/{id}/impersonate` — super_admin only, audited, 15m TTL, cannot impersonate another super_admin. Issues a regular user session JWT (no admin role) for support debugging. Logged to audit trail as `user_impersonated`.
+
+### Test update
+
+`admin_authorization_test.go` `TestRoleScopingIsEnforced` now uses `/admin/rbac/roles` as the super-only route (previously `/admin/categories` which now admits content_admin via contentMgr) and adds positive cases for content_admin on content routes and super_admin everywhere.
+
 ## Database Schema
 
 Migration `0024_rbac.sql` introduces:

@@ -561,6 +561,63 @@ func jsonString(v any) string {
 	return string(b)
 }
 
+func (h *Handler) adminImpersonateUser(w http.ResponseWriter, r *http.Request) {
+	// Only super_admin can impersonate, and permission check
+	if !auth.HasPermission(currentRole(r), auth.PermUserImpersonate) {
+		httpx.WriteError(w, http.StatusForbidden, "user:impersonate permission required")
+		return
+	}
+
+	userID := r.PathValue("id")
+	if userID == "" {
+		httpx.WriteError(w, http.StatusBadRequest, "user id required")
+		return
+	}
+
+	// Cannot impersonate another admin (prevent privilege escalation)
+	targetRoles, err := h.rbac.GetUserRoles(r.Context(), userID)
+	if err == nil {
+		for _, tr := range targetRoles {
+			if tr.Name == auth.RoleSuperAdmin {
+				httpx.WriteError(w, http.StatusForbidden, "cannot impersonate another super_admin")
+				return
+			}
+		}
+	}
+
+	user, err := h.users.ByID(r.Context(), userID)
+	if err != nil {
+		httpx.WriteError(w, http.StatusNotFound, "user not found")
+		return
+	}
+
+	// Create a session for the target user, but mark it as impersonated
+	// Use a short TTL for impersonation sessions (15m)
+	sessionID, err := h.users.CreateAuthSession(r.Context(), userID, "impersonation", r.UserAgent(), clientIP(r), 15*time.Minute)
+	if err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, "failed to create impersonation session")
+		return
+	}
+
+	// Sign token for target user, with no admin role
+	tok, err := auth.SignSessionToken(h.cfg.JWTSecret, "15m", userID, user.Email, "", sessionID)
+	if err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, "failed to issue impersonation token")
+		return
+	}
+
+	h.recordAudit(r, "user_impersonated", "user", userID, "impersonated by "+actor(r)+" for support", "ok")
+
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{
+		"token":          tok,
+		"user":           user,
+		"impersonated":   true,
+		"impersonated_by": actor(r),
+		"expires_in":     "15m",
+		"warning":        "This session is audited. Use only for legitimate support purposes.",
+	})
+}
+
 func nowString() string {
 	return time.Now().UTC().Format(time.RFC3339)
 }

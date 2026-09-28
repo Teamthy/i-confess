@@ -15,6 +15,8 @@ const NAV_GROUPS: { label: string; items: [string, string, string][] }[] = [
       ["/admin", "Overview", "grid"],
       ["/admin/super", "Super Admin", "shield"],
       ["/admin/system", "System Health", "chart"],
+      ["/admin/security", "Security", "shield"],
+      ["/admin/audit", "Audit Log", "bell"],
     ],
   },
   {
@@ -23,28 +25,24 @@ const NAV_GROUPS: { label: string; items: [string, string, string][] }[] = [
       ["/admin/content", "Content", "book"],
       ["/admin/bible", "Bible", "book"],
       ["/admin/audio", "Audio & Voices", "mic"],
-    ],
-  },
-  {
-    label: "Community",
-    items: [
       ["/admin/moderation", "Moderation", "eye"],
-      ["/admin/queue", "Job Queue", "clock"],
     ],
   },
   {
     label: "People",
     items: [
-      ["/admin/users", "Users", "user"],
+      ["/admin/users", "Users & Access", "user"],
       ["/admin/rbac", "Roles & RBAC", "lock"],
+      ["/admin/support", "Support & Impersonate", "user"],
+      ["/admin/erase", "Immediate Erase", "shield"],
     ],
   },
   {
     label: "Business",
     items: [
-      ["/admin/pricing", "Pricing", "spark"],
-      ["/admin/audit", "Audit Log", "bell"],
-      ["/admin/security", "Security", "shield"],
+      ["/admin/pricing", "Billing & Plans", "spark"],
+      ["/admin/billing", "Billing", "spark"],
+      ["/admin/queue", "Job Queue", "clock"],
     ],
   },
 ];

@@ -744,3 +744,413 @@ export function SecurityConsole() {
     </>
   );
 }
+
+/* Content management — categories + confessions */
+export function ContentConsole() {
+  const { token } = useAuth();
+  const [msg, setMsg] = useState("");
+  const cats = useAdminResource<any>("/admin/categories");
+  const confs = useAdminResource<any>("/admin/confessions?limit=30");
+  const [catForm, setCatForm] = useState({ name: "", slug: "", description: "" });
+  const [confForm, setConfForm] = useState({ title: "", body: "", category_id: "", tags: "" });
+
+  const createCat = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const res = await adminApi("/admin/categories", token, { method: "POST", body: catForm });
+    setMsg(res.ok ? "Category created" : res.message);
+    if (res.ok) { cats.reload(); setCatForm({ name: "", slug: "", description: "" }); }
+  };
+  const createConf = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const body = { ...confForm, tags: confForm.tags.split(",").map((t) => t.trim()).filter(Boolean) };
+    const res = await adminApi("/admin/confessions", token, { method: "POST", body });
+    setMsg(res.ok ? "Confession created" : res.message);
+    if (res.ok) { confs.reload(); setConfForm({ title: "", body: "", category_id: "", tags: "" }); }
+  };
+
+  return (
+    <>
+      <h1 className="adm-title">Content</h1>
+      <p className="adm-lede">Create categories and confessions. Content managers, bible admins, and theological reviewers can manage content; QA is content_admin only.</p>
+      {msg && <div className="adm-note">{msg}</div>}
+
+      <div className="adm-grid">
+        <section className="adm-card">
+          <h3>Create category</h3>
+          <form onSubmit={createCat} style={{ display: "grid", gap: 10 }}>
+            <input className="adm-input" placeholder="Name" value={catForm.name} onChange={(e) => setCatForm({ ...catForm, name: e.target.value })} />
+            <input className="adm-input" placeholder="Slug" value={catForm.slug} onChange={(e) => setCatForm({ ...catForm, slug: e.target.value })} />
+            <input className="adm-input" placeholder="Description" value={catForm.description} onChange={(e) => setCatForm({ ...catForm, description: e.target.value })} />
+            <button className="btn btn-primary btn-sm" type="submit">Create</button>
+          </form>
+          <h4 style={{ marginTop: 18, fontSize: 13 }}>Existing — {cats.data?.length || cats.data?.categories?.length || 0}</h4>
+          <div className="adm-table-wrap">
+            <table className="adm-table">
+              <thead><tr><th>Name</th><th>Slug</th></tr></thead>
+              <tbody>
+                {(cats.data?.categories || cats.data || []).slice(0, 15).map((c: any) => (
+                  <tr key={c.id || c.slug}><td>{c.name}</td><td className="adm-kbd">{c.slug}</td></tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section className="adm-card">
+          <h3>Create confession</h3>
+          <form onSubmit={createConf} style={{ display: "grid", gap: 10 }}>
+            <input className="adm-input" placeholder="Title" value={confForm.title} onChange={(e) => setConfForm({ ...confForm, title: e.target.value })} />
+            <select className="adm-input" value={confForm.category_id} onChange={(e) => setConfForm({ ...confForm, category_id: e.target.value })}>
+              <option value="">Select category</option>
+              {(cats.data?.categories || cats.data || []).map((c: any) => (<option key={c.id} value={c.id}>{c.name}</option>))}
+            </select>
+            <textarea className="adm-input" placeholder="Body" rows={6} value={confForm.body} onChange={(e) => setConfForm({ ...confForm, body: e.target.value })} />
+            <input className="adm-input" placeholder="Tags comma separated" value={confForm.tags} onChange={(e) => setConfForm({ ...confForm, tags: e.target.value })} />
+            <button className="btn btn-primary btn-sm" type="submit">Create confession</button>
+          </form>
+        </section>
+      </div>
+
+      <section className="adm-card">
+        <h3>Recent confessions</h3>
+        <div className="adm-table-wrap">
+          <table className="adm-table">
+            <thead><tr><th>Title</th><th>Status</th><th>Category</th><th>Updated</th></tr></thead>
+            <tbody>
+              {(confs.data?.confessions || confs.data || []).slice(0, 20).map((c: any) => (
+                <tr key={c.id}><td><b>{c.title}</b><small>{(c.body || "").slice(0, 80)}</small></td><td><span className="adm-pill">{c.status}</span></td><td>{c.category_name || c.category_id?.slice(0, 8)}</td><td>{(c.updated_at || "").slice(0, 10)}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </>
+  );
+}
+
+/* Moderation queue */
+export function ModerationConsole() {
+  const { token } = useAuth();
+  const [msg, setMsg] = useState("");
+  const queue = useAdminResource<any>("/admin/moderation/queue");
+
+  const decide = async (type: "user-confessions" | "reports" | "appeals", id: string, decision: string) => {
+    const url = type === "user-confessions" ? `/admin/moderation/user-confessions/${id}/review` : type === "reports" ? `/admin/moderation/reports/${id}/decision` : `/admin/moderation/appeals/${id}/decision`;
+    const res = await adminApi(url, token, { method: "POST", body: { decision, status: decision, reason: "reviewed in console" } });
+    setMsg(res.ok ? `${type} ${id} → ${decision}` : res.message);
+    if (res.ok) queue.reload();
+  };
+
+  return (
+    <>
+      <h1 className="adm-title">Moderation</h1>
+      <p className="adm-lede">Review user confessions, reports, and appeals. Support admins, moderators, and content admins can moderate.</p>
+      {msg && <div className="adm-note">{msg}</div>}
+      <section className="adm-card">
+        <div className="adm-card-head"><h3>Queue</h3><button className="btn btn-ghost btn-sm" onClick={() => queue.reload()}>Reload</button></div>
+        {queue.error && <p className="small">{queue.error}</p>}
+        {queue.loading && <p className="small">Loading…</p>}
+        <div className="adm-table-wrap">
+          <table className="adm-table">
+            <thead><tr><th>Type</th><th>Content</th><th>Reporter</th><th>Actions</th></tr></thead>
+            <tbody>
+              {(queue.data?.items || queue.data?.queue || queue.data || []).slice(0, 30).map((it: any, i: number) => (
+                <tr key={it.id || i}>
+                  <td><span className="adm-pill">{it.type || it.kind || "item"}</span></td>
+                  <td><b>{it.title || it.reason || it.id}</b><small>{(it.body || it.description || "").slice(0, 120)}</small></td>
+                  <td className="adm-kbd">{it.reporter_id?.slice(0, 8) || it.user_id?.slice(0, 8) || "—"}</td>
+                  <td>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      <button className="btn btn-ghost btn-sm" onClick={() => decide("user-confessions", it.id, "approved")}>Approve</button>
+                      <button className="btn btn-ghost btn-sm" onClick={() => decide("user-confessions", it.id, "rejected")}>Reject</button>
+                      <button className="btn btn-ghost btn-sm" onClick={() => decide("reports", it.id, "resolved")}>Resolve</button>
+                      <button className="btn btn-ghost btn-sm" onClick={() => decide("reports", it.id, "dismissed")}>Dismiss</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </>
+  );
+}
+
+/* Audio + voices */
+export function AudioConsole() {
+  const voices = useAdminResource<any>("/admin/voices");
+  const audios = useAdminResource<any>("/admin/audio?limit=20");
+  return (
+    <>
+      <h1 className="adm-title">Audio & Voices</h1>
+      <p className="adm-lede">Voice rights are sensitive — voice managers and audio producers only. Super admin bypasses. Generation is 451 when rights disallow.</p>
+      <div className="adm-grid">
+        <section className="adm-card">
+          <h3>Voices — {voices.data?.voices?.length || voices.data?.length || 0}</h3>
+          <div className="adm-table-wrap">
+            <table className="adm-table">
+              <thead><tr><th>Name</th><th>Status</th><th>Rights</th></tr></thead>
+              <tbody>
+                {(voices.data?.voices || voices.data || []).slice(0, 20).map((v: any) => (
+                  <tr key={v.id}><td><b>{v.name}</b><small>{v.description?.slice(0, 80)}</small></td><td><span className="adm-pill">{v.status}</span></td><td className="adm-kbd">{v.rights_status || "—"}</td></tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+        <section className="adm-card">
+          <h3>Recent audio</h3>
+          <div className="adm-table-wrap">
+            <table className="adm-table">
+              <thead><tr><th>Confession</th><th>Voice</th><th>Duration</th></tr></thead>
+              <tbody>
+                {(audios.data?.audio || audios.data || []).slice(0, 20).map((a: any, i: number) => (
+                  <tr key={a.id || i}><td className="adm-kbd">{a.confession_id?.slice(0, 8)}</td><td>{a.voice_id?.slice(0, 8)}</td><td>{a.duration_ms ? `${Math.round(a.duration_ms / 1000)}s` : "—"}</td></tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </>
+  );
+}
+
+/* Bible admin */
+export function BibleAdminConsole() {
+  const overview = useAdminResource<any>("/admin/bible/overview");
+  const health = useAdminResource<any>("/admin/bible/health");
+  const plans = useAdminResource<any>("/admin/bible/plans");
+  return (
+    <>
+      <h1 className="adm-title">Bible Platform</h1>
+      <p className="adm-lede">Translations, plans, verse-of-day, cross-references, audio rights. Bible admin and content admin can view; super admin approves rights.</p>
+      <div className="adm-stats">
+        <div className="adm-stat"><span>Translations</span><b>{overview.data?.translations ?? "—"}</b></div>
+        <div className="adm-stat"><span>Plans</span><b>{plans.data?.plans?.length ?? plans.data?.length ?? "—"}</b></div>
+        <div className="adm-stat"><span>DB healthy</span><b>{health.data?.database?.healthy ? "Yes" : "—"}</b></div>
+        <div className="adm-stat"><span>Providers</span><b>{Object.keys(health.data?.providers || {}).length || "—"}</b></div>
+      </div>
+      <div className="adm-grid">
+        <section className="adm-card">
+          <h3>Translations</h3>
+          <div className="adm-table-wrap">
+            <table className="adm-table">
+              <thead><tr><th>ID</th><th>Name</th><th>Rights</th></tr></thead>
+              <tbody>
+                {(overview.data?.translations_list || overview.data?.translations || []).slice?.(0, 20)?.map?.((t: any) => (
+                  <tr key={t.id}><td className="adm-kbd">{t.id}</td><td>{t.name || t.short_name}</td><td><span className="adm-pill">{t.rights_status || t.status || "—"}</span></td></tr>
+                )) || <tr><td colSpan={3} className="small">No data or overview shape differs — see raw below</td></tr>}
+              </tbody>
+            </table>
+          </div>
+          <div className="adm-code" style={{ marginTop: 12 }}><pre style={{ margin: 0 }}>{JSON.stringify(overview.data || {}, null, 2).slice(0, 2000)}</pre></div>
+        </section>
+        <section className="adm-card">
+          <h3>Plans</h3>
+          <div className="adm-table-wrap">
+            <table className="adm-table">
+              <thead><tr><th>Slug</th><th>Title</th><th>Status</th></tr></thead>
+              <tbody>
+                {(plans.data?.plans || plans.data || []).slice(0, 20).map((p: any) => (
+                  <tr key={p.id || p.slug}><td className="adm-kbd">{p.slug}</td><td>{p.title}</td><td><span className="adm-pill">{p.status}</span></td></tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </>
+  );
+}
+
+/* Support — tickets / impersonation */
+export function SupportConsole() {
+  const { token } = useAuth();
+  const [msg, setMsg] = useState("");
+  const [userId, setUserId] = useState("");
+  const [impersonationToken, setImpersonationToken] = useState("");
+
+  const impersonate = async () => {
+    if (!userId.trim()) { setMsg("User ID required"); return; }
+    const res = await adminApi<any>(`/admin/users/${encodeURIComponent(userId.trim())}/impersonate`, token, { method: "POST" });
+    if (res.ok) {
+      setImpersonationToken(res.data?.token || "");
+      setMsg(`Impersonation token issued for ${userId} — 15m, audited`);
+    } else setMsg(res.message);
+  };
+
+  return (
+    <>
+      <h1 className="adm-title">Support</h1>
+      <p className="adm-lede">User support tools — impersonation is super admin only, audited, 15m TTL, cannot impersonate another super admin. Use only for legitimate support.</p>
+      {msg && <div className="adm-note">{msg}</div>}
+      <section className="adm-card" style={{ maxWidth: 720 }}>
+        <h3>Impersonate user</h3>
+        <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
+          <input className="adm-input" placeholder="User ID (uuid)" value={userId} onChange={(e) => setUserId(e.target.value)} style={{ flex: 1 }} />
+          <button className="btn btn-primary btn-sm" onClick={impersonate}>Impersonate</button>
+        </div>
+        {impersonationToken && (
+          <div className="adm-code" style={{ marginTop: 12 }}>
+            <div className="small" style={{ marginBottom: 6 }}>Impersonation JWT — copy for debugging, expires 15m, audited</div>
+            <pre style={{ margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-all" }}>{impersonationToken}</pre>
+          </div>
+        )}
+        <p className="small" style={{ marginTop: 12 }}>All impersonations are logged to audit with actor and target. The token has no admin role — it is a regular user session.</p>
+      </section>
+    </>
+  );
+}
+
+/* Billing / plans */
+export function BillingConsole() {
+  const plans = useAdminResource<any>("/admin/plans");
+  const [msg, setMsg] = useState("");
+  const { token } = useAuth();
+  const [form, setForm] = useState({ id: "pro", name: "Pro", price_cents: 999, interval: "month", features: "offline,audio" });
+
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const res = await adminApi("/admin/plans", token, { method: "PUT", body: { ...form, price_cents: Number(form.price_cents), features: form.features.split(",").map((s) => s.trim()).filter(Boolean) } });
+    setMsg(res.ok ? "Plan saved" : res.message);
+    if (res.ok) plans.reload();
+  };
+
+  return (
+    <>
+      <h1 className="adm-title">Billing & Plans</h1>
+      <p className="adm-lede">Pricing plans are admin-editable. Billing actions are audited. Subscriptions are per-user.</p>
+      {msg && <div className="adm-note">{msg}</div>}
+      <div className="adm-grid">
+        <section className="adm-card">
+          <h3>Plans</h3>
+          <div className="adm-table-wrap">
+            <table className="adm-table">
+              <thead><tr><th>ID</th><th>Name</th><th>Price</th><th>Interval</th></tr></thead>
+              <tbody>
+                {(plans.data?.plans || plans.data || []).map((p: any) => (
+                  <tr key={p.id}><td className="adm-kbd">{p.id}</td><td>{p.name}</td><td>${(p.price_cents / 100).toFixed(2)}</td><td>{p.interval}</td></tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+        <section className="adm-card">
+          <h3>Upsert plan</h3>
+          <form onSubmit={save} style={{ display: "grid", gap: 10 }}>
+            <input className="adm-input" placeholder="ID" value={form.id} onChange={(e) => setForm({ ...form, id: e.target.value })} />
+            <input className="adm-input" placeholder="Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+            <input className="adm-input" type="number" placeholder="Price cents" value={form.price_cents as any} onChange={(e) => setForm({ ...form, price_cents: Number(e.target.value) as any })} />
+            <input className="adm-input" placeholder="Interval" value={form.interval} onChange={(e) => setForm({ ...form, interval: e.target.value })} />
+            <input className="adm-input" placeholder="Features comma separated" value={form.features} onChange={(e) => setForm({ ...form, features: e.target.value })} />
+            <button className="btn btn-primary btn-sm" type="submit">Save plan</button>
+          </form>
+        </section>
+      </div>
+    </>
+  );
+}
+
+/* Audit */
+export function AuditConsole() {
+  const { token } = useAuth();
+  const [entity, setEntity] = useState("");
+  const [format, setFormat] = useState("json");
+  const [exportUrl, setExportUrl] = useState("");
+  const audit = useAdminResource<any[]>("/admin/audit");
+
+  const doExport = async () => {
+    const q = new URLSearchParams();
+    if (entity.trim()) q.set("entity", entity.trim());
+    q.set("format", format);
+    q.set("limit", "500");
+    const url = `/admin/audit/export?${q.toString()}`;
+    setExportUrl(url);
+    // For csv, trigger download via adminApi raw fetch
+    if (format === "csv") {
+      // Build full URL for browser download via token header — we use adminApi to fetch blob
+      const res = await fetch(`/api${url}`, { headers: { Authorization: `Bearer ${token}` } } as any);
+      if (res.ok) {
+        const blob = await res.blob();
+        const u = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = u;
+        a.download = "audit-export.csv";
+        a.click();
+        URL.revokeObjectURL(u);
+      }
+    }
+  };
+
+  return (
+    <>
+      <h1 className="adm-title">Audit Log</h1>
+      <p className="adm-lede">Every privileged action is logged with actor, role, IP, entity, detail, result. Export is super admin only, supports JSON and CSV.</p>
+
+      <div className="adm-toolbar">
+        <input className="adm-input" placeholder="Filter by entity (e.g. user, rbac_role)" value={entity} onChange={(e) => setEntity(e.target.value)} />
+        <select className="adm-input" value={format} onChange={(e) => setFormat(e.target.value)}>
+          <option value="json">JSON</option>
+          <option value="csv">CSV</option>
+        </select>
+        <button className="btn btn-primary btn-sm" onClick={doExport}>Export</button>
+        <button className="btn btn-ghost btn-sm" onClick={() => audit.reload()}>Reload</button>
+        {exportUrl && <span className="adm-kbd">{exportUrl}</span>}
+      </div>
+
+      <section className="adm-card">
+        <h3>Recent — {Array.isArray(audit.data) ? audit.data.length : 0}</h3>
+        <div className="adm-table-wrap">
+          <table className="adm-table">
+            <thead><tr><th>When</th><th>Actor</th><th>Action</th><th>Entity</th><th>Detail</th><th>Result</th></tr></thead>
+            <tbody>
+              {(Array.isArray(audit.data) ? audit.data : []).map((e: any, i: number) => (
+                <tr key={e.id || i}>
+                  <td>{(e.created_at || "").slice(0, 19).replace("T", " ")}</td>
+                  <td>{e.actor_email || e.actor || "—"}</td>
+                  <td><span className="adm-status">{e.action}</span></td>
+                  <td>{e.entity || "—"} <span className="adm-kbd">{(e.entity_id || "").slice(0, 8)}</span></td>
+                  <td><small>{(e.detail || "").slice(0, 120)}</small></td>
+                  <td><span className={"adm-pill " + (e.result === "ok" ? "green" : e.result === "denied" ? "red" : "")}>{e.result || "—"}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </>
+  );
+}
+
+/* Erase — super admin only */
+export function EraseConsole() {
+  const { token } = useAuth();
+  const [userId, setUserId] = useState("");
+  const [msg, setMsg] = useState("");
+
+  const erase = async () => {
+    if (!userId.trim()) { setMsg("User ID required"); return; }
+    if (!confirm(`IMMEDIATE ERASURE of ${userId}? This deletes the account and personal data per GDPR. Cannot be undone.`)) return;
+    const res = await adminApi(`/admin/users/${encodeURIComponent(userId.trim())}/erase`, token, { method: "POST" });
+    setMsg(res.ok ? `User ${userId} erased` : res.message);
+  };
+
+  return (
+    <>
+      <h1 className="adm-title">Immediate Erasure</h1>
+      <p className="adm-lede">Super admin only. Immediate account erasure per GDPR — bypasses the normal grace period. All data deleted, sessions revoked, audit logged.</p>
+      {msg && <div className="adm-note">{msg}</div>}
+      <section className="adm-card" style={{ maxWidth: 640 }}>
+        <h3>Erase account</h3>
+        <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
+          <input className="adm-input" placeholder="User ID" value={userId} onChange={(e) => setUserId(e.target.value)} style={{ flex: 1 }} />
+          <button className="btn btn-ghost btn-sm" style={{ background: "var(--err)", color: "white" }} onClick={erase}>Erase now</button>
+        </div>
+        <p className="small" style={{ marginTop: 12 }}>This action is irreversible and fully audited with actor, target, IP, and reason.</p>
+      </section>
+    </>
+  );
+}
+
