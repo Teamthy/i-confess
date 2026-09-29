@@ -31,12 +31,12 @@ var ErrGenerationFailed = errors.New("audio: generation failed")
 
 // Service provides audio asset lifecycle management.
 type Service struct {
-	storage     storage.ObjectStorage
-	assetStore  AssetStorer
-	voiceStore  VoiceStorer
-	jobStore    JobStorer
-	cdnDomain   string
-	signingTTL  time.Duration
+	storage    storage.ObjectStorage
+	assetStore AssetStorer
+	voiceStore VoiceStorer
+	jobStore   JobStorer
+	cdnDomain  string
+	signingTTL time.Duration
 }
 
 // AssetStorer defines the interface for audio asset database operations.
@@ -70,12 +70,12 @@ type ServiceConfig struct {
 // NewService creates a new audio service.
 func NewService(storage storage.ObjectStorage, assetStore AssetStorer, voiceStore VoiceStorer, jobStore JobStorer, cfg *ServiceConfig) *Service {
 	return &Service{
-		storage:     storage,
-		assetStore:  assetStore,
-		voiceStore:  voiceStore,
-		jobStore:    jobStore,
-		cdnDomain:   cfg.CDNDomain,
-		signingTTL:  cfg.SigningTTL,
+		storage:    storage,
+		assetStore: assetStore,
+		voiceStore: voiceStore,
+		jobStore:   jobStore,
+		cdnDomain:  cfg.CDNDomain,
+		signingTTL: cfg.SigningTTL,
 	}
 }
 
@@ -273,23 +273,23 @@ func (s *Service) generateStorageKeyFromAsset(asset *models.AudioAsset) string {
 	var builder strings.Builder
 	builder.WriteString("audio/content/")
 	builder.WriteString(asset.ConfessionID)
-	
+
 	if asset.ContentVersionID != "" {
 		builder.WriteString("/version/")
 		builder.WriteString(asset.ContentVersionID)
 	}
-	
+
 	builder.WriteString("/voice/")
 	builder.WriteString(asset.VoiceID)
-	
+
 	if asset.VariantID != "" {
 		builder.WriteString("/variant/")
 		builder.WriteString(asset.VariantID)
 	}
-	
+
 	// Use default format (m4a) for storage key
 	builder.WriteString("/asset.m4a")
-	
+
 	return builder.String()
 }
 

@@ -42,9 +42,9 @@ func TestCanAssignRole(t *testing.T) {
 	}{
 		{RoleSuperAdmin, RoleContentAdmin, true},
 		{RoleSuperAdmin, RoleSuperAdmin, true},
-		{RoleContentAdmin, RoleSupportAdmin, true},  // 70 > 50
-		{RoleContentAdmin, RoleSuperAdmin, false},   // cannot assign higher
-		{RoleContentAdmin, RoleVoiceManager, false}, // 70 < 75, cannot
+		{RoleContentAdmin, RoleSupportAdmin, true},   // 70 > 50
+		{RoleContentAdmin, RoleSuperAdmin, false},    // cannot assign higher
+		{RoleContentAdmin, RoleVoiceManager, false},  // 70 < 75, cannot
 		{RoleSupportAdmin, RoleAnalyticsAdmin, true}, // 50 > 40
 		{RoleSupportAdmin, RoleContentAdmin, false},
 		{RoleAnalyticsAdmin, RoleSupportAdmin, false},

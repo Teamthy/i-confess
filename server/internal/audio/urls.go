@@ -24,11 +24,11 @@ var ErrURLGenerationFailed = errors.New("audio: URL generation failed")
 
 // URLGenerator generates signed URLs for audio assets.
 type URLGenerator struct {
-	storage        storage.ObjectStorage
+	storage       storage.ObjectStorage
 	cdnDomain     string
 	streamTTL     time.Duration
 	downloadTTL   time.Duration
-	signingSecret  []byte
+	signingSecret []byte
 	useCloudFront bool
 	keyPairID     string
 	privateKey    string
@@ -39,7 +39,7 @@ type URLGeneratorConfig struct {
 	CDNDomain     string
 	StreamTTL     time.Duration // Default: 4 hours
 	DownloadTTL   time.Duration // Default: 24 hours
-	SigningSecret  string        // Secret key for signing URLs
+	SigningSecret string        // Secret key for signing URLs
 	UseCloudFront bool          // Whether to use CloudFront signed URLs
 	KeyPairID     string        // CloudFront key pair ID
 	PrivateKey    string        // CloudFront private key (PEM format)
@@ -64,13 +64,13 @@ func NewURLGenerator(storage storage.ObjectStorage, cfg *URLGeneratorConfig) (*U
 
 	return &URLGenerator{
 		storage:       storage,
-		cdnDomain:    cfg.CDNDomain,
-		streamTTL:    cfg.StreamTTL,
-		downloadTTL:  cfg.DownloadTTL,
+		cdnDomain:     cfg.CDNDomain,
+		streamTTL:     cfg.StreamTTL,
+		downloadTTL:   cfg.DownloadTTL,
 		signingSecret: signingSecret,
 		useCloudFront: cfg.UseCloudFront,
-		keyPairID:    cfg.KeyPairID,
-		privateKey:   cfg.PrivateKey,
+		keyPairID:     cfg.KeyPairID,
+		privateKey:    cfg.PrivateKey,
 	}, nil
 }
 
@@ -274,14 +274,14 @@ func (g *URLGenerator) ValidateToken(token string) (string, error) {
 func (g *URLGenerator) GenerateShortURL(ctx context.Context, assetID string) (string, error) {
 	// In a real implementation, this would use a URL shortener service
 	// For now, we'll just return a simple encoded version
-	
+
 	// Create a short token
 	token := base64.URLEncoding.EncodeToString([]byte(fmt.Sprintf("audio:%s", assetID)))
-	
+
 	if g.cdnDomain != "" {
 		return fmt.Sprintf("https://%s/s/%s", g.cdnDomain, token), nil
 	}
-	
+
 	return fmt.Sprintf("/s/%s", token), nil
 }
 
@@ -291,7 +291,7 @@ func (g *URLGenerator) ResolveShortURL(shortURL string) (string, error) {
 	// Format: /s/{token} or https://cdn/s/{token}
 	token := strings.TrimPrefix(shortURL, "/s/")
 	token = strings.TrimPrefix(token, "s/")
-	
+
 	// Decode the token
 	decoded, err := base64.URLEncoding.DecodeString(token)
 	if err != nil {
@@ -305,12 +305,12 @@ func (g *URLGenerator) ResolveShortURL(shortURL string) (string, error) {
 	}
 
 	assetID := parts[1]
-	
+
 	// Generate a signed URL for the asset
 	// In a real implementation, we would look up the storage key for the asset
 	// For now, return a simple path without signing (ctx not available)
 	storageKey := fmt.Sprintf("audio/%s.m4a", assetID)
-	
+
 	// Without ctx, we can't generate a signed URL, so just return the storage key
 	// In a real implementation, this would use context.Background() or accept ctx as parameter
 	return storageKey, nil

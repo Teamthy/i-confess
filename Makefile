@@ -55,7 +55,14 @@ lint-fix: ## Run golangci-lint and apply fixes
 fmt: ## Format the Go source
 	cd $(SERVER) && gofmt -w .
 
+# `gofmt` missing is a failure, not an empty list. Without this, a shell that
+# cannot find gofmt yields an empty `files`, the `-n` test is false, and the
+# gate passes on a tree that is not formatted at all — which is how a
+# contributor without Go on PATH gets a green `make verify` and CI goes red
+# on their pull request.
 fmt-check: ## Fail if anything is unformatted
+	@command -v gofmt >/dev/null 2>&1 || { \
+	  echo "fmt-check: gofmt is not on PATH; install the Go toolchain (go1.25+)."; exit 1; }
 	@cd $(SERVER) && files=$$(gofmt -l .); \
 	  if [ -n "$$files" ]; then echo "not gofmt-formatted:"; echo "$$files"; exit 1; fi
 

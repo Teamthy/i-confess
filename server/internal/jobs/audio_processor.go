@@ -33,8 +33,8 @@ type ProcessorConfig struct {
 	TempDir       string
 	TargetFormat  string
 	TargetBitrate int
-	SampleRate   int
-	Channels     int
+	SampleRate    int
+	Channels      int
 }
 
 // NewAudioProcessor creates a new audio processor.
@@ -271,7 +271,7 @@ func (p *AudioProcessor) ExtractMetadata(ctx context.Context, path string) (Audi
 	// Parse the JSON output
 	// For now, return a simplified metadata structure
 	// In a real implementation, this would parse the ffprobe JSON output
-	
+
 	// Use the audio inspection as a fallback
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -284,22 +284,22 @@ func (p *AudioProcessor) ExtractMetadata(ctx context.Context, path string) (Audi
 	}
 
 	return AudioMetadata{
-		Format:         report.Format,
-		Duration:       float64(report.DurationSeconds),
-		SampleRate:     report.SampleRate,
-		Channels:       report.Channels,
-		Bitrate:        0, // Would be extracted from ffprobe
-		SizeBytes:      int64(len(data)),
+		Format:     report.Format,
+		Duration:   float64(report.DurationSeconds),
+		SampleRate: report.SampleRate,
+		Channels:   report.Channels,
+		Bitrate:    0, // Would be extracted from ffprobe
+		SizeBytes:  int64(len(data)),
 	}, nil
 }
 
 // AudioMetadata contains metadata about an audio file.
 type AudioMetadata struct {
 	Format     string  `json:"format"`
-	Duration   float64 `json:"duration"`   // in seconds
+	Duration   float64 `json:"duration"`    // in seconds
 	SampleRate int     `json:"sample_rate"` // in Hz
 	Channels   int     `json:"channels"`
-	Bitrate    int     `json:"bitrate"`    // in kbps
+	Bitrate    int     `json:"bitrate"` // in kbps
 	SizeBytes  int64   `json:"size_bytes"`
 }
 
@@ -324,9 +324,9 @@ func (p *AudioProcessor) CreateVariants(
 			p.audioProcessor,
 			p.storage,
 			ProcessorConfig{
-				FFmpegPath:   p.config.FFmpegPath,
-				TempDir:      p.config.TempDir,
-				TargetFormat: variant.Format,
+				FFmpegPath:    p.config.FFmpegPath,
+				TempDir:       p.config.TempDir,
+				TargetFormat:  variant.Format,
 				TargetBitrate: variant.Bitrate,
 				SampleRate:    variant.SampleRate,
 				Channels:      variant.Channels,
@@ -350,11 +350,11 @@ func (p *AudioProcessor) CreateVariants(
 
 // VariantConfig defines the configuration for an audio variant.
 type VariantConfig struct {
-	Name        string
-	Format      string
-	Bitrate     int
-	SampleRate  int
-	Channels    int
+	Name       string
+	Format     string
+	Bitrate    int
+	SampleRate int
+	Channels   int
 }
 
 // DefaultVariants returns the default set of audio variants.
@@ -411,11 +411,11 @@ func (p *AudioProcessor) OptimizeForStreaming(
 	// - Lower bitrate for faster loading
 	// - Mono instead of stereo for smaller size
 	// - Optimized metadata
-	
+
 	config := ProcessorConfig{
-		FFmpegPath:   p.config.FFmpegPath,
-		TempDir:      p.config.TempDir,
-		TargetFormat: "m4a",
+		FFmpegPath:    p.config.FFmpegPath,
+		TempDir:       p.config.TempDir,
+		TargetFormat:  "m4a",
 		TargetBitrate: 64,
 		SampleRate:    44100,
 		Channels:      1,
@@ -438,11 +438,11 @@ func (p *AudioProcessor) OptimizeForDownload(
 	// For download, we want:
 	// - Higher bitrate for better quality
 	// - Stereo for better experience
-	
+
 	config := ProcessorConfig{
-		FFmpegPath:   p.config.FFmpegPath,
-		TempDir:      p.config.TempDir,
-		TargetFormat: "m4a",
+		FFmpegPath:    p.config.FFmpegPath,
+		TempDir:       p.config.TempDir,
+		TargetFormat:  "m4a",
 		TargetBitrate: 256,
 		SampleRate:    48000,
 		Channels:      2,

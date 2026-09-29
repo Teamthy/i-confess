@@ -21,14 +21,14 @@ var ErrHandlerNotStarted = errors.New("jobs: audio handler not started")
 
 // AudioHandler processes audio generation jobs from the queue.
 type AudioHandler struct {
-	generator    *audio.Generator
-	jobStore     JobStorer
-	assetStore   audio.AssetStorer
-	concurrency  int
-	stopChan     chan struct{}
-	wg           sync.WaitGroup
+	generator   *audio.Generator
+	jobStore    JobStorer
+	assetStore  audio.AssetStorer
+	concurrency int
+	stopChan    chan struct{}
+	wg          sync.WaitGroup
 	started     bool
-	mu           sync.Mutex
+	mu          sync.Mutex
 }
 
 // JobStorer defines the interface for job database operations.
@@ -40,10 +40,10 @@ type JobStorer interface {
 
 // AudioHandlerConfig holds configuration for the audio handler.
 type AudioHandlerConfig struct {
-	Generator    *audio.Generator
-	JobStore     JobStorer
-	AssetStore   audio.AssetStorer
-	Concurrency  int // Number of concurrent workers
+	Generator   *audio.Generator
+	JobStore    JobStorer
+	AssetStore  audio.AssetStorer
+	Concurrency int // Number of concurrent workers
 }
 
 // NewAudioHandler creates a new audio generation job handler.
@@ -233,7 +233,7 @@ func (h *AudioHandler) QueueJob(
 		VoiceID:          voiceID,
 		Provider:         provider,
 		QualityTier:      qualityTier,
-		Status:          string(audio.JobQueued),
+		Status:           string(audio.JobQueued),
 		MaxAttempts:      3,
 		RequestedBy:      requestedBy,
 		CreatedAt:        time.Now().UTC().Format(time.RFC3339),

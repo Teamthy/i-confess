@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/Teamthy/i-confess/internal/api"
-	"github.com/Teamthy/i-confess/internal/bible"
 	"github.com/Teamthy/i-confess/internal/audio"
+	"github.com/Teamthy/i-confess/internal/bible"
 	"github.com/Teamthy/i-confess/internal/billing"
 	"github.com/Teamthy/i-confess/internal/cache"
 	"github.com/Teamthy/i-confess/internal/config"
@@ -230,12 +230,12 @@ func main() {
 	}
 
 	// Audio Platform Phase 1: configure signed playback URL resolution.
-	
+
 	// Create URL generator for signed URLs
 	urlGenerator, err := audio.NewURLGenerator(objStore, &audio.URLGeneratorConfig{
-		CDNDomain:   cfg.MediaBaseURL,
-		StreamTTL:   4 * time.Hour,
-		DownloadTTL: 24 * time.Hour,
+		CDNDomain:     cfg.MediaBaseURL,
+		StreamTTL:     4 * time.Hour,
+		DownloadTTL:   24 * time.Hour,
 		SigningSecret: cfg.AudioSignSecret,
 	})
 	if err != nil {

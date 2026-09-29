@@ -22,13 +22,13 @@ import (
 // POST /admin/audio/generate
 func (h *Handler) adminCreateAudioGeneration(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		ConfessionID    string `json:"confession_id"`
+		ConfessionID     string `json:"confession_id"`
 		ContentVersionID string `json:"content_version_id"`
-		VariantID       string `json:"variant_id,omitempty"`
-		VoiceID         string `json:"voice_id"`
-		Provider        string `json:"provider,omitempty"`
-		QualityTier     string `json:"quality_tier,omitempty"`
-		Text           string `json:"text,omitempty"`
+		VariantID        string `json:"variant_id,omitempty"`
+		VoiceID          string `json:"voice_id"`
+		Provider         string `json:"provider,omitempty"`
+		QualityTier      string `json:"quality_tier,omitempty"`
+		Text             string `json:"text,omitempty"`
 	}
 
 	if err := httpx.DecodeJSON(r, &req); err != nil {
@@ -68,7 +68,7 @@ func (h *Handler) adminCreateAudioGeneration(w http.ResponseWriter, r *http.Requ
 		VoiceID:          req.VoiceID,
 		Provider:         req.Provider,
 		QualityTier:      req.QualityTier,
-		Status:          string(audio.JobQueued),
+		Status:           string(audio.JobQueued),
 		MaxAttempts:      3,
 		RequestedBy:      actor,
 		IdempotencyKey:   fmt.Sprintf("%s-%s-%s-%s", req.ConfessionID, req.ContentVersionID, req.VoiceID, req.VariantID),
@@ -81,14 +81,14 @@ func (h *Handler) adminCreateAudioGeneration(w http.ResponseWriter, r *http.Requ
 
 	// Record audit
 	if err := h.audio.RecordAudit(r.Context(), actor, "audio_generation_create",
-		"audio_generation_job", job.ID, 
+		"audio_generation_job", job.ID,
 		fmt.Sprintf("confession=%s, voice=%s, provider=%s", req.ConfessionID, req.VoiceID, req.Provider),
 		"ok"); err != nil {
 		log.Printf("Failed to record audit: %v", err)
 	}
 
 	httpx.WriteJSON(w, http.StatusAccepted, map[string]any{
-		"job_id": job.ID,
+		"job_id":  job.ID,
 		"status":  job.Status,
 		"message": "Job queued for processing",
 	})
@@ -193,11 +193,11 @@ func (h *Handler) adminRetryAudioGeneration(w http.ResponseWriter, r *http.Reque
 	}
 
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{
-		"job_id":      requeuedJob.ID,
-		"status":      requeuedJob.Status,
-		"attempt":     requeuedJob.AttemptCount,
+		"job_id":       requeuedJob.ID,
+		"status":       requeuedJob.Status,
+		"attempt":      requeuedJob.AttemptCount,
 		"max_attempts": requeuedJob.MaxAttempts,
-		"message":     "Job requeued for processing",
+		"message":      "Job requeued for processing",
 	})
 }
 
@@ -267,10 +267,10 @@ func (h *Handler) adminGetAudioGenerationStats(w http.ResponseWriter, r *http.Re
 
 	// Initialize stats
 	stats := map[string]any{
-		"total":        len(allJobs),
-		"by_status":    map[string]int{},
-		"by_provider":  map[string]int{},
-		"by_voice":     map[string]int{},
+		"total":           len(allJobs),
+		"by_status":       map[string]int{},
+		"by_provider":     map[string]int{},
+		"by_voice":        map[string]int{},
 		"recent_failures": []map[string]any{},
 	}
 
@@ -290,12 +290,12 @@ func (h *Handler) adminGetAudioGenerationStats(w http.ResponseWriter, r *http.Re
 		failures := make([]map[string]any, 0, len(failedJobs))
 		for _, job := range failedJobs {
 			failures = append(failures, map[string]any{
-				"job_id":      job.ID,
-				"confession":  job.ConfessionID,
-				"voice":       job.VoiceID,
-				"error_code":  job.ErrorCode,
-				"error":       job.ErrorMessage,
-				"attempts":    job.AttemptCount,
+				"job_id":     job.ID,
+				"confession": job.ConfessionID,
+				"voice":      job.VoiceID,
+				"error_code": job.ErrorCode,
+				"error":      job.ErrorMessage,
+				"attempts":   job.AttemptCount,
 			})
 		}
 		stats["recent_failures"] = failures
@@ -347,14 +347,14 @@ func (h *Handler) adminTriggerBatchGeneration(w http.ResponseWriter, r *http.Req
 	var createdJobs []string
 	for _, confessionID := range req.ConfessionIDs {
 		job, _, err := h.audio.CreateJob(r.Context(), &models.AudioJob{
-			ConfessionID:     confessionID,
-			VoiceID:          req.VoiceID,
-			Provider:         req.Provider,
-			QualityTier:      req.QualityTier,
-			Status:          string(audio.JobQueued),
-			MaxAttempts:      3,
-			RequestedBy:      actor,
-			IdempotencyKey:   fmt.Sprintf("%s-%s-batch", confessionID, req.VoiceID),
+			ConfessionID:   confessionID,
+			VoiceID:        req.VoiceID,
+			Provider:       req.Provider,
+			QualityTier:    req.QualityTier,
+			Status:         string(audio.JobQueued),
+			MaxAttempts:    3,
+			RequestedBy:    actor,
+			IdempotencyKey: fmt.Sprintf("%s-%s-batch", confessionID, req.VoiceID),
 		})
 		if err != nil {
 			log.Printf("Failed to create batch job for confession %s: %v", confessionID, err)
@@ -373,11 +373,11 @@ func (h *Handler) adminTriggerBatchGeneration(w http.ResponseWriter, r *http.Req
 	}
 
 	httpx.WriteJSON(w, http.StatusAccepted, map[string]any{
-		"message":      fmt.Sprintf("Created %d generation jobs", len(createdJobs)),
-		"job_ids":      createdJobs,
+		"message":         fmt.Sprintf("Created %d generation jobs", len(createdJobs)),
+		"job_ids":         createdJobs,
 		"total_requested": len(req.ConfessionIDs),
-		"success_count":  len(createdJobs),
-		"fail_count":    len(req.ConfessionIDs) - len(createdJobs),
+		"success_count":   len(createdJobs),
+		"fail_count":      len(req.ConfessionIDs) - len(createdJobs),
 	})
 }
 
@@ -388,25 +388,25 @@ func (h *Handler) adminGetAudioGenerationProviders(w http.ResponseWriter, r *htt
 	// For now, return a static list
 	providers := []map[string]any{
 		{
-			"name":        "google",
+			"name":         "google",
 			"display_name": "Google Cloud Text-to-Speech",
 			"status":       "available",
 			"capabilities": []string{"neural", "waveNet", "standard"},
 		},
 		{
-			"name":        "amazon",
+			"name":         "amazon",
 			"display_name": "Amazon Polly",
 			"status":       "available",
 			"capabilities": []string{"neural", "standard"},
 		},
 		{
-			"name":        "microsoft",
+			"name":         "microsoft",
 			"display_name": "Microsoft Azure Cognitive Services",
 			"status":       "available",
 			"capabilities": []string{"neural"},
 		},
 		{
-			"name":        "elevenlabs",
+			"name":         "elevenlabs",
 			"display_name": "ElevenLabs",
 			"status":       "available",
 			"capabilities": []string{"neural", "emotional"},

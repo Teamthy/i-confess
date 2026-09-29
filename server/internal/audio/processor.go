@@ -91,7 +91,7 @@ func NewProcessor(cfg ProcessorConfig) (*Processor, error) {
 	}
 
 	return &Processor{
-		config:    cfg,
+		config:     cfg,
 		ffmpegPath: cfg.FFmpegPath,
 		tempDir:    cfg.TempDir,
 	}, nil
