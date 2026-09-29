@@ -131,6 +131,55 @@ check("no unresolved references leaked into output", not leaked, f"{leaked}")
 check("body renders serif in generated Dart",
       "body = TextStyle(fontFamily: 'Source Serif 4'" in dart)
 
+print("\nWeb token parity")
+web_css = (HERE.parent / "web" / "app" / "globals.css").read_text()
+web_color_values = re.findall(
+    r"(?m)(--[\w-]+)\s*:\s*(#[0-9a-fA-F]{3,8})\b", web_css)
+
+def token_color_values(node):
+    found = set()
+    if isinstance(node, dict):
+        value = node.get("$value")
+        if isinstance(value, str) and re.fullmatch(r"#[0-9a-fA-F]{3,8}", value):
+            found.add(value.upper())
+        for child in node.values():
+            found.update(token_color_values(child))
+    elif isinstance(node, list):
+        for child in node:
+            found.update(token_color_values(child))
+    return found
+
+known_colors = token_color_values(TOKENS)
+check("web CSS exposes custom-property hex colors", bool(web_color_values))
+unmatched_web_colors = [
+    f"{name}: {value}" for name, value in web_color_values
+    if value.upper() not in known_colors
+]
+check("every web custom-property hex exists in design/tokens.json",
+      not unmatched_web_colors, ", ".join(unmatched_web_colors))
+
+print("\nMobile color literals")
+mobile_lib = HERE.parent / "apps" / "mobile" / "lib"
+generated_tokens = mobile_lib / "src" / "core" / "theme" / "tokens.dart"
+raw_color = re.compile(r"Color\(0xFF[0-9a-fA-F]{6}\)")
+handwritten_colors = []
+for dart_file in mobile_lib.rglob("*.dart"):
+    if dart_file == generated_tokens:
+        continue
+    for match in raw_color.finditer(dart_file.read_text()):
+        handwritten_colors.append(f"{dart_file.relative_to(HERE.parent)}: {match.group(0)}")
+check("no handwritten hex Color constructors outside generated tokens",
+      not handwritten_colors, ", ".join(handwritten_colors))
+material_palette = re.compile(r"Colors\.(?!transparent\b)[A-Za-z_][A-Za-z0-9_]*(?:\.shade\d+)?")
+framework_colors = []
+for dart_file in mobile_lib.rglob("*.dart"):
+    if dart_file == generated_tokens:
+        continue
+    for match in material_palette.finditer(dart_file.read_text()):
+        framework_colors.append(f"{dart_file.relative_to(HERE.parent)}: {match.group(0)}")
+check("mobile color choices use design tokens, not Material palette constants",
+      not framework_colors, ", ".join(framework_colors))
+
 print()
 if failures:
     print(f"DESIGN SYSTEM CHECK FAILED: {len(failures)} assertion(s)")

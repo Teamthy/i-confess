@@ -66,6 +66,7 @@ abstract final class AppRoutes {
   static const settingsNotifications = '/settings/notifications';
   static const settingsDevices = '/settings/devices';
   static const settingsSecurity = '/settings/security';
+  static const settingsSafety = '/settings/safety';
   static const settingsDownloads = '/settings/downloads';
   static const settingsDeletion = '/settings/deletion';
   static const settingsExport = '/settings/export';
@@ -141,6 +142,7 @@ abstract final class AppRouteNames {
   static const settingsNotifications = 'settingsNotifications';
   static const settingsDevices = 'settingsDevices';
   static const settingsSecurity = 'settingsSecurity';
+  static const settingsSafety = 'settingsSafety';
   static const settingsDownloads = 'settingsDownloads';
   static const settingsDeletion = 'settingsDeletion';
   static const settingsExport = 'settingsExport';

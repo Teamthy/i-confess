@@ -74,6 +74,21 @@ func assertParity(t *testing.T, what string, dbValues map[string]bool, codeValue
 // TestUGCStatusMatchesTheDatabase is the same contract
 // content.TestLifecycleMatchesTheDatabase keeps for the editorial lifecycle:
 // the Go authority and the CHECK constraint cannot drift apart silently.
+func TestReportableEntityTypes(t *testing.T) {
+	want := []string{"confession", "community_post", "user"}
+	if len(ReportableEntityTypes) != len(want) {
+		t.Fatalf("reportable entity types = %v, want %v", ReportableEntityTypes, want)
+	}
+	for i, entityType := range want {
+		if ReportableEntityTypes[i] != entityType || !ValidReportEntityType(entityType) {
+			t.Errorf("reportable entity type %q is missing or out of order: %v", entityType, ReportableEntityTypes)
+		}
+	}
+	if ValidReportEntityType("user_confession") || ValidReportEntityType("voice") {
+		t.Fatal("private or unsupported entities must not be reportable")
+	}
+}
+
 func TestUGCStatusMatchesTheDatabase(t *testing.T) {
 	conn := dbtest.New(t)
 	defer conn.Close()

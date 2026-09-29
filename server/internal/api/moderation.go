@@ -32,8 +32,9 @@ func actor(r *http.Request) string {
 	return ""
 }
 
-// createReport lets a signed-in user flag published content or a community
-// post. It is the intake the queue and the case machinery are empty without.
+// createReport lets a signed-in user flag published content, a community post,
+// or a user directly. A person report represents a pattern across content as
+// one moderation case.
 func (h *Handler) createReport(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		EntityType string `json:"entity_type"`
@@ -68,6 +69,10 @@ func (h *Handler) createReport(w http.ResponseWriter, r *http.Request) {
 	userID := h.userID(r)
 	if userID == "" {
 		httpx.WriteError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+	if req.EntityType == "user" && req.EntityID == userID {
+		writeCode(w, http.StatusBadRequest, "REPORT_INVALID", "you cannot report your own account")
 		return
 	}
 

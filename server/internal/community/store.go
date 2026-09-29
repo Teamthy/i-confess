@@ -38,15 +38,26 @@ func (s *Store) Create(ctx context.Context, authorID, body, visibility string) (
 // Feed is the anonymous public reader. Shared posts are deliberately excluded:
 // a public endpoint cannot enforce an author's circle membership.
 func (s *Store) Feed(ctx context.Context, limit int) ([]FeedPost, error) {
+	return s.FeedFor(ctx, limit, "")
+}
+
+// FeedFor applies a listener's private block boundaries without ever including
+// author identifiers in the public feed projection. Anonymous readers pass an
+// empty viewer ID and receive the unfiltered public feed.
+func (s *Store) FeedFor(ctx context.Context, limit int, viewerID string) ([]FeedPost, error) {
 	if limit <= 0 || limit > 50 {
 		limit = 20
 	}
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT id, body, visibility, status, created_at
-		 FROM community_posts
+		 FROM community_posts p
 		 WHERE visibility = ? AND status IN (?, ?)
+		   AND NOT EXISTS (
+		     SELECT 1 FROM user_blocks b
+		     WHERE b.blocker_id = ? AND b.blocked_id = p.author_id
+		   )
 		 ORDER BY created_at DESC LIMIT ?`,
-		VisibilityPublic, StatusApproved, StatusPublished, limit)
+		VisibilityPublic, StatusApproved, StatusPublished, viewerID, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -63,6 +74,18 @@ func (s *Store) Feed(ctx context.Context, limit int) ([]FeedPost, error) {
 		out = append(out, p)
 	}
 	return out, nil
+}
+
+// PostAuthor resolves a feed-visible post to its owner for server-side actions.
+// The author ID stays inside the service boundary: public feed responses remain
+// anonymous, while moderation/block workflows can act on the correct account.
+func (s *Store) PostAuthor(ctx context.Context, postID string) (string, error) {
+	var authorID string
+	err := s.db.QueryRowContext(ctx,
+		`SELECT author_id FROM community_posts
+		 WHERE id = ? AND visibility = ? AND status IN (?, ?)`,
+		postID, VisibilityPublic, StatusApproved, StatusPublished).Scan(&authorID)
+	return authorID, err
 }
 
 func (s *Store) React(ctx context.Context, postID, userID string, r Reaction) error {

@@ -1,23 +1,35 @@
-**Last verified:** 2026-09-29, at ledger 55 (`docs/55-CI-GATE-REPAIR.md` —
-`main` was red. The merge of PR #80 failed exactly one CI step, `gofmt check`;
-build, vet, the full race suite, lint, design tokens, Dart symbols, the Flutter
-and Dart client suites and the web build were all green on the same runner.
-Thirteen files, all of them from PRs #78–#80, were unformatted — import order
-and struct-literal alignment, 199 lines, no semantic edit — and `gofmt -w`
-reformatted them. While proving the repair, `make fmt-check` was found to
-**exit 0 when `gofmt` is not installed**: the command substitution yields an
-empty list, the `-n` test is false, and the local gate — the first prerequisite
-of `make verify` — reports success on a tree it never examined. Proved with a
-deliberately unformatted probe file, before and after; the target now refuses
-to answer when the tool is missing. Proving commands: `make fmt-check`,
-`go build`, `go vet`, `go test -race -count=1 ./...` against PostgreSQL 17.10
-with `REDIS_ADDR` set (35 packages `ok`, zero `FAIL`),
-`python3 design/generate.py --check`, `test_design.py`, `test_ia.py`,
-`python3 scripts/check_dart_symbols.py` (133/133). `make lint` could not run —
-the golangci-lint release CDN is unreachable from this sandbox — but the Lint
-step of the failing run was green. **Still owed to an owner:** `main` must
-require the `CI` check before merge, or the next day of large pull requests
-does this again.)
+**Last verified:** 2026-09-29, ledger 67. The full Go race suite passed with
+PostgreSQL 17.10 and Redis 7.4; all packages were `ok` or `[no test files]`.
+`go build -modfile=/tmp/local.mod ./...` and `go vet -modfile=/tmp/local.mod
+./...` also passed. Ledger 67 closes G-52: deletion policy tables/columns are
+preflighted before mutation, and the first runtime statement failure is
+attributed to its actual policy. Ledger 66 closes G-7 with request-path Redis
+and storage outage tests, plus existing limiter and voice-provider recovery
+coverage. Ledger 65 closes G-49: a startup recovery sweep and a 15-minute
+periodic sweep expire due trials whether or not their owners return; row-locked
+transitions update entitlements and emit expiry analytics once. Ledger 63 closes
+G-53: Settings supports block/appeal management, rejected confessions have an
+in-context appeal action, and community stories have a contextual block action
+without exposing author IDs. Author resolution belongs to
+`internal/community.Store`; signed-in feeds apply private block boundaries.
+Ledger 64 closes G-56: Home displays plain-language recommendation reasons,
+listen-again context, and suggested duration without calling empty-signal picks
+personalized. Design checks passed: `design/test_ia.py` (40 screens, 8 entry
+points, 163 endpoints), `design/generate.py --check`, `design/test_design.py`
+(132 tokens), and `check_dart_symbols.py` (140/140). B1 is commit `38b50eb`, B2
+is recorded in ledger 59, B3 in ledger 60, B4 in ledger 61, B5 in commit
+`ddbc7ff`, B6 in `1384faf`, B7 in `e3b6df8`, B8 in `08e84f9`, and B9 in
+`c521cab`.
+
+The branch is the fixed session branch `arena/01a0ee4f-i-confess`, based on
+`251f906`. The supplied handoff branch and unpushed commits are absent; G-52
+has now been implemented and fully verified in this checkout rather than
+restored verbatim. PR #82's first CI run passed Go build/vet/tests, Dart client,
+web, and container jobs, but found an existing Safety-screen Dart syntax/import
+error and Go lint debt in touched files. The local follow-up fixed the reported items; its CI rerun then exposed two
+additional unused catalog handlers and a Dart discard-result issue. Those have
+now also been removed/fixed locally; the next pushed rerun is pending. Flutter/Dart
+SDKs and `golangci-lint` remain unavailable locally.
 
 **Previously verified:** 2026-09-25, at ledger 50 (`docs/50-CACHE-INVALIDATION.md`
 — the content caches now have an invalidation path, closing G-10. Two copies of
@@ -124,15 +136,15 @@ it.** Every claim below was produced by running something.
 | Area | State |
 |---|---|
 | **Content** | **Done in PHASES 39–40** — 78 canonical confessions, 312 object-backed audio fixtures, explicit theological-review metadata, and provenance-neutral authorship. |
-| **Mobile app** | `apps/mobile` cannot play audio — `just_audio` and `audio_service` are commented out. Being replaced per D-4. |
-| **Website / admin** | 434 and 168 lines of scaffolding. Being replaced per D-5. |
+| **Mobile app** | Playback dependencies and services are present; navigation labels comply with §12. Handwritten hex colors and Material palette choices now use generated tokens, guarded by `design/test_design.py` (G-16 closed in ledger 61). Flutter analyze/test was not run locally and remains CI-only. |
+| **Website / admin** | Consolidated into the single Next.js app in `web/`; `apps/web` and `apps/admin` are deleted (ledger 54). |
 | **Payments** | **Done in PHASE 36** — production uses the Apple signed-transaction verifier or Google Play Developer API and fails closed without configuration; `TestProductionRefusesStubReceipts` remains green. |
 | **Trial lifecycle** | **Done in PHASE 36** — persistent `trials` row, explicit six-state graph, one-time start, expiry/conversion, and Premium projection tests. |
 | **UGC `PUBLIC` readers** | **Done in PHASE 32** — `GET /community/confessions` public, anonymous, newest-first, mobile 2-tab + web both-feeds. Was G-40. |
 | **Soft delete / versioning** | **Done in PHASE 38** — all 66 application tables carry `deleted_at` and `row_version`; retention writes are tombstoned and versioned. |
 | **Cache** | **Closed in ledger 50** — still per-process, but writes now invalidate locally and publish to every other instance over Redis pub/sub. Was G-10. |
-| **Design system** | 120 tokens, contrast-verified, but not yet consumed by any real surface. |
-| **Navigation** | 37 screens specified and validated; mobile has the shell plus real home, explore, category, confession, builder, activity, and production player surfaces; me and remaining secondary surfaces continue in subsequent phases. |
+| **Design system** | 132 tokens are generated and consumed by mobile; `design/test_design.py` checks generated parity and every hex-valued custom property in web `globals.css` against `design/tokens.json` (G-57 closed in ledger 59). |
+| **Navigation** | 39 screens specified and validated by `design/test_ia.py`; mobile has the shell plus real home, explore, category, confession, builder, activity, and production player surfaces; remaining secondary surfaces continue in subsequent phases. |
 | **Observability** | `cache.hit_rate` and `cache.invalidations` are exposed and asserted (ledger 50). The claim about a missing hit-rate metric was stale since PHASE 07. Runtime dependency failure remains untested outside the busy-path and reconnect cases. |
 
 ## Phase progress
@@ -455,15 +467,23 @@ PHASE 43 Personalization: the seven listener signals — **PASS** (master-plan
     fields and still decodes a v1 payload. See
     docs/43-PERSONALIZATION-SIGNALS.md)
 
-Open gaps carried forward: G-7, G-9, G-12, G-13,
-G-14, G-15, G-16, G-17, G-18, G-19, G-20, G-23, G-24, G-25, G-26, G-27, G-28,
-G-33, G-48, G-49, G-52, G-53, G-54, G-56.
-(G-10 was removed from this list at ledger 55: it was closed at ledger 50, and
-this list was never updated to say so — the same class of drift as the G-2
-duplicate below.)
-(G-2 was removed from this list: it has been closed since PHASE 07 —
-"23/23 status columns constrained" — yet appeared in both lists here, a
-documentation bug fixed in PHASE 31.)
+Open gaps carried forward (reconciled against the supplied ledger 57; this
+checkout does not contain `docs/57-GAP-LEDGER-RECONCILIATION.md`): **G-14,
+G-15, G-19, G-24, G-28, G-33, G-48.** G-7 was closed in ledger 66 with runtime
+Redis and object-storage request-path tests, alongside reviewed Redis limiter
+and voice-provider recovery coverage (details: `docs/66-RUNTIME-DEPENDENCY-OUTAGES.md`).
+G-9 was removed after the handler's healthy and 503 paths were exercised by
+`go test -modfile=/tmp/local.mod -race -count=1 ./internal/health` (details:
+`docs/58-HEALTH-CHECK-FAILURE-TEST.md`). G-57 was removed after
+`design/test_design.py` enforced web custom-property color parity with
+`design/tokens.json` (details: `docs/59-WEB-DESIGN-TOKEN-PARITY.md`). G-25 was
+removed after the 1,656-line handler file was decomposed and the full Go race
+suite passed (details: `docs/60-API-HANDLER-COMPOSITION-REFACTOR.md`). The
+reconciled ledger reports G-12, G-13, G-17, G-18, G-20, G-23, G-26 and G-27 as
+closed; ledgers 58–67 additionally close G-7, G-9, G-16, G-25, G-49, G-52,
+G-53, G-54, G-56 and G-57. The supplied handoff commits are still absent from
+this branch, but G-52 is independently fixed and verified here; see
+`docs/67-DELETION-FAILURE-ATTRIBUTION.md`.
 
 Closed: **G-1** (queues are snapshots), **G-2** (23/23 status columns constrained),
 **G-8** (route parity), **G-11** (clients/dart is not a Flutter app),
@@ -526,22 +546,25 @@ answer). Both were **closed in PHASE 42**.
 
 Raised in PHASE 42 and carried open:
 
-**G-52 — The deletion package misattributes failures.** `applyPolicy` tolerates
-any error whose message contains "does not exist" as a missing table and
-continues the loop, but in PostgreSQL that error has already aborted the
-transaction, so every later statement fails and the first one to report it names
-an unrelated table. PHASE 42 hit exactly this: `user_blocks` generated a
-subquery against a `user_id` column it does not have, and the failure surfaced
-as `apply policy for moderation_appeals`. The specific cause is fixed
-(`parentTableFor` now maps `user_blocks` to `users`); the masking behaviour is
-not. A tolerated error inside `Erase` should abort the erasure loudly rather
-than continue.
+**Closed in ledger 67: G-52 — Deletion failure attribution.** The old
+`isMissingTable` substring check could mistake a missing-column error for a
+missing table, swallow it, and continue inside PostgreSQL's already-aborted
+transaction. Deletion now preflights all policy table/column references before
+mutation and stops on the first execution error with its policy table named.
+PostgreSQL tests cover missing schema objects, no partial deletion on preflight
+failure, and stopping before a later policy can mask the original cause. Full Go
+race suite, build and vet passed. See
+`docs/67-DELETION-FAILURE-ATTRIBUTION.md`.
 
-**G-53 — Blocking and appeals have no mobile UI.** The typed client carries the
-whole surface (`ModerationRepository`) and the symbol check gates it, but no
-screen renders it. Both are gestures a listener needs in the moment - blocking
-while being harassed, appealing while reading a rejection - so an API-only
-surface is not the feature.
+**Closed in ledger 63: G-53.** The Settings safety screen lists and unblocks
+accounts, and displays/submits appeals. Rejected personal confessions expose an
+in-context appeal action in My Confessions; community story cards expose an
+in-context block action. The feed still omits author IDs: the new authenticated
+block-by-post endpoint resolves the author inside `internal/community.Store`,
+then writes the block boundary without disclosing identity. Authenticated
+community feeds apply each listener's blocks. Full Go race/build/vet and design
+checks passed; Flutter/Dart tests and analysis are owed to CI because those
+SDKs are unavailable. See `docs/63-MOBILE-SAFETY-UI.md`.
 
 New in PHASE 43: **G-55** (the recommendations endpoint read explicit interests
 only and claimed `personalized: true` for it; none of the seven behavioural
@@ -550,24 +573,50 @@ server). **Closed in PHASE 43.**
 
 Raised in PHASE 43 and carried open:
 
-**G-56 — The home screen does not render why.** The server now returns
-`reasons`, `listen_again` and `suggested_duration_seconds` and the typed client
-decodes them, but the mobile home still shows the two ranked lists as before. A
-recommendation whose reason is never shown is indistinguishable from an
-arbitrary one to the listener, which is the complaint personalization exists to
-answer.
+**Closed in ledger 64: G-56.** The Home screen now renders category and
+confession recommendation reasons in plain language, plus listen-again counts
+and the suggested session duration. Empty-signal recommendations are presented
+as starting points rather than as personalized results. A separate provider
+keeps a recommendation failure from blanking the rest of Home. See
+`docs/64-HOME-RECOMMENDATION-REASONS.md`; Flutter widget tests remain CI-only.
 
-**G-54 — A report still cannot name a user.** `ReportableEntityTypes` remains
-`{confession, community_post}`. Blocking now covers the harassment case that
-motivated it, but "report this person" is still not something the product can
-do, and a pattern of behaviour across many posts has no way to be reported as
-one thing.
+**Closed in ledger 61: G-16.** The reported 92 raw color occurrences included 91
+generated constants; the only handwritten hex literal and the named Material
+palette references were replaced by generated `IConfess` tokens. `design/test_design.py`
+now fails on either kind of bypass, excluding the generated token file and
+`Colors.transparent`. See `docs/61-MOBILE-COLOR-TOKEN-CLEANUP.md`. Flutter
+analyze/test remain CI-only and are not claimed green locally.
 
-**G-49 — Trial expiry analytics depend on someone looking.** `trial_expired` is
-recorded when something next refreshes the trial, and there is no sweeper, so an
-account that never returns is never counted as churned. The churn side of the
-funnel is therefore a lower bound. Fixing it means a scheduled trial sweep,
-which belongs with the worker work rather than here.
+**Closed in ledger 60: G-25.** `server/internal/api/handlers.go` is now 247
+lines (from 1,656); its 61 functions were moved without loss into eight
+cohesive files, and `TestRouteParityBetweenPrefixes` plus the full Go race suite
+passed. See `docs/60-API-HANDLER-COMPOSITION-REFACTOR.md`.
+
+**Closed in ledger 59: G-57.** `design/test_design.py` checks every hex-valued
+custom property in `web/app/globals.css` against the color values in
+`design/tokens.json`. The current palette includes the 12 web colors that the
+reconciliation first found missing; `python3 design/test_design.py` passed, and
+a temporary unknown-color probe failed as intended. See
+`docs/59-WEB-DESIGN-TOKEN-PARITY.md`.
+
+**Closed in ledger 58: G-9.** `internal/health/health_test.go` now exercises the
+handler's database-healthy 200 and database-unavailable 503 responses, including
+the JSON status and database error. `go test -modfile=/tmp/local.mod -race
+-count=1 ./internal/health` passed. This closes only the specific
+`internal/health.Checker.Handler` gap, not every deployment-level probe.
+**Closed in ledger 62: G-54.** Reports now accept a `user` target in addition
+to `confession` and `community_post`; the store rejects missing and deleted
+accounts, the API disallows self-reports, and the existing report/case queue and
+decision lifecycle handles the person-level case. The Dart client exposes a
+typed `ReportableEntityType.user`. PostgreSQL API/store tests passed; Dart tests
+remain CI-only. See `docs/62-REPORT-A-PERSON.md`.
+
+**Closed in ledger 65: G-49.** A startup recovery pass and 15-minute trial
+expiry sweep advance due trials even when their owners never return. The bounded
+store sweep delegates to the row-locked lifecycle transition, returns the
+subscription projection to free, and emits the expiry funnel event once. A
+partial due-date index supports the scan. Store race tests cover batching,
+future rows and overlapping sweepers. See `docs/65-TRIAL-EXPIRY-SWEEP.md`.
 
 Recorded in PHASE 11: **G-34** (canonical audio coverage), **G-35**
 (canonical content has had no theological review; `Author` overstates its
@@ -595,6 +644,25 @@ monogram fallback), **G-45** (the favourites tab lists all four entity kinds,
 but only confessions navigate; a favourited voice or session renders and can be
 removed yet does nothing when tapped, because no detail surface exists).
 Each is described in the phase document that raised it.
+
+**Closed in ledger 66: G-7.** Runtime request-path tests now cover Redis
+invalidation publishing failing after startup (the committed write and writer's
+local cache remain healthy; remote cache copies can remain stale to TTL), and
+object-storage signing failing while sessions are served (the response remains
+usable but contains no audio URLs or raw keys, then signing recovers). Existing
+coverage was reviewed for Redis limiter fallback/recovery, Redis pub/sub
+reconnection, storage error classification, and voice-provider retry queued
+once and completed after recovery. Full Go race suite, build, and vet passed.
+The phase deliberately did not claim API-level coverage of `URLGenerator` or
+the playback resolver: both are initialized at startup but neither is called by
+an API route; their different signing-failure behavior is recorded in
+`docs/66-RUNTIME-DEPENDENCY-OUTAGES.md`.
+
+**Closed in ledger 67: G-52.** Deletion now validates its schema before running
+policies and attributes the first failed statement without continuing an aborted
+transaction. Missing-table/column preflight tests, no-partial-deletion coverage,
+and a failure-order test passed. The full Go race suite, build, and vet are green.
+See `docs/67-DELETION-FAILURE-ATTRIBUTION.md`.
 
 ## How the phases are gated
 

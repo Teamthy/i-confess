@@ -184,12 +184,10 @@ func ValidReportDecision(d string) bool {
 }
 
 // ReportableEntityTypes are the entity types a user can file a report
-// against. The list is exactly the set of entities a signed-in user has an
-// honest read path to: published confessions and community posts. A user
-// confession can only ever be seen by its author today, so accepting a report
-// against one would mean validating ids nobody could have obtained; when UGC
-// gains a public reader this list is where it is added.
-var ReportableEntityTypes = []string{"confession", "community_post"}
+// against. Reports may name published content, community posts, or a user
+// directly; person reports let moderators consider behavior across multiple
+// posts as one case.
+var ReportableEntityTypes = []string{"confession", "community_post", "user"}
 
 // ValidReportEntityType reports whether t may be reported.
 func ValidReportEntityType(t string) bool {

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:iconfess_api/iconfess_api.dart';
 
 import '../../core/di/providers.dart';
+import '../../core/error/error_mapper.dart';
 import '../../core/theme/theme.dart';
 import '../../core/theme/tokens.dart';
 import '../../core/widgets/screen.dart';
@@ -153,6 +154,7 @@ class _PostCard extends ConsumerStatefulWidget {
 
 class _PostCardState extends ConsumerState<_PostCard> {
   bool busy = false;
+  bool blocking = false;
   String? reacted;
   String? error;
   Future<void> react(String value) async {
@@ -173,19 +175,68 @@ class _PostCardState extends ConsumerState<_PostCard> {
     }
   }
 
+  Future<void> blockAuthor() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Block this author?'),
+        content: const Text('You will no longer see this author’s community posts. Their identity stays private.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Block author')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() {
+      blocking = true;
+      error = null;
+    });
+    final result = await ref.read(communityRepositoryProvider).blockPostAuthor(widget.post['id'] as String);
+    if (!mounted) return;
+    result.when(
+      success: (_) {
+        ref.invalidate(communityFeedProvider);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Author blocked')));
+      },
+      failure: (failure) => setState(() => error = ErrorMapper.describe(failure).message),
+    );
+    if (mounted) setState(() => blocking = false);
+  }
+
   @override
   Widget build(BuildContext context) => Card(
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(widget.post['body'] as String? ?? '',
-                style: Theme.of(context).textTheme.bodyLarge),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Text(widget.post['body'] as String? ?? '',
+                      style: Theme.of(context).textTheme.bodyLarge),
+                ),
+                PopupMenuButton<String>(
+                  tooltip: 'Story options',
+                  enabled: !busy && !blocking,
+                  onSelected: (action) {
+                    if (action == 'block-author') blockAuthor();
+                  },
+                  itemBuilder: (context) => const [
+                    PopupMenuItem(
+                      value: 'block-author',
+                      child: Text('Block author'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
             const SizedBox(height: 12),
             Wrap(spacing: 8, children: [
               for (final item in const [('amen', 'Amen'), ('heart', 'Heart'), ('pray', 'Pray')])
                 ActionChip(
                     label: Text(reacted == item.$1 ? '✓ ${item.$2}' : item.$2),
-                    onPressed: busy || reacted != null ? null : () => react(item.$1))
+                    onPressed: busy || blocking || reacted != null ? null : () => react(item.$1))
             ]),
             if (error != null)
               Padding(

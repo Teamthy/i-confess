@@ -47,7 +47,7 @@ class ActivityScreen extends ConsumerWidget {
                       color: IConfess.colorBrand500,
                       borderRadius: BorderRadius.circular(IConfess.radiusFull),
                     ),
-                    child: const Icon(Icons.local_fire_department_rounded, color: Colors.white),
+                    child: const Icon(Icons.local_fire_department_rounded, color: IConfess.colorNeutral0),
                   ),
                   const SizedBox(width: IConfess.space4),
                   Column(
@@ -239,7 +239,7 @@ class _SessionTile extends StatelessWidget {
                 ),
                 child: Icon(
                   isContinue ? Icons.play_arrow_rounded : Icons.check_rounded,
-                  color: isContinue ? Colors.white : IConfess.colorBrand600,
+                  color: isContinue ? IConfess.colorNeutral0 : IConfess.colorBrand600,
                 ),
               ),
               const SizedBox(width: IConfess.space3),

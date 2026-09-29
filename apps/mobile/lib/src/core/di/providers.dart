@@ -91,6 +91,10 @@ final libraryRepositoryProvider = Provider<LibraryRepository>(
   (ref) => LibraryRepository(ref.watch(apiClientProvider), ref.watch(jsonCacheProvider)),
 );
 
+final communityRepositoryProvider = Provider<CommunityRepository>(
+  (ref) => CommunityRepository(ref.watch(apiClientProvider), ref.watch(jsonCacheProvider)),
+);
+
 final bibleRepositoryProvider = Provider<BibleRepository>(
   (ref) => BibleRepository(ref.watch(apiClientProvider)),
 );
@@ -109,6 +113,10 @@ final templateRepositoryProvider = Provider<TemplateRepository>(
 
 final subscriptionRepositoryProvider = Provider<SubscriptionRepository>(
   (ref) => SubscriptionRepository(ref.watch(apiClientProvider), ref.watch(jsonCacheProvider)),
+);
+
+final moderationRepositoryProvider = Provider<ModerationRepository>(
+  (ref) => ModerationRepository(ref.watch(apiClientProvider), ref.watch(jsonCacheProvider)),
 );
 
 /// Analytics. Debug builds get the recording implementation; release gets a

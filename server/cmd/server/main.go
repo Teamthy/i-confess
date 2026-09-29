@@ -351,6 +351,34 @@ func main() {
 		}
 	}()
 
+	// Expire due trials even when their owners never return to the API. The
+	// store locks each trial row and makes the transition/event idempotent, so
+	// replicas may overlap safely. Run once at startup to recover missed ticks,
+	// then every 15 minutes to keep the churn event close to the expiry time.
+	trialSweepCtx, stopTrialSweep := context.WithCancel(context.Background())
+	defer stopTrialSweep()
+	go func() {
+		run := func() {
+			n, err := h.RunTrialExpirySweep(trialSweepCtx)
+			if err != nil {
+				log.Printf("trials: expiry sweep failed after %d transitions: %v", n, err)
+			} else if n > 0 {
+				log.Printf("trials: expired %d due trials", n)
+			}
+		}
+		run()
+		t := time.NewTicker(15 * time.Minute)
+		defer t.Stop()
+		for {
+			select {
+			case <-trialSweepCtx.Done():
+				return
+			case <-t.C:
+				run()
+			}
+		}
+	}()
+
 	// Erase accounts whose grace period has elapsed (PRD S50). Running it on a
 	// timer inside the API process is right for one instance; at multiple
 	// replicas this needs a lock so two sweepers do not race, which the

@@ -1004,6 +1004,10 @@ final class CommunityRepository extends Repository {
 
   Future<WriteResult<void>> react(String postId, String reaction) =>
       write(() => api.postCommunityPostsByIdReact(postId, reaction), (_) {});
+
+  /// Block a story's anonymous author without exposing the account ID.
+  Future<WriteResult<Map<String, dynamic>>> blockPostAuthor(String postId) =>
+      write(() => api.postCommunityPostsByIdBlockAuthor(postId), (json) => json);
 }
 
 /// Subscription plans, entitlements and trial.
@@ -1108,16 +1112,16 @@ final class SubscriptionRepository extends Repository {
 final class ModerationRepository extends Repository {
   ModerationRepository(super.api, super.cache);
 
-  /// Files a report against published content or a community post.
+  /// Files a report against a person, confession, or community post.
   Future<WriteResult<Map<String, dynamic>>> report({
-    required String entityType,
+    required ReportableEntityType entityType,
     required String entityId,
     required String reason,
     String detail = '',
   }) =>
       write(
         () => api.postReports({
-          'entity_type': entityType,
+          'entity_type': entityType.wireValue,
           'entity_id': entityId,
           'reason': reason,
           if (detail.isNotEmpty) 'detail': detail,

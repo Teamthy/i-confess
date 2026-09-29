@@ -3,6 +3,8 @@
 /// This widget provides a bottom sheet or full screen view for managing
 /// the audio playback queue.
 import 'package:flutter/material.dart';
+
+import '../../../core/theme/tokens.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/audio_queue.dart';
 import '../controllers/queue_controller.dart';
@@ -101,7 +103,7 @@ class _QueuePanelState extends ConsumerState<QueuePanel> {
             width: 40,
             height: 4,
             decoration: BoxDecoration(
-              color: Colors.grey.shade400,
+              color: IConfess.colorNeutral400,
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -382,8 +384,8 @@ class _QueuePanelState extends ConsumerState<QueuePanel> {
             ListTile(
               leading: const Icon(Icons.delete),
               title: const Text('Remove from Queue'),
-              textColor: Colors.red,
-              iconColor: Colors.red,
+              textColor: IConfess.colorSemanticDangerLight,
+              iconColor: IConfess.colorSemanticDangerLight,
               onTap: () {
                 queueController.removeItemAt(index);
                 Navigator.of(context).pop();

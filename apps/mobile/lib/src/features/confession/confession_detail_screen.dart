@@ -192,7 +192,7 @@ class _Header extends StatelessWidget {
               key: const ValueKey('btn-favorite'),
               icon: Icon(
                 isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                color: isFavorite ? Colors.redAccent : surfaces.textSecondary,
+                color: isFavorite ? IConfess.colorSemanticDangerDark : surfaces.textSecondary,
               ),
               onPressed: busy ? null : onFavoriteToggle,
             ),

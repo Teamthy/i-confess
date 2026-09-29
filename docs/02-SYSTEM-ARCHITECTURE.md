@@ -82,9 +82,13 @@ nothing. An operator reading the boot log knows exactly which capabilities the
 instance has. That satisfies §51's "what happens if this disappears" for the
 startup case, which is the case most systems get wrong.
 
-The residual gap is the **runtime** case: what happens when Redis disappears
-*after* startup, 30 seconds into serving traffic. §51 asks that question
-specifically and nothing currently answers it — see G-7.
+The remaining question is runtime failure after startup. **G-7 is closed in
+PHASE 66** with request-path tests for a Redis publish outage and object-storage
+signing outage, plus provider retry/recovery coverage. Redis rate limiting also
+switches to a local limiter and reports degraded state when its store fails.
+The tested degradation is intentionally bounded: remote cache copies can stay
+stale until TTL expiry when Redis publish is unavailable, and session items omit
+audio URLs while storage signing is down. See `docs/66-RUNTIME-DEPENDENCY-OUTAGES.md`.
 
 ## 3. REQUEST PATH
 
@@ -142,12 +146,14 @@ gone and must stay gone.
 
 ## 6. GAPS
 
-**G-7 — Runtime dependency failure is untested.**
-Startup degradation is excellent. Nothing verifies what happens when Redis,
-object storage or the voice provider becomes unavailable *while serving*. §51
-asks for exactly this: "For every dependency ask: what happens if this
-disappears for 30 seconds?" That belongs in PHASE 48, but the architecture
-should say now that it is unproven.
+**Closed in PHASE 66: G-7 — Runtime dependency failure.** Tests now exercise
+Redis publish failure while the API serves an admin write, object-storage URL
+signing failure while a session request is served, and a transient voice-provider
+failure queued for retry and completed after recovery. The Redis limiter's
+runtime fallback/recovery and Redis bus reconnect behavior are also covered.
+The deliberate degraded modes remain: remote cache copies can stay stale until
+their TTL after a publish failure, and session audio URLs are blank while URL
+signing is unavailable. See `docs/66-RUNTIME-DEPENDENCY-OUTAGES.md`.
 
 **G-8 — The API was versioned by duplication, and it had drifted. CLOSED.**
 240 route registrations: 131 under `/v1/`, 109 without. Every unprefixed route
@@ -197,8 +203,9 @@ architecture document verified by prose is still an architecture document, and
 inventing tests to make the phase look productive would be the "fake
 completeness" the directive forbids.
 
-The two gaps that need tests are named and assigned: G-8 to a route-parity test
-(immediate, small), G-7 to PHASE 48.
+At the time of this original phase report, the two gaps needing tests were
+assigned: G-8 to a route-parity test and G-7 to PHASE 48. G-7 was subsequently
+closed in PHASE 66; see the current gap status in §6.
 
 Existing suite unaffected: `go test ./... -count=1` → **22/22 packages,
 0 failures**.
@@ -246,7 +253,7 @@ switch and should be refreshed in PHASE 60.
 | Request path documented | Done |
 | Background work inventoried | 4 workers |
 | Architectural constraints recorded | C-1 … C-5 |
-| Gaps identified with an owner | G-7, G-8, G-9 |
+| Gaps identified with an owner | G-7 (now closed), G-8 (closed), G-9 |
 | Claims verified against code, not assumed | 2 checked; 1 corrected (G-9) |
 | §47 simplicity honoured | Yes — one process, no orchestrator, no queue broker |
 
@@ -263,8 +270,8 @@ switch and should be refreshed in PHASE 60.
 7. **Tests executed:** `go test ./... -count=1` → 22/22 packages, 0 failures (regression check only).
 8. **Security considerations:** slowloris defence present; audio bypasses the API; no secrets in logs. One new risk recorded — duplicated routes can diverge in their security policy.
 9. **Performance considerations:** scheduler and HTTP share one connection pool; unmeasured.
-10. **Known issues:** G-7 (runtime failure untested), G-8 (route duplication, 22 `/v1`-only routes), G-9 (health check semantics).
-11. **Remaining work:** G-7 (runtime dependency failure, PHASE 48) and G-9 (health check has no test).
+10. **Known issues at the time of this original phase report:** G-7 (runtime failure untested), G-8 (route duplication, 22 `/v1`-only routes), G-9 (health check semantics). G-7 was closed in PHASE 66; G-8 was closed earlier.
+11. **Remaining work at the time of the original report:** G-7 (runtime dependency failure, PHASE 48) and G-9 (health check has no test). G-7 is now closed; consult the current gap ledger for remaining work.
 12. **Phase score:** 8/10. The architecture itself is sound and its degradation story is unusually good. Docked for G-8, which is a live correctness problem rather than a documentation gap.
 13. **Decision:** **PASS** — G-8 closed.
 14. **Recommended next phase:** **PHASE 03 — Technology Decisions**.

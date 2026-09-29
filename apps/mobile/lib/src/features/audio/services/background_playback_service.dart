@@ -6,6 +6,8 @@
 import 'package:flutter/material.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 
+import '../../../core/theme/tokens.dart';
+
 class BackgroundPlaybackConfig {
   const BackgroundPlaybackConfig({
     this.enabled = true,
@@ -18,7 +20,7 @@ class BackgroundPlaybackConfig {
     this.showStopControl = true,
     this.androidNotificationChannelId = 'app.iconfess.audio',
     this.androidNotificationChannelName = 'I-Confess audio',
-    this.notificationColor = const Color(0xFF6D4AFF),
+    this.notificationColor = IConfess.colorBrand500,
   });
 
   final bool enabled;

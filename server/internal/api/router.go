@@ -193,7 +193,7 @@ func (h *Handler) Routes() http.Handler {
 
 	h.route(mux, "POST /me/confessions", "user", "library", "Create a personal confession", authed, h.createUserConfession)
 	h.route(mux, "POST /me/confessions/{id}/submit", "user", "moderation", "Offer a personal confession for moderation review", authed, h.submitUserConfession)
-	h.route(mux, "POST /reports", "user", "moderation", "Report published content or a community post", authed, h.createReport)
+	h.route(mux, "POST /reports", "user", "moderation", "Report a person, published confession, or community post", authed, h.createReport)
 	// Blocking and appeals (PHASE 42). A block is a listener's own boundary; an
 	// appeal is a listener's answer to a decision made about them.
 	h.route(mux, "GET /me/blocks", "user", "moderation", "Accounts you have blocked", authed, h.listBlocks)
@@ -436,6 +436,7 @@ func (h *Handler) Routes() http.Handler {
 	h.route(mux, "GET /community/feed", "public", "community", "Approved community feed", nil, h.feedCommunity)
 	h.route(mux, "GET /community/confessions", "public", "community", "Published user confessions (public UGC reader, anonymous)", nil, h.feedUserConfessions)
 	h.route(mux, "POST /community/posts/{id}/react", "user", "community", "React amen/heart/pray", authed, h.reactCommunity)
+	h.route(mux, "POST /community/posts/{id}/block-author", "user", "community", "Block an anonymous community post author", authed, h.blockCommunityAuthor)
 	h.route(mux, "POST /ai/parse", "user", "ai", "AI NLU → categories/duration (never invents theology)", authed, h.aiParse)
 	h.route(mux, "POST /analytics/batch", "user", "analytics", "Batch analytics events (no PII)", authed, h.analyticsBatch)
 	h.route(mux, "GET /search", "public", "content", "Search confessions, categories, voices, Scripture", registerLimit, h.searchAll)
@@ -561,7 +562,7 @@ func (h *Handler) Routes() http.Handler {
 	h.route(mux, "POST /v1/me/history", "user", "library", "Record playback", authed, h.recordPlayback)
 	h.route(mux, "POST /v1/me/confessions", "user", "library", "Create a personal confession", authed, h.createUserConfession)
 	h.route(mux, "POST /v1/me/confessions/{id}/submit", "user", "moderation", "Offer a personal confession for moderation review", authed, h.submitUserConfession)
-	h.route(mux, "POST /v1/reports", "user", "moderation", "Report published content or a community post", authed, h.createReport)
+	h.route(mux, "POST /v1/reports", "user", "moderation", "Report a person, published confession, or community post", authed, h.createReport)
 	h.route(mux, "GET /v1/me/blocks", "user", "moderation", "Accounts you have blocked", authed, h.listBlocks)
 	h.route(mux, "POST /v1/me/blocks", "user", "moderation", "Block an account", authed, h.createBlock)
 	h.route(mux, "DELETE /v1/me/blocks/{userId}", "user", "moderation", "Unblock an account", authed, h.deleteBlock)
@@ -594,6 +595,7 @@ func (h *Handler) Routes() http.Handler {
 	h.route(mux, "GET /v1/community/feed", "public", "community", "Approved community feed", nil, h.feedCommunity)
 	h.route(mux, "GET /v1/community/confessions", "public", "community", "Published user confessions (public UGC reader, anonymous)", nil, h.feedUserConfessions)
 	h.route(mux, "POST /v1/community/posts/{id}/react", "user", "community", "React amen/heart/pray", authed, h.reactCommunity)
+	h.route(mux, "POST /v1/community/posts/{id}/block-author", "user", "community", "Block an anonymous community post author", authed, h.blockCommunityAuthor)
 	h.route(mux, "POST /v1/ai/parse", "user", "ai", "AI NLU → categories/duration (never invents theology)", authed, h.aiParse)
 	h.route(mux, "POST /v1/analytics/batch", "user", "analytics", "Batch analytics events (no PII)", authed, h.analyticsBatch)
 	h.route(mux, "GET /v1/search", "public", "content", "Search confessions, categories, voices, Scripture", registerLimit, h.searchAll)

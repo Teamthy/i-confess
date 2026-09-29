@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Teamthy/i-confess/internal/analytics"
 	"github.com/Teamthy/i-confess/internal/db/dbtest"
 	"github.com/Teamthy/i-confess/internal/entitlements"
 	"github.com/Teamthy/i-confess/internal/models"
@@ -87,6 +88,84 @@ func TestTrialLifecycle(t *testing.T) {
 	}
 	if _, err := trials.Start(ctx, userID, expiredAt.Add(time.Hour)); !errors.Is(err, ErrTrialNotEligible) {
 		t.Fatalf("restart error = %v, want ErrTrialNotEligible", err)
+	}
+}
+
+func TestTrialExpirySweepDrainsDueRowsAndEmitsOnce(t *testing.T) {
+	trials, events, firstID := trialEngagementFixture(t)
+	ctx := context.Background()
+	users := NewUserStore(trials.db)
+	secondID := trialUser(t, users, "trial-sweep-second@example.com")
+	futureID := trialUser(t, users, "trial-sweep-future@example.com")
+	for _, userID := range []string{secondID, futureID} {
+		if _, err := users.Subscription(ctx, userID); err != nil {
+			t.Fatalf("ensure free subscription for %s: %v", userID, err)
+		}
+	}
+	at := time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC)
+
+	for i, userID := range []string{firstID, secondID} {
+		start := at.Add(-trialdomain.TrialDuration - time.Duration(i+1)*time.Minute)
+		if _, err := trials.Start(ctx, userID, start); err != nil {
+			t.Fatalf("start expired trial %s: %v", userID, err)
+		}
+	}
+	if _, err := trials.Start(ctx, futureID, at); err != nil {
+		t.Fatalf("start future trial: %v", err)
+	}
+
+	// A limit of one proves the sweep can drain a backlog page by page.
+	for i := 0; i < 2; i++ {
+		if n, err := trials.SweepExpired(ctx, at, 1); err != nil || n != 1 {
+			t.Fatalf("sweep page %d = %d, %v; want one expiry", i+1, n, err)
+		}
+	}
+	if n, err := trials.SweepExpired(ctx, at, 1); err != nil || n != 0 {
+		t.Fatalf("empty sweep = %d, %v; want no due trials", n, err)
+	}
+
+	for _, userID := range []string{firstID, secondID} {
+		row, err := trials.Current(ctx, userID)
+		if err != nil || row.State != trialdomain.Expired {
+			t.Errorf("trial %s state = %v, %v; want EXPIRED", userID, row, err)
+		}
+		if plan, err := users.Subscription(ctx, userID); err != nil || plan != entitlements.PlanFree {
+			t.Errorf("expired trial %s entitlement = %q, %v; want free", userID, plan, err)
+		}
+		if count, err := events.Count(ctx, userID, analytics.EventTrialExpired); err != nil || count != 1 {
+			t.Errorf("trial_expired for %s = %d, %v; want exactly once", userID, count, err)
+		}
+	}
+	if row, err := trials.Current(ctx, futureID); err != nil || row.State != trialdomain.Active {
+		t.Errorf("future trial state = %v, %v; want ACTIVE", row, err)
+	}
+}
+
+func TestConcurrentTrialExpirySweepsEmitOneTransitionEvent(t *testing.T) {
+	trials, events, userID := trialEngagementFixture(t)
+	ctx := context.Background()
+	at := time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC)
+	if _, err := trials.Start(ctx, userID, at.Add(-trialdomain.TrialDuration-time.Hour)); err != nil {
+		t.Fatalf("start due trial: %v", err)
+	}
+
+	start := make(chan struct{})
+	errs := make(chan error, 2)
+	for i := 0; i < 2; i++ {
+		go func() {
+			<-start
+			_, err := trials.SweepExpired(ctx, at, 500)
+			errs <- err
+		}()
+	}
+	close(start)
+	for i := 0; i < 2; i++ {
+		if err := <-errs; err != nil {
+			t.Fatalf("concurrent sweep: %v", err)
+		}
+	}
+	if count, err := events.Count(ctx, userID, analytics.EventTrialExpired); err != nil || count != 1 {
+		t.Fatalf("trial_expired recorded %d times (err=%v), want exactly once", count, err)
 	}
 }
 

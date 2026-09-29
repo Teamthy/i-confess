@@ -918,6 +918,13 @@
   },
   {
     "method": "POST",
+    "path": "/community/posts/{id}/block-author",
+    "auth": "user",
+    "summary": "Block an anonymous community post author",
+    "tag": "community"
+  },
+  {
+    "method": "POST",
     "path": "/community/posts/{id}/react",
     "auth": "user",
     "summary": "React amen/heart/pray",
@@ -1501,7 +1508,7 @@
     "method": "POST",
     "path": "/reports",
     "auth": "user",
-    "summary": "Report published content or a community post",
+    "summary": "Report a person, published confession, or community post",
     "tag": "moderation"
   },
   {
@@ -2682,6 +2689,13 @@
   },
   {
     "method": "POST",
+    "path": "/v1/community/posts/{id}/block-author",
+    "auth": "user",
+    "summary": "Block an anonymous community post author",
+    "tag": "community"
+  },
+  {
+    "method": "POST",
     "path": "/v1/community/posts/{id}/react",
     "auth": "user",
     "summary": "React amen/heart/pray",
@@ -3265,7 +3279,7 @@
     "method": "POST",
     "path": "/v1/reports",
     "auth": "user",
-    "summary": "Report published content or a community post",
+    "summary": "Report a person, published confession, or community post",
     "tag": "moderation"
   },
   {

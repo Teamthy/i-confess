@@ -132,6 +132,12 @@ func TestReportRejectsUnseeableEntities(t *testing.T) {
 		 VALUES ('rep-draft','modcat','t',1,'en','draft','test',1,'2026-01-01','2026-01-01')`); err != nil {
 		t.Fatal(err)
 	}
+	seedUser(t, conn, "rep-person", "rep-person@example.com")
+	seedUser(t, conn, "rep-deleted", "rep-deleted@example.com")
+	if _, err := conn.ExecContext(ctx,
+		`UPDATE users SET status='deleted', deleted_at='2026-02-01' WHERE id='rep-deleted'`); err != nil {
+		t.Fatal(err)
+	}
 
 	for _, tc := range []struct {
 		name       string
@@ -142,6 +148,9 @@ func TestReportRejectsUnseeableEntities(t *testing.T) {
 		{"missing confession", "confession", "nope", false},
 		{"unpublished confession", "confession", "rep-draft", false},
 		{"missing post", "community_post", "nope", false},
+		{"existing user", "user", "rep-person", true},
+		{"missing user", "user", "nope", false},
+		{"deleted user", "user", "rep-deleted", false},
 	} {
 		got, err := s.ReportableEntityExists(ctx, tc.entityType, tc.entityID)
 		if err != nil {

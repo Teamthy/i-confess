@@ -1064,6 +1064,42 @@ void main() {
       expect(mine.single.status, 'draft');
     });
   });
+
+  test('community block action targets the post without sending or exposing an author ID', () async {
+    api.respond('/community/posts/post-1/block-author', 201, {
+      'blocked': true,
+      'already_blocked': false,
+    });
+
+    final result = await CommunityRepository(client, cache).blockPostAuthor('post-1');
+
+    expect(result, isA<WriteSuccess<Map<String, dynamic>>>());
+    expect(api.callCount('/community/posts/post-1/block-author'), 1);
+    expect(api.lastBody, isEmpty);
+  });
+
+  test('person reports serialize the typed entity kind', () async {
+    api.respond('/reports', 201, {
+      'report': {'id': 'r-person', 'entity_type': 'user', 'entity_id': 'target-1'},
+      'already_reported': false,
+    });
+
+    final result = await ModerationRepository(client, cache).report(
+      entityType: ReportableEntityType.user,
+      entityId: 'target-1',
+      reason: 'repeated harassment',
+      detail: 'The same person targeted several posts.',
+    );
+
+    expect(result, isA<WriteSuccess<Map<String, dynamic>>>());
+    final sent = jsonDecode(api.lastBody!) as Map<String, dynamic>;
+    expect(sent, {
+      'entity_type': 'user',
+      'entity_id': 'target-1',
+      'reason': 'repeated harassment',
+      'detail': 'The same person targeted several posts.',
+    });
+  });
 }
 
 class _Api {

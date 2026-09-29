@@ -242,7 +242,7 @@ class _PlanCard extends ConsumerWidget {
                   borderRadius: BorderRadius.circular(IConfess.radiusFull),
                 ),
                 child: Text(plan.interval.toUpperCase(),
-                    style: IConfess.label.copyWith(color: Colors.black)),
+                    style: IConfess.label.copyWith(color: IConfess.colorNeutral950)),
               ),
             ],
           ),

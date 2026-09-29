@@ -138,6 +138,10 @@ extension IConfessEndpoints on ApiClient {
           String id, String reaction) =>
       post('/community/posts/$id/react', {'reaction': reaction});
 
+  /// Block the anonymous author of a feed-visible post without revealing their ID.
+  Future<Map<String, dynamic>> postCommunityPostsByIdBlockAuthor(String id) =>
+      post('/community/posts/$id/block-author');
+
   // ---- devices ----
   /// List devices
   Future<Map<String, dynamic>> getMeDevices() => get('/me/devices');
@@ -515,12 +519,10 @@ extension IConfessEndpoints on ApiClient {
       post('/sessions/$id/complete', body);
 
   // ---- moderation: reporting, blocking, appeals ----
-  /// Report published content or a community post.
+  /// Report a person, published confession, or community post.
   ///
-  /// This was missing from the typed client entirely, so a client could not
-  /// file a report at all. It is added alongside appeals because an appeal
-  /// against a dismissed report is meaningless to a client that cannot file
-  /// the report in the first place.
+  /// The repository accepts a reportable-entity enum and serializes its wire
+  /// value into this request body.
   Future<Map<String, dynamic>> postReports(Map<String, dynamic> body) =>
       post('/reports', body);
 
