@@ -2,14 +2,14 @@
   "project": "i-confess",
   "branch": "arena/01a0ee4f-i-confess",
   "base_commit": "251f906bb75e8cb4c25375c6ed68a74ed83e884d",
-  "phase": "ledger-58-health-check-test",
-  "task": "Tier B1: add direct table-driven coverage for the internal health handler 200 and database-failure 503 branches; reconcile the current carried-forward list and record that the supplied unpushed G-52 patch is absent from this checkout.",
+  "phase": "ledger-59-web-token-parity",
+  "task": "Tier B2: guard web CSS custom-property color values against design/tokens.json, preserve the existing web palette in source tokens, and close G-57. Tier B1 G-9 handler coverage was committed as 38b50eb.",
   "status": "VERIFIED_WITH_BLOCKER",
   "attempt": 1,
-  "last_successful_step": "Restored Go 1.27.1 and PostgreSQL 17.10 using scripts/sandbox-bootstrap.sh; the Redis build hit a GCC 12 LTO internal compiler error, so rebuilt Redis 7.4.2 with OPTIMIZATION=-O2. github.com returned HTTP 200. On HEAD 251f906 (not the three-commit branch in the supplied handoff): gofmt clean, go build -modfile=/tmp/local.mod ./..., go vet -modfile=/tmp/local.mod ./..., deletion package race tests, and full Go race suite with PostgreSQL 17.10 + Redis all passed. New internal/health table-driven handler test passed and is included in full suite. G-52 is not verified: its files and commits are absent.",
-  "next_action": "Tier B2: add a drift test for web/app/globals.css custom properties against design/tokens.json; do not open a PR until the described G-52 patch can be restored and verified on this branch.",
-  "timestamp": "2026-09-29T18:30:00Z",
-  "current_phase": 58,
+  "last_successful_step": "On current HEAD 251f906 plus B1 commit 38b50eb: bootstrap completed after Redis GCC LTO workaround; github.com HTTP 200. gofmt clean, Go build/vet and full race suite with PostgreSQL + Redis all passed, including health Handler 200 and 503. B2: design/generate.py --check passed (132 tokens), design/test_design.py passed, design/test_ia.py passed (39 screens/8 entry points/162 endpoints), check_dart_symbols.py passed 133/133. Negative-control CSS hex probe made the new design assertion fail with the offending property/value. G-52 remains unverified because the handoff-named three commits and schema_check.go are absent from the available branch.",
+  "next_action": "Continue at B3 (G-25 handlers.go refactor) only after the intended three-commit/G-52 patch is restored or the user confirms this baseline is intended; the requested PR gate cannot be considered satisfied for G-52.",
+  "timestamp": "2026-09-29T18:12:24Z",
+  "current_phase": 59,
   "completed_phases": [
     0,
     1,
@@ -44,7 +44,9 @@
     30,
     31,
     50,
-    55
+    55,
+    58,
+    59
   ],
   "open_gaps": [
     "G-7",
@@ -61,8 +63,7 @@
     "G-52",
     "G-53",
     "G-54",
-    "G-56",
-    "G-57"
+    "G-56"
   ],
   "reconciliation": {
     "reason": "Supplied handoff names arena/01a0edf6-i-confess and three unpushed commits, but the session is fixed to arena/01a0ee4f-i-confess and this checkout is a shallow clone at origin/main 251f906.",
@@ -92,7 +93,14 @@
   ],
   "files_changed": [
     "server/internal/health/health_test.go",
+    "design/test_design.py",
+    "design/tokens.json",
+    "design/generated/tokens.css",
+    "design/generated/tokens.dart",
+    "design/generated/tokens.ts",
+    "apps/mobile/lib/src/core/theme/tokens.dart",
     "docs/58-HEALTH-CHECK-FAILURE-TEST.md",
+    "docs/59-WEB-DESIGN-TOKEN-PARITY.md",
     "docs/PROJECT-STATUS.md",
     ".arena/state.json"
   ],

@@ -6,13 +6,20 @@ full Go race suite with PostgreSQL 17.10 and Redis 7.4 all passed. The full suit
 reported every package `ok` or `[no test files]`. `internal/health` now has a
 table-driven handler test proving healthy HTTP 200 and database-failure HTTP
 503; `go test -modfile=/tmp/local.mod -race -count=1 ./internal/health` passed
-(see `docs/58-HEALTH-CHECK-FAILURE-TEST.md`). These commands were run on
-`arena/01a0ee4f-i-confess` at `251f906`, not on the unpushed three-commit branch
-described in the supplied handoff. The supplied G-52 files are absent from this
-checkout, so the deletion run and full suite do **not** verify G-52. The local
-bootstrap required rebuilding Redis without LTO after GCC's LTO linker crashed;
-`https://github.com/` returned HTTP 200. The Python/Dart toolchain and `make
-lint` were not run in this verification pass.
+(see `docs/58-HEALTH-CHECK-FAILURE-TEST.md`). Design verification after ledger
+59 passed: `python3 design/generate.py --check`, `python3 design/test_design.py`
+(132 tokens, including web CSS parity), `python3 design/test_ia.py` (39 screens,
+8 entry points, 162 endpoints), and `python3 scripts/check_dart_symbols.py`
+(133/133). A negative CSS color probe made the new G-57 assertion fail as
+intended. These commands were run on the fixed session branch
+`arena/01a0ee4f-i-confess`, based on `251f906`; B1 is commit `38b50eb`, and
+B2's changes are recorded in ledger 59 below. They were not run on the
+unpushed three-commit branch described in the supplied handoff. The
+supplied G-52 files are absent from this checkout, so the deletion run and full
+suite do **not** verify G-52. The local bootstrap required rebuilding Redis
+without LTO after GCC's LTO linker crashed; `https://github.com/` returned HTTP
+200. Flutter/Dart analyze/test and `make lint` were not run in this verification
+pass.
 
 **Previously verified:** 2026-09-25, at ledger 50 (`docs/50-CACHE-INVALIDATION.md`
 — the content caches now have an invalidation path, closing G-10. Two copies of
@@ -126,7 +133,7 @@ it.** Every claim below was produced by running something.
 | **UGC `PUBLIC` readers** | **Done in PHASE 32** — `GET /community/confessions` public, anonymous, newest-first, mobile 2-tab + web both-feeds. Was G-40. |
 | **Soft delete / versioning** | **Done in PHASE 38** — all 66 application tables carry `deleted_at` and `row_version`; retention writes are tombstoned and versioned. |
 | **Cache** | **Closed in ledger 50** — still per-process, but writes now invalidate locally and publish to every other instance over Redis pub/sub. Was G-10. |
-| **Design system** | Generated tokens are consumed by mobile (`tokens.dart`); web `globals.css` hand-copies 27 properties without a drift guard (G-57). |
+| **Design system** | 132 tokens are generated and consumed by mobile; `design/test_design.py` checks generated parity and every hex-valued custom property in web `globals.css` against `design/tokens.json` (G-57 closed in ledger 59). |
 | **Navigation** | 37 screens specified and validated; mobile has the shell plus real home, explore, category, confession, builder, activity, and production player surfaces; me and remaining secondary surfaces continue in subsequent phases. |
 | **Observability** | `cache.hit_rate` and `cache.invalidations` are exposed and asserted (ledger 50). The claim about a missing hit-rate metric was stale since PHASE 07. Runtime dependency failure remains untested outside the busy-path and reconnect cases. |
 
@@ -453,15 +460,17 @@ PHASE 43 Personalization: the seven listener signals — **PASS** (master-plan
 Open gaps carried forward (reconciled against the supplied ledger 57; this
 checkout does not contain `docs/57-GAP-LEDGER-RECONCILIATION.md`): **G-7,
 G-14, G-15, G-16, G-19, G-24, G-25, G-28, G-33, G-48, G-49, G-52, G-53,
-G-54, G-56, G-57.** G-9 was removed after the handler's healthy and 503 paths
-were exercised by `go test -modfile=/tmp/local.mod -race -count=1
-./internal/health`; details: `docs/58-HEALTH-CHECK-FAILURE-TEST.md`.
-The reconciled ledger reports G-12, G-13, G-17, G-18, G-20, G-23, G-26 and
-G-27 as closed; G-25 and G-16 remain open with updated measurements; G-52 is
-still open and unverified. Important checkout limitation: the three unpushed
-commits described by the supplied handoff, including the G-52 patch, are not
-present at this branch's `251f906` HEAD. Therefore their behavior is not claimed
-as verified here.
+G-54, G-56.** G-9 was removed after the handler's healthy and 503 paths were
+exercised by `go test -modfile=/tmp/local.mod -race -count=1 ./internal/health`
+(details: `docs/58-HEALTH-CHECK-FAILURE-TEST.md`). G-57 was removed after
+`design/test_design.py` enforced web custom-property color parity with
+`design/tokens.json` (details: `docs/59-WEB-DESIGN-TOKEN-PARITY.md`). The
+reconciled ledger reports G-12, G-13, G-17, G-18, G-20, G-23, G-26 and G-27 as
+closed; G-25 and G-16 remain open with updated measurements; G-52 is still open
+and unverified. Important checkout limitation: the three unpushed commits
+described by the supplied handoff, including the G-52 patch, are not present at
+this branch's `251f906` HEAD. Therefore their behavior is not claimed as
+verified here.
 
 Closed: **G-1** (queues are snapshots), **G-2** (23/23 status columns constrained),
 **G-8** (route parity), **G-11** (clients/dart is not a Flutter app),
@@ -552,10 +561,12 @@ recommendation whose reason is never shown is indistinguishable from an
 arbitrary one to the listener, which is the complaint personalization exists to
 answer.
 
-**G-57 — Web design tokens can drift silently.** `web/app/globals.css` hand-copies
-custom properties from `design/tokens.json`; this checkout has no generator or
-test enforcing parity. The matching values are not evidence of an ongoing
-guarantee. See the next tier-B item; not closed by the health-check test.
+**Closed in ledger 59: G-57.** `design/test_design.py` checks every hex-valued
+custom property in `web/app/globals.css` against the color values in
+`design/tokens.json`. The current palette includes the 12 web colors that the
+reconciliation first found missing; `python3 design/test_design.py` passed, and
+a temporary unknown-color probe failed as intended. See
+`docs/59-WEB-DESIGN-TOKEN-PARITY.md`.
 
 **Closed in ledger 58: G-9.** `internal/health/health_test.go` now exercises the
 handler's database-healthy 200 and database-unavailable 503 responses, including

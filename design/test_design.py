@@ -131,6 +131,33 @@ check("no unresolved references leaked into output", not leaked, f"{leaked}")
 check("body renders serif in generated Dart",
       "body = TextStyle(fontFamily: 'Source Serif 4'" in dart)
 
+print("\nWeb token parity")
+web_css = (HERE.parent / "web" / "app" / "globals.css").read_text()
+web_color_values = re.findall(
+    r"(?m)(--[\w-]+)\s*:\s*(#[0-9a-fA-F]{3,8})\b", web_css)
+
+def token_color_values(node):
+    found = set()
+    if isinstance(node, dict):
+        value = node.get("$value")
+        if isinstance(value, str) and re.fullmatch(r"#[0-9a-fA-F]{3,8}", value):
+            found.add(value.upper())
+        for child in node.values():
+            found.update(token_color_values(child))
+    elif isinstance(node, list):
+        for child in node:
+            found.update(token_color_values(child))
+    return found
+
+known_colors = token_color_values(TOKENS)
+check("web CSS exposes custom-property hex colors", bool(web_color_values))
+unmatched_web_colors = [
+    f"{name}: {value}" for name, value in web_color_values
+    if value.upper() not in known_colors
+]
+check("every web custom-property hex exists in design/tokens.json",
+      not unmatched_web_colors, ", ".join(unmatched_web_colors))
+
 print()
 if failures:
     print(f"DESIGN SYSTEM CHECK FAILED: {len(failures)} assertion(s)")
