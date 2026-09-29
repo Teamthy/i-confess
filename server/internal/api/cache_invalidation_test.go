@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -49,6 +50,16 @@ func newCacheInstance(t *testing.T, name string, conn *db.DB, bus cache.Bus) *in
 	return inst
 }
 
+// failedPublishBus models the runtime-only Redis failure mode: subscription
+// succeeded at startup, but publishing begins failing while requests are served.
+type failedPublishBus struct{}
+
+func (failedPublishBus) Publish(context.Context, cache.Message) error {
+	return errors.New("redis connection lost")
+}
+func (failedPublishBus) Subscribe(context.Context, func(cache.Message)) error { return nil }
+func (failedPublishBus) Close() error                                         { return nil }
+
 // adminTokenFor returns a signed-in super admin for the instance.
 func adminTokenFor(t *testing.T, inst *instance, email string) string {
 	t.Helper()
@@ -87,6 +98,31 @@ func warmCategoryCaches(t *testing.T, instances ...*instance) []string {
 		before[i] = fetchJSONBody(t, inst, "/categories")
 	}
 	return before
+}
+
+// A Redis publish outage must not turn a committed admin write into an HTTP
+// failure. The writing instance invalidates locally; other instances retain
+// their cached copy until Redis recovers or the cache TTL expires.
+func TestRuntimeRedisPublishOutageKeepsRequestsServing(t *testing.T) {
+	dbConn := dbtest.New(t)
+	defer dbConn.Close()
+
+	writer := newCacheInstance(t, "writer", dbConn, failedPublishBus{})
+	reader := newCacheInstance(t, "reader", dbConn, nil)
+	admin := adminTokenFor(t, writer, "cache-outage-admin@example.com")
+
+	warmCategoryCaches(t, reader, writer)
+	status, body := doRequest(t, writer.srv, http.MethodPost, "/admin/categories", admin,
+		`{"name":"Outage Probe","slug":"outage-probe-category","status":"published"}`)
+	if status != http.StatusCreated {
+		t.Fatalf("Redis outage failed the committed write: %d %s", status, truncateBody(body))
+	}
+	if got := fetchJSONBody(t, writer, "/categories"); !containsField(got, "outage-probe-category") {
+		t.Fatalf("writer's local cache was not invalidated during Redis outage:\n%s", truncateBody(got))
+	}
+	if got := fetchJSONBody(t, reader, "/categories"); containsField(got, "outage-probe-category") {
+		t.Fatal("isolated reader refreshed without Redis invalidation or TTL expiry")
+	}
 }
 
 // TestAPublishedCategoryIsVisibleToOtherInstancesImmediately is the G-10 case:

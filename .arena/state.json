@@ -2,14 +2,14 @@
   "project": "i-confess",
   "branch": "arena/01a0ee4f-i-confess",
   "base_commit": "251f906bb75e8cb4c25375c6ed68a74ed83e884d",
-  "phase": "ledger-65-trial-expiry-sweep",
-  "task": "Tier B8 / G-49: make trial expiry analytics and entitlement transitions independent of a returning user through a scheduled expiry sweep.",
+  "phase": "ledger-66-runtime-dependency-outages",
+  "task": "Tier B9 / G-7: verify runtime behavior when Redis, object storage, or the voice provider becomes unavailable while requests are served.",
   "status": "VERIFIED_WITH_BLOCKER",
   "attempt": 1,
-  "last_successful_step": "G-49 implemented. TrialStore.SweepExpired processes due ACTIVE/EXPIRING trials in pages through the existing row-locked Refresh transition; a partial due-date index supports the scan. Server runs once at startup and every 15 minutes, drains 500-row batches, and logs retryable failures. Full Go race suite, build and vet passed. Follow-up store race tests passed for batches, future trials, free-plan projection, one-time analytics, and overlapping sweepers. G-52 from the supplied handoff remains absent and unverified.",
-  "next_action": "Continue tier-B order with B9/G-7 runtime dependency fault. Do not open a PR until G-52 is restored and its test plus the full suite are green.",
-  "timestamp": "2026-09-29T19:02:25Z",
-  "current_phase": 65,
+  "last_successful_step": "G-7 closed with request-path tests for Redis publish failure and object-storage signing failure, plus existing Redis limiter fallback/recovery and voice-provider retry/recovery coverage. Full Go race suite, build, and vet passed. G-52 remains absent and unverified.",
+  "next_action": "Continue the tier-B sequence. Do not open a PR until G-52 is restored and its test plus the full suite are green.",
+  "timestamp": "2026-09-29T20:15:00Z",
+  "current_phase": 66,
   "completed_phases": [
     0,
     1,
@@ -52,10 +52,10 @@
     62,
     63,
     64,
-    65
+    65,
+    66
   ],
   "open_gaps": [
-    "G-7",
     "G-14",
     "G-15",
     "G-19",
@@ -161,7 +161,11 @@
     "server/internal/db/migrations/0026_trial_expiry_sweep.sql",
     "server/internal/store/trials.go",
     "server/internal/store/trials_test.go",
-    "docs/65-TRIAL-EXPIRY-SWEEP.md"
+    "docs/65-TRIAL-EXPIRY-SWEEP.md",
+    "server/internal/api/audio_access_test.go",
+    "server/internal/api/cache_invalidation_test.go",
+    "docs/02-SYSTEM-ARCHITECTURE.md",
+    "docs/66-RUNTIME-DEPENDENCY-OUTAGES.md"
   ],
   "environment_notes": [
     "Go 1.27.1 from the PyPI go-bin wheel (extracted to /home/user/.local/go-extract/go); proxy.golang.org, sum.golang.org and golang.org are unreachable, so modules came from GOPROXY=direct over GitHub plus a local file:///tmp/goproxy holding golang.org/x/crypto v0.55.0 built from codeload.github.com/golang/crypto; GOSUMDB=off only for that fetch, go.mod/go.sum untouched (verified by git status)",

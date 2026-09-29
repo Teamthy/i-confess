@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Teamthy/i-confess/internal/db"
 	"github.com/Teamthy/i-confess/internal/media"
@@ -398,6 +400,50 @@ func TestMediaOriginRequiresValidSignature(t *testing.T) {
 	}
 	if code := get(strings.Replace(signed, "sig=", "sig=x", 1)); code != http.StatusForbidden {
 		t.Fatalf("tampered signature: got %d, want 403", code)
+	}
+}
+
+// toggleSigningStorage lets the request-serving test simulate a provider that
+// becomes unavailable after startup, then recovers without replacing the API.
+type toggleSigningStorage struct {
+	storage.ObjectStorage
+	unavailable bool
+}
+
+func (s *toggleSigningStorage) GenerateSignedURL(ctx context.Context, key string, ttl time.Duration) (string, error) {
+	if s.unavailable {
+		return "", errors.New("object storage temporarily unavailable")
+	}
+	return s.ObjectStorage.GenerateSignedURL(ctx, key, ttl)
+}
+
+// A signing outage must not take down session creation or expose a raw key;
+// once the provider recovers, a later request should immediately mint URLs.
+func TestSessionContinuesSafelyDuringStorageSigningOutageAndRecovers(t *testing.T) {
+	f := newAudioFixture(t)
+	provider := &toggleSigningStorage{ObjectStorage: f.store}
+	f.h.SetSigner(provider)
+
+	if code, sess := f.createSession(t, f.freeTok, f.voiceStd, 120); code != http.StatusCreated || len(sess.Items) == 0 || sess.Items[0].AudioURL == "" {
+		t.Fatalf("healthy storage session: status=%d items=%+v, want playable audio", code, sess.Items)
+	}
+
+	provider.unavailable = true
+	code, sess := f.createSession(t, f.freeTok, f.voiceStd, 120)
+	if code != http.StatusCreated {
+		t.Fatalf("storage outage made session request fail: status=%d", code)
+	}
+	if len(sess.Items) == 0 {
+		t.Fatal("storage outage unexpectedly removed the session items")
+	}
+	for i, item := range sess.Items {
+		if item.AudioURL != "" {
+			t.Errorf("item %d has playable URL during signing outage: %q", i, item.AudioURL)
+		}
+	}
+	provider.unavailable = false
+	if code, sess := f.createSession(t, f.freeTok, f.voiceStd, 120); code != http.StatusCreated || len(sess.Items) == 0 || sess.Items[0].AudioURL == "" {
+		t.Fatalf("recovered storage session: status=%d items=%+v, want playable audio", code, sess.Items)
 	}
 }
 

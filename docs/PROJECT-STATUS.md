@@ -462,8 +462,8 @@ PHASE 43 Personalization: the seven listener signals — **PASS** (master-plan
     docs/43-PERSONALIZATION-SIGNALS.md)
 
 Open gaps carried forward (reconciled against the supplied ledger 57; this
-checkout does not contain `docs/57-GAP-LEDGER-RECONCILIATION.md`): **G-7,
-G-14, G-15, G-19, G-24, G-28, G-33, G-48, G-52.** G-9 was
+checkout does not contain `docs/57-GAP-LEDGER-RECONCILIATION.md`): **G-14,
+G-15, G-19, G-24, G-28, G-33, G-48, G-52.** G-7 was
 removed after the handler's healthy and 503 paths were
 exercised by `go test -modfile=/tmp/local.mod -race -count=1 ./internal/health`
 (details: `docs/58-HEALTH-CHECK-FAILURE-TEST.md`). G-57 was removed after
@@ -472,7 +472,7 @@ exercised by `go test -modfile=/tmp/local.mod -race -count=1 ./internal/health`
 removed after the 1,656-line handler file was decomposed and the full Go race
 suite passed (details: `docs/60-API-HANDLER-COMPOSITION-REFACTOR.md`). The
 reconciled ledger reports G-12, G-13, G-17, G-18, G-20, G-23, G-26 and G-27 as
-closed; ledgers 58–65 additionally close G-9, G-16, G-25, G-49, G-53, G-54, G-56 and G-57.
+closed; ledgers 58–66 additionally close G-7, G-9, G-16, G-25, G-49, G-53, G-54, G-56 and G-57.
 G-52 is still open and unverified. Important checkout limitation: the three unpushed commits described
 by the supplied handoff, including the G-52 patch, are not present at this
 branch's `251f906` base. Therefore their behavior is not claimed as verified
@@ -635,6 +635,21 @@ monogram fallback), **G-45** (the favourites tab lists all four entity kinds,
 but only confessions navigate; a favourited voice or session renders and can be
 removed yet does nothing when tapped, because no detail surface exists).
 Each is described in the phase document that raised it.
+
+**Closed in ledger 66: G-7.** Runtime request-path tests now cover Redis
+invalidation publishing failing after startup (the committed write and writer's
+local cache remain healthy; remote cache copies can remain stale to TTL), and
+object-storage signing failing while sessions are served (the response remains
+usable but contains no audio URLs or raw keys, then signing recovers). Existing
+coverage was reviewed for Redis limiter fallback/recovery, Redis pub/sub
+reconnection, storage error classification, and voice-provider retry queued
+once and completed after recovery. Full Go race suite, build, and vet passed.
+The phase deliberately did not claim API-level coverage of `URLGenerator` or
+the playback resolver: both are initialized at startup but neither is called by
+an API route; their different signing-failure behavior is recorded in
+`docs/66-RUNTIME-DEPENDENCY-OUTAGES.md`. G-52 remains the open blocker; do not
+open a PR until its intended files are restored and its tests plus the full suite
+are green.
 
 ## How the phases are gated
 
