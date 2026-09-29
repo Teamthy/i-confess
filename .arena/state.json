@@ -4,11 +4,11 @@
   "base_commit": "251f906bb75e8cb4c25375c6ed68a74ed83e884d",
   "phase": "ledger-67-deletion-failure-attribution",
   "task": "Tier B10 / G-52: prevent account-erasure failures from being swallowed or misattributed after PostgreSQL aborts a transaction.",
-  "status": "VERIFIED_LOCAL_CI_REMEDIATION_PENDING",
+  "status": "VERIFIED_WITH_OPEN_GAPS",
   "attempt": 1,
-  "last_successful_step": "G-52 and the full Go race/build/vet suite are green. PR #82 CI's first run exposed a mobile Safety-screen compile issue and Go lint failures; the next run showed two additional unused catalog handlers plus a Dart unused-result error. All reported findings have been fixed locally; awaiting another pushed CI run.",
-  "next_action": "Commit and push the latest CI remediation, then review PR #82 checks.",
-  "timestamp": "2026-09-29T19:42:00Z",
+  "last_successful_step": "G-52 passed PostgreSQL tests and full Go race/build/vet. PR #82 merged at 379ebb3. Follow-up PR #83 validates the mobile session-builder drift guard; all PR #83 checks pass: Go build/vet/tests, lint, Flutter analyze/tests, Dart client, web build, and container/deployment checks.",
+  "next_action": "Continue with the next explicitly ordered tier-B gap. PR #83 is open and all checks are green; G-14, G-15, G-19, G-24, G-28, G-33, and G-48 remain open.",
+  "timestamp": "2026-09-29T20:06:00Z",
   "current_phase": 67,
   "completed_phases": [
     0,
@@ -171,7 +171,8 @@
     "server/internal/deletion/schema_check_test.go",
     "server/internal/db/schema_coverage_test.go",
     "docs/42-MODERATION-BLOCKING-APPEALS.md",
-    "docs/67-DELETION-FAILURE-ATTRIBUTION.md"
+    "docs/67-DELETION-FAILURE-ATTRIBUTION.md",
+    "apps/mobile/test/builder_test.dart"
   ],
   "environment_notes": [
     "Go 1.27.1 from the PyPI go-bin wheel (extracted to /home/user/.local/go-extract/go); proxy.golang.org, sum.golang.org and golang.org are unreachable, so modules came from GOPROXY=direct over GitHub plus a local file:///tmp/goproxy holding golang.org/x/crypto v0.55.0 built from codeload.github.com/golang/crypto; GOSUMDB=off only for that fetch, go.mod/go.sum untouched (verified by git status)",

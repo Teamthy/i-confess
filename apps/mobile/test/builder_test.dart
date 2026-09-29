@@ -297,8 +297,8 @@ void main() {
           reason: 'the engine has a rung the builder does not offer');
 
       // The length bounds the handlers enforce.
-      final handlers = readRepoFile('server/internal/api/handlers.go');
-      expect(handlers.contains('3*3600'), isTrue,
+      final handlers = readRepoFile('server/internal/api/handlers_sessions.go');
+      expect(handlers.contains('req.DurationSeconds > 3*3600'), isTrue,
           reason: 'maxSessionSeconds mirrors the handlers\' 3-hour ceiling');
       expect(handlers.contains('req.DurationSeconds < 60'), isTrue,
           reason: 'minSessionSeconds mirrors the handlers\' 1-minute floor');
