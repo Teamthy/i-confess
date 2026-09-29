@@ -1,24 +1,28 @@
-**Last verified:** 2026-09-29, ledger 64. The full Go race suite, build, and
-vet passed in ledger 63 with PostgreSQL 17.10 and Redis 7.4; all packages were
-`ok` or `[no test files]`, and `TestRouteParityBetweenPrefixes` passed. Ledger
-63 closes G-53: Settings supports block/appeal management, rejected confessions
-have an in-context appeal action, and community stories have a contextual block
-action without exposing author IDs. Author resolution belongs to
-`internal/community.Store`; signed-in feeds apply private block boundaries.
-Ledger 64 closes G-56: Home displays reason labels for recommendations, listen-
-again context, and the suggested session duration, without calling empty-signal
-picks personalized. Design checks passed: `design/test_ia.py` (40 screens, 8
-entry points, 163 endpoints), `design/generate.py --check`, `design/test_design.py`
-(132 tokens), and `check_dart_symbols.py` (140/140). B1 is commit `38b50eb`, B2
-is recorded in ledger 59, B3 in ledger 60, B4 in ledger 61, B5 in commit
-`ddbc7ff`, and B6 in commit `1384faf`.
+**Last verified:** 2026-09-29, ledger 65. The full Go race suite passed with
+PostgreSQL 17.10 and Redis 7.4; all packages were `ok` or `[no test files]`.
+`go build -modfile=/tmp/local.mod ./...` and `go vet -modfile=/tmp/local.mod
+./...` also passed. Ledger 65 closes G-49: a startup recovery sweep and a
+15-minute periodic sweep expire due trials whether or not their owners return;
+row-locked transitions update entitlements and emit expiry analytics once.
+Store race tests cover batching, future trials, free-plan projection and two
+overlapping sweepers. Ledger 63 closes G-53: Settings supports block/appeal
+management, rejected confessions have an in-context appeal action, and community
+stories have a contextual block action without exposing author IDs. Author
+resolution belongs to `internal/community.Store`; signed-in feeds apply private
+block boundaries. Ledger 64 closes G-56: Home displays plain-language
+recommendation reasons, listen-again context, and suggested duration without
+calling empty-signal picks personalized. Design checks passed: `design/test_ia.py`
+(40 screens, 8 entry points, 163 endpoints), `design/generate.py --check`,
+`design/test_design.py` (132 tokens), and `check_dart_symbols.py` (140/140). B1
+is commit `38b50eb`, B2 is recorded in ledger 59, B3 in ledger 60, B4 in ledger
+61, B5 in commit `ddbc7ff`, B6 in `1384faf`, and B7 in `e3b6df8`.
 
 The branch is the fixed session branch `arena/01a0ee4f-i-confess`, based on
 `251f906`. The supplied handoff branch/commits are absent. Its G-52 files remain
 absent from this checkout, so the deletion test and passing full suite do
 **not** verify G-52; do not open a PR until that gate is restored and green.
 `https://github.com/` returned HTTP 200. Flutter/Dart analysis and tests,
-including the new safety and recommendation widget tests, remain CI-only because
+including the Safety and recommendation widget tests, remain CI-only because
 the SDKs are unavailable; `make lint` was not run.
 
 **Previously verified:** 2026-09-25, at ledger 50 (`docs/50-CACHE-INVALIDATION.md`
@@ -459,7 +463,7 @@ PHASE 43 Personalization: the seven listener signals — **PASS** (master-plan
 
 Open gaps carried forward (reconciled against the supplied ledger 57; this
 checkout does not contain `docs/57-GAP-LEDGER-RECONCILIATION.md`): **G-7,
-G-14, G-15, G-19, G-24, G-28, G-33, G-48, G-49, G-52.** G-9 was
+G-14, G-15, G-19, G-24, G-28, G-33, G-48, G-52.** G-9 was
 removed after the handler's healthy and 503 paths were
 exercised by `go test -modfile=/tmp/local.mod -race -count=1 ./internal/health`
 (details: `docs/58-HEALTH-CHECK-FAILURE-TEST.md`). G-57 was removed after
@@ -468,7 +472,7 @@ exercised by `go test -modfile=/tmp/local.mod -race -count=1 ./internal/health`
 removed after the 1,656-line handler file was decomposed and the full Go race
 suite passed (details: `docs/60-API-HANDLER-COMPOSITION-REFACTOR.md`). The
 reconciled ledger reports G-12, G-13, G-17, G-18, G-20, G-23, G-26 and G-27 as
-closed; ledgers 58–64 additionally close G-9, G-16, G-25, G-53, G-54, G-56 and G-57.
+closed; ledgers 58–65 additionally close G-9, G-16, G-25, G-49, G-53, G-54, G-56 and G-57.
 G-52 is still open and unverified. Important checkout limitation: the three unpushed commits described
 by the supplied handoff, including the G-52 patch, are not present at this
 branch's `251f906` base. Therefore their behavior is not claimed as verified
@@ -598,11 +602,12 @@ decision lifecycle handles the person-level case. The Dart client exposes a
 typed `ReportableEntityType.user`. PostgreSQL API/store tests passed; Dart tests
 remain CI-only. See `docs/62-REPORT-A-PERSON.md`.
 
-**G-49 — Trial expiry analytics depend on someone looking.** `trial_expired` is
-recorded when something next refreshes the trial, and there is no sweeper, so an
-account that never returns is never counted as churned. The churn side of the
-funnel is therefore a lower bound. Fixing it means a scheduled trial sweep,
-which belongs with the worker work rather than here.
+**Closed in ledger 65: G-49.** A startup recovery pass and 15-minute trial
+expiry sweep advance due trials even when their owners never return. The bounded
+store sweep delegates to the row-locked lifecycle transition, returns the
+subscription projection to free, and emits the expiry funnel event once. A
+partial due-date index supports the scan. Store race tests cover batching,
+future rows and overlapping sweepers. See `docs/65-TRIAL-EXPIRY-SWEEP.md`.
 
 Recorded in PHASE 11: **G-34** (canonical audio coverage), **G-35**
 (canonical content has had no theological review; `Author` overstates its

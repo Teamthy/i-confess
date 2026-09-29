@@ -284,6 +284,57 @@ func (s *TrialStore) Refresh(ctx context.Context, userID string, at time.Time) (
 	return row, nil
 }
 
+// SweepExpired applies the time-driven expiry transition to due trials in
+// batches. It selects only candidates; Refresh owns the row lock, lifecycle
+// edges, subscription projection, and exactly-once transition event, so two API
+// instances may safely run the sweep at the same time.
+//
+// The count is the number of selected rows that are expired after Refresh. A
+// non-positive limit uses the package default; callers can loop while a full
+// batch is returned to drain a backlog without loading all trials into memory.
+func (s *TrialStore) SweepExpired(ctx context.Context, at time.Time, limit int) (int, error) {
+	if limit <= 0 {
+		limit = 500
+	}
+	at = at.UTC()
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT user_id FROM trials
+		 WHERE state IN (?, ?) AND expires_at IS NOT NULL AND expires_at <> '' AND expires_at <= ?
+		 ORDER BY expires_at, user_id LIMIT ?`,
+		string(trial.Active), string(trial.Expiring), at.Format(time.RFC3339), limit)
+	if err != nil {
+		return 0, err
+	}
+	var userIDs []string
+	for rows.Next() {
+		var userID string
+		if err := rows.Scan(&userID); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		userIDs = append(userIDs, userID)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return 0, err
+	}
+	if err := rows.Close(); err != nil {
+		return 0, err
+	}
+
+	expired := 0
+	for _, userID := range userIDs {
+		row, err := s.Refresh(ctx, userID, at)
+		if err != nil {
+			return expired, fmt.Errorf("expire trial for %s: %w", userID, err)
+		}
+		if row.State == trial.Expired {
+			expired++
+		}
+	}
+	return expired, nil
+}
+
 // Convert records the terminal trial edge. It never grants paid premium: a
 // store receipt must still pass through billing verification and its sole
 // verified-subscription writer.
