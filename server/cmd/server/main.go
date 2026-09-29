@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -26,6 +27,8 @@ import (
 	"github.com/Teamthy/i-confess/internal/storage"
 	"github.com/Teamthy/i-confess/internal/store"
 	"github.com/Teamthy/i-confess/internal/voice"
+	"github.com/Teamthy/i-confess/internal/voiceengine"
+	"github.com/Teamthy/i-confess/internal/voiceeval"
 	"github.com/Teamthy/i-confess/internal/workers"
 )
 
@@ -268,6 +271,18 @@ func main() {
 	h.SetQueue(store.NewJobQueue(conn))
 	queue := h.GetQueue()
 
+	// Licensed minister voice platform. GPU workers (voice-engine/) are
+	// separate processes; the API only ever talks HTTP to them.
+	if orch := buildVoiceOrchestrator(cfg.IsProduction()); orch != nil {
+		h.SetVoiceOrchestrator(orch)
+		h.SetVoiceThresholds(voiceeval.Thresholds{
+			MinScore:      envFloat("VOICE_GATE_MIN_SCORE", 0),
+			MinCoverage:   envFloat("VOICE_GATE_MIN_COVERAGE", 0.8),
+			MaxRegression: envFloat("VOICE_GATE_MAX_REGRESSION", 0.03),
+		})
+		h.RegisterVoiceJobs()
+	}
+
 	// Push notifications. Without a configured provider, scheduled reminders
 	// are logged rather than delivered - the schedule still fires, so the
 	// behaviour is visible in development (PRD S47).
@@ -460,4 +475,55 @@ func redisStore(cfg config.Config) *ratelimit.RedisStore {
 // redisCacheBus returns the invalidation transport used across API instances.
 func redisCacheBus(cfg config.Config) *cache.RedisBus {
 	return cache.NewRedisBus(cfg.RedisAddr, cfg.RedisPassword)
+}
+
+// buildVoiceOrchestrator registers one provider per configured worker pool.
+// It returns nil when none are configured, leaving generation endpoints at 503.
+func buildVoiceOrchestrator(production bool) *voiceengine.Orchestrator {
+	token := os.Getenv("VOICE_ENGINE_TOKEN")
+	reg := voiceengine.NewRegistry(production)
+	n := 0
+	for _, e := range []struct {
+		env    string
+		engine voiceengine.Engine
+		mk     func(string, string) *voiceengine.HTTPProvider
+	}{
+		{"VOICE_ENGINE_COSYVOICE_URL", voiceengine.EngineCosyVoice, voiceengine.NewCosyVoiceProvider},
+		{"VOICE_ENGINE_GPTSOVITS_URL", voiceengine.EngineGPTSoVITS, voiceengine.NewGPTSoVITSProvider},
+		{"VOICE_ENGINE_VOXCPM_URL", voiceengine.EngineVoxCPM, voiceengine.NewVoxCPMProvider},
+		{"VOICE_ENGINE_VOICESTUDIO_URL", voiceengine.EngineVoiceStudio, voiceengine.NewVoiceStudioProvider},
+	} {
+		url := os.Getenv(e.env)
+		if url == "" {
+			continue
+		}
+		if err := reg.Register(e.engine, e.mk(url, token)); err != nil {
+			log.Printf("voice: %s ignored: %v", e.env, err)
+			continue
+		}
+		n++
+	}
+	if n == 0 {
+		log.Printf("voice: no VOICE_ENGINE_*_URL set - minister voice generation reports 503")
+		return nil
+	}
+	if production && token == "" {
+		log.Fatalf("voice: VOICE_ENGINE_TOKEN is required in production")
+	}
+	log.Printf("voice: %d voice-engine worker pool(s) registered", n)
+	return &voiceengine.Orchestrator{
+		Registry: reg,
+		Fallback: voiceengine.FallbackPolicy{
+			Enabled:      os.Getenv("VOICE_FALLBACK_ENABLED") == "1",
+			MinScore:     envFloat("VOICE_FALLBACK_MIN_SCORE", 0),
+			MaxScoreDrop: envFloat("VOICE_FALLBACK_MAX_DROP", 0.03),
+		},
+	}
+}
+
+func envFloat(key string, def float64) float64 {
+	if v, err := strconv.ParseFloat(os.Getenv(key), 64); err == nil {
+		return v
+	}
+	return def
 }

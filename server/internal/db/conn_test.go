@@ -113,8 +113,8 @@ func TestPostgresSchemaLoads(t *testing.T) {
 		`SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public'`).Scan(&tables); err != nil {
 		t.Fatalf("count tables: %v", err)
 	}
-	if tables != 100 {
-		t.Errorf("expected 100 tables, got %d", tables)
+	if tables != 116 {
+		t.Errorf("expected 116 tables, got %d", tables)
 	}
 
 	var fks int
@@ -123,8 +123,8 @@ func TestPostgresSchemaLoads(t *testing.T) {
 		 WHERE constraint_type = 'FOREIGN KEY' AND table_schema = 'public'`).Scan(&fks); err != nil {
 		t.Fatalf("count foreign keys: %v", err)
 	}
-	if fks != 128 {
-		t.Errorf("expected 128 foreign keys, got %d", fks)
+	if fks != 149 {
+		t.Errorf("expected 149 foreign keys, got %d", fks)
 	}
 
 	var flags int

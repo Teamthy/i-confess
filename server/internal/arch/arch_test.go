@@ -173,7 +173,7 @@ func TestNoImportCycles(t *testing.T) {
 // as an HTTP status code cannot be reused by the scheduler, which has no
 // ResponseWriter and should not need one.
 func TestDomainDoesNotKnowAboutHTTP(t *testing.T) {
-	domain := []string{"sessions", "engine", "entitlements", "rights", "community", "billing", "models"}
+	domain := []string{"sessions", "engine", "entitlements", "rights", "community", "billing", "models", "voicegov", "voiceeval"}
 
 	root, err := filepath.Abs("..")
 	if err != nil {

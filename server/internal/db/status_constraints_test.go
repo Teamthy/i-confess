@@ -16,6 +16,8 @@ import (
 	"github.com/Teamthy/i-confess/internal/moderation"
 	"github.com/Teamthy/i-confess/internal/sessions"
 	trialdomain "github.com/Teamthy/i-confess/internal/trial"
+	"github.com/Teamthy/i-confess/internal/voiceengine"
+	"github.com/Teamthy/i-confess/internal/voicegov"
 )
 
 // TestEveryStatusColumnIsConstrained closes G-2.
@@ -141,6 +143,10 @@ func TestDatabaseVocabularyMatchesGoConstants(t *testing.T) {
 		{"scheduled_deliveries", []string{"sent", "queued", "failed", "skipped"}},
 		{"moderation_cases", moderation.CaseStatuses()},
 		{"reports", moderation.ReportStatuses()},
+		{"voice_rights_grants", voiceGrantStatusStrings()},
+		{"voice_models", voiceModelStatusStrings()},
+		{"voice_training_runs", voiceTrainingStatusStrings()},
+		{"voice_generations", voiceGenerationStatusStrings()},
 		{"community_posts", []string{
 			community.StatusDraft, community.StatusSubmitted, community.StatusUnderReview,
 			community.StatusApproved, community.StatusRejected, community.StatusPublished,
@@ -281,4 +287,36 @@ func checkDefinition(ctx context.Context, raw *sql.DB, table, column string) (st
 		return "", err
 	}
 	return def.String, nil
+}
+
+func voiceGrantStatusStrings() []string {
+	out := make([]string, 0, len(voicegov.AllStatuses))
+	for _, s := range voicegov.AllStatuses {
+		out = append(out, string(s))
+	}
+	return out
+}
+
+func voiceModelStatusStrings() []string {
+	out := make([]string, 0, len(voiceengine.ModelStatuses))
+	for _, s := range voiceengine.ModelStatuses {
+		out = append(out, string(s))
+	}
+	return out
+}
+
+func voiceTrainingStatusStrings() []string {
+	out := make([]string, 0, len(voiceengine.TrainingStatuses))
+	for _, s := range voiceengine.TrainingStatuses {
+		out = append(out, string(s))
+	}
+	return out
+}
+
+func voiceGenerationStatusStrings() []string {
+	out := make([]string, 0, len(voiceengine.GenerationStatuses))
+	for _, s := range voiceengine.GenerationStatuses {
+		out = append(out, string(s))
+	}
+	return out
 }

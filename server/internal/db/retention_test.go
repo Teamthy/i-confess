@@ -47,8 +47,8 @@ func TestEveryApplicationTableHasRetentionAndVersionColumns(t *testing.T) {
 	if err := rows.Err(); err != nil {
 		t.Fatal(err)
 	}
-	if count != 100 {
-		t.Errorf("application table count=%d, want 100", count)
+	if count != 116 {
+		t.Errorf("application table count=%d, want 116", count)
 	}
 }
 
