@@ -56,6 +56,10 @@ var sqlKeywords = map[string]bool{
 	// "UPDATE skip". That clause is how the job queue claims work without two
 	// workers taking the same row, so it is not going away.
 	"skip": true,
+	// Explicitly qualified PostgreSQL catalog relations are metadata, not
+	// application tables that must appear in SchemaPostgresSQL.
+	"information_schema": true,
+	"pg_catalog":         true,
 }
 
 func TestEveryTableReferencedInGoExistsInTheSchema(t *testing.T) {

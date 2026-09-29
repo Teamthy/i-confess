@@ -224,20 +224,17 @@ func (s *Service) Erase(ctx context.Context, userID string) (*ErasureReport, err
 		PerTable: map[string]int{}, Retained: RetainedCategories(),
 	}
 
-	for _, p := range Policies {
-		n, err := applyPolicy(ctx, tx, p, userID)
-		if err != nil {
-			// A missing table is tolerated so the policy can name tables added
-			// in later migrations; anything else aborts the whole erasure.
-			if isMissingTable(err) {
-				continue
-			}
-			return nil, fmt.Errorf("apply policy for %s: %w", p.Table, err)
-		}
-		if n > 0 {
-			report.PerTable[p.Table] += n
-			report.RowsDeleted += n
-		}
+	// Validate the complete policy schema before issuing any destructive SQL.
+	// PostgreSQL marks a transaction failed after a statement error, so treating
+	// a string-matched "missing table" error as ignorable can make the next,
+	// unrelated policy appear to be the failure. The preflight reports drift
+	// before any policy runs; execution errors are always fatal and attributed
+	// to the policy that produced them.
+	if err := checkPolicySchema(ctx, tx); err != nil {
+		return nil, fmt.Errorf("validate deletion policy schema: %w", err)
+	}
+	if err := applyPolicies(ctx, tx, Policies, userID, report); err != nil {
+		return nil, err
 	}
 
 	// Tombstone the identity. The row survives so retained records
@@ -277,6 +274,23 @@ func (s *Service) Erase(ctx context.Context, userID string) (*ErasureReport, err
 		return nil, err
 	}
 	return report, nil
+}
+
+// applyPolicies applies rules in dependency order and stops on the first
+// failure. Continuing after any PostgreSQL statement error is unsafe because
+// the transaction is aborted and later errors would misattribute the cause.
+func applyPolicies(ctx context.Context, tx *db.Tx, policies []TablePolicy, userID string, report *ErasureReport) error {
+	for _, p := range policies {
+		n, err := applyPolicy(ctx, tx, p, userID)
+		if err != nil {
+			return fmt.Errorf("apply policy for %s: %w", p.Table, err)
+		}
+		if n > 0 {
+			report.PerTable[p.Table] += n
+			report.RowsDeleted += n
+		}
+	}
+	return nil
 }
 
 // applyPolicy executes one table's rule.
@@ -347,14 +361,6 @@ func parentTableFor(child string) string {
 		return "users"
 	}
 	return child
-}
-
-func isMissingTable(err error) bool {
-	if err == nil {
-		return false
-	}
-	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "no such table") || strings.Contains(msg, "does not exist")
 }
 
 // DueForErasure lists accounts whose grace period has elapsed.

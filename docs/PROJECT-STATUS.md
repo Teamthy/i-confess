@@ -1,29 +1,32 @@
-**Last verified:** 2026-09-29, ledger 65. The full Go race suite passed with
+**Last verified:** 2026-09-29, ledger 67. The full Go race suite passed with
 PostgreSQL 17.10 and Redis 7.4; all packages were `ok` or `[no test files]`.
 `go build -modfile=/tmp/local.mod ./...` and `go vet -modfile=/tmp/local.mod
-./...` also passed. Ledger 65 closes G-49: a startup recovery sweep and a
-15-minute periodic sweep expire due trials whether or not their owners return;
-row-locked transitions update entitlements and emit expiry analytics once.
-Store race tests cover batching, future trials, free-plan projection and two
-overlapping sweepers. Ledger 63 closes G-53: Settings supports block/appeal
-management, rejected confessions have an in-context appeal action, and community
-stories have a contextual block action without exposing author IDs. Author
-resolution belongs to `internal/community.Store`; signed-in feeds apply private
-block boundaries. Ledger 64 closes G-56: Home displays plain-language
-recommendation reasons, listen-again context, and suggested duration without
-calling empty-signal picks personalized. Design checks passed: `design/test_ia.py`
-(40 screens, 8 entry points, 163 endpoints), `design/generate.py --check`,
-`design/test_design.py` (132 tokens), and `check_dart_symbols.py` (140/140). B1
-is commit `38b50eb`, B2 is recorded in ledger 59, B3 in ledger 60, B4 in ledger
-61, B5 in commit `ddbc7ff`, B6 in `1384faf`, and B7 in `e3b6df8`.
+./...` also passed. Ledger 67 closes G-52: deletion policy tables/columns are
+preflighted before mutation, and the first runtime statement failure is
+attributed to its actual policy. Ledger 66 closes G-7 with request-path Redis
+and storage outage tests, plus existing limiter and voice-provider recovery
+coverage. Ledger 65 closes G-49: a startup recovery sweep and a 15-minute
+periodic sweep expire due trials whether or not their owners return; row-locked
+transitions update entitlements and emit expiry analytics once. Ledger 63 closes
+G-53: Settings supports block/appeal management, rejected confessions have an
+in-context appeal action, and community stories have a contextual block action
+without exposing author IDs. Author resolution belongs to
+`internal/community.Store`; signed-in feeds apply private block boundaries.
+Ledger 64 closes G-56: Home displays plain-language recommendation reasons,
+listen-again context, and suggested duration without calling empty-signal picks
+personalized. Design checks passed: `design/test_ia.py` (40 screens, 8 entry
+points, 163 endpoints), `design/generate.py --check`, `design/test_design.py`
+(132 tokens), and `check_dart_symbols.py` (140/140). B1 is commit `38b50eb`, B2
+is recorded in ledger 59, B3 in ledger 60, B4 in ledger 61, B5 in commit
+`ddbc7ff`, B6 in `1384faf`, B7 in `e3b6df8`, B8 in `08e84f9`, and B9 in
+`c521cab`.
 
 The branch is the fixed session branch `arena/01a0ee4f-i-confess`, based on
-`251f906`. The supplied handoff branch/commits are absent. Its G-52 files remain
-absent from this checkout, so the deletion test and passing full suite do
-**not** verify G-52; do not open a PR until that gate is restored and green.
-`https://github.com/` returned HTTP 200. Flutter/Dart analysis and tests,
-including the Safety and recommendation widget tests, remain CI-only because
-the SDKs are unavailable; `make lint` was not run.
+`251f906`. The supplied handoff branch and unpushed commits are absent; G-52
+has now been implemented and fully verified in this checkout rather than
+restored verbatim. Flutter/Dart analysis and tests, including the Safety and
+recommendation widget tests, remain CI-only because the SDKs are unavailable;
+`make lint` was not run.
 
 **Previously verified:** 2026-09-25, at ledger 50 (`docs/50-CACHE-INVALIDATION.md`
 — the content caches now have an invalidation path, closing G-10. Two copies of
@@ -463,20 +466,21 @@ PHASE 43 Personalization: the seven listener signals — **PASS** (master-plan
 
 Open gaps carried forward (reconciled against the supplied ledger 57; this
 checkout does not contain `docs/57-GAP-LEDGER-RECONCILIATION.md`): **G-14,
-G-15, G-19, G-24, G-28, G-33, G-48, G-52.** G-7 was
-removed after the handler's healthy and 503 paths were
-exercised by `go test -modfile=/tmp/local.mod -race -count=1 ./internal/health`
-(details: `docs/58-HEALTH-CHECK-FAILURE-TEST.md`). G-57 was removed after
+G-15, G-19, G-24, G-28, G-33, G-48.** G-7 was closed in ledger 66 with runtime
+Redis and object-storage request-path tests, alongside reviewed Redis limiter
+and voice-provider recovery coverage (details: `docs/66-RUNTIME-DEPENDENCY-OUTAGES.md`).
+G-9 was removed after the handler's healthy and 503 paths were exercised by
+`go test -modfile=/tmp/local.mod -race -count=1 ./internal/health` (details:
+`docs/58-HEALTH-CHECK-FAILURE-TEST.md`). G-57 was removed after
 `design/test_design.py` enforced web custom-property color parity with
 `design/tokens.json` (details: `docs/59-WEB-DESIGN-TOKEN-PARITY.md`). G-25 was
 removed after the 1,656-line handler file was decomposed and the full Go race
 suite passed (details: `docs/60-API-HANDLER-COMPOSITION-REFACTOR.md`). The
 reconciled ledger reports G-12, G-13, G-17, G-18, G-20, G-23, G-26 and G-27 as
-closed; ledgers 58–66 additionally close G-7, G-9, G-16, G-25, G-49, G-53, G-54, G-56 and G-57.
-G-52 is still open and unverified. Important checkout limitation: the three unpushed commits described
-by the supplied handoff, including the G-52 patch, are not present at this
-branch's `251f906` base. Therefore their behavior is not claimed as verified
-here.
+closed; ledgers 58–67 additionally close G-7, G-9, G-16, G-25, G-49, G-52,
+G-53, G-54, G-56 and G-57. The supplied handoff commits are still absent from
+this branch, but G-52 is independently fixed and verified here; see
+`docs/67-DELETION-FAILURE-ATTRIBUTION.md`.
 
 Closed: **G-1** (queues are snapshots), **G-2** (23/23 status columns constrained),
 **G-8** (route parity), **G-11** (clients/dart is not a Flutter app),
@@ -539,13 +543,15 @@ answer). Both were **closed in PHASE 42**.
 
 Raised in PHASE 42 and carried open:
 
-**G-52 — The deletion package misattributes failures.** This checkout still has
-the pre-fix implementation in `internal/deletion`: the described `schema_check.go`
-file and the new attribution tests from the supplied handoff are absent. The
-supplied handoff says the fix was written in an unpushed commit but untested;
-this checkout's passing deletion and full-suite runs exercise only the older
-baseline, not that fix. G-52 remains open until the intended patch is restored
-and its tests run.
+**Closed in ledger 67: G-52 — Deletion failure attribution.** The old
+`isMissingTable` substring check could mistake a missing-column error for a
+missing table, swallow it, and continue inside PostgreSQL's already-aborted
+transaction. Deletion now preflights all policy table/column references before
+mutation and stops on the first execution error with its policy table named.
+PostgreSQL tests cover missing schema objects, no partial deletion on preflight
+failure, and stopping before a later policy can mask the original cause. Full Go
+race suite, build and vet passed. See
+`docs/67-DELETION-FAILURE-ATTRIBUTION.md`.
 
 **Closed in ledger 63: G-53.** The Settings safety screen lists and unblocks
 accounts, and displays/submits appeals. Rejected personal confessions expose an
@@ -647,9 +653,13 @@ once and completed after recovery. Full Go race suite, build, and vet passed.
 The phase deliberately did not claim API-level coverage of `URLGenerator` or
 the playback resolver: both are initialized at startup but neither is called by
 an API route; their different signing-failure behavior is recorded in
-`docs/66-RUNTIME-DEPENDENCY-OUTAGES.md`. G-52 remains the open blocker; do not
-open a PR until its intended files are restored and its tests plus the full suite
-are green.
+`docs/66-RUNTIME-DEPENDENCY-OUTAGES.md`.
+
+**Closed in ledger 67: G-52.** Deletion now validates its schema before running
+policies and attributes the first failed statement without continuing an aborted
+transaction. Missing-table/column preflight tests, no-partial-deletion coverage,
+and a failure-order test passed. The full Go race suite, build, and vet are green.
+See `docs/67-DELETION-FAILURE-ATTRIBUTION.md`.
 
 ## How the phases are gated
 

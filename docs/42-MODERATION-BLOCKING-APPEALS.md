@@ -135,14 +135,12 @@ not exist", which `isMissingTable` matches — so the loop tolerated it and
 carried on, with the transaction already aborted. Every later statement then
 failed, and the first one to report it was an unrelated table.
 
-Two fixes, both worth having:
-
-- `parentTableFor("user_blocks") → "users"`, alongside `community_posts`,
-  `security_events` and `audit_logs`, which are direct references for the same
-  reason;
-- the lesson is recorded here because the masking behaviour remains: any
-  tolerated error inside `Erase` aborts the transaction and misattributes the
-  failure. Recorded as **G-52**.
+`parentTableFor("user_blocks") → "users"`, alongside `community_posts`,
+`security_events` and `audit_logs`, which are direct references for the same
+reason. The separate transaction-error masking problem recorded as **G-52** was
+closed in PHASE 67: schema references are preflighted, and `Erase` now stops at
+the first statement failure rather than swallowing it. See
+`docs/67-DELETION-FAILURE-ATTRIBUTION.md`.
 
 **`reports` has no `updated_at` column.** My first reopen wrote one and
 PostgreSQL refused it. The reopen now clears `reviewed_by`, `reviewed_at` and

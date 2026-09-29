@@ -2,14 +2,14 @@
   "project": "i-confess",
   "branch": "arena/01a0ee4f-i-confess",
   "base_commit": "251f906bb75e8cb4c25375c6ed68a74ed83e884d",
-  "phase": "ledger-66-runtime-dependency-outages",
-  "task": "Tier B9 / G-7: verify runtime behavior when Redis, object storage, or the voice provider becomes unavailable while requests are served.",
-  "status": "VERIFIED_WITH_BLOCKER",
+  "phase": "ledger-67-deletion-failure-attribution",
+  "task": "Tier B10 / G-52: prevent account-erasure failures from being swallowed or misattributed after PostgreSQL aborts a transaction.",
+  "status": "VERIFIED",
   "attempt": 1,
-  "last_successful_step": "G-7 closed with request-path tests for Redis publish failure and object-storage signing failure, plus existing Redis limiter fallback/recovery and voice-provider retry/recovery coverage. Full Go race suite, build, and vet passed. G-52 remains absent and unverified.",
-  "next_action": "Continue the tier-B sequence. Do not open a PR until G-52 is restored and its test plus the full suite are green.",
-  "timestamp": "2026-09-29T20:15:00Z",
-  "current_phase": 66,
+  "last_successful_step": "G-52 implemented and verified: deletion preflights all policy tables/columns before mutations, stops on first policy execution failure with accurate table attribution, and has PostgreSQL tests for missing schema objects, no partial deletion, and failure ordering. Full Go race suite, build, and vet passed. The first full-suite run caught a schema-coverage scanner false positive for information_schema; scanner now excludes PostgreSQL system namespaces and the corrected full suite is green.",
+  "next_action": "Open the PR from the fixed Arena branch now that G-52 and the full Go suite are green; continue the remaining open tier-B gaps after review.",
+  "timestamp": "2026-09-29T19:28:41Z",
+  "current_phase": 67,
   "completed_phases": [
     0,
     1,
@@ -53,7 +53,8 @@
     63,
     64,
     65,
-    66
+    66,
+    67
   ],
   "open_gaps": [
     "G-14",
@@ -62,8 +63,7 @@
     "G-24",
     "G-28",
     "G-33",
-    "G-48",
-    "G-52"
+    "G-48"
   ],
   "reconciliation": {
     "reason": "Supplied handoff names arena/01a0edf6-i-confess and three unpushed commits, but the session is fixed to arena/01a0ee4f-i-confess and this checkout is a shallow clone at origin/main 251f906.",
@@ -73,12 +73,12 @@
       "filesystem"
     ],
     "findings": [
-      "docs/HANDOFF-AFTER-57.md is absent from the checkout (the handoff was supplied in the user message).",
-      "Current branch has no commits ahead of origin/main; only 251f906 is available.",
-      "server/internal/deletion/schema_check.go and docs/56-DELETION-FAILURE-ATTRIBUTION.md are absent, so G-52 cannot be executed or claimed verified.",
-      "Current baseline full Go suite, build and vet pass; this is not evidence for the missing G-52 changes."
+      "docs/HANDOFF-AFTER-57.md is absent from the checkout; follow-up work proceeds from available source and status records.",
+      "The supplied handoff branch and unpushed commits are not the branch tracked by this session; work remains on arena/01a0ee4f-i-confess.",
+      "The originally described schema_check.go and docs/56-DELETION-FAILURE-ATTRIBUTION.md were absent at baseline. G-52 has since been implemented independently in server/internal/deletion/schema_check.go with dedicated PostgreSQL tests and docs/67-DELETION-FAILURE-ATTRIBUTION.md.",
+      "Full Go race suite, build, and vet passed after the G-52 fix."
     ],
-    "summary": "Proceeding only on the Arena-fixed session branch. G-52 remains a blocking unverified item; no PR should be opened until its intended patch is restored and tested."
+    "summary": "The supplied handoff artifacts were not restored verbatim. G-52 has been independently implemented and verified on the fixed session branch; no other branch was used."
   },
   "sandbox_notes": [
     "the sandbox re-clones the repository between turns: the working tree persists but commit objects and branch pointers do not - commit and push within the same turn the commit is made",
@@ -165,7 +165,13 @@
     "server/internal/api/audio_access_test.go",
     "server/internal/api/cache_invalidation_test.go",
     "docs/02-SYSTEM-ARCHITECTURE.md",
-    "docs/66-RUNTIME-DEPENDENCY-OUTAGES.md"
+    "docs/66-RUNTIME-DEPENDENCY-OUTAGES.md",
+    "server/internal/deletion/deletion.go",
+    "server/internal/deletion/schema_check.go",
+    "server/internal/deletion/schema_check_test.go",
+    "server/internal/db/schema_coverage_test.go",
+    "docs/42-MODERATION-BLOCKING-APPEALS.md",
+    "docs/67-DELETION-FAILURE-ATTRIBUTION.md"
   ],
   "environment_notes": [
     "Go 1.27.1 from the PyPI go-bin wheel (extracted to /home/user/.local/go-extract/go); proxy.golang.org, sum.golang.org and golang.org are unreachable, so modules came from GOPROXY=direct over GitHub plus a local file:///tmp/goproxy holding golang.org/x/crypto v0.55.0 built from codeload.github.com/golang/crypto; GOSUMDB=off only for that fetch, go.mod/go.sum untouched (verified by git status)",
