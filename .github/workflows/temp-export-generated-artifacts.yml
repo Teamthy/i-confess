@@ -25,6 +25,15 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -44,6 +53,37 @@ jobs:
         run: |
           go run ./cmd/genspec ../contracts/openapi.json
           go test ./internal/api -run '^TestExportRouteTable$' -count=1
+      - name: Diagnose Go API test failures
+        working-directory: server
+        env:
+          TEST_DATABASE_URL: host=127.0.0.1 port=5432 user=iconfess password=iconfess dbname=postgres sslmode=disable
+          REDIS_ADDR: 127.0.0.1:6379
+        run: |
+          set +e
+          go test -race -json -count=1 ./internal/api > /tmp/api-test.json
+          status=$?
+          set -e
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          events = [json.loads(line) for line in Path('/tmp/api-test.json').read_text().splitlines() if line.strip()]
+          failed = {e.get('Test') for e in events if e.get('Action') == 'fail' and e.get('Test')}
+          for name in sorted(failed):
+              print(f'FAILED_TEST {name}')
+          for event in events:
+              if event.get('Action') == 'fail' and not event.get('Test'):
+                  print('PACKAGE_FAILURE', event.get('Output', event))
+              if event.get('Action') != 'output':
+                  continue
+              test = event.get('Test')
+              output = event.get('Output', '')
+              if test in failed or any(name.startswith((test or '') + '/') for name in failed):
+                  print(output, end='')
+              elif 'WARNING: DATA RACE' in output or '--- FAIL:' in output:
+                  print(output, end='')
+          PY
+          exit "$status"
       - name: Upload generated artifacts
         uses: actions/upload-artifact@v4
         with:
