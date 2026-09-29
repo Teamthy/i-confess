@@ -24,12 +24,12 @@ var ErrAssetNotReady = errors.New("audio: asset not ready for playback")
 
 // PlaybackResolver resolves audio playback requests with authorization.
 type PlaybackResolver struct {
-	storage        storage.ObjectStorage
-	assetStore    AssetStorer
-	voiceStore    VoiceStorer
-	cdnDomain     string
-	streamTTL     time.Duration
-	downloadTTL   time.Duration
+	storage     storage.ObjectStorage
+	assetStore  AssetStorer
+	voiceStore  VoiceStorer
+	cdnDomain   string
+	streamTTL   time.Duration
+	downloadTTL time.Duration
 	// allowAllPremiumVoices is a configuration flag
 	allowAllPremiumVoices bool
 }
@@ -59,23 +59,23 @@ func NewPlaybackResolver(
 	}
 
 	return &PlaybackResolver{
-		storage:              storage,
-		assetStore:          assetStore,
-		voiceStore:          voiceStore,
-		cdnDomain:           cfg.CDNDomain,
-		streamTTL:           streamTTL,
-		downloadTTL:         downloadTTL,
+		storage:               storage,
+		assetStore:            assetStore,
+		voiceStore:            voiceStore,
+		cdnDomain:             cfg.CDNDomain,
+		streamTTL:             streamTTL,
+		downloadTTL:           downloadTTL,
 		allowAllPremiumVoices: cfg.AllowAllPremium,
 	}
 }
 
 // PlaybackRequest represents a request to play audio.
 type PlaybackRequest struct {
-	UserID      string
-	AssetID     string
+	UserID       string
+	AssetID      string
 	ConfessionID string
-	VoiceID     string
-	IsDownload  bool // If true, generate a download URL (longer TTL)
+	VoiceID      string
+	IsDownload   bool // If true, generate a download URL (longer TTL)
 }
 
 // PlaybackResponse contains the resolved playback information.
@@ -133,8 +133,8 @@ func (r *PlaybackResolver) ResolvePlayback(ctx context.Context, req *PlaybackReq
 // GetPlaybackURL returns a signed URL for streaming an audio asset.
 func (r *PlaybackResolver) GetPlaybackURL(ctx context.Context, userID, assetID string) (string, error) {
 	req := &PlaybackRequest{
-		UserID:    userID,
-		AssetID:   assetID,
+		UserID:     userID,
+		AssetID:    assetID,
 		IsDownload: false,
 	}
 	resp, err := r.ResolvePlayback(ctx, req)
@@ -147,8 +147,8 @@ func (r *PlaybackResolver) GetPlaybackURL(ctx context.Context, userID, assetID s
 // GetDownloadURL returns a signed URL for downloading an audio asset.
 func (r *PlaybackResolver) GetDownloadURL(ctx context.Context, userID, assetID string) (string, error) {
 	req := &PlaybackRequest{
-		UserID:    userID,
-		AssetID:   assetID,
+		UserID:     userID,
+		AssetID:    assetID,
 		IsDownload: true,
 	}
 	resp, err := r.ResolvePlayback(ctx, req)

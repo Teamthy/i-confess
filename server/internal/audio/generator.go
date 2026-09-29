@@ -51,13 +51,13 @@ type VoiceInfo struct {
 
 // Generator provides TTS generation capabilities.
 type Generator struct {
-	providers    map[string]TTSProvider
+	providers       map[string]TTSProvider
 	defaultProvider string
-	processor    *Processor
-	storage      storage.ObjectStorage
-	assetStore   AssetStorer
-	jobStore     JobStorer
-	mu           sync.RWMutex
+	processor       *Processor
+	storage         storage.ObjectStorage
+	assetStore      AssetStorer
+	jobStore        JobStorer
+	mu              sync.RWMutex
 }
 
 // GeneratorConfig holds configuration for the generator.
@@ -140,12 +140,12 @@ func (g *Generator) Generate(
 
 	// Create asset
 	asset := &models.AudioAsset{
-		ConfessionID:    confessionID,
+		ConfessionID:     confessionID,
 		ContentVersionID: contentVersionID,
-		VoiceID:         voiceID,
-		VariantID:       variantID,
-		AudioSource:     "generated",
-		Status:          string(StatusProcessing),
+		VoiceID:          voiceID,
+		VariantID:        variantID,
+		AudioSource:      "generated",
+		Status:           string(StatusProcessing),
 	}
 
 	// Store the asset
@@ -156,13 +156,13 @@ func (g *Generator) Generate(
 	// Upload to storage
 	storageKey := g.generateStorageKey(asset)
 	metadata := map[string]string{
-		"confession_id":    confessionID,
+		"confession_id":      confessionID,
 		"content_version_id": contentVersionID,
-		"voice_id":         voiceID,
-		"variant_id":       variantID,
-		"provider":         provider.Name(),
-		"quality_tier":     qualityTier,
-		"generated_at":      time.Now().UTC().Format(time.RFC3339),
+		"voice_id":           voiceID,
+		"variant_id":         variantID,
+		"provider":           provider.Name(),
+		"quality_tier":       qualityTier,
+		"generated_at":       time.Now().UTC().Format(time.RFC3339),
 	}
 
 	if err := g.storage.Upload(ctx, storageKey, processedData, metadata); err != nil {
@@ -209,7 +209,7 @@ func (g *Generator) GenerateAsync(
 		VoiceID:          voiceID,
 		Provider:         providerName,
 		QualityTier:      qualityTier,
-		Status:          string(JobQueued),
+		Status:           string(JobQueued),
 		MaxAttempts:      3,
 		RequestedBy:      requestedBy,
 		CreatedAt:        time.Now().UTC().Format(time.RFC3339),
@@ -362,23 +362,23 @@ func (g *Generator) generateStorageKey(asset *models.AudioAsset) string {
 	var builder strings.Builder
 	builder.WriteString("audio/generated/")
 	builder.WriteString(asset.ConfessionID)
-	
+
 	if asset.ContentVersionID != "" {
 		builder.WriteString("/version/")
 		builder.WriteString(asset.ContentVersionID)
 	}
-	
+
 	builder.WriteString("/voice/")
 	builder.WriteString(asset.VoiceID)
-	
+
 	if asset.VariantID != "" {
 		builder.WriteString("/variant/")
 		builder.WriteString(asset.VariantID)
 	}
-	
+
 	// Use default format (m4a) for generated audio
 	builder.WriteString("/generated.m4a")
-	
+
 	return builder.String()
 }
 
@@ -442,12 +442,12 @@ func (g *Generator) BatchGenerate(
 			req.ProviderName,
 			req.QualityTier,
 		)
-		
+
 		results[i] = GenerationResult{
-			Request:      req,
-			Asset:        asset,
-			Error:        err,
-			Success:      err == nil,
+			Request: req,
+			Asset:   asset,
+			Error:   err,
+			Success: err == nil,
 		}
 	}
 
@@ -456,13 +456,13 @@ func (g *Generator) BatchGenerate(
 
 // GenerationRequest represents a request to generate audio.
 type GenerationRequest struct {
-	Text            string
-	VoiceID         string
-	ConfessionID    string
+	Text             string
+	VoiceID          string
+	ConfessionID     string
 	ContentVersionID string
-	VariantID       string
-	ProviderName    string
-	QualityTier     string
+	VariantID        string
+	ProviderName     string
+	QualityTier      string
 }
 
 // GenerationResult represents the result of an audio generation.
@@ -477,19 +477,19 @@ type GenerationResult struct {
 func (g *Generator) GetStats(ctx context.Context) (GenerationStats, error) {
 	// In a real implementation, this would query the job store for statistics
 	return GenerationStats{
-		TotalJobs:      0,
-		CompletedJobs:  0,
-		FailedJobs:     0,
-		PendingJobs:    0,
+		TotalJobs:       0,
+		CompletedJobs:   0,
+		FailedJobs:      0,
+		PendingJobs:     0,
 		AverageDuration: 0,
 	}, nil
 }
 
 // GenerationStats contains statistics about audio generation.
 type GenerationStats struct {
-	TotalJobs      int64
-	CompletedJobs  int64
-	FailedJobs     int64
-	PendingJobs    int64
+	TotalJobs       int64
+	CompletedJobs   int64
+	FailedJobs      int64
+	PendingJobs     int64
 	AverageDuration float64 // in seconds
 }

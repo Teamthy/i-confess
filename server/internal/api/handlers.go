@@ -198,7 +198,7 @@ func NewHandler(cfg Config, db *db.DB) *Handler {
 		profiles:     store.NewProfileStore(db),
 		verifiers:    map[string]oauth.Verifier{},
 		library:      store.NewLibraryStore(db),
-		deletion:   deletion.NewService(db),
+		deletion:     deletion.NewService(db),
 		downloads:    store.NewDownloadStore(db),
 		idem:         store.NewIdempotencyStore(db),
 		catCache:     cache.New[[]models.Category](5*time.Minute, 10*time.Minute),

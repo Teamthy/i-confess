@@ -1,4 +1,25 @@
-**Last verified:** 2026-09-25, at ledger 50 (`docs/50-CACHE-INVALIDATION.md`
+**Last verified:** 2026-09-29, at ledger 55 (`docs/55-CI-GATE-REPAIR.md` —
+`main` was red. The merge of PR #80 failed exactly one CI step, `gofmt check`;
+build, vet, the full race suite, lint, design tokens, Dart symbols, the Flutter
+and Dart client suites and the web build were all green on the same runner.
+Thirteen files, all of them from PRs #78–#80, were unformatted — import order
+and struct-literal alignment, 199 lines, no semantic edit — and `gofmt -w`
+reformatted them. While proving the repair, `make fmt-check` was found to
+**exit 0 when `gofmt` is not installed**: the command substitution yields an
+empty list, the `-n` test is false, and the local gate — the first prerequisite
+of `make verify` — reports success on a tree it never examined. Proved with a
+deliberately unformatted probe file, before and after; the target now refuses
+to answer when the tool is missing. Proving commands: `make fmt-check`,
+`go build`, `go vet`, `go test -race -count=1 ./...` against PostgreSQL 17.10
+with `REDIS_ADDR` set (35 packages `ok`, zero `FAIL`),
+`python3 design/generate.py --check`, `test_design.py`, `test_ia.py`,
+`python3 scripts/check_dart_symbols.py` (133/133). `make lint` could not run —
+the golangci-lint release CDN is unreachable from this sandbox — but the Lint
+step of the failing run was green. **Still owed to an owner:** `main` must
+require the `CI` check before merge, or the next day of large pull requests
+does this again.)
+
+**Previously verified:** 2026-09-25, at ledger 50 (`docs/50-CACHE-INVALIDATION.md`
 — the content caches now have an invalidation path, closing G-10. Two copies of
 the server binary over one PostgreSQL and one Redis 7.4: a category published on
 instance A was visible on instance B on its next request, in both directions,
@@ -434,9 +455,12 @@ PHASE 43 Personalization: the seven listener signals — **PASS** (master-plan
     fields and still decodes a v1 payload. See
     docs/43-PERSONALIZATION-SIGNALS.md)
 
-Open gaps carried forward: G-7, G-9, G-10, G-12, G-13,
+Open gaps carried forward: G-7, G-9, G-12, G-13,
 G-14, G-15, G-16, G-17, G-18, G-19, G-20, G-23, G-24, G-25, G-26, G-27, G-28,
 G-33, G-48, G-49, G-52, G-53, G-54, G-56.
+(G-10 was removed from this list at ledger 55: it was closed at ledger 50, and
+this list was never updated to say so — the same class of drift as the G-2
+duplicate below.)
 (G-2 was removed from this list: it has been closed since PHASE 07 —
 "23/23 status columns constrained" — yet appeared in both lists here, a
 documentation bug fixed in PHASE 31.)

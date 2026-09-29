@@ -359,11 +359,11 @@ func (h *Handler) adminGetUserDetail(w http.ResponseWriter, r *http.Request) {
 	sessions, _ := h.users.ListAuthSessions(r.Context(), userID)
 
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{
-		"user":        user,
-		"roles":       roles,
-		"permissions": perms,
+		"user":         user,
+		"roles":        roles,
+		"permissions":  perms,
 		"subscription": sub,
-		"sessions":    sessions,
+		"sessions":     sessions,
 	})
 }
 
@@ -472,12 +472,12 @@ func (h *Handler) adminSecurityOverview(w http.ResponseWriter, r *http.Request) 
 	}
 
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{
-		"counters":       counters,
-		"recent_events":  recentEvents,
-		"failed_logins":  counters["login_failure_total"],
-		"token_reuse":    counters["token_reuse_detected_total"],
-		"rate_limited":   counters["rate_limited_total"],
-		"mfa_failures":   counters["mfa_failure_total"],
+		"counters":      counters,
+		"recent_events": recentEvents,
+		"failed_logins": counters["login_failure_total"],
+		"token_reuse":   counters["token_reuse_detected_total"],
+		"rate_limited":  counters["rate_limited_total"],
+		"mfa_failures":  counters["mfa_failure_total"],
 	})
 }
 
@@ -526,8 +526,8 @@ func (h *Handler) adminAuditExport(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{
-		"entries": entries,
-		"count":   len(entries),
+		"entries":     entries,
+		"count":       len(entries),
 		"exported_at": nowString(),
 	})
 }
@@ -610,12 +610,12 @@ func (h *Handler) adminImpersonateUser(w http.ResponseWriter, r *http.Request) {
 	h.recordAudit(r, "user_impersonated", "user", userID, "impersonated by "+adminActorLabel(r)+" for support", "ok")
 
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{
-		"token":          tok,
-		"user":           user,
-		"impersonated":   true,
+		"token":           tok,
+		"user":            user,
+		"impersonated":    true,
 		"impersonated_by": adminActorLabel(r),
-		"expires_in":     "15m",
-		"warning":        "This session is audited. Use only for legitimate support purposes.",
+		"expires_in":      "15m",
+		"warning":         "This session is audited. Use only for legitimate support purposes.",
 	})
 }
 
