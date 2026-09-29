@@ -374,6 +374,17 @@ func (h *Handler) Routes() http.Handler {
 	h.route(mux, "POST /admin/audio/{id}/publish", "audio_producer,voice_manager", "admin-audio", "Surface an approved render in discovery", audioMgr, h.adminPublishAudio)
 	h.route(mux, "POST /admin/audio/{id}/archive", "audio_producer,voice_manager", "admin-audio", "Withdraw a render, including from existing sessions", audioMgr, h.adminArchiveAudio)
 
+	// Audio generation service endpoints (Phase 1).
+	// These provide the new async generation pipeline with job management.
+	h.route(mux, "POST /admin/audio/generate/job", "audio_producer,voice_manager", "admin-audio", "Queue a new audio generation job", audioMgr, h.adminCreateAudioGeneration)
+	h.route(mux, "GET /admin/audio/generate/job/{id}", "audio_producer,voice_manager", "admin-audio", "Get status of a generation job", audioMgr, h.adminGetAudioGeneration)
+	h.route(mux, "GET /admin/audio/generate/jobs", "audio_producer,voice_manager", "admin-audio", "List all generation jobs", audioMgr, h.adminListAudioGenerations)
+	h.route(mux, "POST /admin/audio/generate/job/{id}/retry", "audio_producer,voice_manager", "admin-audio", "Retry a failed generation job", audioMgr, h.adminRetryAudioGeneration)
+	h.route(mux, "POST /admin/audio/generate/job/{id}/cancel", "audio_producer,voice_manager", "admin-audio", "Cancel a pending generation job", audioMgr, h.adminCancelAudioGeneration)
+	h.route(mux, "GET /admin/audio/generate/stats", "audio_producer,voice_manager", "admin-audio", "Get generation statistics", audioMgr, h.adminGetAudioGenerationStats)
+	h.route(mux, "POST /admin/audio/generate/batch", "audio_producer,voice_manager", "admin-audio", "Trigger batch generation for multiple confessions", audioMgr, h.adminTriggerBatchGeneration)
+	h.route(mux, "GET /admin/audio/providers", "audio_producer,voice_manager", "admin-audio", "List available TTS providers", audioMgr, h.adminGetAudioGenerationProviders)
+
 	// ─────────────────────────────────────────────────────────────────
 	// Routes that existed only under /v1/. The comment below promises every
 	// API route is served under both prefixes; these had drifted, so a client
@@ -625,6 +636,16 @@ func (h *Handler) Routes() http.Handler {
 	h.route(mux, "POST /v1/admin/audio/{id}/qa/reject", "audio_producer,voice_manager", "admin-audio", "Reject a render; a note is required", audioMgr, h.adminRejectAudio)
 	h.route(mux, "POST /v1/admin/audio/{id}/publish", "audio_producer,voice_manager", "admin-audio", "Surface an approved render in discovery", audioMgr, h.adminPublishAudio)
 	h.route(mux, "POST /v1/admin/audio/{id}/archive", "audio_producer,voice_manager", "admin-audio", "Withdraw a render, including from existing sessions", audioMgr, h.adminArchiveAudio)
+
+	// Audio generation service endpoints (Phase 1) - v1 prefix.
+	h.route(mux, "POST /v1/admin/audio/generate/job", "audio_producer,voice_manager", "admin-audio", "Queue a new audio generation job", audioMgr, h.adminCreateAudioGeneration)
+	h.route(mux, "GET /v1/admin/audio/generate/job/{id}", "audio_producer,voice_manager", "admin-audio", "Get status of a generation job", audioMgr, h.adminGetAudioGeneration)
+	h.route(mux, "GET /v1/admin/audio/generate/jobs", "audio_producer,voice_manager", "admin-audio", "List all generation jobs", audioMgr, h.adminListAudioGenerations)
+	h.route(mux, "POST /v1/admin/audio/generate/job/{id}/retry", "audio_producer,voice_manager", "admin-audio", "Retry a failed generation job", audioMgr, h.adminRetryAudioGeneration)
+	h.route(mux, "POST /v1/admin/audio/generate/job/{id}/cancel", "audio_producer,voice_manager", "admin-audio", "Cancel a pending generation job", audioMgr, h.adminCancelAudioGeneration)
+	h.route(mux, "GET /v1/admin/audio/generate/stats", "audio_producer,voice_manager", "admin-audio", "Get generation statistics", audioMgr, h.adminGetAudioGenerationStats)
+	h.route(mux, "POST /v1/admin/audio/generate/batch", "audio_producer,voice_manager", "admin-audio", "Trigger batch generation for multiple confessions", audioMgr, h.adminTriggerBatchGeneration)
+	h.route(mux, "GET /v1/admin/audio/providers", "audio_producer,voice_manager", "admin-audio", "List available TTS providers", audioMgr, h.adminGetAudioGenerationProviders)
 
 	// RBAC & enhanced user management (v1)
 	h.route(mux, "GET /v1/admin/users", "support_admin", "admin-users", "List users with roles (super + support)", supportMgr, h.adminListUsers)

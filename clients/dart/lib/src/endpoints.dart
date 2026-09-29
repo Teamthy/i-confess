@@ -368,6 +368,48 @@ extension IConfessEndpoints on ApiClient {
   /// Resolve a shareable template
   Future<Map<String, dynamic>> getTByToken(String token) => get('/t/$token');
 
+  // ---- audio generation ----
+  /// Queue a new audio generation job
+  Future<Map<String, dynamic>> postAdminAudioGenerateJob(
+          [Map<String, dynamic>? body]) =>
+      post('/admin/audio/generate/job', body);
+
+  /// Get a specific audio generation job
+  Future<Map<String, dynamic>> getAdminAudioGenerateJobById(String id) =>
+      get('/admin/audio/generate/job/$id');
+
+  /// List all audio generation jobs
+  Future<Map<String, dynamic>> getAdminAudioGenerateJobs({String? status, int? limit}) {
+    final params = <String>[];
+    if (status != null && status.isNotEmpty) {
+      params.add('status=${Uri.encodeComponent(status)}');
+    }
+    if (limit != null) params.add('limit=$limit');
+    final qs = params.isEmpty ? '' : '?${params.join('&')}';
+    return get('/admin/audio/generate/jobs$qs');
+  }
+
+  /// Retry a failed audio generation job
+  Future<Map<String, dynamic>> postAdminAudioGenerateJobByIdRetry(String id) =>
+      post('/admin/audio/generate/job/$id/retry');
+
+  /// Cancel a pending audio generation job
+  Future<Map<String, dynamic>> postAdminAudioGenerateJobByIdCancel(String id) =>
+      post('/admin/audio/generate/job/$id/cancel');
+
+  /// Get audio generation statistics
+  Future<Map<String, dynamic>> getAdminAudioGenerateStats() =>
+      get('/admin/audio/generate/stats');
+
+  /// Trigger batch audio generation for multiple confessions
+  Future<Map<String, dynamic>> postAdminAudioGenerateBatch(
+          [Map<String, dynamic>? body]) =>
+      post('/admin/audio/generate/batch', body);
+
+  /// List available TTS providers
+  Future<Map<String, dynamic>> getAdminAudioProviders() =>
+      get('/admin/audio/providers');
+
   // ---- search & recommendations ----
   /// Search confessions, categories, voices, Scripture
   Future<Map<String, dynamic>> getSearch(

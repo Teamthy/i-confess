@@ -1,0 +1,249 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+    Info.plist for I-Confess with Audio Platform support
+    
+    This file includes configurations for:
+    - Audio Platform Phase 1, 2, and 3
+    - Background audio playback
+    - Audio generation
+    - Push notifications
+    - App capabilities
+-->
+<plist version="1.0">
+<dict>
+    <!-- ============================================================== -->
+    <!-- BASIC APP INFORMATION -->
+    <!-- ============================================================== -->
+    <key>CFBundleName</key>
+    <string>I-Confess</string>
+    <key>CFBundleDisplayName</key>
+    <string>I-Confess</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.i-confess.app</string>
+    <key>CFBundleVersion</key>
+    <string>1.0.0</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0.0</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    
+    <!-- ============================================================== -->
+    <!-- AUDIO PLATFORM CONFIGURATION -->
+    <!-- ============================================================== -->
+    
+    <!-- Enable background audio playback -->
+    <key>UIBackgroundModes</key>
+    <array>
+        <string>audio</string>
+        <string>airplay</string>
+        <string>pictureInPicture</string>
+    </array>
+    
+    <!-- Audio session configuration -->
+    <key>AVAudioSessionCategory</key>
+    <string>AVAudioSessionCategoryPlayback</string>
+    <key>AVAudioSessionCategoryOptions</key>
+    <array>
+        <string>AVAudioSessionCategoryOptionAllowBluetooth</string>
+        <string>AVAudioSessionCategoryOptionAllowBluetoothA2DP</string>
+        <string>AVAudioSessionCategoryOptionAllowAirPlay</string>
+    </array>
+    <key>AVAudioSessionMode</key>
+    <string>AVAudioSessionModeDefault</string>
+    <key>AVAudioSessionInterruptionPolicy</key>
+    <string>AVAudioSessionInterruptionPolicyDuckOthers</string>
+    
+    <!-- ============================================================== -->
+    <!-- APP TRANSPORT SECURITY -->
+    <!-- ============================================================== -->
+    
+    <!-- Allow all HTTP loads for development -->
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsArbitraryLoads</key>
+        <true/>
+        <key>NSAllowsArbitraryLoadsInWebContent</key>
+        <true/>
+        <key>NSAllowsLocalNetworking</key>
+        <true/>
+    </dict>
+    
+    <!-- ============================================================== -->
+    <!-- PRIVACY PERMISSIONS -->
+    <!-- ============================================================== -->
+    
+    <!-- Microphone usage for audio recording (future feature) -->
+    <key>NSMicrophoneUsageDescription</key>
+    <string>I-Confess needs access to microphone to record your voice confessions</string>
+    
+    <!-- Camera usage (if needed) -->
+    <key>NSCameraUsageDescription</key>
+    <string>I-Confess needs access to camera for video features</string>
+    
+    <!-- Location usage (if needed) -->
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>I-Confess needs access to location for location-based features</string>
+    
+    <!-- Photo library usage -->
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>I-Confess needs access to photos for profile pictures</string>
+    
+    <!-- ============================================================== -->
+    <!-- NOTIFICATIONS -->
+    <!-- ============================================================== -->
+    
+    <!-- Push notifications -->
+    <key>FirebaseAppDelegateProxyEnabled</key>
+    <false/>
+    
+    <!-- ============================================================== -->
+    <!-- APP CAPABILITIES -->
+    <!-- ============================================================== -->
+    
+    <!-- Required for background modes -->
+    <key>Required device capabilities</key>
+    <array>
+        <string>armv7</string>
+        <string>arm64</string>
+    </array>
+    
+    <!-- ============================================================== -->
+    <!-- FLUTTER SPECIFIC -->
+    <!-- ============================================================== -->
+    
+    <key>io.flutter.embedded_views_preview</key>
+    <true/>
+    <key>UIApplicationSceneManifest</key>
+    <dict>
+        <key>UIApplicationSupportsMultipleScenes</key>
+        <false/>
+        <key>UISceneConfigurations</key>
+        <dict>
+            <key>UIWindowSceneSessionRoleApplication</key>
+            <array>
+                <dict>
+                    <key>UISceneConfigurationName</key>
+                    <string>Default Configuration</string>
+                    <key>UISceneDelegateClassName</key>
+                    <string>$(PRODUCT_MODULE_NAME).SceneDelegate</string>
+                </dict>
+            </array>
+        </dict>
+    </dict>
+    
+    <!-- ============================================================== -->
+    <!-- IPHONE CONFIGURATION -->
+    <!-- ============================================================== -->
+    
+    <key>UIDeviceFamily</key>
+    <array>
+        <integer>1</integer>
+        <integer>2</integer>
+    </array>
+    
+    <!-- iPhone X and later safe area support -->
+    <key>UIStatusBarStyle</key>
+    <string>UIStatusBarStyleDefault</string>
+    <key>UIRequiresFullScreen</key>
+    <true/>
+    
+    <!-- ============================================================== -->
+    <!-- ANDROID COMPATIBILITY -->
+    <!-- ============================================================== -->
+    
+    <key>NSRequiresAquaSystemAppearance</key>
+    <false/>
+    
+    <!-- ============================================================== -->
+    <!-- URL SCHEMES -->
+    <!-- ============================================================== -->
+    
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleTypeRole</key>
+            <string>Editor</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>i-confess</string>
+            </array>
+        </dict>
+        <dict>
+            <key>CFBundleTypeRole</key>
+            <string>Viewer</string>
+            <key>CFBundleURLName</key>
+            <string>Deep Link</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>https</string>
+                <string>http</string>
+            </array>
+        </dict>
+    </array>
+    
+    <!-- ============================================================== -->
+    <!-- AUDIO FILE HANDLING -->
+    <!-- ============================================================== -->
+    
+    <key>UTExportedTypeDeclarations</key>
+    <array>
+        <dict>
+            <key>UTTypeIdentifier</key>
+            <string>com.i-confess.audio</string>
+            <key>UTTypeDescription</key>
+            <string>I-Confess Audio File</string>
+            <key>UTTypeConformsTo</key>
+            <array>
+                <string>public.audio</string>
+            </array>
+            <key>UTTypeTagSpecification</key>
+            <dict>
+                <key>public.filename-extension</key>
+                <array>
+                    <string>mp3</string>
+                    <string>wav</string>
+                    <string>aac</string>
+                    <string>m4a</string>
+                </array>
+                <key>public.mime-type</key>
+                <array>
+                    <string>audio/mpeg</string>
+                    <string>audio/wav</string>
+                    <string>audio/aac</string>
+                    <string>audio/mp4</string>
+                </array>
+            </dict>
+        </dict>
+    </array>
+    
+    <!-- ============================================================== -->
+    <!-- HEALTHKIT (Optional - for future fitness integration) -->
+    <!-- ============================================================== -->
+    
+    <!-- Uncomment if using HealthKit
+    <key>NSHealthShareUsageDescription</key>
+    <string>I-Confess needs access to HealthKit for fitness tracking</string>
+    <key>NSHealthUpdateUsageDescription</key>
+    <string>I-Confess needs access to HealthKit for fitness tracking</string>
+    -->
+    
+    <!-- ============================================================== -->
+    <!-- SIRIKIT (Optional - for voice commands) -->
+    <!-- ============================================================== -->
+    
+    <!-- Uncomment if using SiriKit
+    <key>NSSiriUsageDescription</key>
+    <string>I-Confess needs access to Siri for voice commands</string>
+    -->
+    
+    <!-- ============================================================== -->
+    <!-- FACE ID (Optional - for biometric authentication) -->
+    <!-- ============================================================== -->
+    
+    <!-- Uncomment if using Face ID
+    <key>NSFaceIDUsageDescription</key>
+    <string>I-Confess needs access to Face ID for secure authentication</string>
+    -->
+</dict>
+</plist>
