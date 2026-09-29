@@ -1,0 +1,175 @@
+/*
+ * build.gradle for I-Confess Android app with Audio Platform support
+ * 
+ * This file includes configurations for:
+ * - Audio Platform Phase 1, 2, and 3
+ * - Background playback with just_audio_background
+ * - Audio generation and playback
+ */
+
+plugins {
+    id "com.android.application"
+    id "org.jetbrains.kotlin.android" version "1.9.0"
+    id "com.google.gms.google-services"
+    id "com.google.firebase.crashlytics"
+    id "com.google.firebase.firebase-perf"
+}
+
+android {
+    namespace "com.i_confess.app"
+    compileSdk 34
+
+    // ==============================================================
+    // AUDIO PLATFORM CONFIGURATION
+    // ==============================================================
+    
+    defaultConfig {
+        applicationId "com.i_confess.app"
+        minSdk 21
+        targetSdk 34
+        versionCode 1
+        versionName "1.0.0"
+        
+        // Required for just_audio_background
+        // This sets up the notification channel for background audio
+        manifestPlaceholders = [
+            justAudioBackgroundChannelId: 'i_confess_audio',
+            justAudioBackgroundChannelName: 'I-Confess Audio',
+            justAudioBackgroundNotificationColor: '#FF000000',
+        ]
+        
+        // Multi-dex support for large apps
+        multiDexEnabled true
+        
+        // Java compatibility
+        javaCompileOptions {
+            annotationProcessorOptions {
+                arguments += ["room.schemaLocation": "$projectDir/schemas".toString()]
+            }
+        }
+    }
+
+    // ==============================================================
+    // BUILD TYPES
+    // ==============================================================
+    
+    buildTypes {
+        release {
+            // TODO: Add signing config for release
+            // signingConfig signingConfigs.release
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+        debug {
+            minifyEnabled false
+            shrinkResources false
+        }
+        profile {
+            initWith(buildTypes.debug)
+            matchingFallbacks = ['release']
+        }
+    }
+
+    // ==============================================================
+    // COMPILE OPTIONS
+    // ==============================================================
+    
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    kotlinOptions {
+        jvmTarget = '1.8'
+    }
+
+    // ==============================================================
+    // BUILD FEATURES
+    // ==============================================================
+    
+    buildFeatures {
+        viewBinding true
+        compose true
+        buildConfig true
+    }
+
+    // ==============================================================
+    // PACKAGING OPTIONS
+    // ==============================================================
+    
+    packagingOptions {
+        pickFirsts += ['lib/x86_64/libc++_shared.so', 'lib/x86/libc++_shared.so', 'lib/armeabi-v7a/libc++_shared.so', 'lib/arm64-v8a/libc++_shared.so']
+        excludes += ['META-INF/atomicfu.kotlin_module']
+    }
+
+    // ==============================================================
+    // LINT OPTIONS
+    // ==============================================================
+    
+    lintOptions {
+        checkReleaseBuilds false
+        abortOnError false
+    }
+
+    // ==============================================================
+    // TEST OPTIONS
+    // ==============================================================
+    
+    testOptions {
+        unitTests.all {
+            useJUnitPlatform()
+        }
+    }
+}
+
+// ==============================================================
+// DEPENDENCIES
+// ==============================================================
+
+dependencies {
+    // Flutter dependencies
+    implementation platform('com.google.firebase:firebase-bom:32.7.0')
+    
+    // Audio Platform dependencies
+    implementation 'com.google.android.exoplayer:exoplayer:2.19.1'
+    implementation 'com.google.android.exoplayer:extension-mediasession:2.19.1'
+    implementation 'com.google.android.exoplayer:ui:2.19.1'
+    implementation 'androidx.media:media:1.6.0'
+    implementation 'androidx.media3:media3-exoplayer:1.2.1'
+    implementation 'androidx.media3:media3-ui:1.2.1'
+    implementation 'androidx.media3:media3-session:1.2.1'
+    
+    // Firebase
+    implementation 'com.google.firebase:firebase-analytics-ktx'
+    implementation 'com.google.firebase:firebase-crashlytics-ktx'
+    implementation 'com.google.firebase:firebase-perf-ktx'
+    implementation 'com.google.firebase:firebase-messaging-ktx'
+    implementation 'com.google.firebase:firebase-auth-ktx'
+    implementation 'com.google.firebase:firebase-firestore-ktx'
+    implementation 'com.google.firebase:firebase-storage-ktx'
+    
+    // Other dependencies
+    implementation 'androidx.core:core-ktx:1.12.0'
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+    implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.6.2'
+    implementation 'androidx.activity:activity-ktx:1.8.0'
+    implementation 'androidx.fragment:fragment-ktx:1.6.2'
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+    implementation 'com.squareup.okhttp3:logging-interceptor:4.12.0'
+    
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.mockito.kotlin:mockito-kotlin:5.1.0'
+    testImplementation 'org.mockito:mockito-inline:5.2.0'
+    testImplementation 'org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3'
+    testImplementation 'androidx.arch.core:core-testing:2.2.0'
+}
+
+// ==============================================================
+// FLUTTER SPECIFIC CONFIGURATION
+// ==============================================================
+
+flutter {
+    source '../..'
+}

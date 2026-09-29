@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    AndroidManifest.xml for I-Confess with Audio Platform support
+    
+    This file includes configurations for:
+    - Audio Platform Phase 1, 2, and 3
+    - Background playback
+    - Audio generation
+    - Storage permissions
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    package="com.i_confess.app">
+
+    <!-- Application version and metadata -->
+    <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="34" />
+    <application
+        android:name=".Application"
+        android:label="I-Confess"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:allowBackup="false"
+        android:theme="@style/Theme.App.SplashScreen"
+        android:usesCleartextTraffic="true"
+        tools:targetApi="34">
+
+        <!-- ============================================================== -->
+        <!-- AUDIO PLATFORM PERMISSIONS -->
+        <!-- ============================================================== -->
+        
+        <!-- Required for audio playback -->
+        <uses-permission android:name="android.permission.INTERNET" />
+        
+        <!-- Required for background audio playback -->
+        <uses-permission android:name="android.permission.WAKE_LOCK" />
+        <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+        
+        <!-- Required for audio recording (future feature) -->
+        <uses-permission android:name="android.permission.RECORD_AUDIO" />
+        <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+        
+        <!-- Required for storage access -->
+        <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+        <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" 
+            android:maxSdkVersion="32" />
+        <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" 
+            android:requestLegacyExternalStorage="true" />
+
+        <!-- ============================================================== -->
+        <!-- AUDIO PLATFORM SERVICES -->
+        <!-- ============================================================== -->
+        
+        <!-- Background audio service for just_audio_background -->
+        <service 
+            android:name="com.baseflow.justaudio_background.JustAudioBackgroundService"
+            android:foregroundServiceType="mediaPlayback"
+            android:exported="false" />
+
+        <!-- ============================================================== -->
+        <!-- ACTIVITIES -->
+        <!-- ============================================================== -->
+        
+        <!-- Main activity -->
+        <activity
+            android:name=".MainActivity"
+            android:launchMode="singleTop"
+            android:theme="@style/Theme.App.SplashScreen"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+            android:hardwareAccelerated="true"
+            android:windowSoftInputMode="adjustResize">
+            <meta-data
+                android:name="io.flutter.embedding.android.NormalTheme"
+                android:resource="@style/Theme.App.Normal" />
+            <meta-data
+                android:name="io.flutter.embedding.android.SplashScreenDrawable"
+                android:resource="@drawable/splash" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- ============================================================== -->
+        <!-- INTENT FILTERS -->
+        <!-- ============================================================== -->
+        
+        <!-- Deep linking -->
+        <intent-filter>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="https" android:host="i-confess.app" />
+            <data android:scheme="http" android:host="i-confess.app" />
+        </intent-filter>
+
+        <!-- Audio file handling -->
+        <intent-filter>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <data android:mimeType="audio/*" />
+        </intent-filter>
+
+    </application>
+
+    <!-- ============================================================== -->
+    <!-- AUDIO PLATFORM MANIFEST PLACEHOLDERS -->
+    <!-- ============================================================== -->
+    
+    <!-- Used by just_audio_background for notification channel -->
+    <meta-data
+        android:name="com.baseflow.justaudio_background.NOTIFICATION_CHANNEL_ID"
+        android:value="i_confess_audio" />
+    <meta-data
+        android:name="com.baseflow.justaudio_background.NOTIFICATION_CHANNEL_NAME"
+        android:value="I-Confess Audio" />
+
+</manifest>

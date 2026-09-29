@@ -11,6 +11,7 @@ import (
 
 	"github.com/Teamthy/i-confess/internal/db"
 
+	"github.com/Teamthy/i-confess/internal/audio"
 	"github.com/Teamthy/i-confess/internal/auth"
 	"github.com/Teamthy/i-confess/internal/bible"
 	"github.com/Teamthy/i-confess/internal/billing"
@@ -73,6 +74,16 @@ type Handler struct {
 	// pipeline renders text to audio. Nil when synthesis is unconfigured, in
 	// which case generation endpoints report 503 rather than failing obscurely.
 	pipeline *voice.Pipeline
+	// audioService manages audio asset lifecycle (Create, Publish, Archive).
+	audioService *audio.Service
+	// playbackResolver resolves playback requests with entitlement checking.
+	playbackResolver *audio.PlaybackResolver
+	// urlGenerator generates signed URLs for audio streaming and downloads.
+	urlGenerator *audio.URLGenerator
+	// generator handles TTS generation and job management.
+	generator *audio.Generator
+	// audioJobHandler processes background audio generation jobs.
+	audioJobHandler *jobs.AudioHandler
 	// vrights stores voice authorization metadata.
 	vrights *store.VoiceRightsStore
 	db      *db.DB
@@ -153,6 +164,21 @@ func (h *Handler) SetDevTokenSink(f func(purpose, email, token string)) { h.devT
 
 // SetProduction configures production mode for security headers and hardening.
 func (h *Handler) SetProduction(prod bool) { h.isProd = prod }
+
+// SetAudioService installs the audio asset lifecycle service.
+func (h *Handler) SetAudioService(s *audio.Service) { h.audioService = s }
+
+// SetPlaybackResolver installs the audio playback resolver.
+func (h *Handler) SetPlaybackResolver(r *audio.PlaybackResolver) { h.playbackResolver = r }
+
+// SetURLGenerator installs the signed URL generator.
+func (h *Handler) SetURLGenerator(g *audio.URLGenerator) { h.urlGenerator = g }
+
+// SetGenerator installs the audio generator service.
+func (h *Handler) SetGenerator(g *audio.Generator) { h.generator = g }
+
+// SetAudioJobHandler installs the audio job handler.
+func (h *Handler) SetAudioJobHandler(handler *jobs.AudioHandler) { h.audioJobHandler = handler }
 
 type Config struct {
 	JWTSecret string
