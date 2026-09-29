@@ -33,12 +33,64 @@ start when `ICF_ENV=production`.
 | Variable | Default | Meaning |
 |---|---|---|
 | `ICF_MASTER_TARGET_LUFS` | `-16` | integrated loudness target |
-| `ICF_MASTER_CEILING_DBTP` | `-1` | true-peak ceiling; takes priority over the target |
+| `ICF_MASTER_CEILING_DBTP` | `-1` | true-peak ceiling, enforced by the limiter (guaranteed) |
+| `ICF_DSP_TRIM` / `_THRESHOLD_DB` / `_PAD_MS` | on / `-50` / `120` | trim leading and trailing silence only; pauses inside the script are never shortened |
+| `ICF_DSP_DECLICK` / `_THRESHOLD` | on / `8` | repair isolated vocoder clicks (spike vs local deviation) |
+| `ICF_DSP_HIGHPASS_HZ` | `70` | rumble filter; `0` disables |
+| `ICF_DSP_LOW_SHELF_DB`, `ICF_DSP_PRESENCE_DB` | `0`, `0` | optional warmth (200 Hz) and presence (3 kHz) EQ |
+| `ICF_DSP_DEESS` / `_THRESHOLD_DB` / `_MAX_DB` | on / `-28` / `8` | dynamic reduction of the 5–9 kHz band only |
+| `ICF_DSP_COMPRESS` / `_THRESHOLD_DB` / `_RATIO` | on / `-24` / `2` | gentle compression before loudness normalisation |
+| `ICF_FFMPEG` | PATH, then the `imageio-ffmpeg` wheel | ffmpeg used for delivery encodings |
+| `ICF_AAC_BITRATE`, `ICF_OPUS_BITRATE`, `ICF_MP3_BITRATE` | `96k`, `48k`, `128k` | delivery encoding bitrates |
 | `ICF_WORKER_TOKEN` | — | bearer token, required in production |
 
-The response headers include `X-Loudness-LUFS`, `X-True-Peak-dBTP` and
-`X-Peak-Limited`, which report the loudness actually achieved, and
+### Post-processing chain (`icf_worker/dsp.py`)
+
+DC removal → edge-silence trim → de-click → high-pass/EQ → de-ess →
+compression → loudness normalisation → look-ahead true-peak limiter (4×
+oversampled). Loudness is normalised first and the limiter then enforces the
+ceiling. A few peaky milliseconds cost a little limiting, and the whole file
+stays on target. A final exact check guarantees the ceiling holds.
+
+Response headers report what happened: `X-Loudness-LUFS`, `X-True-Peak-dBTP`,
+`X-Peak-Limited`, `X-DSP-Chain`, `X-Limiter-Max-dB`, `X-Trimmed-Ms`, and
 `X-Synthetic: true`.
+
+### Delivery encodings (`POST /v1/encode`)
+
+The WAV master is the canonical asset. After the master is stored, the Go
+generation job posts it (`audio_b64`) and receives AAC (`.m4a`), Opus and MP3
+variants, each with a checksum it verifies. It uploads them next to the
+master under the same content-hash path, so an identical render is never
+encoded twice. Each encoded file carries a `synthetic_audio=true` comment tag,
+so the file still identifies itself if it is ever separated from the
+database. Encoding failures are non-fatal: clients get the WAV. Deployments
+that share one bucket can send `{"key": ...}` instead, and the worker reads
+and writes the store directly. The rights sweep deletes variants together with
+the master under the `delete` post-termination policy.
+
+## Engine benchmark (`server/cmd/voice-bench`)
+
+```
+cd server
+VOICE_ENGINE_TOKEN=... go run ./cmd/voice-bench \
+  -engine cosyvoice=http://gpu-1:8000 -engine gptsovits=http://gpu-2:8000 \
+  -runs 3 -stream -out /tmp/bench \
+  # to clone a licensed voice (requires an approved grant):
+  -voice voice_ab12 -rights-confirmed \
+  -reference-uri voice-private/voices/voice_ab12/refs/r1.wav -reference-transcript "..." \
+  # optional: quality scorer printing {"speaker_similarity":0.83,...} in [0,1]
+  -scorer "python3 my_scorer.py"
+```
+
+The benchmark runs `docs/voice/golden_set.json` through the production
+provider adapters and markup chunking. It writes `report.md`/`report.json`
+(p50/p95 latency, time to first audio, RTF, failures by class, licence
+status), every render, and a blind listening pack (`blind/`, with
+`blind_key.json` kept separate for unblinding). Without a scorer, quality is
+reported as **not measured** and no ICF_VOICE_SCORE is produced. Scorer values
+outside [0,1] are rejected, not clamped. The tool never picks the winning
+engine; people decide.
 
 ## Tests
 
@@ -70,7 +122,8 @@ The trainer only has to print `ICF_PROGRESS` lines and write a checkpoint into
 
 ## Status and limits
 
-- **Tested:** the dev-tone engine, ingestion (energy VAD, a speaker-consistency
+- **Tested:** the post-processing chain and ffmpeg encodings (real ffmpeg
+  7), the dev-tone engine, ingestion (energy VAD, a speaker-consistency
   heuristic, quality scoring, and optional faster-whisper ASR via `ICF_ASR`),
   streaming, and training orchestration with an external trainer command.
 - **Written but not yet run against real models:** the GPT-SoVITS backend

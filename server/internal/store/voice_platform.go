@@ -686,22 +686,36 @@ type Generation struct {
 	RequestedBy    string `json:"-"`
 	CreatedAt      string `json:"createdAt"`
 	UpdatedAt      string `json:"updatedAt"`
+	// Variants are derived delivery encodings of the WAV master.
+	Variants map[string]AudioVariant `json:"-"`
+}
+
+// AudioVariant is one stored delivery encoding (AAC, Opus, MP3).
+type AudioVariant struct {
+	Key         string `json:"key"`
+	SHA256      string `json:"sha256"`
+	Bytes       int    `json:"bytes"`
+	ContentType string `json:"contentType"`
 }
 
 const genCols = `id, content_hash, voice_id, COALESCE(model_id,''), COALESCE(engine,''), COALESCE(engine_version,''), purpose, style,
 	language, COALESCE(locale,''), text_sha256, COALESCE(audio_sha256,''), COALESCE(storage_key,''), COALESCE(duration_ms,0), synthetic,
 	fell_back, COALESCE(fallback_reason,''), COALESCE(grant_version,0), queue, COALESCE(job_id,''), COALESCE(owner_user_id,''), visibility,
-	status, COALESCE(error_class,''), COALESCE(error_message,''), COALESCE(requested_by,''), created_at, updated_at`
+	status, COALESCE(error_class,''), COALESCE(error_message,''), COALESCE(requested_by,''), created_at, updated_at, variants`
 
 func scanGen(sc interface{ Scan(...any) error }) (*Generation, error) {
 	var g Generation
 	var syn, fb int
+	var variants string
 	err := sc.Scan(&g.ID, &g.ContentHash, &g.VoiceID, &g.ModelID, &g.Engine, &g.EngineVersion, &g.Purpose, &g.Style, &g.Language,
 		&g.Locale, &g.TextSHA256, &g.AudioSHA256, &g.StorageKey, &g.DurationMS, &syn, &fb, &g.FallbackReason, &g.GrantVersion,
 		&g.Queue, &g.JobID, &g.OwnerUserID, &g.Visibility, &g.Status, &g.ErrorClass, &g.ErrorMessage, &g.RequestedBy,
-		&g.CreatedAt, &g.UpdatedAt)
+		&g.CreatedAt, &g.UpdatedAt, &variants)
 	if err != nil {
 		return nil, err
+	}
+	if variants != "" && variants != "{}" {
+		_ = json.Unmarshal([]byte(variants), &g.Variants)
 	}
 	g.Synthetic, g.FellBack = syn == 1, fb == 1
 	return &g, nil
@@ -842,4 +856,15 @@ func fmtOptTime(t *time.Time) any {
 		return nil
 	}
 	return t.UTC().Format(tsLayout)
+}
+
+// SetGenerationVariants records the delivery encodings of a completed render.
+func (s *VoicePlatformStore) SetGenerationVariants(ctx context.Context, id string, v map[string]AudioVariant) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `UPDATE voice_generations SET variants = ?, updated_at = ? WHERE id = ? AND status = 'COMPLETED'`,
+		string(b), tsNow(), id)
+	return err
 }

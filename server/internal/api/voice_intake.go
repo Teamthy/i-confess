@@ -581,6 +581,7 @@ func (h *Handler) runTrainPoll(ctx context.Context, p map[string]any) error {
 // fixed gain and peak safety per chunk); the queued render remains the
 // canonical, mastered asset.
 func (h *Handler) streamMinisterVoice(w http.ResponseWriter, r *http.Request) {
+	t0 := time.Now()
 	if h.vorch == nil {
 		httpx.WriteError(w, http.StatusServiceUnavailable, "voice engine is not configured on this server")
 		return
@@ -634,9 +635,14 @@ func (h *Handler) streamMinisterVoice(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	fl, _ := w.(http.Flusher)
 	buf := make([]byte, 16<<10)
+	first := true
 	for {
 		n, rerr := st.Body.Read(buf)
 		if n > 0 {
+			if first {
+				first = false
+				voiceMetrics.streamStarted(time.Since(t0))
+			}
 			if _, werr := w.Write(buf[:n]); werr != nil {
 				return // client went away; closing Body cancels inference
 			}
@@ -681,18 +687,18 @@ func (h *Handler) registerVoiceIntakeRoutes(mux *http.ServeMux, authed, voiceMgr
 	for _, pfx := range []string{"", "/v1"} {
 		h.route(mux, "POST "+pfx+"/voices/stream", "user", "voice", "Stream a live synthetic preview (not cached)", authed, h.streamMinisterVoice)
 
-		h.route(mux, "GET "+pfx+"/admin/minister-voices", am, "admin-voice", "All minister voices with effective rights status", audioMgr, h.adminListMinisterVoices)
+		h.route(mux, "GET "+pfx+"/admin/minister-voices", lvlVoiceRead, "admin-voice", "All minister voices with effective rights status", nil, h.adminListMinisterVoices)
 		h.route(mux, "POST "+pfx+"/admin/voices/{id}/recordings", am, "admin-voice", "Upload a licensed source recording", audioMgr, h.adminUploadRecording)
 		h.route(mux, "GET "+pfx+"/admin/voices/{id}/recordings", am, "admin-voice", "List source recordings", audioMgr, h.adminListRecordings)
 		h.route(mux, "GET "+pfx+"/admin/recordings/{id}", am, "admin-voice", "Recording with ingestion report", audioMgr, h.adminGetRecording)
 		h.route(mux, "POST "+pfx+"/admin/recordings/{id}/ingest", am, "admin-voice", "Re-run ingestion", audioMgr, h.adminReingestRecording)
 		h.route(mux, "GET "+pfx+"/admin/voices/{id}/segments", am, "admin-voice", "Intake segments for review", audioMgr, h.adminListSegments)
 		h.route(mux, "POST "+pfx+"/admin/segments/{id}/review", am, "admin-voice", "Approve (with verified transcript) or reject a segment", audioMgr, h.adminReviewSegment)
-		h.route(mux, "POST "+pfx+"/admin/voices/{id}/datasets", vm, "admin-voice", "Freeze approved segments into an immutable dataset version", voiceMgr, h.adminFreezeDataset)
-		h.route(mux, "GET "+pfx+"/admin/voices/{id}/datasets", am, "admin-voice", "List dataset versions", audioMgr, h.adminListDatasets)
-		h.route(mux, "POST "+pfx+"/admin/voices/{id}/training-runs", vm, "admin-voice", "Request a fine-tuning run (zero-shot first)", voiceMgr, h.adminCreateTrainingRun)
-		h.route(mux, "GET "+pfx+"/admin/voices/{id}/training-runs", am, "admin-voice", "List training runs", audioMgr, h.adminListTrainingRuns)
-		h.route(mux, "GET "+pfx+"/admin/training-runs/{id}", am, "admin-voice", "One training run", audioMgr, h.adminGetTrainingRun)
-		h.route(mux, "POST "+pfx+"/admin/training-runs/{id}/cancel", vm, "admin-voice", "Cancel a training run", voiceMgr, h.adminCancelTrainingRun)
+		h.route(mux, "POST "+pfx+"/admin/voices/{id}/datasets", lvlVoiceML, "admin-voice", "Freeze approved segments into an immutable dataset version", nil, h.adminFreezeDataset)
+		h.route(mux, "GET "+pfx+"/admin/voices/{id}/datasets", lvlVoiceRead, "admin-voice", "List dataset versions", nil, h.adminListDatasets)
+		h.route(mux, "POST "+pfx+"/admin/voices/{id}/training-runs", lvlVoiceML, "admin-voice", "Request a fine-tuning run (zero-shot first)", nil, h.adminCreateTrainingRun)
+		h.route(mux, "GET "+pfx+"/admin/voices/{id}/training-runs", lvlVoiceRead, "admin-voice", "List training runs", nil, h.adminListTrainingRuns)
+		h.route(mux, "GET "+pfx+"/admin/training-runs/{id}", lvlVoiceRead, "admin-voice", "One training run", nil, h.adminGetTrainingRun)
+		h.route(mux, "POST "+pfx+"/admin/training-runs/{id}/cancel", lvlVoiceML, "admin-voice", "Cancel a training run", nil, h.adminCancelTrainingRun)
 	}
 }

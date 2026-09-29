@@ -10,6 +10,7 @@
    refuses, the console shows the reason and the missing capabilities.
    ========================================================================= */
 
+import { SyntheticPlayer, type RenderedAudio } from "./synthetic-player";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { adminApi, useAdminResource } from "./admin";
 import { useAuth } from "@/lib/auth-context";
@@ -721,7 +722,33 @@ function PreviewPanel({ voice }: { voice: MinisterVoice }) {
   const [text, setText] = useState("Grace and peace to you. Be still, and know that He is God.");
   const [style, setStyle] = useState("reflection");
   const [state, setState] = useState("");
+  const [rendered, setRendered] = useState<RenderedAudio | null>(null);
   const abort = useRef<AbortController | null>(null);
+
+  /** Queue a real (cached, mastered, encoded) render and poll until done. */
+  const renderMastered = async () => {
+    setRendered(null);
+    setState("Queued…");
+    const headers = { "content-type": "application/json", authorization: `Bearer ${token}` };
+    const res = await fetch("/api/v1/voices/generate", { method: "POST", headers,
+      body: JSON.stringify({ voiceId: voice.id, text, style, purpose: "reflection" }) });
+    const data = (await res.json().catch(() => ({}))) as { error?: string; generation?: { generationId: string; status: string } } & RenderedAudio;
+    if (!res.ok || !data.generation) { setState(data.error || `Refused (${res.status}).`); return; }
+    const id = data.generation.generationId;
+    for (let i = 0; i < 60; i++) {
+      const j = (await (await fetch(`/api/v1/audio/jobs/${id}`, { headers })).json()) as typeof data;
+      const st = j.generation?.status || "";
+      if (st === "COMPLETED") {
+        // Encodings are derived just after completion; give them a moment.
+        if (!j.variants && i < 58) { await new Promise((r) => setTimeout(r, 700)); continue; }
+        setRendered(j); setState(""); return;
+      }
+      if (st === "FAILED" || st === "CANCELLED") { setState(`Render ${st.toLowerCase()}.`); return; }
+      setState(`${st.toLowerCase()}…`);
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+    setState("Still rendering; check the job later.");
+  };
 
   const stop = useCallback(() => { abort.current?.abort(); abort.current = null; setState("Stopped."); }, []);
   useEffect(() => () => abort.current?.abort(), []);
@@ -760,8 +787,10 @@ function PreviewPanel({ voice }: { voice: MinisterVoice }) {
         </select>
         <button className="btn btn-primary btn-sm" onClick={play}>Stream</button>
         <button className="btn btn-ghost btn-sm" onClick={stop}>Stop</button>
+        <button className="btn btn-ghost btn-sm" onClick={renderMastered}>Render mastered</button>
         {state && <span className="small">{state}</span>}
       </div>
+      {rendered && <SyntheticPlayer render={rendered} />}
     </section>
   );
 }

@@ -3,6 +3,9 @@ package api
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -64,6 +67,20 @@ func (f *fakeIntakeWorker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("RIFF-stream-chunk-1"))
 		w.(http.Flusher).Flush()
 		w.Write([]byte("chunk-2"))
+	case r.URL.Path == "/v1/encode":
+		var req struct {
+			AudioB64 string   `json:"audio_b64"`
+			Formats  []string `json:"formats"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		out := map[string]any{}
+		for _, f := range req.Formats {
+			data := []byte("encoded-" + f)
+			sum := sha256.Sum256(data)
+			out[f] = map[string]any{"b64": base64.StdEncoding.EncodeToString(data), "sha256": hex.EncodeToString(sum[:]),
+				"bytes": len(data), "content_type": "audio/" + f, "ext": "." + f}
+		}
+		json.NewEncoder(w).Encode(map[string]any{"variants": out})
 	case r.URL.Path == "/v1/capabilities":
 		// Declare streaming so the orchestrator allows it.
 		json.NewEncoder(w).Encode(voiceengine.ProviderCapabilities{Streaming: true, ZeroShot: true,

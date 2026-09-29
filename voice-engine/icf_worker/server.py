@@ -34,13 +34,17 @@ import re
 import struct
 
 from . import ingest as ingest_mod
-from . import mastering, wav
+import base64
+
+from . import dsp, encode as encode_mod, mastering, wav
 from .engines import Engine, EngineError, load_engine, resolve_checkpoint
 from .storage import StorageError
 from .train import TrainingError, TrainingManager
 
 log = logging.getLogger("icf_worker")
 MAX_BODY = 2 << 20
+# /v1/encode carries a whole WAV master (base64): allow up to ~160 MB.
+ENCODE_MAX_BODY = int(os.environ.get("ICF_ENCODE_MAX_BODY", str(160 << 20)))
 
 
 def render(engine: Engine, req: dict) -> tuple[bytes, dict]:
@@ -64,7 +68,8 @@ def render(engine: Engine, req: dict) -> tuple[bytes, dict]:
     x = np.concatenate(parts) if parts else np.zeros(0)
     if x.size == 0:
         raise EngineError("model", "engine produced no audio")
-    y, rep = mastering.master(x, rate)
+    y, chain = dsp.process(x, rate)
+    rep = chain.master
     body = wav.encode(y, rate)
     headers = {
         "Content-Type": "audio/wav",
@@ -74,6 +79,9 @@ def render(engine: Engine, req: dict) -> tuple[bytes, dict]:
         "X-Loudness-LUFS": f"{rep.output_lufs:.2f}",
         "X-True-Peak-dBTP": f"{rep.output_true_peak_dbtp:.2f}",
         "X-Peak-Limited": "1" if rep.peak_limited else "0",
+        "X-DSP-Chain": ",".join(chain.stages),
+        "X-Limiter-Max-dB": f"{chain.limiter_max_db:.2f}",
+        "X-Trimmed-Ms": f"{chain.trimmed_ms:.0f}",
         # Provenance travels with the bytes (Go also writes it to the DB).
         "X-Synthetic": "true",
         "X-Audio-SHA256": hashlib.sha256(body).hexdigest(),
@@ -184,7 +192,8 @@ def make_handler(engine: Engine, token: str, trainer: TrainingManager | None = N
             if not self._authorized():
                 return self._err(401, "permanent", "unauthorized")
             n = int(self.headers.get("Content-Length") or 0)
-            if n <= 0 or n > MAX_BODY:
+            limit = ENCODE_MAX_BODY if self.path == "/v1/encode" else MAX_BODY
+            if n <= 0 or n > limit:
                 return self._err(413, "content", "request body missing or too large")
             try:
                 req = json.loads(self.rfile.read(n))
@@ -227,6 +236,21 @@ def make_handler(engine: Engine, token: str, trainer: TrainingManager | None = N
                     res = ingest_mod.ingest(req)
                     return self._json(200, {"duration_ms": res.duration_ms, "segments": res.segments,
                                             "report": res.report})
+                if self.path == "/v1/encode":
+                    formats = req.get("formats") or ["aac", "opus", "mp3"]
+                    if req.get("audio_b64"):
+                        try:
+                            master = base64.b64decode(req["audio_b64"], validate=True)
+                        except ValueError:
+                            return self._err(400, "permanent", "audio_b64 is not valid base64")
+                        out = {}
+                        for fmt, (data, ctype, ext) in encode_mod.encode_bytes(master, formats).items():
+                            out[fmt] = {"b64": base64.b64encode(data).decode(), "sha256": hashlib.sha256(data).hexdigest(),
+                                        "bytes": len(data), "content_type": ctype, "ext": ext}
+                        return self._json(200, {"variants": out})
+                    if req.get("key"):
+                        return self._json(200, {"variants": encode_mod.encode(req["key"], formats)})
+                    return self._err(400, "permanent", "send audio_b64 or key")
                 if self.path == "/v1/train":
                     trainer.submit(req)
                     return self._json(202, {"run_id": req.get("run_id"), "status": "RUNNING"})

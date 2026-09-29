@@ -1,1 +1,2 @@
 pytest>=8
+imageio-ffmpeg>=0.5  # static ffmpeg for encode tests / hosts without system ffmpeg

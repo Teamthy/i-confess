@@ -2,6 +2,9 @@ package voiceengine
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -183,4 +186,51 @@ func (p *HTTPProvider) GenerateStream(ctx context.Context, req GenerateRequest) 
 	}
 	sr, _ := strconv.Atoi(resp.Header.Get("X-Sample-Rate"))
 	return &Stream{Body: resp.Body, ContentType: resp.Header.Get("Content-Type"), SampleRate: sr, Engine: p.engine}, nil
+}
+
+// EncodedVariant is one delivery encoding returned by the worker.
+type EncodedVariant struct {
+	Data        []byte
+	SHA256      string
+	ContentType string
+	Ext         string
+}
+
+// Encode asks the worker to derive delivery encodings (aac, opus, mp3) from a
+// WAV master. The bytes travel both ways, so the worker needs no access to
+// the API's object store; the caller uploads the results.
+func (c *WorkerClient) Encode(ctx context.Context, master []byte, formats []string) (map[string]EncodedVariant, error) {
+	resp, err := c.p.do(ctx, http.MethodPost, "/v1/encode", map[string]any{
+		"audio_b64": base64.StdEncoding.EncodeToString(master), "formats": formats})
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, c.p.decodeError(resp)
+	}
+	var out struct {
+		Variants map[string]struct {
+			B64         string `json:"b64"`
+			SHA256      string `json:"sha256"`
+			ContentType string `json:"content_type"`
+			Ext         string `json:"ext"`
+		} `json:"variants"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 256<<20)).Decode(&out); err != nil {
+		return nil, &Error{Class: ClassTransient, Engine: "worker", Msg: "decode encode result: " + err.Error()}
+	}
+	res := make(map[string]EncodedVariant, len(out.Variants))
+	for f, v := range out.Variants {
+		data, err := base64.StdEncoding.DecodeString(v.B64)
+		if err != nil {
+			return nil, &Error{Class: ClassPermanent, Engine: "worker", Msg: "variant " + f + " is not base64"}
+		}
+		sum := sha256.Sum256(data)
+		if hex.EncodeToString(sum[:]) != v.SHA256 {
+			return nil, &Error{Class: ClassTransient, Engine: "worker", Msg: "variant " + f + " checksum mismatch"}
+		}
+		res[f] = EncodedVariant{Data: data, SHA256: v.SHA256, ContentType: v.ContentType, Ext: v.Ext}
+	}
+	return res, nil
 }

@@ -671,6 +671,7 @@ func (h *Handler) Routes() http.Handler {
 	// Licensed minister voice platform (bare and /v1).
 	h.registerVoicePlatformRoutes(mux, authed, voiceMgr, audioMgr)
 	h.registerVoiceIntakeRoutes(mux, authed, voiceMgr, audioMgr)
+	h.registerVoiceOpsRoutes(mux)
 
 	return RequestIDMiddleware(tracing.Middleware(SecurityHeadersMiddleware(logRequests(mux), h.isProd)))
 }

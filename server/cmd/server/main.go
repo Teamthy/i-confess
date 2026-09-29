@@ -284,6 +284,10 @@ func main() {
 		h.RegisterVoiceJobs()
 		voiceJobs = append(voiceJobs, api.JobVoiceGenerate)
 	}
+	// Expired grants are flipped to EXPIRED and "delete" post-termination
+	// policies applied on a timer. Serving already re-checks rights on every
+	// request; the sweep keeps stored status, audit and storage in line (§68).
+	h.StartVoiceRightsSweeper(context.Background())
 	// Recording intake and fine-tuning run on a (possibly separate) worker
 	// pool. Independent of synthesis so intake can start before any model.
 	if url := os.Getenv("VOICE_WORKER_URL"); url != "" {
