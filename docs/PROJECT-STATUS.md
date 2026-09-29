@@ -24,9 +24,11 @@ is recorded in ledger 59, B3 in ledger 60, B4 in ledger 61, B5 in commit
 The branch is the fixed session branch `arena/01a0ee4f-i-confess`, based on
 `251f906`. The supplied handoff branch and unpushed commits are absent; G-52
 has now been implemented and fully verified in this checkout rather than
-restored verbatim. Flutter/Dart analysis and tests, including the Safety and
-recommendation widget tests, remain CI-only because the SDKs are unavailable;
-`make lint` was not run.
+restored verbatim. PR #82's first CI run passed Go build/vet/tests, Dart client,
+web, and container jobs, but found an existing Safety-screen Dart syntax/import
+error and Go lint debt in touched files. Those findings have been corrected in
+a local follow-up; the pushed rerun is pending. Flutter/Dart SDKs and
+`golangci-lint` remain unavailable locally.
 
 **Previously verified:** 2026-09-25, at ledger 50 (`docs/50-CACHE-INVALIDATION.md`
 — the content caches now have an invalidation path, closing G-10. Two copies of

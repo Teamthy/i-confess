@@ -104,7 +104,7 @@ func TestBlockCommunityAuthorKeepsTheFeedAnonymous(t *testing.T) {
 
 	// The public response never includes the owner's ID.
 	status, body = doRequest(t, f.srv, http.MethodGet, "/community/feed", "", "")
-	if status != http.StatusOK || strings.Contains(string(body), f.userID) || strings.Contains(string(body), "author_id") {
+	if status != http.StatusOK || strings.Contains(body, f.userID) || strings.Contains(body, "author_id") {
 		t.Fatalf("community feed must remain anonymous: status=%d body=%s", status, truncateBody(body))
 	}
 
@@ -120,7 +120,7 @@ func TestBlockCommunityAuthorKeepsTheFeedAnonymous(t *testing.T) {
 	}
 	status, body = doRequest(t, f.srv, http.MethodPost,
 		"/community/posts/"+postID+"/block-author", readerTok, "")
-	if status != http.StatusCreated || strings.Contains(string(body), f.userID) || strings.Contains(string(body), "blocked_id") {
+	if status != http.StatusCreated || strings.Contains(body, f.userID) || strings.Contains(body, "blocked_id") {
 		t.Fatalf("context block should succeed without disclosing identity: status=%d body=%s", status, truncateBody(body))
 	}
 	if status, _ = doRequest(t, f.srv, http.MethodPost,
@@ -130,13 +130,13 @@ func TestBlockCommunityAuthorKeepsTheFeedAnonymous(t *testing.T) {
 
 	// The post disappears only from the blocker's feed. Anonymous readers still
 	// see it, and the boundary is visible only in the blocker's own list.
-	if status, body = doRequest(t, f.srv, http.MethodGet, "/community/feed", readerTok, ""); status != http.StatusOK || strings.Contains(string(body), postID) {
+	if status, body = doRequest(t, f.srv, http.MethodGet, "/community/feed", readerTok, ""); status != http.StatusOK || strings.Contains(body, postID) {
 		t.Errorf("blocked author should be filtered for the reader: status=%d body=%s", status, truncateBody(body))
 	}
-	if status, body = doRequest(t, f.srv, http.MethodGet, "/community/feed", "", ""); status != http.StatusOK || !strings.Contains(string(body), postID) {
+	if status, body = doRequest(t, f.srv, http.MethodGet, "/community/feed", "", ""); status != http.StatusOK || !strings.Contains(body, postID) {
 		t.Errorf("anonymous feed should remain unfiltered: status=%d body=%s", status, truncateBody(body))
 	}
-	if status, body = doRequest(t, f.srv, http.MethodGet, "/me/blocks", readerTok, ""); status != http.StatusOK || !strings.Contains(string(body), f.userID) {
+	if status, body = doRequest(t, f.srv, http.MethodGet, "/me/blocks", readerTok, ""); status != http.StatusOK || !strings.Contains(body, f.userID) {
 		t.Errorf("reader's private block list should contain the author: status=%d body=%s", status, truncateBody(body))
 	}
 	if status, _ = doRequest(t, f.srv, http.MethodPost,

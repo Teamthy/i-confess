@@ -309,13 +309,17 @@ func (s *TrialStore) SweepExpired(ctx context.Context, at time.Time, limit int) 
 	for rows.Next() {
 		var userID string
 		if err := rows.Scan(&userID); err != nil {
-			rows.Close()
+			if closeErr := rows.Close(); closeErr != nil {
+				return 0, errors.Join(err, fmt.Errorf("close trial cursor: %w", closeErr))
+			}
 			return 0, err
 		}
 		userIDs = append(userIDs, userID)
 	}
 	if err := rows.Err(); err != nil {
-		rows.Close()
+		if closeErr := rows.Close(); closeErr != nil {
+			return 0, errors.Join(err, fmt.Errorf("close trial cursor: %w", closeErr))
+		}
 		return 0, err
 	}
 	if err := rows.Close(); err != nil {

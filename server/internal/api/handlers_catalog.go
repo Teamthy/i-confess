@@ -17,15 +17,6 @@ func (h *Handler) listCollections(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, cols)
 }
 
-func (h *Handler) listCategories(w http.ResponseWriter, r *http.Request) {
-	cats, err := h.cont.ListCategories(r.Context(), false)
-	if err != nil {
-		httpx.WriteError(w, http.StatusInternalServerError, "failed to load categories")
-		return
-	}
-	httpx.WriteJSON(w, http.StatusOK, cats)
-}
-
 func (h *Handler) categoryConfessions(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	confs, err := h.cont.ConfessionsByCategory(r.Context(), id, true)

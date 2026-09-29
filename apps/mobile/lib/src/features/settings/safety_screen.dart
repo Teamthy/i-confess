@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:iconfess_api/iconfess_api.dart';
 
+import '../../core/di/providers.dart';
 import '../../core/error/error_mapper.dart';
 import '../../core/theme/tokens.dart';
 import '../../core/widgets/screen.dart';
@@ -41,7 +42,7 @@ class _BlocksTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => RefreshIndicator(
-        onRefresh: () async { await ref.refresh(moderationBlocksProvider.future); },
+        onRefresh: () async { _ = await ref.refresh(moderationBlocksProvider.future); },
         child: ref.watch(moderationBlocksProvider).when(
               loading: () => const Center(child: CircularProgressIndicator()),
               error: (error, _) => _LoadError(message: '$error', onRetry: () => ref.invalidate(moderationBlocksProvider)),
@@ -144,7 +145,7 @@ class _AppealsTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => RefreshIndicator(
-        onRefresh: () async { await ref.refresh(moderationAppealsProvider.future); }
+        onRefresh: () async { _ = await ref.refresh(moderationAppealsProvider.future); },
         child: ref.watch(moderationAppealsProvider).when(
               loading: () => const Center(child: CircularProgressIndicator()),
               error: (error, _) => _LoadError(message: '$error', onRetry: () => ref.invalidate(moderationAppealsProvider)),

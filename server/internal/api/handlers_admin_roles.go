@@ -111,20 +111,4 @@ func isValidUserStatus(status string) bool {
 	return false
 }
 
-func isValidSubscriptionPlan(plan string) bool {
-	switch plan {
-	case "free", "premium":
-		return true
-	}
-	return false
-}
-
-func isValidSubscriptionStatus(status string) bool {
-	switch status {
-	case "active", "cancelled", "expired":
-		return true
-	}
-	return false
-}
-
 // ---------- Content ----------
