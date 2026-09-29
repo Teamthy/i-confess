@@ -342,6 +342,11 @@ class SessionEngine extends StateNotifier<SessionPlaybackState> {
           await _audio.load(
             current.audioUrl,
             initialPosition: Duration(milliseconds: resolvedPosition),
+            metadata: PlaybackMediaMetadata(
+              id: current.id,
+              title: current.title.isEmpty ? 'I-Confess' : current.title,
+              artist: current.category.isEmpty ? 'I-Confess' : current.category,
+            ),
           );
         } catch (_) {
           // Audio load error handled via error stream / refresh
@@ -491,6 +496,11 @@ class SessionEngine extends StateNotifier<SessionPlaybackState> {
           await _audio.load(
             current.audioUrl,
             initialPosition: Duration(milliseconds: savedPos),
+            metadata: PlaybackMediaMetadata(
+              id: current.id,
+              title: current.title.isEmpty ? 'I-Confess' : current.title,
+              artist: current.category.isEmpty ? 'I-Confess' : current.category,
+            ),
           );
           if (state.isPlaying) {
             await _audio.play();
@@ -577,7 +587,14 @@ class SessionEngine extends StateNotifier<SessionPlaybackState> {
     final item = state.currentItem;
     if (item != null && item.isPlayable) {
       try {
-        await _audio.load(item.audioUrl);
+        await _audio.load(
+          item.audioUrl,
+          metadata: PlaybackMediaMetadata(
+            id: item.id,
+            title: item.title.isEmpty ? 'I-Confess' : item.title,
+            artist: item.category.isEmpty ? 'I-Confess' : item.category,
+          ),
+        );
         if (wasPlaying) {
           await _audio.play();
         }

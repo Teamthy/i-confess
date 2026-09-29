@@ -1,33 +1,61 @@
-/// TTS (Text-to-Speech) provider model.
-///
-/// Represents an available TTS provider for audio generation.
-import 'package:freezed_annotation/freezed_annotation.dart';
+/// Text-to-speech provider metadata returned by the audio API.
+import 'package:flutter/foundation.dart';
 
-part 'tts_provider.freezed.dart';
-part 'tts_provider.g.dart';
+@immutable
+class TtsProvider {
+  const TtsProvider({
+    required this.name,
+    required this.displayName,
+    required this.status,
+    this.capabilities = const [],
+  });
 
-/// TTS provider model.
-@freezed
-class TtsProvider with _$TtsProvider {
-  const factory TtsProvider({
-    required String name,
-    required String displayName,
-    required String status,
-    @Default([]) List<String> capabilities,
-  }) = _TtsProvider;
+  final String name;
+  final String displayName;
+  final String status;
+  final List<String> capabilities;
 
-  factory TtsProvider.fromJson(Map<String, dynamic> json) =>
-      _$TtsProviderFromJson(json);
+  bool get isAvailable => status == 'available';
+
+  factory TtsProvider.fromJson(Map<String, dynamic> json) => TtsProvider(
+        name: _string(json, 'name'),
+        displayName: _string(json, 'display_name', _string(json, 'displayName')),
+        status: _string(json, 'status', 'unavailable'),
+        capabilities: (json['capabilities'] as List<dynamic>?)
+                ?.whereType<String>()
+                .toList(growable: false) ??
+            const [],
+      );
 }
 
-/// Response for listing TTS providers.
-@freezed
-class TtsProvidersResponse with _$TtsProvidersResponse {
-  const factory TtsProvidersResponse({
-    @Default([]) List<TtsProvider> providers,
-    required String defaultProvider,
-  }) = _TtsProvidersResponse;
+@immutable
+class TtsProvidersResponse {
+  const TtsProvidersResponse({
+    this.providers = const [],
+    this.defaultProvider = '',
+  });
+
+  final List<TtsProvider> providers;
+  final String defaultProvider;
 
   factory TtsProvidersResponse.fromJson(Map<String, dynamic> json) =>
-      _$TtsProvidersResponseFromJson(json);
+      TtsProvidersResponse(
+        providers: (json['providers'] as List<dynamic>?)
+                ?.whereType<Map>()
+                .map((item) => TtsProvider.fromJson(
+                      Map<String, dynamic>.from(item),
+                    ))
+                .toList(growable: false) ??
+            const [],
+        defaultProvider: _string(
+          json,
+          'default',
+          _string(json, 'default_provider', _string(json, 'defaultProvider')),
+        ),
+      );
+}
+
+String _string(Map<String, dynamic> json, String key, [String fallback = '']) {
+  final value = json[key];
+  return value is String ? value : fallback;
 }

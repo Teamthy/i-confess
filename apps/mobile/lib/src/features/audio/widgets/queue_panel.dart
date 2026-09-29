@@ -261,7 +261,7 @@ class _QueuePanelState extends ConsumerState<QueuePanel> {
   ) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final isPlaying = isCurrent && playerState.playerState == PlayerState.playing;
+    final isPlaying = isCurrent && playerState.playerState == AudioPlayerPhase.playing;
     
     return ReorderableItem(
       key: key,
@@ -386,7 +386,7 @@ class _QueuePanelState extends ConsumerState<QueuePanel> {
   ) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final isPlaying = isCurrent && playerState.playerState == PlayerState.playing;
+    final isPlaying = isCurrent && playerState.playerState == AudioPlayerPhase.playing;
     
     return Material(
       color: isCurrent 

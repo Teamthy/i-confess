@@ -1,7 +1,7 @@
 /// Audio queue model for I-Confess.
 ///
 /// This model represents a queue of audio items to be played sequentially.
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'audio_asset.dart';
 
 /// Represents an item in the audio queue.
@@ -64,7 +64,7 @@ class AudioQueueItem {
       voiceId: asset.voiceId,
       title: title ?? 'Confession ${asset.confessionId}',
       subtitle: subtitle,
-      duration: Duration(milliseconds: asset.duration.toInt()),
+      duration: asset.duration,
       orderIndex: orderIndex,
     );
   }
@@ -86,10 +86,10 @@ class AudioQueueItem {
         confessionId: confessionId,
         voiceId: voiceId,
         status: AudioAssetStatus.ready,
-        duration: duration.inSeconds.toDouble(),
-        fileSize: 0,
-        storagePath: '',
-        createdAt: DateTime.now(),
+        durationSeconds: duration.inSeconds,
+        sizeBytes: 0,
+        createdAt: DateTime.now().toIso8601String(),
+        updatedAt: DateTime.now().toIso8601String(),
       ),
       confessionId: confessionId,
       voiceId: voiceId,
@@ -152,10 +152,10 @@ class AudioQueueItem {
         confessionId: json['confessionId'] as String,
         voiceId: json['voiceId'] as String,
         status: AudioAssetStatus.ready,
-        duration: (json['durationMs'] as int).toDouble(),
-        fileSize: 0,
-        storagePath: '',
-        createdAt: DateTime.now(),
+        durationSeconds: (json['durationMs'] as int) ~/ 1000,
+        sizeBytes: 0,
+        createdAt: DateTime.now().toIso8601String(),
+        updatedAt: DateTime.now().toIso8601String(),
       ),
       confessionId: json['confessionId'] as String,
       voiceId: json['voiceId'] as String,

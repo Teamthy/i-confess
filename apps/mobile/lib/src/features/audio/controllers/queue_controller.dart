@@ -5,6 +5,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import '../models/audio_queue.dart';
 import '../models/audio_asset.dart';
 import 'audio_player_controller.dart';
@@ -407,11 +408,15 @@ class QueueNotifier extends StateNotifier<QueueState> {
     );
     
     // Play the item
-    _audioController.playAsset(
-      assetId: item.asset.id,
-      confessionId: item.confessionId,
-      voiceId: item.voiceId,
-      initialPosition: item.lastPosition,
+    unawaited(
+      _audioController.playAsset(
+        assetId: item.asset.id,
+        confessionId: item.confessionId,
+        voiceId: item.voiceId,
+        initialPosition: item.lastPosition,
+      ).catchError((Object error) {
+        state = state.copyWith(error: error.toString());
+      }),
     );
     
     // Mark as played if it was previously played

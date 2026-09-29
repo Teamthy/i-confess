@@ -109,8 +109,16 @@ check("every screen declares its endpoints", not no_api,
       f"screens with none: {no_api}")
 
 # Backend surface with no home in the UI is either dead code or a missing
-# screen. Worth knowing which, so this reports rather than silently passing.
-used = {e for s in screens for e in s.get("endpoints", [])}
+# screen. Screens may call either the unversioned path or its /v1 alias; endpoint
+# validity above still checks the exact declared path, while coverage compares
+# the logical operation so the alias is not mistaken for a second UI feature.
+def compatibility_key(endpoint):
+    method, path = endpoint.split(" ", 1)
+    if path.startswith("/v1/"):
+        path = path[3:]
+    return f"{method} {path}"
+
+used = {compatibility_key(e) for s in screens for e in s.get("endpoints", [])}
 unused = sorted(live - used)
 # Endpoints no screen can call. /webhooks/ is in this list because a store
 # notification is delivered by Apple or Google, not by the app: there is no

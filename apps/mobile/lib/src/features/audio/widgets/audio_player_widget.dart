@@ -2,6 +2,8 @@
 ///
 /// This widget provides a full-featured audio player UI with playback controls,
 /// progress indicator, and audio generation capabilities.
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../controllers/audio_player_controller.dart';
@@ -18,6 +20,15 @@ class AudioPlayerWidget extends ConsumerWidget {
   
   /// The ID of the audio asset to play.
   final String? assetId;
+
+  /// The immutable content snapshot required to request audio generation.
+  final String? contentVersionId;
+
+  /// Server session whose queue granted access to the signed audio URL.
+  final String? sessionId;
+
+  /// Optional session-queue item ID to resolve inside [sessionId].
+  final String? sessionItemId;
   
   /// Whether to show the full player or a compact version.
   final bool compact;
@@ -33,6 +44,9 @@ class AudioPlayerWidget extends ConsumerWidget {
     this.confessionId,
     this.voiceId,
     this.assetId,
+    this.contentVersionId,
+    this.sessionId,
+    this.sessionItemId,
     this.compact = false,
     this.showGenerationControls = true,
     this.onClose,
@@ -52,17 +66,29 @@ class AudioPlayerWidget extends ConsumerWidget {
     // Auto-play if we have an asset ID or confession ID
     if (assetId != null && playerState.currentAssetId != assetId) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        controller.playAsset(
-          assetId: assetId!,
-          confessionId: confessionId,
-          voiceId: voiceId,
+        unawaited(
+          controller.playAsset(
+            assetId: assetId!,
+            sessionId: sessionId,
+            sessionItemId: sessionItemId,
+            confessionId: confessionId,
+            voiceId: voiceId,
+          ).catchError((Object error) {
+            debugPrint('Audio playback failed: $error');
+          }),
         );
       });
     } else if (confessionId != null && playerState.currentConfessionId != confessionId) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        controller.playConfession(
-          confessionId: confessionId!,
-          voiceId: voiceId,
+        unawaited(
+          controller.playConfession(
+            confessionId: confessionId!,
+            sessionId: sessionId,
+            sessionItemId: sessionItemId,
+            voiceId: voiceId,
+          ).catchError((Object error) {
+            debugPrint('Confession playback failed: $error');
+          }),
         );
       });
     }
@@ -301,14 +327,23 @@ class AudioPlayerWidget extends ConsumerWidget {
               const SizedBox(width: 16),
 
               // Generation controls
-              if (showGenerationControls && confessionId != null)
+              if (showGenerationControls &&
+                  confessionId != null &&
+                  contentVersionId != null)
                 IconButton(
                   icon: const Icon(Icons.refresh),
                   onPressed: () async {
-                    await controller.generateAndPlay(
-                      confessionId: confessionId!,
-                      voiceId: voiceId ?? 'default',
-                    );
+                    try {
+                      await controller.generateAndPlay(
+                        confessionId: confessionId!,
+                        contentVersionId: contentVersionId,
+                        voiceId: voiceId ?? 'default',
+                        sessionId: sessionId,
+                        sessionItemId: sessionItemId,
+                      );
+                    } on Object catch (error) {
+                      debugPrint('Audio generation failed: $error');
+                    }
                   },
                 ),
             ],

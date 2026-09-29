@@ -2,13 +2,13 @@
 ///
 /// These tests verify the functionality of the audio queue model and controller.
 import 'package:flutter_test/flutter_test.dart';
-import 'package:i_confess/src/features/audio/models/audio_queue.dart';
-import 'package:i_confess/src/features/audio/models/audio_asset.dart';
+import 'package:iconfess/src/features/audio/models/audio_queue.dart';
+import 'package:iconfess/src/features/audio/models/audio_asset.dart';
 
 void main() {
   group('AudioQueueItem', () {
     test('create from minimal info', () {
-      const item = AudioQueueItem.minimal(
+      final item = AudioQueueItem.minimal(
         assetId: 'asset_123',
         confessionId: 'confession_456',
         voiceId: 'voice_789',
@@ -32,10 +32,10 @@ void main() {
         confessionId: 'confession_456',
         voiceId: 'voice_789',
         status: AudioAssetStatus.ready,
-        duration: 150.5,
-        fileSize: 1024000,
-        storagePath: '/audio/asset_123.mp3',
-        createdAt: DateTime.now(),
+        durationSeconds: 151,
+        sizeBytes: 1024000,
+        createdAt: DateTime.now().toIso8601String(),
+        updatedAt: DateTime.now().toIso8601String(),
       );
 
       final item = AudioQueueItem.fromAsset(
@@ -50,12 +50,12 @@ void main() {
       expect(item.voiceId, 'voice_789');
       expect(item.title, 'Custom Title');
       expect(item.subtitle, 'Custom Subtitle');
-      expect(item.duration, Duration(milliseconds: 150500));
+      expect(item.duration, const Duration(seconds: 151));
       expect(item.orderIndex, 5);
     });
 
     test('copyWith creates new instance', () {
-      const item = AudioQueueItem.minimal(
+      final item = AudioQueueItem.minimal(
         assetId: 'asset_123',
         confessionId: 'confession_456',
         voiceId: 'voice_789',
@@ -77,7 +77,7 @@ void main() {
     });
 
     test('toJson and fromJson', () {
-      const original = AudioQueueItem.minimal(
+      final original = AudioQueueItem.minimal(
         assetId: 'asset_123',
         confessionId: 'confession_456',
         voiceId: 'voice_789',
@@ -101,7 +101,7 @@ void main() {
     });
 
     test('equality based on id', () {
-      const item1 = AudioQueueItem.minimal(
+      final item1 = AudioQueueItem.minimal(
         assetId: 'asset_123',
         confessionId: 'confession_1',
         voiceId: 'voice_1',
@@ -109,15 +109,9 @@ void main() {
         duration: Duration(minutes: 1),
       );
 
-      const item2 = AudioQueueItem.minimal(
-        assetId: 'asset_123',
-        confessionId: 'confession_2',
-        voiceId: 'voice_2',
-        title: 'Title 2',
-        duration: Duration(minutes: 2),
-      );
+      final item2 = item1.copyWith(title: 'Title 2');
 
-      const item3 = AudioQueueItem.minimal(
+      final item3 = AudioQueueItem.minimal(
         assetId: 'asset_456',
         confessionId: 'confession_3',
         voiceId: 'voice_3',
@@ -130,7 +124,7 @@ void main() {
     });
 
     test('toString includes relevant info', () {
-      const item = AudioQueueItem.minimal(
+      final item = AudioQueueItem.minimal(
         assetId: 'asset_123',
         confessionId: 'confession_456',
         voiceId: 'voice_789',

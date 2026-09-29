@@ -4,19 +4,25 @@
 /// service to provide a complete audio experience.
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:just_audio/just_audio.dart';
-import '../models/audio_asset.dart';
+import 'package:flutter_riverpod/legacy.dart';
+import '../../../core/di/providers.dart';
 import '../models/audio_generation_job.dart';
 import '../services/audio_generation_service.dart';
 import '../services/audio_url_service.dart';
 import '../../player/audio_playback_service.dart';
+import '../../player/player_providers.dart' show audioPlaybackServiceProvider;
+
+/// UI-facing playback phase, distinct from just_audio's PlayerState object.
+enum AudioPlayerPhase { idle, loading, ready, playing, paused, completed, error }
+
+const _unchanged = Object();
 
 /// State for the audio player.
 class AudioPlayerState {
   final String? currentAssetId;
   final String? currentConfessionId;
   final String? currentVoiceId;
-  final PlayerState playerState;
+  final AudioPlayerPhase playerState;
   final Duration position;
   final Duration duration;
   final bool isBuffering;
@@ -29,7 +35,7 @@ class AudioPlayerState {
     this.currentAssetId,
     this.currentConfessionId,
     this.currentVoiceId,
-    this.playerState = PlayerState.idle,
+    this.playerState = AudioPlayerPhase.idle,
     this.position = Duration.zero,
     this.duration = Duration.zero,
     this.isBuffering = false,
@@ -43,11 +49,11 @@ class AudioPlayerState {
     String? currentAssetId,
     String? currentConfessionId,
     String? currentVoiceId,
-    PlayerState? playerState,
+    AudioPlayerPhase? playerState,
     Duration? position,
     Duration? duration,
     bool? isBuffering,
-    String? error,
+    Object? error = _unchanged,
     double? volume,
     bool? isMuted,
     double? playbackSpeed,
@@ -60,7 +66,7 @@ class AudioPlayerState {
       position: position ?? this.position,
       duration: duration ?? this.duration,
       isBuffering: isBuffering ?? this.isBuffering,
-      error: error,
+      error: identical(error, _unchanged) ? this.error : error as String?,
       volume: volume ?? this.volume,
       isMuted: isMuted ?? this.isMuted,
       playbackSpeed: playbackSpeed ?? this.playbackSpeed,
@@ -76,8 +82,9 @@ class AudioPlayerNotifier extends StateNotifier<AudioPlayerState> {
   
   StreamSubscription<Duration>? _positionSub;
   StreamSubscription<Duration?>? _durationSub;
-  StreamSubscription<PlayerState>? _playerStateSub;
+  StreamSubscription<AudioPlaybackStatus>? _playerStateSub;
   StreamSubscription<String>? _errorSub;
+  double _lastAudibleVolume = 1.0;
 
   AudioPlayerNotifier({
     required AudioPlaybackService playbackService,
@@ -90,11 +97,10 @@ class AudioPlayerNotifier extends StateNotifier<AudioPlayerState> {
 
   @override
   void dispose() {
-    _positionSub?.cancel();
-    _durationSub?.cancel();
-    _playerStateSub?.cancel();
-    _errorSub?.cancel();
-    _playbackService.dispose();
+    if (_positionSub != null) unawaited(_positionSub!.cancel());
+    if (_durationSub != null) unawaited(_durationSub!.cancel());
+    if (_playerStateSub != null) unawaited(_playerStateSub!.cancel());
+    if (_errorSub != null) unawaited(_errorSub!.cancel());
     super.dispose();
   }
 
@@ -109,12 +115,11 @@ class AudioPlayerNotifier extends StateNotifier<AudioPlayerState> {
     });
 
     _playerStateSub = _playbackService.statusStream.listen((playerState) {
-      // Map AudioPlaybackStatus to PlayerState
-      final newState = _mapPlayerState(playerState);
+      // Map AudioPlaybackStatus to AudioPlayerPhase
+      final newState = _mapAudioPlayerPhase(playerState);
       state = state.copyWith(
         playerState: newState,
-        isBuffering: playerState == AudioPlaybackStatus.loading ||
-                    playerState == AudioPlaybackStatus.buffering,
+        isBuffering: playerState == AudioPlaybackStatus.loading,
       );
     });
 
@@ -123,24 +128,23 @@ class AudioPlayerNotifier extends StateNotifier<AudioPlayerState> {
     });
   }
 
-  /// Maps AudioPlaybackStatus to PlayerState.
-  PlayerState _mapPlayerState(AudioPlaybackStatus status) {
+  /// Maps AudioPlaybackStatus to AudioPlayerPhase.
+  AudioPlayerPhase _mapAudioPlayerPhase(AudioPlaybackStatus status) {
     switch (status) {
       case AudioPlaybackStatus.idle:
-        return PlayerState.idle;
+        return AudioPlayerPhase.idle;
       case AudioPlaybackStatus.loading:
-      case AudioPlaybackStatus.buffering:
-        return PlayerState.loading;
+        return AudioPlayerPhase.loading;
       case AudioPlaybackStatus.ready:
-        return PlayerState.ready;
+        return AudioPlayerPhase.ready;
       case AudioPlaybackStatus.playing:
-        return PlayerState.playing;
+        return AudioPlayerPhase.playing;
       case AudioPlaybackStatus.paused:
-        return PlayerState.paused;
+        return AudioPlayerPhase.paused;
       case AudioPlaybackStatus.completed:
-        return PlayerState.completed;
+        return AudioPlayerPhase.completed;
       case AudioPlaybackStatus.error:
-        return PlayerState.error;
+        return AudioPlayerPhase.error;
     }
   }
 
@@ -149,6 +153,8 @@ class AudioPlayerNotifier extends StateNotifier<AudioPlayerState> {
   /// If the asset doesn't have a ready audio file, it will generate one first.
   Future<void> playAsset({
     required String assetId,
+    String? sessionId,
+    String? sessionItemId,
     String? confessionId,
     String? voiceId,
     Duration? initialPosition,
@@ -162,11 +168,25 @@ class AudioPlayerNotifier extends StateNotifier<AudioPlayerState> {
     );
 
     try {
-      // Get the signed URL
-      final url = await _urlService.getStreamUrl(assetId);
+      // The API only mints audio URLs as part of an entitlement-checked session.
+      if (sessionId == null || sessionId.isEmpty) {
+        throw StateError('Playback requires a server-authorized session.');
+      }
+      final url = await _urlService.getStreamUrl(
+        sessionId,
+        itemId: sessionItemId ?? assetId,
+      );
       
       // Load and play
-      await _playbackService.load(url, initialPosition: initialPosition);
+      await _playbackService.load(
+        url,
+        initialPosition: initialPosition,
+        metadata: PlaybackMediaMetadata(
+          id: sessionItemId ?? assetId,
+          title: confessionId ?? 'I-Confess audio',
+          artist: voiceId ?? 'I-Confess',
+        ),
+      );
       await _playbackService.play();
     } catch (e) {
       state = state.copyWith(error: 'Failed to play: $e');
@@ -180,31 +200,19 @@ class AudioPlayerNotifier extends StateNotifier<AudioPlayerState> {
   /// it will generate one.
   Future<void> playConfession({
     required String confessionId,
+    String? sessionId,
+    String? sessionItemId,
     String? voiceId,
     Duration? initialPosition,
   }) async {
-    try {
-      // For now, we'll assume there's a ready audio asset
-      // In a real implementation, we would:
-      // 1. Check if there's a ready audio asset for this confession/voice
-      // 2. If not, queue a generation job
-      // 3. Wait for the job to complete
-      // 4. Then play the generated asset
-      
-      // For Phase 2, we'll use a placeholder asset ID
-      // In production, this would come from the backend
-      final assetId = 'asset_$confessionId_${voiceId ?? 'default'}';
-      
-      await playAsset(
-        assetId: assetId,
-        confessionId: confessionId,
-        voiceId: voiceId,
-        initialPosition: initialPosition,
-      );
-    } catch (e) {
-      state = state.copyWith(error: 'Failed to play confession: $e');
-      rethrow;
-    }
+    await playAsset(
+      assetId: sessionItemId ?? confessionId,
+      sessionId: sessionId,
+      sessionItemId: sessionItemId ?? confessionId,
+      confessionId: confessionId,
+      voiceId: voiceId,
+      initialPosition: initialPosition,
+    );
   }
 
   /// Generates audio for a confession and plays it.
@@ -215,8 +223,12 @@ class AudioPlayerNotifier extends StateNotifier<AudioPlayerState> {
     String? contentVersionId,
     String? variantId,
     required String voiceId,
+    String? sessionId,
+    String? sessionItemId,
     String provider = 'elevenlabs',
     String qualityTier = 'standard',
+    int pollInterval = 2,
+    int pollTimeout = 120,
   }) async {
     try {
       // Create the generation request
@@ -236,20 +248,22 @@ class AudioPlayerNotifier extends StateNotifier<AudioPlayerState> {
       state = state.copyWith(
         currentConfessionId: confessionId,
         currentVoiceId: voiceId,
-        playerState: PlayerState.loading,
+        playerState: AudioPlayerPhase.loading,
       );
 
       // Wait for the job to complete
       final completedJob = await _generationService.pollJobUntilComplete(
         jobId: job.id,
-        interval: 2,
-        timeout: 120,
+        interval: pollInterval,
+        timeout: pollTimeout,
       );
 
       if (completedJob.status == AudioJobStatus.succeeded) {
         // Play the generated asset
         await playAsset(
           assetId: completedJob.audioAssetId ?? '',
+          sessionId: sessionId,
+          sessionItemId: sessionItemId,
           confessionId: confessionId,
           voiceId: voiceId,
         );
@@ -259,7 +273,7 @@ class AudioPlayerNotifier extends StateNotifier<AudioPlayerState> {
     } catch (e) {
       state = state.copyWith(
         error: 'Failed to generate and play: $e',
-        playerState: PlayerState.error,
+        playerState: AudioPlayerPhase.error,
       );
       rethrow;
     }
@@ -290,7 +304,7 @@ class AudioPlayerNotifier extends StateNotifier<AudioPlayerState> {
     try {
       await _playbackService.stop();
       state = state.copyWith(
-        playerState: PlayerState.idle,
+        playerState: AudioPlayerPhase.idle,
         position: Duration.zero,
       );
     } catch (e) {
@@ -311,9 +325,11 @@ class AudioPlayerNotifier extends StateNotifier<AudioPlayerState> {
 
   /// Sets the volume.
   Future<void> setVolume(double volume) async {
+    final safeVolume = volume.clamp(0.0, 1.0).toDouble();
     try {
-      await _playbackService.setVolume(volume);
-      state = state.copyWith(volume: volume);
+      await _playbackService.setVolume(safeVolume);
+      if (safeVolume > 0) _lastAudibleVolume = safeVolume;
+      state = state.copyWith(volume: safeVolume, isMuted: safeVolume == 0);
     } catch (e) {
       state = state.copyWith(error: 'Failed to set volume: $e');
       rethrow;
@@ -322,9 +338,10 @@ class AudioPlayerNotifier extends StateNotifier<AudioPlayerState> {
 
   /// Sets the playback speed.
   Future<void> setPlaybackSpeed(double speed) async {
+    final safeSpeed = speed.clamp(0.5, 2.0).toDouble();
     try {
-      await _playbackService.setSpeed(speed);
-      state = state.copyWith(playbackSpeed: speed);
+      await _playbackService.setSpeed(safeSpeed);
+      state = state.copyWith(playbackSpeed: safeSpeed);
     } catch (e) {
       state = state.copyWith(error: 'Failed to set playback speed: $e');
       rethrow;
@@ -333,9 +350,12 @@ class AudioPlayerNotifier extends StateNotifier<AudioPlayerState> {
 
   /// Toggles mute.
   Future<void> toggleMute() async {
-    final newMuted = !state.isMuted;
-    await setVolume(newMuted ? 0.0 : state.volume);
-    state = state.copyWith(isMuted: newMuted);
+    if (state.isMuted) {
+      await setVolume(_lastAudibleVolume > 0 ? _lastAudibleVolume : 1.0);
+    } else {
+      if (state.volume > 0) _lastAudibleVolume = state.volume;
+      await setVolume(0.0);
+    }
   }
 
   /// Gets the current playback state.
@@ -343,8 +363,9 @@ class AudioPlayerNotifier extends StateNotifier<AudioPlayerState> {
 
   /// Gets the current position as a percentage of duration.
   double get positionPercentage {
-    if (state.duration.inSeconds == 0) return 0.0;
-    return state.position.inMilliseconds / state.duration.inMilliseconds;
+    final durationMs = state.duration.inMilliseconds;
+    if (durationMs <= 0) return 0.0;
+    return (state.position.inMilliseconds / durationMs).clamp(0.0, 1.0).toDouble();
   }
 
   /// Gets the current position as a display string.
@@ -365,8 +386,9 @@ class AudioPlayerNotifier extends StateNotifier<AudioPlayerState> {
 /// Provider for the audio player controller.
 final audioPlayerControllerProvider = StateNotifierProvider<AudioPlayerNotifier, AudioPlayerState>((ref) {
   final playbackService = ref.watch(audioPlaybackServiceProvider);
-  final urlService = AudioUrlService();
-  final generationService = AudioGenerationService();
+  final client = ref.watch(apiClientProvider);
+  final urlService = AudioUrlService(client: client);
+  final generationService = AudioGenerationService(client: client);
   
   final controller = AudioPlayerNotifier(
     playbackService: playbackService,
@@ -375,7 +397,5 @@ final audioPlayerControllerProvider = StateNotifierProvider<AudioPlayerNotifier,
   );
   
   controller.init();
-  ref.onDispose(() => controller.dispose());
-  
   return controller;
 });
