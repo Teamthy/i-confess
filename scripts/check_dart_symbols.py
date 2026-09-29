@@ -256,6 +256,23 @@ check(
     "rejected personal confessions can be appealed in context",
     "Appeal this decision" in library_screen_src and "decisionType: 'confession'" in library_screen_src,
 )
+home_provider_src = read(MOBILE / "src/features/home/home_providers.dart")
+home_screen_src = read(MOBILE / "src/features/home/home_screen.dart")
+check(
+    "Home has an independent recommendations provider",
+    "homeRecommendationsProvider" in home_provider_src
+    and "recommendationsRepositoryProvider" in home_provider_src,
+)
+check(
+    "Home renders recommendation reasons and suggested duration",
+    "categoryReasons" in home_screen_src
+    and "confessionReasons" in home_screen_src
+    and "suggestedDurationSeconds" in home_screen_src,
+)
+check(
+    "Home includes listen-again context",
+    "listenAgain" in home_screen_src and "You returned to this" in home_screen_src,
+)
 
 check("UserBlock model is declared", "final class UserBlock" in models_src)
 check("UserBlock has a fromJson factory", "factory UserBlock.fromJson" in models_src)

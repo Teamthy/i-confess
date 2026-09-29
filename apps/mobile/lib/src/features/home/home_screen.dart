@@ -29,6 +29,7 @@ class HomeScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final categories = ref.watch(homeCategoriesProvider);
+    final recommendations = ref.watch(homeRecommendationsProvider);
     final live = ref.watch(continueListeningSelector);
     final activity = ref.watch(recentActivitySelector);
 
@@ -55,6 +56,8 @@ class HomeScreen extends ConsumerWidget {
             _ContinueRail(sessions: live),
           ],
           const SizedBox(height: IConfess.space7),
+          _RecommendationsRail(state: recommendations),
+          const SizedBox(height: IConfess.space7),
           _RailHeader(label: 'Browse by category'),
           const SizedBox(height: IConfess.space3),
           _CategoryCarousel(state: categories),
@@ -68,6 +71,186 @@ class HomeScreen extends ConsumerWidget {
       ),
     );
   }
+}
+
+/// A compact "why this" rail: each card carries at least one explanation
+/// derived from the listener's actual signals, never an unsupported claim.
+class _RecommendationsRail extends StatelessWidget {
+  const _RecommendationsRail({required this.state});
+
+  final AsyncValue<Loadable<Recommendations>> state;
+
+  @override
+  Widget build(BuildContext context) => state.when(
+        loading: () => const SizedBox.shrink(),
+        error: (_, _) => const SizedBox.shrink(),
+        data: (loadable) {
+          final recommendations = loadable.valueOrNull;
+          if (recommendations == null ||
+              (recommendations.categories.isEmpty &&
+                  recommendations.confessions.isEmpty &&
+                  recommendations.listenAgain.isEmpty)) {
+            return const SizedBox.shrink();
+          }
+
+          final surfaces = AppSurfaces.of(context);
+          final cards = <Widget>[
+            for (final category in recommendations.categories.take(3))
+              _RecommendationCard(
+                title: category.name,
+                reason: _reasonLabel(
+                  recommendations.categoryReasons[category.id] ?? const [],
+                  category: true,
+                ),
+                icon: Icons.category_outlined,
+                onTap: () => context.go(AppRoutes.categoryDetail(category.id)),
+              ),
+            for (final confession in recommendations.confessions.take(3))
+              _RecommendationCard(
+                title: confession.title.isNotEmpty ? confession.title : confession.lead,
+                reason: _reasonLabel(
+                  recommendations.confessionReasons[confession.id] ?? const [],
+                  category: false,
+                ),
+                icon: Icons.auto_awesome_outlined,
+                onTap: () => context.go(AppRoutes.confessionDetail(confession.id)),
+              ),
+            for (final repeated in recommendations.listenAgain.take(3))
+              _RecommendationCard(
+                title: repeated.confession.title.isNotEmpty
+                    ? repeated.confession.title
+                    : repeated.confession.lead,
+                reason: 'You returned to this ${repeated.times} times',
+                icon: Icons.replay_rounded,
+                onTap: () => context.go(
+                  AppRoutes.confessionDetail(repeated.confession.id),
+                ),
+              ),
+          ];
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _RailHeader(label: 'Picked for you'),
+              const SizedBox(height: IConfess.space1),
+              Text(
+                recommendations.personalized
+                    ? 'Based on your activity and preferences.'
+                    : 'A few starting points. Your listening will shape future picks.',
+                style: IConfess.caption.copyWith(color: surfaces.textSecondary),
+              ),
+              if (recommendations.suggestedDurationSeconds > 0) ...[
+                const SizedBox(height: IConfess.space2),
+                Chip(
+                  avatar: const Icon(Icons.schedule_rounded, size: 18),
+                  label: Text(
+                    'Suggested session: ${_durationLabel(recommendations.suggestedDurationSeconds)}',
+                  ),
+                ),
+              ],
+              const SizedBox(height: IConfess.space3),
+              SizedBox(
+                height: 116,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: cards.length,
+                  separatorBuilder: (_, _) => const SizedBox(width: IConfess.space3),
+                  itemBuilder: (context, index) => cards[index],
+                ),
+              ),
+            ],
+          );
+        },
+      );
+}
+
+class _RecommendationCard extends StatelessWidget {
+  const _RecommendationCard({
+    required this.title,
+    required this.reason,
+    required this.icon,
+    required this.onTap,
+  });
+
+  final String title;
+  final String reason;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final surfaces = AppSurfaces.of(context);
+    return SizedBox(
+      width: 248,
+      child: Card(
+        color: surfaces.surfaceRaised,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(IConfess.radiusMd),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(IConfess.space3),
+            child: Row(
+              children: [
+                Icon(icon, color: surfaces.primary),
+                const SizedBox(width: IConfess.space3),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: IConfess.label.copyWith(color: surfaces.textPrimary),
+                      ),
+                      const SizedBox(height: IConfess.space1),
+                      Text(
+                        reason,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: IConfess.caption.copyWith(color: surfaces.textSecondary),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(Icons.chevron_right_rounded, color: surfaces.textSecondary),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+String _reasonLabel(List<String> reasons, {required bool category}) {
+  final labels = <String>[];
+  for (final reason in reasons) {
+    String? label;
+    if (reason == 'interest') {
+      label = 'Matches an interest you chose';
+    } else if (reason == 'favourite') {
+      label = category ? 'A category you saved' : 'A confession you saved';
+    } else if (reason.startsWith('repeated ')) {
+      label = category ? 'You return to this category' : 'You have listened to this before';
+    } else if (reason.startsWith('listened ')) {
+      label = 'Based on categories you have listened to';
+    } else if (reason.startsWith('skipped ')) {
+      label = 'A different direction from recent listening';
+    } else if (const {'morning', 'afternoon', 'evening', 'night'}.contains(reason)) {
+      label = 'You have listened around this time before';
+    }
+    if (label != null && !labels.contains(label)) labels.add(label);
+  }
+  if (labels.isEmpty) return 'An option to explore';
+  return labels.take(2).join(' · ');
+}
+
+String _durationLabel(int seconds) {
+  final minutes = (seconds / 60).round();
+  if (minutes < 1) return 'less than a minute';
+  return '$minutes ${minutes == 1 ? 'minute' : 'minutes'}';
 }
 
 class _Greeting extends StatelessWidget {

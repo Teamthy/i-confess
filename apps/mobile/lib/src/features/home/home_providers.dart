@@ -11,9 +11,16 @@ import '../../core/di/providers.dart';
 /// rail, and vice versa. The screen switches on each independently.
 
 /// Categories for the carousel and the quick-start chips.
-final homeCategoriesProvider =
-    FutureProvider<Loadable<List<Category>>>((ref) {
+final homeCategoriesProvider = FutureProvider<Loadable<List<Category>>>((ref) {
   return ref.watch(contentRepositoryProvider).categories();
+});
+
+/// Ranked recommendations, including the human-readable signals behind each
+/// suggestion. Kept independent of categories/sessions so a failed rail does
+/// not blank the rest of Home.
+final homeRecommendationsProvider =
+    FutureProvider<Loadable<Recommendations>>((ref) {
+  return ref.watch(recommendationsRepositoryProvider).recommendations();
 });
 
 /// The listener's sessions, for continue-listening and recent activity.

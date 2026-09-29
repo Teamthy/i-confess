@@ -2,14 +2,14 @@
   "project": "i-confess",
   "branch": "arena/01a0ee4f-i-confess",
   "base_commit": "251f906bb75e8cb4c25375c6ed68a74ed83e884d",
-  "phase": "ledger-63-mobile-safety-ui",
-  "task": "Tier B6 / G-53: add in-context mobile blocking and appeal flows while preserving anonymous community-feed authors; keep the missing G-52 handoff gate explicit.",
+  "phase": "ledger-64-home-recommendation-reasons",
+  "task": "Tier B7 / G-56: render recommendation reasons and other recommendation context on Home without overstating empty-signal results.",
   "status": "VERIFIED_WITH_BLOCKER",
   "attempt": 1,
-  "last_successful_step": "G-53 implemented. Flutter Safety screen supports listing/unblocking accounts and viewing/submitting appeals; My Confessions offers an appeal action for rejected content; community story menus block authors without receiving author IDs. Community author resolution/filtering lives in internal/community.Store. Full Go race suite, build, vet, design checks (40 screens/163 endpoints), and Dart-symbol checks (137/137) passed. Flutter/Dart tests and analysis remain CI-only because SDKs are unavailable. G-52 handoff files are absent and remain unverified.",
-  "next_action": "Continue tier-B order with B7/G-56 recommendation reasons UI. Do not open a PR until G-52 is restored and its test plus the full suite are green.",
-  "timestamp": "2026-09-29T18:48:32Z",
-  "current_phase": 63,
+  "last_successful_step": "G-56 implemented on Home: category/confession cards translate the server reason codes into plain language, repeat items show return counts, positive suggested duration is rendered, and no-signal picks are identified as starting points rather than personalized. Added widget coverage. Design/IA checks passed (40 screens/163 endpoints), generated design check passed, and Dart static symbol checks passed 140/140. Flutter/Dart widget tests and analysis remain CI-only because the SDKs are unavailable. G-52 from the supplied handoff is still absent and unverified.",
+  "next_action": "Continue tier-B order with B8/G-49 trial expiry job. Do not open a PR until G-52 is restored and its test plus the full suite are green.",
+  "timestamp": "2026-09-29T18:53:35Z",
+  "current_phase": 64,
   "completed_phases": [
     0,
     1,
@@ -50,7 +50,8 @@
     60,
     61,
     62,
-    63
+    63,
+    64
   ],
   "open_gaps": [
     "G-7",
@@ -62,8 +63,7 @@
     "G-33",
     "G-48",
     "G-49",
-    "G-52",
-    "G-56"
+    "G-52"
   ],
   "reconciliation": {
     "reason": "Supplied handoff names arena/01a0edf6-i-confess and three unpushed commits, but the session is fixed to arena/01a0ee4f-i-confess and this checkout is a shallow clone at origin/main 251f906.",
@@ -152,7 +152,10 @@
     "server/internal/api/handlers_community.go",
     "server/internal/community/store.go",
     "server/internal/store/moderation_blocking.go",
-    "scripts/check_dart_symbols.py"
+    "scripts/check_dart_symbols.py",
+    "apps/mobile/lib/src/features/home/home_providers.dart",
+    "apps/mobile/test/features/home/recommendations_rail_test.dart",
+    "docs/64-HOME-RECOMMENDATION-REASONS.md"
   ],
   "environment_notes": [
     "Go 1.27.1 from the PyPI go-bin wheel (extracted to /home/user/.local/go-extract/go); proxy.golang.org, sum.golang.org and golang.org are unreachable, so modules came from GOPROXY=direct over GitHub plus a local file:///tmp/goproxy holding golang.org/x/crypto v0.55.0 built from codeload.github.com/golang/crypto; GOSUMDB=off only for that fetch, go.mod/go.sum untouched (verified by git status)",

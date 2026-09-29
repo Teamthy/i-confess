@@ -1,27 +1,25 @@
-**Last verified:** 2026-09-29, ledger 63. On the current working tree,
-`gofmt -l .` returned no files; `go build -modfile=/tmp/local.mod ./...`,
-`go vet -modfile=/tmp/local.mod ./...`, and the full Go race suite with
-PostgreSQL 17.10 and Redis 7.4 all passed. The full suite reported every package
-`ok` or `[no test files]`; `TestRouteParityBetweenPrefixes` passed. Ledger 63
-closes G-53: the Safety settings screen lists/updates blocks and appeals,
-rejected confessions can be appealed in context, and community posts can be
-blocked in context without exposing author IDs. Author resolution now belongs to
-`internal/community.Store`; authenticated feeds filter blocked authors. The
-PostgreSQL/race suite covers contextual blocking and anonymity. Design checks
-passed: `design/test_ia.py` (40 screens, 8 entry points, 163 endpoints),
-`design/generate.py --check`, `design/test_design.py` (132 tokens), and
-`check_dart_symbols.py` (137/137). The API handler composition file was reduced
-from 1,656 to 247 lines (ledger 60); health 200/503 coverage passed (ledger
-58); G-54 person reports passed (ledger 62). B1 is commit `38b50eb`, B2 is
-recorded in ledger 59, B3 in ledger 60, B4 in ledger 61, and B5 in commit
-`ddbc7ff`.
+**Last verified:** 2026-09-29, ledger 64. The full Go race suite, build, and
+vet passed in ledger 63 with PostgreSQL 17.10 and Redis 7.4; all packages were
+`ok` or `[no test files]`, and `TestRouteParityBetweenPrefixes` passed. Ledger
+63 closes G-53: Settings supports block/appeal management, rejected confessions
+have an in-context appeal action, and community stories have a contextual block
+action without exposing author IDs. Author resolution belongs to
+`internal/community.Store`; signed-in feeds apply private block boundaries.
+Ledger 64 closes G-56: Home displays reason labels for recommendations, listen-
+again context, and the suggested session duration, without calling empty-signal
+picks personalized. Design checks passed: `design/test_ia.py` (40 screens, 8
+entry points, 163 endpoints), `design/generate.py --check`, `design/test_design.py`
+(132 tokens), and `check_dart_symbols.py` (140/140). B1 is commit `38b50eb`, B2
+is recorded in ledger 59, B3 in ledger 60, B4 in ledger 61, B5 in commit
+`ddbc7ff`, and B6 in commit `1384faf`.
 
 The branch is the fixed session branch `arena/01a0ee4f-i-confess`, based on
 `251f906`. The supplied handoff branch/commits are absent. Its G-52 files remain
 absent from this checkout, so the deletion test and passing full suite do
 **not** verify G-52; do not open a PR until that gate is restored and green.
-`https://github.com/` returned HTTP 200. Flutter/Dart analysis and tests are
-still CI-only because the SDKs are unavailable; `make lint` was not run.
+`https://github.com/` returned HTTP 200. Flutter/Dart analysis and tests,
+including the new safety and recommendation widget tests, remain CI-only because
+the SDKs are unavailable; `make lint` was not run.
 
 **Previously verified:** 2026-09-25, at ledger 50 (`docs/50-CACHE-INVALIDATION.md`
 — the content caches now have an invalidation path, closing G-10. Two copies of
@@ -461,7 +459,7 @@ PHASE 43 Personalization: the seven listener signals — **PASS** (master-plan
 
 Open gaps carried forward (reconciled against the supplied ledger 57; this
 checkout does not contain `docs/57-GAP-LEDGER-RECONCILIATION.md`): **G-7,
-G-14, G-15, G-19, G-24, G-28, G-33, G-48, G-49, G-52, G-56.** G-9 was
+G-14, G-15, G-19, G-24, G-28, G-33, G-48, G-49, G-52.** G-9 was
 removed after the handler's healthy and 503 paths were
 exercised by `go test -modfile=/tmp/local.mod -race -count=1 ./internal/health`
 (details: `docs/58-HEALTH-CHECK-FAILURE-TEST.md`). G-57 was removed after
@@ -470,7 +468,7 @@ exercised by `go test -modfile=/tmp/local.mod -race -count=1 ./internal/health`
 removed after the 1,656-line handler file was decomposed and the full Go race
 suite passed (details: `docs/60-API-HANDLER-COMPOSITION-REFACTOR.md`). The
 reconciled ledger reports G-12, G-13, G-17, G-18, G-20, G-23, G-26 and G-27 as
-closed; ledgers 58–63 additionally close G-9, G-16, G-25, G-53, G-54 and G-57.
+closed; ledgers 58–64 additionally close G-9, G-16, G-25, G-53, G-54, G-56 and G-57.
 G-52 is still open and unverified. Important checkout limitation: the three unpushed commits described
 by the supplied handoff, including the G-52 patch, are not present at this
 branch's `251f906` base. Therefore their behavior is not claimed as verified
@@ -562,12 +560,12 @@ server). **Closed in PHASE 43.**
 
 Raised in PHASE 43 and carried open:
 
-**G-56 — The home screen does not render why.** The server now returns
-`reasons`, `listen_again` and `suggested_duration_seconds` and the typed client
-decodes them, but the mobile home still shows the two ranked lists as before. A
-recommendation whose reason is never shown is indistinguishable from an
-arbitrary one to the listener, which is the complaint personalization exists to
-answer.
+**Closed in ledger 64: G-56.** The Home screen now renders category and
+confession recommendation reasons in plain language, plus listen-again counts
+and the suggested session duration. Empty-signal recommendations are presented
+as starting points rather than as personalized results. A separate provider
+keeps a recommendation failure from blanking the rest of Home. See
+`docs/64-HOME-RECOMMENDATION-REASONS.md`; Flutter widget tests remain CI-only.
 
 **Closed in ledger 61: G-16.** The reported 92 raw color occurrences included 91
 generated constants; the only handwritten hex literal and the named Material
