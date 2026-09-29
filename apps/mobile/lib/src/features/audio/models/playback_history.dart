@@ -258,12 +258,11 @@ class PlaybackHistoryEntry {
   }
 
   @override
-  String toString() {
-    return 'PlaybackHistoryEntry(id: $id, item: ${item.title}, '\
-           'started: $startedAt, ended: $endedAt, '\
-           'listened: $listenedDurationString/$totalDurationString, '\
-           'completed: $completed)';
-  }
+  String toString() =>
+      'PlaybackHistoryEntry(id: $id, item: ${item.title}, '
+      'started: $startedAt, ended: $endedAt, '
+      'listened: $listenedDurationString/$totalDurationString, '
+      'completed: $completed)';
 
   @override
   bool operator ==(Object other) {

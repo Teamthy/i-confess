@@ -69,6 +69,9 @@ var Policies = []TablePolicy{
 	{Table: "mfa_secrets", Action: Erase},
 	{Table: "user_identities", Action: Erase},
 	{Table: "admin_users", Action: Erase},
+	// Remove role assignments before the user row; retained RBAC catalogue
+	// entries describe platform capabilities, not this account's privileges.
+	{Table: "rbac_user_roles", Action: Erase},
 
 	// ---- Profile and preferences: the person themselves.
 	{Table: "user_profiles", Action: Erase},

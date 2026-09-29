@@ -258,7 +258,7 @@ func (h *Handler) adminAssignUserRole(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, map[string]string{"user_id": userID, "role": req.Role, "message": "role assigned"})
 }
 
-func (h *Handler) adminRemoveUserRole(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) adminRemoveUserRoleAssignment(w http.ResponseWriter, r *http.Request) {
 	userID := r.PathValue("id")
 	if userID == "" {
 		userID = r.PathValue("userId")
@@ -422,7 +422,7 @@ func (h *Handler) adminSystemHealth(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Queue stats
-	var queueStats map[string]int
+	var queueStats any
 	if h.queue != nil {
 		if qs, err := h.queue.Stats(ctx); err == nil {
 			queueStats = qs
@@ -509,16 +509,17 @@ func (h *Handler) adminAuditExport(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Disposition", "attachment; filename=audit-export.csv")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("id,actor,action,entity,entity_id,detail,result,created_at\n"))
-		for _, e := range entries {
-			line := ""
-			if m, ok := e.(map[string]any); ok {
-				line = toCSVLine(m)
-			} else {
-				b, _ := json.Marshal(e)
-				var m map[string]any
-				_ = json.Unmarshal(b, &m)
-				line = toCSVLine(m)
-			}
+		for _, entry := range entries {
+			line := toCSVLine(map[string]any{
+				"id":         entry.ID,
+				"actor":      entry.Actor,
+				"action":     entry.Action,
+				"entity":     entry.Entity,
+				"entity_id":  entry.EntityID,
+				"detail":     entry.Detail,
+				"result":     entry.Result,
+				"created_at": entry.CreatedAt,
+			})
 			_, _ = w.Write([]byte(line + "\n"))
 		}
 		return
@@ -606,13 +607,13 @@ func (h *Handler) adminImpersonateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.recordAudit(r, "user_impersonated", "user", userID, "impersonated by "+actor(r)+" for support", "ok")
+	h.recordAudit(r, "user_impersonated", "user", userID, "impersonated by "+adminActorLabel(r)+" for support", "ok")
 
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{
 		"token":          tok,
 		"user":           user,
 		"impersonated":   true,
-		"impersonated_by": actor(r),
+		"impersonated_by": adminActorLabel(r),
 		"expires_in":     "15m",
 		"warning":        "This session is audited. Use only for legitimate support purposes.",
 	})
@@ -650,7 +651,7 @@ func actorID(r *http.Request) string {
 	return ""
 }
 
-func actor(r *http.Request) string {
+func adminActorLabel(r *http.Request) string {
 	if c := auth.FromContext(r); c != nil {
 		if c.Email != "" {
 			return c.Email

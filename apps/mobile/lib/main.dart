@@ -12,9 +12,16 @@ import 'src/core/push/push_registration.dart';
 import 'src/features/premium/purchase_controller.dart';
 import 'src/features/auth/auth_controller.dart';
 import 'src/features/bible/offline_package_store.dart';
+import 'src/features/audio/services/background_playback_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  try {
+    await BackgroundPlaybackService.initialize();
+  } on Object catch (error) {
+    if (kDebugMode) debugPrint('Background audio unavailable: $error');
+  }
 
   // Fail loudly in debug rather than rendering a red screen for every framework
   // exception; in release the error still reaches the zone handler.

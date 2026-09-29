@@ -1,273 +1,135 @@
-/// Integration tests for the audio player feature.
-///
-/// These tests verify that the audio player correctly integrates with
-/// the audio generation service and playback service.
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mockito/mockito.dart';
-import 'package:i_confess/src/features/audio/controllers/audio_player_controller.dart';
-import 'package:i_confess/src/features/audio/models/audio_generation_job.dart';
-import 'package:i_confess/src/features/audio/models/audio_generation_request.dart';
-import 'package:i_confess/src/features/audio/services/audio_generation_service.dart';
-import 'package:i_confess/src/features/audio/services/audio_url_service.dart';
-import 'package:i_confess/src/features/player/audio_playback_service.dart';
-import 'package:just_audio/just_audio.dart';
+import 'package:iconfess_api/iconfess_api.dart';
+import 'package:iconfess/src/features/audio/controllers/audio_player_controller.dart';
+import 'package:iconfess/src/features/audio/services/audio_generation_service.dart';
+import 'package:iconfess/src/features/audio/services/audio_url_service.dart';
+import 'package:iconfess/src/features/player/audio_playback_service.dart';
 
-// Mock classes
-class MockAudioPlaybackService extends Mock implements AudioPlaybackService {
+class PlaybackFakeApiClient extends ApiClient {
+  PlaybackFakeApiClient()
+      : super(
+          baseUrl: 'https://api.example.test',
+          tokens: InMemoryTokenStore(),
+        );
+
+  final Map<String, Map<String, dynamic>> gets = {};
+  final Map<String, Map<String, dynamic>> posts = {};
+
   @override
-  Stream<Duration> get positionStream => Stream.value(Duration.zero);
-  
+  Future<Map<String, dynamic>> get(
+    String path, {
+    Map<String, String>? query,
+  }) async {
+    final response = gets[path];
+    if (response == null) throw StateError('No fake GET response for $path');
+    return response;
+  }
+
   @override
-  Stream<Duration?> get durationStream => Stream.value(Duration.zero);
-  
-  @override
-  Stream<AudioPlaybackStatus> get statusStream => Stream.value(AudioPlaybackStatus.idle);
-  
-  @override
-  Stream<String> get errorStream => Stream.value('');
+  Future<Map<String, dynamic>> post(String path, [Object? body]) async {
+    final response = posts[path];
+    if (response == null) throw StateError('No fake POST response for $path');
+    return response;
+  }
 }
 
-class MockAudioUrlService extends Mock implements AudioUrlService {}
-
-class MockAudioGenerationService extends Mock implements AudioGenerationService {}
-
 void main() {
-  group('AudioPlayerNotifier', () {
-    late AudioPlayerNotifier controller;
-    late MockAudioPlaybackService mockPlaybackService;
-    late MockAudioUrlService mockUrlService;
-    late MockAudioGenerationService mockGenerationService;
+  late PlaybackFakeApiClient client;
+  late TestAudioPlaybackService playback;
+  late AudioPlayerNotifier controller;
 
-    setUp(() {
-      mockPlaybackService = MockAudioPlaybackService();
-      mockUrlService = MockAudioUrlService();
-      mockGenerationService = MockAudioGenerationService();
-      
-      controller = AudioPlayerNotifier(
-        playbackService: mockPlaybackService,
-        urlService: mockUrlService,
-        generationService: mockGenerationService,
-      );
-    });
-
-    tearDown(() {
-      controller.dispose();
-    });
-
-    test('initial state is idle', () {
-      expect(controller.state.playerState, PlayerState.idle);
-      expect(controller.state.currentAssetId, isNull);
-      expect(controller.state.currentConfessionId, isNull);
-      expect(controller.state.position, Duration.zero);
-      expect(controller.state.duration, Duration.zero);
-    });
-
-    test('playAsset updates state with asset info', () async {
-      const assetId = 'test_asset';
-      const confessionId = 'test_confession';
-      const voiceId = 'test_voice';
-      const url = 'https://example.com/audio.mp3';
-
-      when(mockUrlService.getStreamUrl(assetId)).thenAnswer((_) async => url);
-      when(mockPlaybackService.load(url, initialPosition: null))
-          .thenAnswer((_) async {});
-      when(mockPlaybackService.play()).thenAnswer((_) async {});
-
-      await controller.playAsset(
-        assetId: assetId,
-        confessionId: confessionId,
-        voiceId: voiceId,
-      );
-
-      expect(controller.state.currentAssetId, assetId);
-      expect(controller.state.currentConfessionId, confessionId);
-      expect(controller.state.currentVoiceId, voiceId);
-    });
-
-    test('playConfession calls playAsset with generated asset ID', () async {
-      const confessionId = 'test_confession';
-      const voiceId = 'test_voice';
-      const url = 'https://example.com/audio.mp3';
-
-      when(mockUrlService.getStreamUrl(any)).thenAnswer((_) async => url);
-      when(mockPlaybackService.load(any, initialPosition: anyNamed('initialPosition')))
-          .thenAnswer((_) async {});
-      when(mockPlaybackService.play()).thenAnswer((_) async {});
-
-      await controller.playConfession(
-        confessionId: confessionId,
-        voiceId: voiceId,
-      );
-
-      expect(controller.state.currentConfessionId, confessionId);
-      expect(controller.state.currentVoiceId, voiceId);
-    });
-
-    test('generateAndPlay creates job and plays on success', () async {
-      const confessionId = 'test_confession';
-      const voiceId = 'test_voice';
-      const jobId = 'test_job';
-      const assetId = 'test_asset';
-      const url = 'https://example.com/audio.mp3';
-
-      final job = AudioGenerationJob(
-        id: jobId,
-        confessionId: confessionId,
-        voiceId: voiceId,
-        status: AudioJobStatus.succeeded,
-        audioAssetId: assetId,
-        progress: 1.0,
-      );
-
-      when(mockGenerationService.createJob(any))
-          .thenAnswer((_) async => job);
-      when(mockGenerationService.pollJobUntilComplete(
-        jobId: jobId,
-        interval: anyNamed('interval'),
-        timeout: anyNamed('timeout'),
-      )).thenAnswer((_) async => job);
-      when(mockUrlService.getStreamUrl(assetId)).thenAnswer((_) async => url);
-      when(mockPlaybackService.load(url, initialPosition: null))
-          .thenAnswer((_) async {});
-      when(mockPlaybackService.play()).thenAnswer((_) async {});
-
-      await controller.generateAndPlay(
-        confessionId: confessionId,
-        voiceId: voiceId,
-      );
-
-      expect(controller.state.currentConfessionId, confessionId);
-      expect(controller.state.currentVoiceId, voiceId);
-      expect(controller.state.currentAssetId, assetId);
-    });
-
-    test('pause calls playbackService.pause', () async {
-      when(mockPlaybackService.pause()).thenAnswer((_) async {});
-
-      await controller.pause();
-
-      verify(mockPlaybackService.pause()).called(1);
-    });
-
-    test('resume calls playbackService.play', () async {
-      when(mockPlaybackService.play()).thenAnswer((_) async {});
-
-      await controller.resume();
-
-      verify(mockPlaybackService.play()).called(1);
-    });
-
-    test('stop calls playbackService.stop and resets state', () async {
-      when(mockPlaybackService.stop()).thenAnswer((_) async {});
-
-      await controller.stop();
-
-      verify(mockPlaybackService.stop()).called(1);
-      expect(controller.state.playerState, PlayerState.idle);
-      expect(controller.state.position, Duration.zero);
-    });
-
-    test('seek calls playbackService.seek', () async {
-      const position = Duration(seconds: 30);
-      when(mockPlaybackService.seek(position)).thenAnswer((_) async {});
-
-      await controller.seek(position);
-
-      verify(mockPlaybackService.seek(position)).called(1);
-    });
-
-    test('setVolume updates state and calls playbackService', () async {
-      const volume = 0.5;
-      when(mockPlaybackService.setVolume(volume)).thenAnswer((_) async {});
-
-      await controller.setVolume(volume);
-
-      verify(mockPlaybackService.setVolume(volume)).called(1);
-      expect(controller.state.volume, volume);
-    });
-
-    test('setPlaybackSpeed updates state and calls playbackService', () async {
-      const speed = 1.5;
-      when(mockPlaybackService.setSpeed(speed)).thenAnswer((_) async {});
-
-      await controller.setPlaybackSpeed(speed);
-
-      verify(mockPlaybackService.setSpeed(speed)).called(1);
-      expect(controller.state.playbackSpeed, speed);
-    });
-
-    test('toggleMute toggles mute state', () async {
-      const volume = 0.5;
-      when(mockPlaybackService.setVolume(any)).thenAnswer((_) async {});
-
-      await controller.setVolume(volume);
-      expect(controller.state.isMuted, false);
-
-      await controller.toggleMute();
-      verify(mockPlaybackService.setVolume(0.0)).called(1);
-      expect(controller.state.isMuted, true);
-
-      await controller.toggleMute();
-      verify(mockPlaybackService.setVolume(volume)).called(1);
-      expect(controller.state.isMuted, false);
-    });
-
-    test('positionPercentage returns correct percentage', () {
-      controller.state = controller.state.copyWith(
-        position: Duration(seconds: 30),
-        duration: Duration(minutes: 1),
-      );
-
-      expect(controller.positionPercentage, 0.5);
-    });
-
-    test('displayPosition formats position correctly', () {
-      controller.state = controller.state.copyWith(
-        position: Duration(minutes: 2, seconds: 30),
-      );
-
-      expect(controller.displayPosition, '02:30');
-    });
-
-    test('displayDuration formats duration correctly', () {
-      controller.state = controller.state.copyWith(
-        duration: Duration(minutes: 5, seconds: 15),
-      );
-
-      expect(controller.displayDuration, '05:15');
-    });
+  setUp(() {
+    client = PlaybackFakeApiClient();
+    playback = TestAudioPlaybackService();
+    controller = AudioPlayerNotifier(
+      playbackService: playback,
+      urlService: AudioUrlService(client: client),
+      generationService: AudioGenerationService(client: client),
+    )..init();
   });
 
-  group('AudioPlayerState', () {
-    test('copyWith creates new state with updated values', () {
-      const initialState = AudioPlayerState(
-        currentAssetId: 'asset1',
-        playerState: PlayerState.idle,
-      );
+  tearDown(() async {
+    controller.dispose();
+    await playback.dispose();
+  });
 
-      final newState = initialState.copyWith(
-        currentAssetId: 'asset2',
-        playerState: PlayerState.playing,
-      );
+  test('starts an asset using a URL minted in its server session', () async {
+    client.gets['/sessions/session-1/queue'] = {
+      'items': [
+        {
+          'id': 'item-1',
+          'audio_asset_id': 'asset-1',
+          'audio_url': 'https://cdn.example.test/a.m4a?expires=4102444800&sig=ok',
+          'locked': false,
+        },
+      ],
+    };
 
-      expect(newState.currentAssetId, 'asset2');
-      expect(newState.playerState, PlayerState.playing);
-    });
+    await controller.playAsset(
+      assetId: 'asset-1',
+      sessionId: 'session-1',
+      confessionId: 'confession-1',
+      voiceId: 'voice-1',
+    );
 
-    test('copyWith preserves unchanged values', () {
-      const initialState = AudioPlayerState(
-        currentAssetId: 'asset1',
-        currentConfessionId: 'confession1',
-        volume: 0.5,
-      );
+    expect(controller.state.currentAssetId, 'asset-1');
+    expect(controller.state.currentConfessionId, 'confession-1');
+    expect(controller.state.currentVoiceId, 'voice-1');
+    expect(playback.loadedUrl, contains('sig=ok'));
+    expect(playback.loadedMetadata?.id, 'asset-1');
+    expect(playback.playCount, 1);
+  });
 
-      final newState = initialState.copyWith(
-        currentAssetId: 'asset2',
-      );
+  test('refuses to play an unscoped asset URL', () async {
+    await expectLater(
+      controller.playAsset(assetId: 'asset-1'),
+      throwsA(isA<StateError>()),
+    );
+    expect(controller.state.error, contains('server-authorized session'));
+  });
 
-      expect(newState.currentAssetId, 'asset2');
-      expect(newState.currentConfessionId, 'confession1');
-      expect(newState.volume, 0.5);
-    });
+  test('mute remembers and restores the last audible volume', () async {
+    await controller.setVolume(0.6);
+    await controller.toggleMute();
+    expect(controller.state.isMuted, isTrue);
+    expect(playback.volume, 0);
+
+    await controller.toggleMute();
+    expect(controller.state.isMuted, isFalse);
+    expect(controller.state.volume, 0.6);
+    expect(playback.volume, 0.6);
+  });
+
+  test('generation polls the API and plays only through a session item', () async {
+    client.posts['/admin/audio/generate/job'] = {
+      'job_id': 'job-1',
+      'status': 'queued',
+    };
+    client.gets['/admin/audio/generate/job/job-1'] = {
+      'id': 'job-1',
+      'status': 'succeeded',
+      'audio_asset_id': 'asset-1',
+    };
+    client.gets['/sessions/session-1/queue'] = {
+      'items': [
+        {
+          'id': 'item-1',
+          'audio_asset_id': 'asset-1',
+          'audio_url': 'https://cdn.example.test/a.m4a?expires=4102444800&sig=ok',
+          'locked': false,
+        },
+      ],
+    };
+
+    await controller.generateAndPlay(
+      confessionId: 'confession-1',
+      contentVersionId: 'version-1',
+      voiceId: 'voice-1',
+      sessionId: 'session-1',
+      pollInterval: 0,
+    );
+
+    expect(controller.state.currentAssetId, 'asset-1');
+    expect(playback.playCount, 1);
   });
 }

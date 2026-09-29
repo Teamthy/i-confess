@@ -9,10 +9,22 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Teamthy/i-confess/internal/auth"
 	"github.com/Teamthy/i-confess/internal/db/dbtest"
+	"github.com/Teamthy/i-confess/internal/ratelimit"
 )
+
+// allowAllRateLimiter keeps authorization tests independent from unrelated
+// per-IP abuse-control budgets.
+type allowAllRateLimiter struct{}
+
+func (allowAllRateLimiter) Allow(string, ratelimit.Rule) (bool, time.Duration) {
+	return true, 0
+}
+
+func (allowAllRateLimiter) Reset(string) {}
 
 // TestEveryAdminRouteRejectsANonAdmin covers an invariant that nothing else
 // enforces.
@@ -228,6 +240,7 @@ func TestRoleScopingIsEnforced(t *testing.T) {
 	defer dbConn.Close()
 
 	h := NewHandler(Config{JWTSecret: "test-secret-value", TokenTTL: "24h"}, dbConn)
+	h.SetLimiter(allowAllRateLimiter{})
 	h.BuildEngine()
 
 	srv := httptest.NewServer(h.Routes())

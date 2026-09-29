@@ -42,6 +42,7 @@ dependencies:
   cryptography: ^2.9.0
   flutter_secure_storage: ^11.0.0
   just_audio: ^0.10.5
+  just_audio_background: ^0.0.1-beta.17
   audio_session: ^0.2.2
   iconfess_api:
     path: ../../clients/dart

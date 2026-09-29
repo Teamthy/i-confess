@@ -2,7 +2,7 @@
   {
     "method": "POST",
     "path": "/admin/audio",
-    "auth": "admin",
+    "auth": "audio_producer,voice_manager",
     "summary": "Attach an audio asset to a confession",
     "tag": "admin-audio"
   },
@@ -11,6 +11,55 @@
     "path": "/admin/audio/generate",
     "auth": "audio_producer,voice_manager",
     "summary": "Generate audio; refused 451 when voice rights disallow it",
+    "tag": "admin-audio"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/audio/generate/batch",
+    "auth": "audio_producer,voice_manager",
+    "summary": "Trigger batch generation for multiple confessions",
+    "tag": "admin-audio"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/audio/generate/job",
+    "auth": "audio_producer,voice_manager",
+    "summary": "Queue a new audio generation job",
+    "tag": "admin-audio"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/audio/generate/job/{id}",
+    "auth": "audio_producer,voice_manager",
+    "summary": "Get status of a generation job",
+    "tag": "admin-audio"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/audio/generate/job/{id}/cancel",
+    "auth": "audio_producer,voice_manager",
+    "summary": "Cancel a pending generation job",
+    "tag": "admin-audio"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/audio/generate/job/{id}/retry",
+    "auth": "audio_producer,voice_manager",
+    "summary": "Retry a failed generation job",
+    "tag": "admin-audio"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/audio/generate/jobs",
+    "auth": "audio_producer,voice_manager",
+    "summary": "List all generation jobs",
+    "tag": "admin-audio"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/audio/generate/stats",
+    "auth": "audio_producer,voice_manager",
+    "summary": "Get generation statistics",
     "tag": "admin-audio"
   },
   {
@@ -25,6 +74,13 @@
     "path": "/admin/audio/jobs/{id}",
     "auth": "audio_producer,voice_manager",
     "summary": "One generation request with its outcome",
+    "tag": "admin-audio"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/audio/providers",
+    "auth": "audio_producer,voice_manager",
+    "summary": "List available TTS providers",
     "tag": "admin-audio"
   },
   {
@@ -64,6 +120,13 @@
   },
   {
     "method": "GET",
+    "path": "/admin/audit/export",
+    "auth": "admin",
+    "summary": "Export audit logs",
+    "tag": "admin-ops"
+  },
+  {
+    "method": "GET",
     "path": "/admin/bible/audio",
     "auth": "admin",
     "summary": "List Bible audio rights-review assets",
@@ -86,7 +149,7 @@
   {
     "method": "GET",
     "path": "/admin/bible/catalog",
-    "auth": "admin",
+    "auth": "content_admin,bible_admin",
     "summary": "Discover HelloAO translations for review",
     "tag": "admin-bible"
   },
@@ -99,8 +162,29 @@
   },
   {
     "method": "GET",
-    "path": "/admin/bible/health",
+    "path": "/admin/bible/cross-references",
     "auth": "admin",
+    "summary": "List proposed and reviewed cross-references",
+    "tag": "admin-bible"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/bible/cross-references",
+    "auth": "admin",
+    "summary": "Propose a cross-reference for review",
+    "tag": "admin-bible"
+  },
+  {
+    "method": "PATCH",
+    "path": "/admin/bible/cross-references/{id}",
+    "auth": "admin",
+    "summary": "Approve or withdraw a cross-reference",
+    "tag": "admin-bible"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/bible/health",
+    "auth": "content_admin,bible_admin",
     "summary": "Bible database and provider health",
     "tag": "admin-bible"
   },
@@ -114,7 +198,7 @@
   {
     "method": "GET",
     "path": "/admin/bible/overview",
-    "auth": "admin",
+    "auth": "content_admin,bible_admin",
     "summary": "Bible catalog and operations overview",
     "tag": "admin-bible"
   },
@@ -177,49 +261,49 @@
   {
     "method": "GET",
     "path": "/admin/categories",
-    "auth": "admin",
+    "auth": "content_admin,bible_admin,theological_reviewer",
     "summary": "List all categories including drafts",
     "tag": "admin-content"
   },
   {
     "method": "POST",
     "path": "/admin/categories",
-    "auth": "admin",
+    "auth": "content_admin,bible_admin,theological_reviewer",
     "summary": "Create a category",
     "tag": "admin-content"
   },
   {
     "method": "GET",
     "path": "/admin/confessions",
-    "auth": "admin",
+    "auth": "content_admin,bible_admin,theological_reviewer",
     "summary": "List all confessions including drafts",
     "tag": "admin-content"
   },
   {
     "method": "POST",
     "path": "/admin/confessions",
-    "auth": "admin",
+    "auth": "content_admin,bible_admin,theological_reviewer",
     "summary": "Create a confession",
     "tag": "admin-content"
   },
   {
     "method": "GET",
     "path": "/admin/confessions/{id}",
-    "auth": "admin",
+    "auth": "content_admin,bible_admin,theological_reviewer",
     "summary": "Read a confession with variants",
     "tag": "admin-content"
   },
   {
     "method": "PATCH",
     "path": "/admin/confessions/{id}",
-    "auth": "admin",
+    "auth": "content_admin,bible_admin,theological_reviewer",
     "summary": "Update or publish a confession",
     "tag": "admin-content"
   },
   {
     "method": "POST",
     "path": "/admin/confessions/{id}/qa",
-    "auth": "admin",
+    "auth": "content_admin",
     "summary": "Run Audio QA checklist (§75) before APPROVED",
     "tag": "admin-content"
   },
@@ -233,35 +317,35 @@
   {
     "method": "POST",
     "path": "/admin/moderation/appeals/{id}/decision",
-    "auth": "admin",
+    "auth": "support_admin,moderator",
     "summary": "Decide an appeal (upheld|overturned)",
     "tag": "admin-content"
   },
   {
     "method": "GET",
     "path": "/admin/moderation/queue",
-    "auth": "admin",
+    "auth": "support_admin,moderator,content_admin",
     "summary": "Moderation queue (UGC + editorial pending)",
     "tag": "admin-content"
   },
   {
     "method": "POST",
     "path": "/admin/moderation/reports/{id}/decision",
-    "auth": "admin",
+    "auth": "support_admin,moderator,content_admin",
     "summary": "Close an open report (resolved|dismissed)",
     "tag": "admin-content"
   },
   {
     "method": "POST",
     "path": "/admin/moderation/user-confessions/{id}/review",
-    "auth": "admin",
+    "auth": "support_admin,moderator,content_admin",
     "summary": "Review a user confession (approved|rejected)",
     "tag": "admin-content"
   },
   {
     "method": "GET",
     "path": "/admin/plans",
-    "auth": "admin",
+    "auth": "content_admin",
     "summary": "List pricing plans (admin-editable)",
     "tag": "admin-content"
   },
@@ -288,6 +372,55 @@
   },
   {
     "method": "GET",
+    "path": "/admin/rbac/permissions",
+    "auth": "admin",
+    "summary": "List all permissions grouped by category",
+    "tag": "admin-rbac"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/rbac/roles",
+    "auth": "admin",
+    "summary": "List all roles with permissions",
+    "tag": "admin-rbac"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/rbac/roles",
+    "auth": "admin",
+    "summary": "Create custom role",
+    "tag": "admin-rbac"
+  },
+  {
+    "method": "DELETE",
+    "path": "/admin/rbac/roles/{name}",
+    "auth": "admin",
+    "summary": "Delete custom role",
+    "tag": "admin-rbac"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/rbac/roles/{name}",
+    "auth": "admin",
+    "summary": "Get role by name",
+    "tag": "admin-rbac"
+  },
+  {
+    "method": "PUT",
+    "path": "/admin/rbac/roles/{name}",
+    "auth": "admin",
+    "summary": "Update custom role",
+    "tag": "admin-rbac"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/security/overview",
+    "auth": "admin",
+    "summary": "Security overview and recent events",
+    "tag": "admin-ops"
+  },
+  {
+    "method": "GET",
     "path": "/admin/stats",
     "auth": "admin",
     "summary": "Platform totals",
@@ -295,8 +428,22 @@
   },
   {
     "method": "GET",
-    "path": "/admin/users/admins",
+    "path": "/admin/system/health",
     "auth": "admin",
+    "summary": "System health and inventory",
+    "tag": "admin-ops"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/users",
+    "auth": "support_admin",
+    "summary": "List users with roles (super + support)",
+    "tag": "admin-users"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/users/admins",
+    "auth": "support_admin",
     "summary": "List admin accounts",
     "tag": "admin-users"
   },
@@ -304,20 +451,20 @@
     "method": "DELETE",
     "path": "/admin/users/role",
     "auth": "admin",
-    "summary": "Revoke an admin role",
+    "summary": "Revoke an admin role (legacy)",
     "tag": "admin-users"
   },
   {
     "method": "POST",
     "path": "/admin/users/role",
     "auth": "admin",
-    "summary": "Grant an admin role",
+    "summary": "Grant an admin role (legacy)",
     "tag": "admin-users"
   },
   {
     "method": "POST",
     "path": "/admin/users/status",
-    "auth": "admin",
+    "auth": "support_admin",
     "summary": "Suspend or restore an account",
     "tag": "admin-users"
   },
@@ -329,6 +476,13 @@
     "tag": "admin-users"
   },
   {
+    "method": "GET",
+    "path": "/admin/users/{id}",
+    "auth": "support_admin",
+    "summary": "Get user detail with roles and permissions",
+    "tag": "admin-users"
+  },
+  {
     "method": "POST",
     "path": "/admin/users/{id}/erase",
     "auth": "admin",
@@ -336,16 +490,58 @@
     "tag": "admin-users"
   },
   {
+    "method": "POST",
+    "path": "/admin/users/{id}/impersonate",
+    "auth": "admin",
+    "summary": "Impersonate a user for support (super admin only, audited)",
+    "tag": "admin-users"
+  },
+  {
+    "method": "DELETE",
+    "path": "/admin/users/{id}/roles",
+    "auth": "admin",
+    "summary": "Remove a role from a user (super only)",
+    "tag": "admin-users"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/users/{id}/roles",
+    "auth": "support_admin",
+    "summary": "Get user roles and permissions",
+    "tag": "admin-users"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/users/{id}/roles",
+    "auth": "admin",
+    "summary": "Assign a role to a user (super only)",
+    "tag": "admin-users"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/users/{id}/sessions",
+    "auth": "support_admin",
+    "summary": "List user sessions",
+    "tag": "admin-users"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/users/{id}/sessions/revoke",
+    "auth": "support_admin",
+    "summary": "Revoke all user sessions",
+    "tag": "admin-users"
+  },
+  {
     "method": "GET",
     "path": "/admin/voices",
-    "auth": "admin",
+    "auth": "audio_producer,voice_manager",
     "summary": "List voices",
     "tag": "admin-voice"
   },
   {
     "method": "POST",
     "path": "/admin/voices",
-    "auth": "admin",
+    "auth": "audio_producer,voice_manager",
     "summary": "Create a voice",
     "tag": "admin-voice"
   },
@@ -540,6 +736,13 @@
   },
   {
     "method": "GET",
+    "path": "/bible/audio",
+    "auth": "public",
+    "summary": "Get a signed, rights-gated Bible audio URL",
+    "tag": "bible-audio"
+  },
+  {
+    "method": "GET",
     "path": "/bible/books",
     "auth": "public",
     "summary": "Books available in a translation",
@@ -557,6 +760,13 @@
     "path": "/bible/books/{id}/chapters",
     "auth": "public",
     "summary": "Chapters available in a translation book",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/bible/compare",
+    "auth": "public",
+    "summary": "Compare a canonical passage across licensed translations",
     "tag": "bible"
   },
   {
@@ -582,9 +792,51 @@
   },
   {
     "method": "GET",
+    "path": "/bible/plans",
+    "auth": "public",
+    "summary": "List curated Bible reading plans",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/bible/plans/{slug}",
+    "auth": "public",
+    "summary": "Read a curated Bible reading plan",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/bible/random",
+    "auth": "public",
+    "summary": "A random passage from the reviewed corpus",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
     "path": "/bible/search",
     "auth": "public",
     "summary": "Search scripture or resolve a Bible reference",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/bible/structure",
+    "auth": "public",
+    "summary": "Canonical Bible structure: testaments, sections, books, chapters and reference verse counts",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/bible/topics",
+    "auth": "public",
+    "summary": "Bible topics drawn from the reviewed confession corpus",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/bible/topics/{slug}",
+    "auth": "public",
+    "summary": "One Bible topic and the passages it stands on",
     "tag": "bible"
   },
   {
@@ -599,6 +851,13 @@
     "path": "/bible/translations/{id}",
     "auth": "public",
     "summary": "One translation and its licensing metadata",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/bible/verse-of-day",
+    "auth": "public",
+    "summary": "Get the reviewed verse of the day",
     "tag": "bible"
   },
   {
@@ -764,6 +1023,48 @@
   },
   {
     "method": "GET",
+    "path": "/me/bible/collections",
+    "auth": "user",
+    "summary": "List private Bible collections and canonical references",
+    "tag": "bible"
+  },
+  {
+    "method": "POST",
+    "path": "/me/bible/collections",
+    "auth": "user",
+    "summary": "Create a private Bible collection",
+    "tag": "bible"
+  },
+  {
+    "method": "DELETE",
+    "path": "/me/bible/collections/{id}",
+    "auth": "user",
+    "summary": "Delete a private Bible collection",
+    "tag": "bible"
+  },
+  {
+    "method": "PATCH",
+    "path": "/me/bible/collections/{id}",
+    "auth": "user",
+    "summary": "Rename or edit a private Bible collection",
+    "tag": "bible"
+  },
+  {
+    "method": "POST",
+    "path": "/me/bible/collections/{id}/items",
+    "auth": "user",
+    "summary": "Add a canonical Bible reference to a collection",
+    "tag": "bible"
+  },
+  {
+    "method": "DELETE",
+    "path": "/me/bible/collections/{id}/items/{itemID}",
+    "auth": "user",
+    "summary": "Remove a Bible reference from a collection",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
     "path": "/me/bible/highlights",
     "auth": "user",
     "summary": "List private Bible highlights",
@@ -781,6 +1082,20 @@
     "path": "/me/bible/highlights/{id}",
     "auth": "user",
     "summary": "Delete a private Bible highlight",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/me/bible/history",
+    "auth": "user",
+    "summary": "Read private Bible history",
+    "tag": "bible"
+  },
+  {
+    "method": "POST",
+    "path": "/me/bible/history",
+    "auth": "user",
+    "summary": "Save private Bible reading position",
     "tag": "bible"
   },
   {
@@ -809,6 +1124,83 @@
     "path": "/me/bible/notes/{id}",
     "auth": "user",
     "summary": "Update a private Bible note with row-version conflict protection",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/me/bible/offline",
+    "auth": "user",
+    "summary": "List personal Bible offline licenses",
+    "tag": "bible"
+  },
+  {
+    "method": "POST",
+    "path": "/me/bible/offline",
+    "auth": "user",
+    "summary": "Build and license an offline Bible book package",
+    "tag": "bible"
+  },
+  {
+    "method": "DELETE",
+    "path": "/me/bible/offline/{id}",
+    "auth": "user",
+    "summary": "Revoke a personal offline license",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/me/bible/plans",
+    "auth": "user",
+    "summary": "List personal reading plan enrollments",
+    "tag": "bible"
+  },
+  {
+    "method": "POST",
+    "path": "/me/bible/plans/{id}/days/{day}",
+    "auth": "user",
+    "summary": "Complete a reading-plan day",
+    "tag": "bible"
+  },
+  {
+    "method": "POST",
+    "path": "/me/bible/plans/{id}/enroll",
+    "auth": "user",
+    "summary": "Enroll in a curated Bible reading plan",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/me/bible/preferences",
+    "auth": "user",
+    "summary": "Read private Bible preferences",
+    "tag": "bible"
+  },
+  {
+    "method": "PUT",
+    "path": "/me/bible/preferences",
+    "auth": "user",
+    "summary": "Save private Bible preferences",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/me/bible/progress",
+    "auth": "user",
+    "summary": "Read private Bible reading progress",
+    "tag": "bible"
+  },
+  {
+    "method": "POST",
+    "path": "/me/bible/progress",
+    "auth": "user",
+    "summary": "Mark a Bible chapter complete",
+    "tag": "bible"
+  },
+  {
+    "method": "POST",
+    "path": "/me/bible/sync",
+    "auth": "user",
+    "summary": "Synchronize private Bible study data",
     "tag": "bible"
   },
   {
@@ -1374,7 +1766,7 @@
   {
     "method": "POST",
     "path": "/v1/admin/audio",
-    "auth": "admin",
+    "auth": "audio_producer,voice_manager",
     "summary": "Attach an audio asset to a confession",
     "tag": "admin-audio"
   },
@@ -1383,6 +1775,55 @@
     "path": "/v1/admin/audio/generate",
     "auth": "audio_producer,voice_manager",
     "summary": "Generate audio; refused 451 when voice rights disallow it",
+    "tag": "admin-audio"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/admin/audio/generate/batch",
+    "auth": "audio_producer,voice_manager",
+    "summary": "Trigger batch generation for multiple confessions",
+    "tag": "admin-audio"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/admin/audio/generate/job",
+    "auth": "audio_producer,voice_manager",
+    "summary": "Queue a new audio generation job",
+    "tag": "admin-audio"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/admin/audio/generate/job/{id}",
+    "auth": "audio_producer,voice_manager",
+    "summary": "Get status of a generation job",
+    "tag": "admin-audio"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/admin/audio/generate/job/{id}/cancel",
+    "auth": "audio_producer,voice_manager",
+    "summary": "Cancel a pending generation job",
+    "tag": "admin-audio"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/admin/audio/generate/job/{id}/retry",
+    "auth": "audio_producer,voice_manager",
+    "summary": "Retry a failed generation job",
+    "tag": "admin-audio"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/admin/audio/generate/jobs",
+    "auth": "audio_producer,voice_manager",
+    "summary": "List all generation jobs",
+    "tag": "admin-audio"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/admin/audio/generate/stats",
+    "auth": "audio_producer,voice_manager",
+    "summary": "Get generation statistics",
     "tag": "admin-audio"
   },
   {
@@ -1397,6 +1838,13 @@
     "path": "/v1/admin/audio/jobs/{id}",
     "auth": "audio_producer,voice_manager",
     "summary": "One generation request with its outcome",
+    "tag": "admin-audio"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/admin/audio/providers",
+    "auth": "audio_producer,voice_manager",
+    "summary": "List available TTS providers",
     "tag": "admin-audio"
   },
   {
@@ -1436,50 +1884,190 @@
   },
   {
     "method": "GET",
-    "path": "/v1/admin/categories",
+    "path": "/v1/admin/audit/export",
     "auth": "admin",
+    "summary": "Export audit logs",
+    "tag": "admin-ops"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/admin/bible/audio",
+    "auth": "admin",
+    "summary": "List Bible audio rights-review assets",
+    "tag": "admin-bible"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/admin/bible/audio",
+    "auth": "admin",
+    "summary": "Register a checksum-verified Bible audio manifest",
+    "tag": "admin-bible"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/admin/bible/audio/{id}/review",
+    "auth": "admin",
+    "summary": "Approve or withdraw rights-cleared Bible audio",
+    "tag": "admin-bible"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/admin/bible/catalog",
+    "auth": "content_admin,bible_admin",
+    "summary": "Discover HelloAO translations for review",
+    "tag": "admin-bible"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/admin/bible/catalog/sync",
+    "auth": "admin",
+    "summary": "Synchronize HelloAO catalog metadata without granting rights",
+    "tag": "admin-bible"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/admin/bible/cross-references",
+    "auth": "admin",
+    "summary": "List proposed and reviewed cross-references",
+    "tag": "admin-bible"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/admin/bible/cross-references",
+    "auth": "admin",
+    "summary": "Propose a cross-reference for review",
+    "tag": "admin-bible"
+  },
+  {
+    "method": "PATCH",
+    "path": "/v1/admin/bible/cross-references/{id}",
+    "auth": "admin",
+    "summary": "Approve or withdraw a cross-reference",
+    "tag": "admin-bible"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/admin/bible/health",
+    "auth": "content_admin,bible_admin",
+    "summary": "Bible database and provider health",
+    "tag": "admin-bible"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/admin/bible/metrics",
+    "auth": "admin",
+    "summary": "Sanitized Bible operation metrics without private study payloads",
+    "tag": "admin-bible"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/admin/bible/overview",
+    "auth": "content_admin,bible_admin",
+    "summary": "Bible catalog and operations overview",
+    "tag": "admin-bible"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/admin/bible/plans",
+    "auth": "admin",
+    "summary": "List Bible plans across editorial statuses",
+    "tag": "admin-bible"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/admin/bible/plans",
+    "auth": "admin",
+    "summary": "Create a draft Bible reading plan",
+    "tag": "admin-bible"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/admin/bible/plans/{id}",
+    "auth": "admin",
+    "summary": "Load a Bible plan and its unpublished day references",
+    "tag": "admin-bible"
+  },
+  {
+    "method": "PATCH",
+    "path": "/v1/admin/bible/plans/{id}",
+    "auth": "admin",
+    "summary": "Review or publish a Bible reading plan",
+    "tag": "admin-bible"
+  },
+  {
+    "method": "PUT",
+    "path": "/v1/admin/bible/plans/{id}/days/{day}",
+    "auth": "admin",
+    "summary": "Edit an unpublished Bible plan day",
+    "tag": "admin-bible"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/admin/bible/translations/{id}/rights",
+    "auth": "admin",
+    "summary": "Review independent Bible translation rights",
+    "tag": "admin-bible"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/admin/bible/verse-of-day",
+    "auth": "admin",
+    "summary": "List reviewed Bible verses of the day",
+    "tag": "admin-bible"
+  },
+  {
+    "method": "PUT",
+    "path": "/v1/admin/bible/verse-of-day/{day}",
+    "auth": "admin",
+    "summary": "Review a verse-of-day reference",
+    "tag": "admin-bible"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/admin/categories",
+    "auth": "content_admin,bible_admin,theological_reviewer",
     "summary": "List all categories including drafts",
     "tag": "admin-content"
   },
   {
     "method": "POST",
     "path": "/v1/admin/categories",
-    "auth": "admin",
+    "auth": "content_admin,bible_admin,theological_reviewer",
     "summary": "Create a category",
     "tag": "admin-content"
   },
   {
     "method": "GET",
     "path": "/v1/admin/confessions",
-    "auth": "admin",
+    "auth": "content_admin,bible_admin,theological_reviewer",
     "summary": "List all confessions including drafts",
     "tag": "admin-content"
   },
   {
     "method": "POST",
     "path": "/v1/admin/confessions",
-    "auth": "admin",
+    "auth": "content_admin,bible_admin,theological_reviewer",
     "summary": "Create a confession",
     "tag": "admin-content"
   },
   {
     "method": "GET",
     "path": "/v1/admin/confessions/{id}",
-    "auth": "admin",
+    "auth": "content_admin,bible_admin,theological_reviewer",
     "summary": "Read a confession with variants",
     "tag": "admin-content"
   },
   {
     "method": "PATCH",
     "path": "/v1/admin/confessions/{id}",
-    "auth": "admin",
+    "auth": "content_admin,bible_admin,theological_reviewer",
     "summary": "Update or publish a confession",
     "tag": "admin-content"
   },
   {
     "method": "POST",
     "path": "/v1/admin/confessions/{id}/qa",
-    "auth": "admin",
+    "auth": "content_admin",
     "summary": "Run Audio QA checklist (§75) before APPROVED",
     "tag": "admin-content"
   },
@@ -1493,35 +2081,35 @@
   {
     "method": "POST",
     "path": "/v1/admin/moderation/appeals/{id}/decision",
-    "auth": "admin",
+    "auth": "support_admin,moderator",
     "summary": "Decide an appeal (upheld|overturned)",
     "tag": "admin-content"
   },
   {
     "method": "GET",
     "path": "/v1/admin/moderation/queue",
-    "auth": "admin",
+    "auth": "support_admin,moderator,content_admin",
     "summary": "Moderation queue (UGC + editorial pending)",
     "tag": "admin-content"
   },
   {
     "method": "POST",
     "path": "/v1/admin/moderation/reports/{id}/decision",
-    "auth": "admin",
+    "auth": "support_admin,moderator,content_admin",
     "summary": "Close an open report (resolved|dismissed)",
     "tag": "admin-content"
   },
   {
     "method": "POST",
     "path": "/v1/admin/moderation/user-confessions/{id}/review",
-    "auth": "admin",
+    "auth": "support_admin,moderator,content_admin",
     "summary": "Review a user confession (approved|rejected)",
     "tag": "admin-content"
   },
   {
     "method": "GET",
     "path": "/v1/admin/plans",
-    "auth": "admin",
+    "auth": "content_admin",
     "summary": "List pricing plans (admin-editable)",
     "tag": "admin-content"
   },
@@ -1548,10 +2136,73 @@
   },
   {
     "method": "GET",
+    "path": "/v1/admin/rbac/permissions",
+    "auth": "admin",
+    "summary": "List all permissions grouped by category",
+    "tag": "admin-rbac"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/admin/rbac/roles",
+    "auth": "admin",
+    "summary": "List all roles with permissions",
+    "tag": "admin-rbac"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/admin/rbac/roles",
+    "auth": "admin",
+    "summary": "Create custom role",
+    "tag": "admin-rbac"
+  },
+  {
+    "method": "DELETE",
+    "path": "/v1/admin/rbac/roles/{name}",
+    "auth": "admin",
+    "summary": "Delete custom role",
+    "tag": "admin-rbac"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/admin/rbac/roles/{name}",
+    "auth": "admin",
+    "summary": "Get role by name",
+    "tag": "admin-rbac"
+  },
+  {
+    "method": "PUT",
+    "path": "/v1/admin/rbac/roles/{name}",
+    "auth": "admin",
+    "summary": "Update custom role",
+    "tag": "admin-rbac"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/admin/security/overview",
+    "auth": "admin",
+    "summary": "Security overview and recent events",
+    "tag": "admin-ops"
+  },
+  {
+    "method": "GET",
     "path": "/v1/admin/stats",
     "auth": "admin",
     "summary": "Platform totals",
     "tag": "admin-ops"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/admin/system/health",
+    "auth": "admin",
+    "summary": "System health and inventory",
+    "tag": "admin-ops"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/admin/users",
+    "auth": "support_admin",
+    "summary": "List users with roles (super + support)",
+    "tag": "admin-users"
   },
   {
     "method": "GET",
@@ -1589,6 +2240,13 @@
     "tag": "admin-users"
   },
   {
+    "method": "GET",
+    "path": "/v1/admin/users/{id}",
+    "auth": "support_admin",
+    "summary": "Get user detail with roles",
+    "tag": "admin-users"
+  },
+  {
     "method": "POST",
     "path": "/v1/admin/users/{id}/erase",
     "auth": "admin",
@@ -1596,16 +2254,58 @@
     "tag": "admin-users"
   },
   {
+    "method": "POST",
+    "path": "/v1/admin/users/{id}/impersonate",
+    "auth": "admin",
+    "summary": "Impersonate a user for support (super admin only, audited)",
+    "tag": "admin-users"
+  },
+  {
+    "method": "DELETE",
+    "path": "/v1/admin/users/{id}/roles",
+    "auth": "admin",
+    "summary": "Remove a role from a user",
+    "tag": "admin-users"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/admin/users/{id}/roles",
+    "auth": "support_admin",
+    "summary": "Get user roles and permissions",
+    "tag": "admin-users"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/admin/users/{id}/roles",
+    "auth": "admin",
+    "summary": "Assign a role to a user",
+    "tag": "admin-users"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/admin/users/{id}/sessions",
+    "auth": "support_admin",
+    "summary": "List user sessions",
+    "tag": "admin-users"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/admin/users/{id}/sessions/revoke",
+    "auth": "support_admin",
+    "summary": "Revoke all user sessions",
+    "tag": "admin-users"
+  },
+  {
     "method": "GET",
     "path": "/v1/admin/voices",
-    "auth": "admin",
+    "auth": "audio_producer,voice_manager",
     "summary": "List voices",
     "tag": "admin-voice"
   },
   {
     "method": "POST",
     "path": "/v1/admin/voices",
-    "auth": "admin",
+    "auth": "audio_producer,voice_manager",
     "summary": "Create a voice",
     "tag": "admin-voice"
   },
@@ -1870,9 +2570,37 @@
   },
   {
     "method": "GET",
+    "path": "/v1/bible/random",
+    "auth": "public",
+    "summary": "A random passage from the reviewed corpus",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
     "path": "/v1/bible/search",
     "auth": "public",
     "summary": "Search scripture or resolve a Bible reference",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/bible/structure",
+    "auth": "public",
+    "summary": "Canonical Bible structure: testaments, sections, books, chapters and reference verse counts",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/bible/topics",
+    "auth": "public",
+    "summary": "Bible topics drawn from the reviewed confession corpus",
+    "tag": "bible"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/bible/topics/{slug}",
+    "auth": "public",
+    "summary": "One Bible topic and the passages it stands on",
     "tag": "bible"
   },
   {

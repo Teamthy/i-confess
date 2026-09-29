@@ -6,6 +6,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -146,6 +147,20 @@ class CachedAudioInfo {
   }
 }
 
+class _PendingAudioDownload {
+  const _PendingAudioDownload({
+    required this.url,
+    required this.fileName,
+    required this.fileSize,
+    required this.expiration,
+  });
+
+  final String url;
+  final String fileName;
+  final int? fileSize;
+  final Duration? expiration;
+}
+
 /// Service for managing offline audio caching.
 ///
 /// This service downloads and caches audio files for offline playback,
@@ -164,6 +179,8 @@ class OfflineAudioService {
   
   // Download queue
   final List<String> _downloadQueue = [];
+  final Map<String, _PendingAudioDownload> _pendingDownloads = {};
+  bool _isDownloading = false;
   
   // Whether the service is initialized
   bool _isInitialized = false;
@@ -195,9 +212,9 @@ class OfflineAudioService {
   /// Creates an offline audio service.
   OfflineAudioService({
     OfflineAudioConfig? config,
-    SharedPreferences? prefs,
-  }) : _config = config ?? const OfflineAudioConfig(),
-       _prefs = prefs ?? throw ArgumentError('prefs cannot be null');
+    required SharedPreferences prefs,
+  })  : _config = config ?? const OfflineAudioConfig(),
+        _prefs = prefs;
 
   /// Creates an offline audio service with default SharedPreferences.
   static Future<OfflineAudioService> create([OfflineAudioConfig? config]) async {
@@ -302,6 +319,10 @@ class OfflineAudioService {
     int? fileSize,
     Duration? expiration,
   }) async {
+    if (!_isInitialized || _cacheDirectory == null) {
+      throw StateError('OfflineAudioService.init() must complete before caching.');
+    }
+    await _makeRoomIfNeeded();
     if (!isCacheFull) {
       await _addToDownloadQueue(assetId, url, fileName, fileSize, expiration);
     } else {
@@ -322,23 +343,35 @@ class OfflineAudioService {
       return;
     }
     
+    _pendingDownloads[assetId] = _PendingAudioDownload(
+      url: url,
+      fileName: fileName,
+      fileSize: fileSize,
+      expiration: expiration,
+    );
     _downloadQueue.add(assetId);
-    
-    // Start download
-    _downloadNext();
+
+    // Start the next queued download without blocking the UI.
+    unawaited(_downloadNext());
   }
 
   /// Downloads the next item in the queue.
   Future<void> _downloadNext() async {
-    if (_downloadQueue.isEmpty) return;
-    
+    if (_downloadQueue.isEmpty || _isDownloading) return;
+
     final assetId = _downloadQueue.first;
-    
-    // Get the URL for this asset
-    // In a real implementation, you would get this from your API
-    // For now, we'll use a placeholder
-    
+    final download = _pendingDownloads[assetId];
+    if (download == null) {
+      _downloadQueue.remove(assetId);
+      unawaited(_downloadNext());
+      return;
+    }
+    _isDownloading = true;
+
     try {
+      if (download.url.isEmpty) {
+        throw StateError('A session-authorized signed audio URL is required.');
+      }
       // Update status to downloading
       _cache[assetId] = CachedAudioInfo(
         assetId: assetId,
@@ -350,20 +383,21 @@ class OfflineAudioService {
       );
       _updateStreams();
       
-      // Download the file
-      // In a real implementation, use HttpClient or Dio
-      // For now, we'll simulate the download
-      
+      // This placeholder remains a simulation. The server already exposes
+      // POST /me/downloads, which returns a time-limited licence and signed
+      // fetch URL; the real store must persist that licence expiry and keep
+      // audio encrypted/account-bound before this can claim offline success.
       await _simulateDownload(assetId);
-      
-      // On success, update cache
-      final filePath = path.join(_cacheDirectory!.path, '$assetId.mp3');
+
+      final filePath = path.join(_cacheDirectory!.path, download.fileName);
       _cache[assetId] = CachedAudioInfo(
         assetId: assetId,
         filePath: filePath,
-        fileSize: fileSize ?? 0,
+        fileSize: download.fileSize ?? 0,
         cachedAt: DateTime.now(),
-        expiresAt: expiration != null ? DateTime.now().add(expiration) : null,
+        expiresAt: download.expiration != null
+            ? DateTime.now().add(download.expiration!)
+            : null,
         status: OfflineAudioStatus.cached,
         downloadProgress: 1.0,
       );
@@ -373,10 +407,7 @@ class OfflineAudioService {
       
       // Remove from queue
       _downloadQueue.remove(assetId);
-      
-      // Download next
-      _downloadNext();
-      
+      _pendingDownloads.remove(assetId);
       _updateStreams();
       debugPrint('[OfflineAudioService] Downloaded: $assetId');
     } catch (e) {
@@ -391,10 +422,12 @@ class OfflineAudioService {
       );
       
       _downloadQueue.remove(assetId);
-      _downloadNext();
+      _pendingDownloads.remove(assetId);
       _updateStreams();
-      
       debugPrint('[OfflineAudioService] Download failed for $assetId: $e');
+    } finally {
+      _isDownloading = false;
+      if (_downloadQueue.isNotEmpty) unawaited(_downloadNext());
     }
   }
 
@@ -411,48 +444,29 @@ class OfflineAudioService {
     }
   }
 
-  /// Caches multiple assets.
+  /// Direct asset IDs are not offline grants. Use `/me/downloads` to create a
+  /// server licence and obtain its short-lived signed fetch URL.
   Future<void> cacheAssets(List<AudioAsset> assets) async {
-    for (final asset in assets) {
-      // In a real implementation, get the URL from your API
-      await cacheAsset(
-        assetId: asset.id,
-        url: 'https://your-api.com/audio/${asset.id}',
-        fileName: '${asset.id}.mp3',
-        fileSize: asset.fileSize,
-      );
-    }
+    if (assets.isEmpty) return;
+    throw UnsupportedError(
+      'Offline audio must be created through the server download-licence flow.',
+    );
   }
 
-  /// Caches a queue for offline playback.
+  /// A playback queue is not an offline licence and must not be cached directly.
   Future<void> cacheQueue(AudioQueue queue) async {
-    for (final item in queue.items) {
-      await cacheAsset(
-        assetId: item.asset.id,
-        url: 'https://your-api.com/audio/${item.asset.id}',
-        fileName: '${item.asset.id}.mp3',
-        fileSize: item.asset.fileSize.toInt(),
-      );
-    }
+    if (queue.isEmpty) return;
+    throw UnsupportedError(
+      'Offline queues require a server download licence for each asset.',
+    );
   }
 
-  /// Preloads the next items in the queue.
+  /// Queue preloading is disabled until licensed, encrypted downloads are wired.
   Future<void> preloadNextInQueue(AudioQueue queue, int count) async {
-    if (!_config.preloadNextInQueue) return;
-    
-    final currentIndex = queue.currentIndex;
-    final itemsToPreload = queue.items.skip(currentIndex + 1).take(count);
-    
-    for (final item in itemsToPreload) {
-      if (!isCached(item.asset.id)) {
-        await cacheAsset(
-          assetId: item.asset.id,
-          url: 'https://your-api.com/audio/${item.asset.id}',
-          fileName: '${item.asset.id}.mp3',
-          fileSize: item.asset.fileSize.toInt(),
-        );
-      }
-    }
+    if (!_config.preloadNextInQueue || count <= 0 || queue.isEmpty) return;
+    throw UnsupportedError(
+      'Queue preloading requires server download licences.',
+    );
   }
 
   /// Removes an asset from the cache.
@@ -559,7 +573,9 @@ class OfflineAudioService {
     if (filePath == null) return null;
     
     final file = File(filePath);
-    return file.existsSync() ? file.openRead() : null;
+    return file.existsSync()
+        ? file.openRead().map(Uint8List.fromList)
+        : null;
   }
 
   /// Gets all cached assets.
@@ -620,7 +636,8 @@ class OfflineAudioService {
     await _cacheStatusController.close();
     await _downloadProgressController.close();
     await _cacheSizeController.close();
-    
+    _pendingDownloads.clear();
+    _downloadQueue.clear();
     _isInitialized = false;
     debugPrint('[OfflineAudioService] Disposed');
   }
@@ -642,9 +659,9 @@ extension OfflineAudioExtension on AudioAsset {
   Future<void> cacheForOffline(OfflineAudioService service) async {
     await service.cacheAsset(
       assetId: id,
-      url: '', // In real implementation, get from API
+      url: '',
       fileName: '$id.mp3',
-      fileSize: fileSize.toInt(),
+      fileSize: sizeBytes,
     );
   }
 

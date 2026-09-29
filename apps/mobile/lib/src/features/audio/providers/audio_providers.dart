@@ -1,148 +1,92 @@
-/// Riverpod providers for audio features.
-///
-/// This file contains all the providers needed for audio functionality,
-/// including services, controllers, and state management.
+/// Riverpod providers for the audio generation and playback features.
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:http/http.dart';
+import 'package:flutter_riverpod/legacy.dart';
 
-import '../../../core/services/api_service.dart';
+import '../../../core/di/providers.dart';
+import '../controllers/audio_player_controller.dart';
 import '../models/audio_asset.dart';
 import '../models/audio_generation_job.dart';
 import '../models/audio_generation_request.dart';
 import '../models/tts_provider.dart';
 import '../services/audio_generation_service.dart';
 import '../services/audio_url_service.dart';
-import '../controllers/audio_player_controller.dart';
 
-/// Provider for the HTTP client.
-final httpClientProvider = Provider<Client>((ref) {
-  return Client();
-});
-
-/// Provider for the API service.
-final apiServiceProvider = Provider<ApiService>((ref) {
-  return ApiService(baseUrl: const String.fromEnvironment('API_BASE_URL'));
-});
-
-/// Provider for the audio generation service.
 final audioGenerationServiceProvider = Provider<AudioGenerationService>((ref) {
-  final apiService = ref.watch(apiServiceProvider);
-  return AudioGenerationService(apiService: apiService);
+  return AudioGenerationService(client: ref.watch(apiClientProvider));
 });
 
-/// Provider for the audio URL service.
 final audioUrlServiceProvider = Provider<AudioUrlService>((ref) {
-  return AudioUrlService();
+  return AudioUrlService(client: ref.watch(apiClientProvider));
 });
 
-/// Provider for the current audio generation job.
 final currentAudioJobProvider = StateProvider<AudioGenerationJob?>((ref) => null);
-
-/// Provider for the current audio asset.
 final currentAudioAssetProvider = StateProvider<AudioAsset?>((ref) => null);
 
-/// Provider for the list of TTS providers.
 final ttsProvidersProvider = FutureProvider<List<TtsProvider>>((ref) async {
-  final service = ref.watch(audioGenerationServiceProvider);
-  return service.getTtsProviders();
+  final response = await ref.watch(audioGenerationServiceProvider).getProviders();
+  return response.providers;
 });
 
-/// Provider for the list of audio generation jobs.
-final audioJobsProvider = FutureProvider<List<AudioGenerationJob>>((ref) async {
-  final service = ref.watch(audioGenerationServiceProvider);
-  return service.getJobs();
+final audioJobsProvider = FutureProvider<List<AudioGenerationJob>>((ref) {
+  return ref.watch(audioGenerationServiceProvider).listJobs();
 });
 
-/// Provider for the audio generation job statistics.
-final audioGenerationStatsProvider = FutureProvider<Map<String, dynamic>>((ref) async {
-  final service = ref.watch(audioGenerationServiceProvider);
-  return service.getStats();
+final audioGenerationStatsProvider = FutureProvider<AudioGenerationStats>((ref) {
+  return ref.watch(audioGenerationServiceProvider).getStats();
 });
 
-/// Provider for the audio player controller.
-///
-/// This is the main provider for controlling audio playback.
-/// Use this to play, pause, stop, seek, and control audio.
+/// Main state provider for the feature-level player controls.
 final audioPlayerProvider = audioPlayerControllerProvider;
 
-/// Provider for whether audio is currently playing.
 final isPlayingProvider = Provider<bool>((ref) {
-  final state = ref.watch(audioPlayerProvider);
-  return state.playerState == PlayerState.playing;
+  return ref.watch(audioPlayerProvider).playerState == AudioPlayerPhase.playing;
 });
 
-/// Provider for whether audio is loading.
 final isLoadingProvider = Provider<bool>((ref) {
   final state = ref.watch(audioPlayerProvider);
-  return state.playerState == PlayerState.loading || state.isBuffering;
+  return state.playerState == AudioPlayerPhase.loading || state.isBuffering;
 });
 
-/// Provider for whether audio is paused.
 final isPausedProvider = Provider<bool>((ref) {
-  final state = ref.watch(audioPlayerProvider);
-  return state.playerState == PlayerState.paused;
+  return ref.watch(audioPlayerProvider).playerState == AudioPlayerPhase.paused;
 });
 
-/// Provider for the current position as a percentage.
 final positionPercentageProvider = Provider<double>((ref) {
-  final controller = ref.watch(audioPlayerProvider.notifier);
-  return controller.positionPercentage;
+  return ref.watch(audioPlayerProvider.notifier).positionPercentage;
 });
 
-/// Provider for the display position string.
 final displayPositionProvider = Provider<String>((ref) {
-  final controller = ref.watch(audioPlayerProvider.notifier);
-  return controller.displayPosition;
+  return ref.watch(audioPlayerProvider.notifier).displayPosition;
 });
 
-/// Provider for the display duration string.
 final displayDurationProvider = Provider<String>((ref) {
-  final controller = ref.watch(audioPlayerProvider.notifier);
-  return controller.displayDuration;
+  return ref.watch(audioPlayerProvider.notifier).displayDuration;
 });
 
-/// Provider for the current error message.
 final audioErrorProvider = Provider<String?>((ref) {
-  final state = ref.watch(audioPlayerProvider);
-  return state.error;
+  return ref.watch(audioPlayerProvider).error;
 });
 
-/// Provider for creating a new audio generation job.
-final createAudioJobProvider = FutureProvider.family<AudioGenerationJob, AudioGenerationRequest>(
-  (ref, request) async {
-    final service = ref.watch(audioGenerationServiceProvider);
-    return service.createJob(request);
-  },
+final createAudioJobProvider =
+    FutureProvider.family<AudioGenerationJob, AudioGenerationRequest>(
+  (ref, request) =>
+      ref.watch(audioGenerationServiceProvider).createJob(request),
 );
 
-/// Provider for getting a specific audio generation job.
 final getAudioJobProvider = FutureProvider.family<AudioGenerationJob, String>(
-  (ref, jobId) async {
-    final service = ref.watch(audioGenerationServiceProvider);
-    return service.getJob(jobId);
-  },
+  (ref, jobId) => ref.watch(audioGenerationServiceProvider).getJob(jobId),
 );
 
-/// Provider for retrying an audio generation job.
 final retryAudioJobProvider = FutureProvider.family<AudioGenerationJob, String>(
-  (ref, jobId) async {
-    final service = ref.watch(audioGenerationServiceProvider);
-    return service.retryJob(jobId);
-  },
+  (ref, jobId) => ref.watch(audioGenerationServiceProvider).retryJob(jobId),
 );
 
-/// Provider for canceling an audio generation job.
 final cancelAudioJobProvider = FutureProvider.family<AudioGenerationJob, String>(
-  (ref, jobId) async {
-    final service = ref.watch(audioGenerationServiceProvider);
-    return service.cancelJob(jobId);
-  },
+  (ref, jobId) => ref.watch(audioGenerationServiceProvider).cancelJob(jobId),
 );
 
-/// Provider for creating a batch of audio generation jobs.
-final createBatchAudioJobsProvider = FutureProvider.family<List<AudioGenerationJob>, BatchAudioGenerationRequest>(
-  (ref, request) async {
-    final service = ref.watch(audioGenerationServiceProvider);
-    return service.createBatchJobs(request);
-  },
+final createBatchAudioJobsProvider =
+    FutureProvider.family<BatchAudioGenerationResponse, BatchAudioGenerationRequest>(
+  (ref, request) =>
+      ref.watch(audioGenerationServiceProvider).batchGenerate(request),
 );

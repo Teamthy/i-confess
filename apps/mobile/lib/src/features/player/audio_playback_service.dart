@@ -1,6 +1,24 @@
 import 'dart:async';
 import 'package:audio_session/audio_session.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:just_audio_background/just_audio_background.dart';
+
+/// Metadata used by background notifications and media controls.
+class PlaybackMediaMetadata {
+  const PlaybackMediaMetadata({
+    required this.id,
+    required this.title,
+    this.artist = 'I-Confess',
+    this.album = 'I-Confess',
+    this.artUri,
+  });
+
+  final String id;
+  final String title;
+  final String artist;
+  final String album;
+  final Uri? artUri;
+}
 
 /// The status of low-level audio stream playback.
 enum AudioPlaybackStatus {
@@ -17,10 +35,16 @@ enum AudioPlaybackStatus {
 ///
 /// Decouples audio player implementation (just_audio) from session lifecycle business logic.
 abstract interface class AudioPlaybackService {
-  Future<void> load(String url, {Duration? initialPosition});
+  Future<void> load(
+    String url, {
+    Duration? initialPosition,
+    PlaybackMediaMetadata? metadata,
+  });
   Future<void> play();
   Future<void> pause();
   Future<void> seek(Duration position);
+  Future<void> setVolume(double volume);
+  Future<void> setSpeed(double speed);
   Future<void> stop();
   Future<void> dispose();
 
@@ -126,10 +150,24 @@ class JustAudioPlaybackService implements AudioPlaybackService {
   Stream<void> get becomingNoisyStream => _becomingNoisyController.stream;
 
   @override
-  Future<void> load(String url, {Duration? initialPosition}) async {
+  Future<void> load(
+    String url, {
+    Duration? initialPosition,
+    PlaybackMediaMetadata? metadata,
+  }) async {
     _updateStatus(AudioPlaybackStatus.loading);
     try {
-      await _player.setUrl(url, initialPosition: initialPosition);
+      final source = AudioSource.uri(
+        Uri.parse(url),
+        tag: MediaItem(
+          id: metadata?.id ?? url,
+          title: metadata?.title ?? 'I-Confess',
+          artist: metadata?.artist ?? 'I-Confess',
+          album: metadata?.album ?? 'I-Confess',
+          artUri: metadata?.artUri,
+        ),
+      );
+      await _player.setAudioSource(source, initialPosition: initialPosition);
       _updateStatus(AudioPlaybackStatus.ready);
     } catch (e) {
       _updateStatus(AudioPlaybackStatus.error);
@@ -157,6 +195,16 @@ class JustAudioPlaybackService implements AudioPlaybackService {
   @override
   Future<void> seek(Duration position) async {
     await _player.seek(position);
+  }
+
+  @override
+  Future<void> setVolume(double volume) async {
+    await _player.setVolume(volume.clamp(0.0, 1.0).toDouble());
+  }
+
+  @override
+  Future<void> setSpeed(double speed) async {
+    await _player.setSpeed(speed.clamp(0.5, 2.0).toDouble());
   }
 
   @override
@@ -193,9 +241,12 @@ class TestAudioPlaybackService implements AudioPlaybackService {
 
   String? loadedUrl;
   Duration? loadedInitialPosition;
+  PlaybackMediaMetadata? loadedMetadata;
   int playCount = 0;
   int pauseCount = 0;
   int stopCount = 0;
+  double volume = 1.0;
+  double speed = 1.0;
   Duration? lastSeek;
 
   @override
@@ -251,9 +302,14 @@ class TestAudioPlaybackService implements AudioPlaybackService {
   }
 
   @override
-  Future<void> load(String url, {Duration? initialPosition}) async {
+  Future<void> load(
+    String url, {
+    Duration? initialPosition,
+    PlaybackMediaMetadata? metadata,
+  }) async {
     loadedUrl = url;
     loadedInitialPosition = initialPosition;
+    loadedMetadata = metadata;
     _position = initialPosition ?? Duration.zero;
     emitStatus(AudioPlaybackStatus.ready);
   }
@@ -274,6 +330,16 @@ class TestAudioPlaybackService implements AudioPlaybackService {
   Future<void> seek(Duration position) async {
     lastSeek = position;
     emitPosition(position);
+  }
+
+  @override
+  Future<void> setVolume(double value) async {
+    volume = value.clamp(0.0, 1.0).toDouble();
+  }
+
+  @override
+  Future<void> setSpeed(double value) async {
+    speed = value.clamp(0.5, 2.0).toDouble();
   }
 
   @override

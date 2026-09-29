@@ -2,6 +2,8 @@
 ///
 /// This widget provides a full-featured audio player UI with playback controls,
 /// progress indicator, and audio generation capabilities.
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../controllers/audio_player_controller.dart';
@@ -18,6 +20,15 @@ class AudioPlayerWidget extends ConsumerWidget {
   
   /// The ID of the audio asset to play.
   final String? assetId;
+
+  /// The immutable content snapshot required to request audio generation.
+  final String? contentVersionId;
+
+  /// Server session whose queue granted access to the signed audio URL.
+  final String? sessionId;
+
+  /// Optional session-queue item ID to resolve inside [sessionId].
+  final String? sessionItemId;
   
   /// Whether to show the full player or a compact version.
   final bool compact;
@@ -33,6 +44,9 @@ class AudioPlayerWidget extends ConsumerWidget {
     this.confessionId,
     this.voiceId,
     this.assetId,
+    this.contentVersionId,
+    this.sessionId,
+    this.sessionItemId,
     this.compact = false,
     this.showGenerationControls = true,
     this.onClose,
@@ -52,29 +66,47 @@ class AudioPlayerWidget extends ConsumerWidget {
     // Auto-play if we have an asset ID or confession ID
     if (assetId != null && playerState.currentAssetId != assetId) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        controller.playAsset(
-          assetId: assetId!,
-          confessionId: confessionId,
-          voiceId: voiceId,
+        unawaited(
+          controller.playAsset(
+            assetId: assetId!,
+            sessionId: sessionId,
+            sessionItemId: sessionItemId,
+            confessionId: confessionId,
+            voiceId: voiceId,
+          ).catchError((Object error) {
+            debugPrint('Audio playback failed: $error');
+          }),
         );
       });
     } else if (confessionId != null && playerState.currentConfessionId != confessionId) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        controller.playConfession(
-          confessionId: confessionId!,
-          voiceId: voiceId,
+        unawaited(
+          controller.playConfession(
+            confessionId: confessionId!,
+            sessionId: sessionId,
+            sessionItemId: sessionItemId,
+            voiceId: voiceId,
+          ).catchError((Object error) {
+            debugPrint('Confession playback failed: $error');
+          }),
         );
       });
     }
 
     if (compact) {
-      return _buildCompactPlayer(context, ref, controller, isPlaying, isLoading);
+      return _buildCompactPlayer(
+        context,
+        controller,
+        isPlaying,
+        isLoading,
+        displayPosition,
+      );
     }
 
     return _buildFullPlayer(
       context,
-      ref,
       controller,
+      playerState,
       isPlaying,
       isLoading,
       positionPercentage,
@@ -86,10 +118,10 @@ class AudioPlayerWidget extends ConsumerWidget {
 
   Widget _buildCompactPlayer(
     BuildContext context,
-    WidgetRef ref,
     AudioPlayerNotifier controller,
     bool isPlaying,
     bool isLoading,
+    String displayPosition,
   ) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -140,8 +172,8 @@ class AudioPlayerWidget extends ConsumerWidget {
 
   Widget _buildFullPlayer(
     BuildContext context,
-    WidgetRef ref,
     AudioPlayerNotifier controller,
+    AudioPlayerState playerState,
     bool isPlaying,
     bool isLoading,
     double positionPercentage,
@@ -193,7 +225,7 @@ class AudioPlayerWidget extends ConsumerWidget {
               child: Slider(
                 value: positionPercentage.clamp(0.0, 1.0),
                 onChanged: isLoading ? null : (value) async {
-                  final duration = controller.state.duration;
+                  final duration = playerState.duration;
                   if (duration > Duration.zero) {
                     await controller.seek(Duration(
                       milliseconds: (duration.inMilliseconds * value).round(),
@@ -279,7 +311,11 @@ class AudioPlayerWidget extends ConsumerWidget {
                   // Show volume slider
                   showModalBottomSheet(
                     context: context,
-                    builder: (context) => _buildVolumeSlider(context, ref, controller),
+                    builder: (context) => _buildVolumeSlider(
+                      context,
+                      controller,
+                      playerState.volume,
+                    ),
                   );
                 },
               ),
@@ -293,7 +329,11 @@ class AudioPlayerWidget extends ConsumerWidget {
                   // Show speed options
                   showModalBottomSheet(
                     context: context,
-                    builder: (context) => _buildSpeedOptions(context, ref, controller),
+                    builder: (context) => _buildSpeedOptions(
+                      context,
+                      controller,
+                      playerState.playbackSpeed,
+                    ),
                   );
                 },
               ),
@@ -301,14 +341,23 @@ class AudioPlayerWidget extends ConsumerWidget {
               const SizedBox(width: 16),
 
               // Generation controls
-              if (showGenerationControls && confessionId != null)
+              if (showGenerationControls &&
+                  confessionId != null &&
+                  contentVersionId != null)
                 IconButton(
                   icon: const Icon(Icons.refresh),
                   onPressed: () async {
-                    await controller.generateAndPlay(
-                      confessionId: confessionId!,
-                      voiceId: voiceId ?? 'default',
-                    );
+                    try {
+                      await controller.generateAndPlay(
+                        confessionId: confessionId!,
+                        contentVersionId: contentVersionId,
+                        voiceId: voiceId ?? 'default',
+                        sessionId: sessionId,
+                        sessionItemId: sessionItemId,
+                      );
+                    } on Object catch (error) {
+                      debugPrint('Audio generation failed: $error');
+                    }
                   },
                 ),
             ],
@@ -319,10 +368,9 @@ class AudioPlayerWidget extends ConsumerWidget {
 
   Widget _buildVolumeSlider(
     BuildContext context,
-    WidgetRef ref,
     AudioPlayerNotifier controller,
+    double currentVolume,
   ) {
-    final currentVolume = controller.state.volume;
 
     return Padding(
       padding: const EdgeInsets.all(16),
@@ -367,10 +415,9 @@ class AudioPlayerWidget extends ConsumerWidget {
 
   Widget _buildSpeedOptions(
     BuildContext context,
-    WidgetRef ref,
     AudioPlayerNotifier controller,
+    double currentSpeed,
   ) {
-    final currentSpeed = controller.state.playbackSpeed;
     final speeds = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
 
     return Padding(

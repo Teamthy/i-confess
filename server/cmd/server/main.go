@@ -229,8 +229,7 @@ func main() {
 		log.Printf("voice: ELEVENLABS_API_KEY unset - synthesis endpoints report 503")
 	}
 
-	// Audio Platform Phase 1: Initialize audio service layer
-	// These services provide the new async generation pipeline and playback resolution.
+	// Audio Platform Phase 1: configure signed playback URL resolution.
 	
 	// Create URL generator for signed URLs
 	urlGenerator, err := audio.NewURLGenerator(objStore, &audio.URLGeneratorConfig{
@@ -245,22 +244,7 @@ func main() {
 	h.SetURLGenerator(urlGenerator)
 	log.Printf("audio: URL generator enabled (CDN: %s)", cfg.MediaBaseURL)
 
-	// Create audio service for asset lifecycle management
 	audioStore := store.NewAudioStore(conn)
-	audioService := audio.NewService(
-		objStore,
-		audioStore,
-		audioStore,
-		audioStore,
-		&audio.ServiceConfig{
-			CDNDomain: cfg.MediaBaseURL,
-			SigningTTL: 4 * time.Hour,
-		},
-	)
-	h.SetAudioService(audioService)
-	log.Printf("audio: service layer enabled")
-
-	// Create playback resolver for secure audio streaming
 	playbackResolver := audio.NewPlaybackResolver(
 		objStore,
 		audioStore,
@@ -269,40 +253,11 @@ func main() {
 			CDNDomain:       cfg.MediaBaseURL,
 			StreamTTL:       4 * time.Hour,
 			DownloadTTL:     24 * time.Hour,
-			AllowAllPremium: !cfg.IsProduction(), // Allow all in development
+			AllowAllPremium: !cfg.IsProduction(),
 		},
 	)
 	h.SetPlaybackResolver(playbackResolver)
 	log.Printf("audio: playback resolver enabled")
-
-	// Create generator for TTS generation
-	// Note: This is separate from the existing voice.Pipeline and provides
-	// async job-based generation with the new service layer
-	// TTS providers can be registered later using generator.RegisterProvider()
-	generator := audio.NewGenerator(&audio.GeneratorConfig{
-		DefaultProvider: "elevenlabs",
-		Storage:         objStore,
-		AssetStore:      audioStore,
-		JobStore:        audioStore,
-	})
-	h.SetGenerator(generator)
-	log.Printf("audio: generator enabled (TTS providers can be registered as needed)")
-
-	// Create and start audio job handler for background processing
-	// Note: This is separate from the existing workers.Register queue
-	// and provides the new async generation pipeline
-	audioJobHandler := jobs.NewAudioHandler(&jobs.AudioHandlerConfig{
-		Generator:   generator,
-		JobStore:    audioStore,
-		AssetStore:  audioStore,
-		Concurrency: 4, // Default number of workers
-	})
-	if err := audioJobHandler.Start(); err != nil {
-		log.Fatalf("audio: failed to start job handler: %v", err)
-	}
-	defer audioJobHandler.Stop()
-	h.SetAudioJobHandler(audioJobHandler)
-	log.Printf("audio: job handler started with %d workers", 4)
 
 	// Background job queue.
 	//

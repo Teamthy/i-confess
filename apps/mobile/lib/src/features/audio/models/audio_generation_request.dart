@@ -1,116 +1,227 @@
-/// Audio generation request model.
-///
-/// Used to request audio generation for a confession.
-import 'package:freezed_annotation/freezed_annotation.dart';
+/// Models for audio-generation requests and response payloads.
+import 'package:flutter/foundation.dart';
 
-part 'audio_generation_request.freezed.dart';
-part 'audio_generation_request.g.dart';
+@immutable
+class AudioGenerationRequest {
+  const AudioGenerationRequest({
+    required this.confessionId,
+    this.contentVersionId,
+    this.variantId,
+    required this.voiceId,
+    this.provider = 'elevenlabs',
+    this.qualityTier = 'standard',
+    this.text,
+  });
 
-/// Audio generation request.
-@freezed
-class AudioGenerationRequest with _$AudioGenerationRequest {
-  const factory AudioGenerationRequest({
-    required String confessionId,
-    String? contentVersionId,
-    String? variantId,
-    required String voiceId,
-    @Default('elevenlabs') String provider,
-    @Default('standard') String qualityTier,
-    String? text,
-  }) = _AudioGenerationRequest;
+  final String confessionId;
+  final String? contentVersionId;
+  final String? variantId;
+  final String voiceId;
+  final String provider;
+  final String qualityTier;
+  final String? text;
+
+  Map<String, dynamic> toApiJson() => {
+        'confession_id': confessionId,
+        if (contentVersionId != null) 'content_version_id': contentVersionId,
+        if (variantId != null) 'variant_id': variantId,
+        'voice_id': voiceId,
+        'provider': provider,
+        'quality_tier': qualityTier,
+        if (text != null) 'text': text,
+      };
 
   factory AudioGenerationRequest.fromJson(Map<String, dynamic> json) =>
-      _$AudioGenerationRequestFromJson(json);
-
-  /// Convert to JSON for API requests.
-  Map<String, dynamic> toApiJson() => {
-    'confession_id': confessionId,
-    if (contentVersionId != null) 'content_version_id': contentVersionId,
-    if (variantId != null) 'variant_id': variantId,
-    'voice_id': voiceId,
-    'provider': provider,
-    'quality_tier': qualityTier,
-    if (text != null) 'text': text,
-  };
+      AudioGenerationRequest(
+        confessionId: _string(json, 'confession_id', alias: 'confessionId'),
+        contentVersionId:
+            _optionalString(json, 'content_version_id', 'contentVersionId'),
+        variantId: _optionalString(json, 'variant_id', 'variantId'),
+        voiceId: _string(json, 'voice_id', alias: 'voiceId'),
+        provider: _string(json, 'provider', fallback: 'elevenlabs'),
+        qualityTier: _string(
+          json,
+          'quality_tier',
+          alias: 'qualityTier',
+          fallback: 'standard',
+        ),
+        text: _optionalString(json, 'text'),
+      );
 }
 
-/// Batch audio generation request.
-@freezed
-class BatchAudioGenerationRequest with _$BatchAudioGenerationRequest {
-  const factory BatchAudioGenerationRequest({
-    required List<String> confessionIds,
-    required String voiceId,
-    @Default('elevenlabs') String provider,
-    @Default('standard') String qualityTier,
-  }) = _BatchAudioGenerationRequest;
+@immutable
+class BatchAudioGenerationRequest {
+  const BatchAudioGenerationRequest({
+    required this.confessionIds,
+    required this.voiceId,
+    this.provider = 'elevenlabs',
+    this.qualityTier = 'standard',
+  });
+
+  final List<String> confessionIds;
+  final String voiceId;
+  final String provider;
+  final String qualityTier;
+
+  Map<String, dynamic> toApiJson() => {
+        'confession_ids': confessionIds,
+        'voice_id': voiceId,
+        'provider': provider,
+        'quality_tier': qualityTier,
+      };
 
   factory BatchAudioGenerationRequest.fromJson(Map<String, dynamic> json) =>
-      _$BatchAudioGenerationRequestFromJson(json);
-
-  /// Convert to JSON for API requests.
-  Map<String, dynamic> toApiJson() => {
-    'confession_ids': confessionIds,
-    'voice_id': voiceId,
-    'provider': provider,
-    'quality_tier': qualityTier,
-  };
+      BatchAudioGenerationRequest(
+        confessionIds: (json['confession_ids'] ?? json['confessionIds']) is List
+            ? ((json['confession_ids'] ?? json['confessionIds']) as List)
+                .whereType<String>()
+                .toList(growable: false)
+            : const [],
+        voiceId: _string(json, 'voice_id', alias: 'voiceId'),
+        provider: _string(json, 'provider', fallback: 'elevenlabs'),
+        qualityTier: _string(
+          json,
+          'quality_tier',
+          alias: 'qualityTier',
+          fallback: 'standard',
+        ),
+      );
 }
 
-/// Response for creating an audio generation job.
-@freezed
-class AudioGenerationJobResponse with _$AudioGenerationJobResponse {
-  const factory AudioGenerationJobResponse({
-    required String jobId,
-    required String status,
-    required String message,
-  }) = _AudioGenerationJobResponse;
+@immutable
+class AudioGenerationJobResponse {
+  const AudioGenerationJobResponse({
+    required this.jobId,
+    required this.status,
+    required this.message,
+  });
+
+  final String jobId;
+  final String status;
+  final String message;
 
   factory AudioGenerationJobResponse.fromJson(Map<String, dynamic> json) =>
-      _$AudioGenerationJobResponseFromJson(json);
+      AudioGenerationJobResponse(
+        jobId: _string(json, 'job_id', alias: 'jobId'),
+        status: _string(json, 'status'),
+        message: _string(json, 'message'),
+      );
 }
 
-/// Response for batch audio generation.
-@freezed
-class BatchAudioGenerationResponse with _$BatchAudioGenerationResponse {
-  const factory BatchAudioGenerationResponse({
-    required String message,
-    required List<String> jobIds,
-    required int totalRequested,
-    required int successCount,
-    required int failCount,
-  }) = _BatchAudioGenerationResponse;
+@immutable
+class BatchAudioGenerationResponse {
+  const BatchAudioGenerationResponse({
+    required this.message,
+    required this.jobIds,
+    required this.totalRequested,
+    required this.successCount,
+    required this.failCount,
+  });
+
+  final String message;
+  final List<String> jobIds;
+  final int totalRequested;
+  final int successCount;
+  final int failCount;
 
   factory BatchAudioGenerationResponse.fromJson(Map<String, dynamic> json) =>
-      _$BatchAudioGenerationResponseFromJson(json);
+      BatchAudioGenerationResponse(
+        message: _string(json, 'message'),
+        jobIds: (json['job_ids'] ?? json['jobIds']) is List
+            ? ((json['job_ids'] ?? json['jobIds']) as List)
+                .whereType<String>()
+                .toList(growable: false)
+            : const [],
+        totalRequested: _integer(json['total_requested'] ?? json['totalRequested']),
+        successCount: _integer(json['success_count'] ?? json['successCount']),
+        failCount: _integer(json['fail_count'] ?? json['failCount']),
+      );
 }
 
-/// Audio generation statistics.
-@freezed
-class AudioGenerationStats with _$AudioGenerationStats {
-  const factory AudioGenerationStats({
-    @Default(0) int total,
-    @Default({}) Map<String, int> byStatus,
-    @Default({}) Map<String, int> byProvider,
-    @Default({}) Map<String, int> byVoice,
-    @Default([]) List<RecentFailure> recentFailures,
-  }) = _AudioGenerationStats;
+@immutable
+class RecentFailure {
+  const RecentFailure({
+    required this.jobId,
+    required this.confession,
+    required this.voice,
+    this.errorCode,
+    this.error,
+    required this.attempts,
+  });
+
+  final String jobId;
+  final String confession;
+  final String voice;
+  final String? errorCode;
+  final String? error;
+  final int attempts;
+
+  factory RecentFailure.fromJson(Map<String, dynamic> json) => RecentFailure(
+        jobId: _string(json, 'job_id', alias: 'jobId'),
+        confession: _string(json, 'confession'),
+        voice: _string(json, 'voice'),
+        errorCode: _optionalString(json, 'error_code', 'errorCode'),
+        error: _optionalString(json, 'error'),
+        attempts: _integer(json['attempts']),
+      );
+}
+
+@immutable
+class AudioGenerationStats {
+  const AudioGenerationStats({
+    this.total = 0,
+    this.byStatus = const {},
+    this.byProvider = const {},
+    this.byVoice = const {},
+    this.recentFailures = const [],
+  });
+
+  final int total;
+  final Map<String, int> byStatus;
+  final Map<String, int> byProvider;
+  final Map<String, int> byVoice;
+  final List<RecentFailure> recentFailures;
 
   factory AudioGenerationStats.fromJson(Map<String, dynamic> json) =>
-      _$AudioGenerationStatsFromJson(json);
+      AudioGenerationStats(
+        total: _integer(json['total']),
+        byStatus: _intMap(json['by_status'] ?? json['byStatus']),
+        byProvider: _intMap(json['by_provider'] ?? json['byProvider']),
+        byVoice: _intMap(json['by_voice'] ?? json['byVoice']),
+        recentFailures: (json['recent_failures'] ?? json['recentFailures']) is List
+            ? ((json['recent_failures'] ?? json['recentFailures']) as List)
+                .whereType<Map>()
+                .map((item) => RecentFailure.fromJson(
+                      Map<String, dynamic>.from(item),
+                    ))
+                .toList(growable: false)
+            : const [],
+      );
 }
 
-/// Recent failure information.
-@freezed
-class RecentFailure with _$RecentFailure {
-  const factory RecentFailure({
-    required String jobId,
-    required String confession,
-    required String voice,
-    String? errorCode,
-    String? error,
-    required int attempts,
-  }) = _RecentFailure;
+String _string(
+  Map<String, dynamic> json,
+  String key, {
+  String? alias,
+  String fallback = '',
+}) {
+  final value = json[key] ?? (alias == null ? null : json[alias]);
+  return value is String ? value : fallback;
+}
 
-  factory RecentFailure.fromJson(Map<String, dynamic> json) =>
-      _$RecentFailureFromJson(json);
+String? _optionalString(Map<String, dynamic> json, String key, [String? alias]) {
+  final value = json[key] ?? (alias == null ? null : json[alias]);
+  return value is String ? value : null;
+}
+
+int _integer(Object? value) {
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  if (value is String) return int.tryParse(value) ?? 0;
+  return 0;
+}
+
+Map<String, int> _intMap(Object? value) {
+  if (value is! Map) return const {};
+  return value.map((key, entry) => MapEntry(key.toString(), _integer(entry)));
 }
