@@ -372,3 +372,49 @@ func TestConfessionQAGate(t *testing.T) {
 		t.Errorf("moderation history rows = %d, want 2", hist)
 	}
 }
+
+func TestReportingAUserCreatesOneModerationCase(t *testing.T) {
+	f := newModerationFixture(t)
+	registerAndSignIn(t, f.srv, "reported-person@example.com", "a-strong-enough-passphrase")
+	targetID := userIDForEmail(t, f.h, "reported-person@example.com")
+
+	if status, body := doRequest(t, f.srv, http.MethodPost, "/reports", f.user,
+		`{"entity_type":"user","entity_id":"`+f.userID+`","reason":"my own account"}`); status != http.StatusBadRequest {
+		t.Errorf("self-report: got %d, want 400: %s", status, truncateBody(body))
+	}
+	if status, _ := doRequest(t, f.srv, http.MethodPost, "/reports", f.user,
+		`{"entity_type":"user","entity_id":"missing-user","reason":"repeated harassment"}`); status != http.StatusNotFound {
+		t.Errorf("missing person: got %d, want 404", status)
+	}
+
+	status, body := doRequest(t, f.srv, http.MethodPost, "/reports", f.user,
+		`{"entity_type":"user","entity_id":"`+targetID+`","reason":"repeated harassment","detail":"The same person targeted several community posts."}`)
+	if status != http.StatusCreated {
+		t.Fatalf("report person: %d %s", status, truncateBody(body))
+	}
+	report := bodyJSON(t, body)["report"].(map[string]any)
+	if report["entity_type"] != "user" || report["entity_id"] != targetID {
+		t.Fatalf("report target = %v/%v, want user/%s", report["entity_type"], report["entity_id"], targetID)
+	}
+	reportID := report["id"].(string)
+
+	var cases int
+	if err := f.conn.QueryRowContext(context.Background(),
+		`SELECT COUNT(*) FROM moderation_cases WHERE entity_type='user' AND entity_id=? AND status IN ('open','in_review')`,
+		targetID).Scan(&cases); err != nil {
+		t.Fatal(err)
+	}
+	if cases != 1 {
+		t.Fatalf("open person cases = %d, want 1", cases)
+	}
+
+	status, body = doRequest(t, f.srv, http.MethodPost,
+		"/admin/moderation/reports/"+reportID+"/decision", f.admin,
+		`{"decision":"resolved","note":"reviewed the account-level pattern"}`)
+	if status != http.StatusOK {
+		t.Fatalf("resolve person report: %d %s", status, truncateBody(body))
+	}
+	if got := bodyJSON(t, body)["entity_type"]; got != "user" {
+		t.Errorf("resolved report entity_type = %v, want user", got)
+	}
+}

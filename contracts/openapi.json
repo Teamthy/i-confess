@@ -13720,7 +13720,7 @@
             "bearerAuth": []
           }
         ],
-        "summary": "Report published content or a community post",
+        "summary": "Report a person, published confession, or community post",
         "tags": [
           "moderation"
         ]
@@ -30043,7 +30043,7 @@
             "bearerAuth": []
           }
         ],
-        "summary": "Report published content or a community post",
+        "summary": "Report a person, published confession, or community post",
         "tags": [
           "moderation"
         ]

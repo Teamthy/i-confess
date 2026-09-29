@@ -63,6 +63,12 @@ func (s *ModerationStore) ReportableEntityExists(ctx context.Context, entityType
 		err := s.db.QueryRowContext(ctx,
 			`SELECT COUNT(*) FROM community_posts WHERE id = ?`, entityID).Scan(&n)
 		return n > 0, err
+	case "user":
+		var n int
+		err := s.db.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM users
+			 WHERE id = ? AND deleted_at IS NULL AND status <> 'deleted'`, entityID).Scan(&n)
+		return n > 0, err
 	default:
 		return false, fmt.Errorf("entity type %q is not reportable", entityType)
 	}

@@ -193,7 +193,7 @@ func (h *Handler) Routes() http.Handler {
 
 	h.route(mux, "POST /me/confessions", "user", "library", "Create a personal confession", authed, h.createUserConfession)
 	h.route(mux, "POST /me/confessions/{id}/submit", "user", "moderation", "Offer a personal confession for moderation review", authed, h.submitUserConfession)
-	h.route(mux, "POST /reports", "user", "moderation", "Report published content or a community post", authed, h.createReport)
+	h.route(mux, "POST /reports", "user", "moderation", "Report a person, published confession, or community post", authed, h.createReport)
 	// Blocking and appeals (PHASE 42). A block is a listener's own boundary; an
 	// appeal is a listener's answer to a decision made about them.
 	h.route(mux, "GET /me/blocks", "user", "moderation", "Accounts you have blocked", authed, h.listBlocks)
@@ -561,7 +561,7 @@ func (h *Handler) Routes() http.Handler {
 	h.route(mux, "POST /v1/me/history", "user", "library", "Record playback", authed, h.recordPlayback)
 	h.route(mux, "POST /v1/me/confessions", "user", "library", "Create a personal confession", authed, h.createUserConfession)
 	h.route(mux, "POST /v1/me/confessions/{id}/submit", "user", "moderation", "Offer a personal confession for moderation review", authed, h.submitUserConfession)
-	h.route(mux, "POST /v1/reports", "user", "moderation", "Report published content or a community post", authed, h.createReport)
+	h.route(mux, "POST /v1/reports", "user", "moderation", "Report a person, published confession, or community post", authed, h.createReport)
 	h.route(mux, "GET /v1/me/blocks", "user", "moderation", "Accounts you have blocked", authed, h.listBlocks)
 	h.route(mux, "POST /v1/me/blocks", "user", "moderation", "Block an account", authed, h.createBlock)
 	h.route(mux, "DELETE /v1/me/blocks/{userId}", "user", "moderation", "Unblock an account", authed, h.deleteBlock)

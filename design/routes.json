@@ -1501,7 +1501,7 @@
     "method": "POST",
     "path": "/reports",
     "auth": "user",
-    "summary": "Report published content or a community post",
+    "summary": "Report a person, published confession, or community post",
     "tag": "moderation"
   },
   {
@@ -3265,7 +3265,7 @@
     "method": "POST",
     "path": "/v1/reports",
     "auth": "user",
-    "summary": "Report published content or a community post",
+    "summary": "Report a person, published confession, or community post",
     "tag": "moderation"
   },
   {

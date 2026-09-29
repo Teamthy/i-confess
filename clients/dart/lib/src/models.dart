@@ -1459,6 +1459,21 @@ final class Subscription {
       );
 }
 
+/// Entity kinds a listener may report to moderation.
+///
+/// `user` files one case for a person's behavior across multiple posts;
+/// confession and communityPost report a particular item.
+enum ReportableEntityType {
+  confession('confession'),
+  communityPost('community_post'),
+  user('user');
+
+  const ReportableEntityType(this.wireValue);
+
+  /// The value accepted by the server's `entity_type` field.
+  final String wireValue;
+}
+
 /// One account's boundary against another.
 ///
 /// A block is not a moderation action. It does not delete anything, it does not

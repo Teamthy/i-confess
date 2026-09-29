@@ -1108,16 +1108,16 @@ final class SubscriptionRepository extends Repository {
 final class ModerationRepository extends Repository {
   ModerationRepository(super.api, super.cache);
 
-  /// Files a report against published content or a community post.
+  /// Files a report against a person, confession, or community post.
   Future<WriteResult<Map<String, dynamic>>> report({
-    required String entityType,
+    required ReportableEntityType entityType,
     required String entityId,
     required String reason,
     String detail = '',
   }) =>
       write(
         () => api.postReports({
-          'entity_type': entityType,
+          'entity_type': entityType.wireValue,
           'entity_id': entityId,
           'reason': reason,
           if (detail.isNotEmpty) 'detail': detail,

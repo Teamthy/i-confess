@@ -5,11 +5,12 @@ PostgreSQL 17.10 and Redis 7.4 all passed. The full suite reported every package
 `ok` or `[no test files]`; `TestRouteParityBetweenPrefixes` passed. The API
 handler composition file was reduced from 1,656 to 247 lines without dropping
 any function in the inventory comparison (ledger 60). Health 200/503 coverage
-passed (ledger 58). Design verification passed: `python3 design/generate.py
---check`, `python3 design/test_design.py` (132 tokens, including web CSS
-parity), `python3 design/test_ia.py` (39 screens, 8 entry points, 162 endpoints),
-and `python3 scripts/check_dart_symbols.py` (133/133). The design test now
-guards mobile source against raw hex and Material palette bypasses; negative
+passed (ledger 58). The G-54 person-report path passed PostgreSQL moderation,
+store, and API tests, and the full Go build/vet/race suite passed after it
+(ledger 62). Design verification passed: `python3 design/generate.py --check`,
+`python3 design/test_design.py` (132 tokens, including web parity and mobile
+color guards), `python3 design/test_ia.py` (39 screens, 8 entry points, 162
+endpoints), and `python3 scripts/check_dart_symbols.py` (133/133). Negative
 probes for G-57 and G-16 failed as intended (ledgers 59 and 61). These checks
 are on the fixed session branch `arena/01a0ee4f-i-confess`, based on `251f906`;
 B1 is commit `38b50eb`, B2 is recorded in ledger 59, B3 in ledger 60, and B4 in
@@ -459,7 +460,7 @@ PHASE 43 Personalization: the seven listener signals — **PASS** (master-plan
 
 Open gaps carried forward (reconciled against the supplied ledger 57; this
 checkout does not contain `docs/57-GAP-LEDGER-RECONCILIATION.md`): **G-7,
-G-14, G-15, G-19, G-24, G-28, G-33, G-48, G-49, G-52, G-53, G-54,
+G-14, G-15, G-19, G-24, G-28, G-33, G-48, G-49, G-52, G-53,
 G-56.** G-9 was removed after the handler's healthy and 503 paths were
 exercised by `go test -modfile=/tmp/local.mod -race -count=1 ./internal/health`
 (details: `docs/58-HEALTH-CHECK-FAILURE-TEST.md`). G-57 was removed after
@@ -468,8 +469,8 @@ exercised by `go test -modfile=/tmp/local.mod -race -count=1 ./internal/health`
 removed after the 1,656-line handler file was decomposed and the full Go race
 suite passed (details: `docs/60-API-HANDLER-COMPOSITION-REFACTOR.md`). The
 reconciled ledger reports G-12, G-13, G-17, G-18, G-20, G-23, G-26 and G-27 as
-closed; ledgers 58–61 additionally close G-9, G-16, G-25 and G-57. G-52 is
-still open and unverified. Important checkout limitation: the three unpushed commits described
+closed; ledgers 58–62 additionally close G-9, G-16, G-25, G-54 and G-57.
+G-52 is still open and unverified. Important checkout limitation: the three unpushed commits described
 by the supplied handoff, including the G-52 patch, are not present at this
 branch's `251f906` base. Therefore their behavior is not claimed as verified
 here.
@@ -587,11 +588,12 @@ handler's database-healthy 200 and database-unavailable 503 responses, including
 the JSON status and database error. `go test -modfile=/tmp/local.mod -race
 -count=1 ./internal/health` passed. This closes only the specific
 `internal/health.Checker.Handler` gap, not every deployment-level probe.
-**G-54 — A report still cannot name a user.** `ReportableEntityTypes` remains
-`{confession, community_post}`. Blocking now covers the harassment case that
-motivated it, but "report this person" is still not something the product can
-do, and a pattern of behaviour across many posts has no way to be reported as
-one thing.
+**Closed in ledger 62: G-54.** Reports now accept a `user` target in addition
+to `confession` and `community_post`; the store rejects missing and deleted
+accounts, the API disallows self-reports, and the existing report/case queue and
+decision lifecycle handles the person-level case. The Dart client exposes a
+typed `ReportableEntityType.user`. PostgreSQL API/store tests passed; Dart tests
+remain CI-only. See `docs/62-REPORT-A-PERSON.md`.
 
 **G-49 — Trial expiry analytics depend on someone looking.** `trial_expired` is
 recorded when something next refreshes the trial, and there is no sweeper, so an
