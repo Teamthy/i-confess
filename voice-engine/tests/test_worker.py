@@ -93,3 +93,12 @@ def test_errors_are_classified(worker):
         call(worker + "/v1/synthesize", {"chunks": []})
     assert e.value.code == 422
     assert json.loads(e.value.read())["error"]["class"] == "content"
+
+
+def test_capabilities_advertise_the_stream_endpoint(worker):
+    # The Go orchestrator gates /voices/stream on this flag. The worker's
+    # stream endpoint works for every engine (chunk by chunk), so it must say so
+    # even for engines that can't stream within a chunk.
+    caps = json.loads(call(worker + "/v1/capabilities").read())
+    assert caps["streaming"] is True
+    assert caps["streaming_granularity"] == "chunk"

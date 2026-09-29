@@ -47,11 +47,39 @@ pip install -r requirements.txt -r requirements-dev.txt
 python -m pytest -q tests
 ```
 
-## Not implemented yet
+### Go ↔ worker interop
 
-- GPT-SoVITS and VoxCPM backends. Their Go adapters exist, but each Python
-  backend waits until that engine's licence is verified in
-  `docs/model_licenses.json`.
-- The ingestion pipeline (VAD, diarization, ASR, quality scoring) and the
-  training/dataset APIs.
-- Streaming synthesis.
+This test drives the real worker from the Go client (`server/internal/voiceengine/interop_test.go`).
+It covers synthesis, streaming, ingestion and, optionally, a training run. It
+is skipped unless the URL is set.
+
+```bash
+# terminal 1: worker with the dependency-free dev engine
+ICF_WORKER_TOKEN=interop ICF_STORAGE_ROOT=/tmp/interop/objects ICF_TRAIN_DIR=/tmp/interop \
+ICF_TRAIN_CMD_GPT_SOVITS='python /path/to/stub_trainer.py {manifest} {out}' \
+  python -m icf_worker.server --engine dev-tone --host 127.0.0.1 --port 8601
+
+# terminal 2
+cd server
+VOICE_WORKER_INTEROP_URL=http://127.0.0.1:8601 VOICE_WORKER_INTEROP_TOKEN=interop \
+VOICE_WORKER_INTEROP_TRAIN=1 go test ./internal/voiceengine/ -run Interop -v
+```
+
+The trainer only has to print `ICF_PROGRESS` lines and write a checkpoint into
+`{out}`, so any stub will do.
+
+## Status and limits
+
+- **Tested:** the dev-tone engine, ingestion (energy VAD, a speaker-consistency
+  heuristic, quality scoring, and optional faster-whisper ASR via `ICF_ASR`),
+  streaming, and training orchestration with an external trainer command.
+- **Written but not yet run against real models:** the GPT-SoVITS backend
+  (proxies GPT-SoVITS `api_v2`) and the VoxCPM backend. Run the benchmark
+  harness on a GPU host before relying on either.
+- **Licence gate:** `docs/model_licenses.json` sets `production_allowed: false`
+  for every engine. With `ICF_ENV=production`, the worker refuses to load or
+  train an engine until counsel has verified its licence and flipped that
+  flag.
+- **Speaker check:** the log-mel speaker check is a heuristic, not a
+  diarization model. Treat its confidence as a triage signal. Human segment
+  review in the admin Voice Studio is still required.

@@ -25,6 +25,7 @@ const NAV_GROUPS: { label: string; items: [string, string, string][] }[] = [
       ["/admin/content", "Content", "book"],
       ["/admin/bible", "Bible", "book"],
       ["/admin/audio", "Audio & Voices", "mic"],
+      ["/admin/voices", "Minister Voices", "mic"],
       ["/admin/moderation", "Moderation", "eye"],
     ],
   },

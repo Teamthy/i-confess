@@ -181,25 +181,25 @@ func ValidPurpose(p ContentPurpose) bool { _, ok := purposeCaps[p]; return ok }
 
 // Grant is the rights record for one voice.
 type Grant struct {
-	VoiceID       string
-	RightsHolder  string
-	Status        Status
-	EffectiveFrom *time.Time
-	ExpiresAt     *time.Time
-	Capabilities  map[Capability]bool
+	VoiceID       string              `json:"voiceId"`
+	RightsHolder  string              `json:"rightsHolder"`
+	Status        Status              `json:"status"`
+	EffectiveFrom *time.Time          `json:"effectiveFrom,omitempty"`
+	ExpiresAt     *time.Time          `json:"expiresAt,omitempty"`
+	Capabilities  map[Capability]bool `json:"capabilities"`
 	// Restrictions carve purposes out of a RESTRICTED grant, e.g. a licence
 	// that allows everything except marketing during a dispute.
-	Restrictions []ContentPurpose
+	Restrictions []ContentPurpose `json:"restrictions"`
 	// Territories are ISO 3166-1 alpha-2 codes. Empty means worldwide.
-	Territories []string
+	Territories []string `json:"territories"`
 	// Languages are BCP-47 tags. Empty means all languages.
-	Languages []string
+	Languages []string `json:"languages"`
 	// PostTermination says what happens to already-generated assets once the
 	// grant stops authorizing.
-	PostTermination AssetPolicy
+	PostTermination AssetPolicy `json:"postTermination"`
 	// Version increments on every change so audit entries can cite exactly
 	// which terms authorized an action.
-	Version int
+	Version int `json:"version"`
 }
 
 // Has reports whether the grant carries capability c. Nil-safe.
@@ -242,16 +242,16 @@ const (
 
 // Decision is the outcome of Authorize.
 type Decision struct {
-	Allowed bool
-	Reason  Reason
-	Detail  string
+	Allowed bool   `json:"allowed"`
+	Reason  Reason `json:"reason,omitempty"`
+	Detail  string `json:"detail,omitempty"`
 	// Missing lists every capability the grant lacks for this request, so an
 	// admin sees the whole gap at once instead of fixing one field at a time.
-	Missing []Capability
+	Missing []Capability `json:"missing,omitempty"`
 	// Required is what the request needed; recorded for the audit trail.
-	Required []Capability
+	Required []Capability `json:"required,omitempty"`
 	// GrantVersion is the terms version the decision was made against.
-	GrantVersion int
+	GrantVersion int `json:"grantVersion"`
 }
 
 func deny(r Reason, format string, args ...any) Decision {

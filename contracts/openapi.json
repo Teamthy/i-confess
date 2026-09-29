@@ -3164,6 +3164,63 @@
       }
     },
     "/admin/minister-voices": {
+      "get": {
+        "operationId": "getAdminMinisterVoices",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not authenticated, session revoked, or token reused"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Authenticated but not permitted"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Rate limited; honour Retry-After"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "All minister voices with effective rights status",
+        "tags": [
+          "admin-voice"
+        ]
+      },
       "post": {
         "operationId": "postAdminMinisterVoices",
         "requestBody": {
@@ -21987,6 +22044,63 @@
       }
     },
     "/v1/admin/minister-voices": {
+      "get": {
+        "operationId": "getV1AdminMinisterVoices",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not authenticated, session revoked, or token reused"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Authenticated but not permitted"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Rate limited; honour Retry-After"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "All minister voices with effective rights status",
+        "tags": [
+          "admin-voice"
+        ]
+      },
       "post": {
         "operationId": "postV1AdminMinisterVoices",
         "requestBody": {

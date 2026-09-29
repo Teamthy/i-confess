@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"path"
+	"strconv"
 	"strings"
 	"time"
 
@@ -627,6 +628,9 @@ func (h *Handler) streamMinisterVoice(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Synthetic", "true")
 	w.Header().Set("X-AI-Disclosure", "AI-generated using an authorized synthetic voice.")
+	if st.SampleRate > 0 {
+		w.Header().Set("X-Sample-Rate", strconv.Itoa(st.SampleRate))
+	}
 	w.WriteHeader(http.StatusOK)
 	fl, _ := w.(http.Flusher)
 	buf := make([]byte, 16<<10)
@@ -646,12 +650,38 @@ func (h *Handler) streamMinisterVoice(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// adminListMinisterVoices lists every minister voice with its effective
+// rights status, including those that authorize nothing yet.
+func (h *Handler) adminListMinisterVoices(w http.ResponseWriter, r *http.Request) {
+	voices, err := h.vplat.ListMinisterVoices(r.Context(), false)
+	if err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, "failed to list voices")
+		return
+	}
+	type row struct {
+		store.MinisterVoice
+		RightsStatus voicegov.Status `json:"rightsStatus"`
+		GrantVersion int             `json:"grantVersion"`
+	}
+	out := make([]row, 0, len(voices))
+	now := time.Now().UTC()
+	for _, v := range voices {
+		rw := row{MinisterVoice: v, RightsStatus: voicegov.StatusPending}
+		if g, err := h.vplat.Grant(r.Context(), v.ID); err == nil && g != nil {
+			rw.RightsStatus, rw.GrantVersion = voicegov.EffectiveStatus(g, now), g.Version
+		}
+		out = append(out, rw)
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"voices": out})
+}
+
 func (h *Handler) registerVoiceIntakeRoutes(mux *http.ServeMux, authed, voiceMgr, audioMgr func(http.Handler) http.Handler) {
 	const vm = "voice_manager"
 	const am = "audio_producer,voice_manager"
 	for _, pfx := range []string{"", "/v1"} {
 		h.route(mux, "POST "+pfx+"/voices/stream", "user", "voice", "Stream a live synthetic preview (not cached)", authed, h.streamMinisterVoice)
 
+		h.route(mux, "GET "+pfx+"/admin/minister-voices", am, "admin-voice", "All minister voices with effective rights status", audioMgr, h.adminListMinisterVoices)
 		h.route(mux, "POST "+pfx+"/admin/voices/{id}/recordings", am, "admin-voice", "Upload a licensed source recording", audioMgr, h.adminUploadRecording)
 		h.route(mux, "GET "+pfx+"/admin/voices/{id}/recordings", am, "admin-voice", "List source recordings", audioMgr, h.adminListRecordings)
 		h.route(mux, "GET "+pfx+"/admin/recordings/{id}", am, "admin-voice", "Recording with ingestion report", audioMgr, h.adminGetRecording)

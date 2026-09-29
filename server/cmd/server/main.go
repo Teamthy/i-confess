@@ -271,6 +271,7 @@ func main() {
 	h.SetQueue(store.NewJobQueue(conn))
 	queue := h.GetQueue()
 
+	var voiceJobs []string
 	// Licensed minister voice platform. GPU workers (voice-engine/) are
 	// separate processes; the API only ever talks HTTP to them.
 	if orch := buildVoiceOrchestrator(cfg.IsProduction()); orch != nil {
@@ -281,6 +282,7 @@ func main() {
 			MaxRegression: envFloat("VOICE_GATE_MAX_REGRESSION", 0.03),
 		})
 		h.RegisterVoiceJobs()
+		voiceJobs = append(voiceJobs, api.JobVoiceGenerate)
 	}
 	// Recording intake and fine-tuning run on a (possibly separate) worker
 	// pool. Independent of synthesis so intake can start before any model.
@@ -352,7 +354,7 @@ func main() {
 	worker := jobs.NewWorker(queue, cfg.QueueWorkers)
 	worker.Start(context.Background())
 	defer worker.Stop()
-	log.Printf("queue: %d workers, handlers %v", cfg.QueueWorkers, installed)
+	log.Printf("queue: %d workers, handlers %v", cfg.QueueWorkers, append(installed, voiceJobs...))
 
 	// Fire scheduled session reminders. A one-minute tick keeps delivery
 	// within a minute of the user's chosen time; the occurrence key makes a

@@ -16,6 +16,7 @@ import '../../features/confess/confess_screen.dart';
 import '../../features/confess/duration_screen.dart';
 import '../../features/confess/review_screen.dart';
 import '../../features/confess/voice_screen.dart';
+import '../../features/minister_voices/minister_voice_screen.dart';
 import '../../features/confession/confession_detail_screen.dart';
 import '../../features/community/community_screen.dart';
 import '../../features/downloads/downloads_screen.dart';
@@ -370,6 +371,11 @@ GoRouter createRouter(
         path: AppRoutes.rituals,
         name: AppRouteNames.rituals,
         builder: (context, state) => const TemplatesScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.ministerVoices,
+        name: AppRouteNames.ministerVoices,
+        builder: (context, state) => const MinisterVoicesScreen(),
       ),
       GoRoute(
         path: AppRoutes.saved,
