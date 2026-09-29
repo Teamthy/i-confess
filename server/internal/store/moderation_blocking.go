@@ -167,28 +167,6 @@ func (s *BlockStore) block(ctx context.Context, blockerID, blockedID string) (*U
 	return &b, nil
 }
 
-// PostAuthor returns the author of a community post.
-//
-// It lives here rather than in the community store because the block check is
-// the only caller that needs it, and putting the lookup next to the rule it
-// serves keeps the two from drifting. An unknown post is ErrNotFound: reacting
-// to a post that does not exist is a 404 whether or not a block is involved.
-func (s *BlockStore) PostAuthor(ctx context.Context, postID string) (string, error) {
-	if postID == "" {
-		return "", ErrNotFound
-	}
-	var author string
-	err := s.db.QueryRowContext(ctx,
-		`SELECT user_id FROM community_posts WHERE id=?`, postID).Scan(&author)
-	if errors.Is(err, sql.ErrNoRows) {
-		return "", ErrNotFound
-	}
-	if err != nil {
-		return "", err
-	}
-	return author, nil
-}
-
 func (s *BlockStore) userExists(ctx context.Context, id string) (bool, error) {
 	var n int
 	err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM users WHERE id=?`, id).Scan(&n)

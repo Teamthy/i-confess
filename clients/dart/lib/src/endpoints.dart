@@ -138,6 +138,10 @@ extension IConfessEndpoints on ApiClient {
           String id, String reaction) =>
       post('/community/posts/$id/react', {'reaction': reaction});
 
+  /// Block the anonymous author of a feed-visible post without revealing their ID.
+  Future<Map<String, dynamic>> postCommunityPostsByIdBlockAuthor(String id) =>
+      post('/community/posts/$id/block-author');
+
   // ---- devices ----
   /// List devices
   Future<Map<String, dynamic>> getMeDevices() => get('/me/devices');

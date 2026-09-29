@@ -55,6 +55,12 @@ class SettingsScreen extends ConsumerWidget {
             trailing: const Icon(Icons.chevron_right_rounded),
             onTap: () => context.go('/settings/security'),
           ),
+          ListTile(
+            leading: const Icon(Icons.shield_outlined),
+            title: const Text('Blocked accounts & appeals'),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: () => context.go(AppRoutes.settingsSafety),
+          ),
           const Divider(),
           _Section(label: 'Data'),
           ListTile(

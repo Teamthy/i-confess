@@ -1,26 +1,27 @@
-**Last verified:** 2026-09-29. On the current working tree, `gofmt -l .`
-returned no files; `go build -modfile=/tmp/local.mod ./...`,
+**Last verified:** 2026-09-29, ledger 63. On the current working tree,
+`gofmt -l .` returned no files; `go build -modfile=/tmp/local.mod ./...`,
 `go vet -modfile=/tmp/local.mod ./...`, and the full Go race suite with
 PostgreSQL 17.10 and Redis 7.4 all passed. The full suite reported every package
-`ok` or `[no test files]`; `TestRouteParityBetweenPrefixes` passed. The API
-handler composition file was reduced from 1,656 to 247 lines without dropping
-any function in the inventory comparison (ledger 60). Health 200/503 coverage
-passed (ledger 58). The G-54 person-report path passed PostgreSQL moderation,
-store, and API tests, and the full Go build/vet/race suite passed after it
-(ledger 62). Design verification passed: `python3 design/generate.py --check`,
-`python3 design/test_design.py` (132 tokens, including web parity and mobile
-color guards), `python3 design/test_ia.py` (39 screens, 8 entry points, 162
-endpoints), and `python3 scripts/check_dart_symbols.py` (133/133). Negative
-probes for G-57 and G-16 failed as intended (ledgers 59 and 61). These checks
-are on the fixed session branch `arena/01a0ee4f-i-confess`, based on `251f906`;
-B1 is commit `38b50eb`, B2 is recorded in ledger 59, B3 in ledger 60, and B4 in
-ledger 61.
-They were not run on the unpushed three-commit branch described in the supplied
-handoff. Its G-52 files remain absent from this checkout, so the deletion test
-and full suite do **not** verify G-52. Bootstrap required rebuilding Redis
-without LTO after GCC's LTO linker crashed; `https://github.com/` returned HTTP
-200. Flutter/Dart analyze/test and `make lint` were not run in this verification
-pass.
+`ok` or `[no test files]`; `TestRouteParityBetweenPrefixes` passed. Ledger 63
+closes G-53: the Safety settings screen lists/updates blocks and appeals,
+rejected confessions can be appealed in context, and community posts can be
+blocked in context without exposing author IDs. Author resolution now belongs to
+`internal/community.Store`; authenticated feeds filter blocked authors. The
+PostgreSQL/race suite covers contextual blocking and anonymity. Design checks
+passed: `design/test_ia.py` (40 screens, 8 entry points, 163 endpoints),
+`design/generate.py --check`, `design/test_design.py` (132 tokens), and
+`check_dart_symbols.py` (137/137). The API handler composition file was reduced
+from 1,656 to 247 lines (ledger 60); health 200/503 coverage passed (ledger
+58); G-54 person reports passed (ledger 62). B1 is commit `38b50eb`, B2 is
+recorded in ledger 59, B3 in ledger 60, B4 in ledger 61, and B5 in commit
+`ddbc7ff`.
+
+The branch is the fixed session branch `arena/01a0ee4f-i-confess`, based on
+`251f906`. The supplied handoff branch/commits are absent. Its G-52 files remain
+absent from this checkout, so the deletion test and passing full suite do
+**not** verify G-52; do not open a PR until that gate is restored and green.
+`https://github.com/` returned HTTP 200. Flutter/Dart analysis and tests are
+still CI-only because the SDKs are unavailable; `make lint` was not run.
 
 **Previously verified:** 2026-09-25, at ledger 50 (`docs/50-CACHE-INVALIDATION.md`
 — the content caches now have an invalidation path, closing G-10. Two copies of
@@ -460,8 +461,8 @@ PHASE 43 Personalization: the seven listener signals — **PASS** (master-plan
 
 Open gaps carried forward (reconciled against the supplied ledger 57; this
 checkout does not contain `docs/57-GAP-LEDGER-RECONCILIATION.md`): **G-7,
-G-14, G-15, G-19, G-24, G-28, G-33, G-48, G-49, G-52, G-53,
-G-56.** G-9 was removed after the handler's healthy and 503 paths were
+G-14, G-15, G-19, G-24, G-28, G-33, G-48, G-49, G-52, G-56.** G-9 was
+removed after the handler's healthy and 503 paths were
 exercised by `go test -modfile=/tmp/local.mod -race -count=1 ./internal/health`
 (details: `docs/58-HEALTH-CHECK-FAILURE-TEST.md`). G-57 was removed after
 `design/test_design.py` enforced web custom-property color parity with
@@ -469,7 +470,7 @@ exercised by `go test -modfile=/tmp/local.mod -race -count=1 ./internal/health`
 removed after the 1,656-line handler file was decomposed and the full Go race
 suite passed (details: `docs/60-API-HANDLER-COMPOSITION-REFACTOR.md`). The
 reconciled ledger reports G-12, G-13, G-17, G-18, G-20, G-23, G-26 and G-27 as
-closed; ledgers 58–62 additionally close G-9, G-16, G-25, G-54 and G-57.
+closed; ledgers 58–63 additionally close G-9, G-16, G-25, G-53, G-54 and G-57.
 G-52 is still open and unverified. Important checkout limitation: the three unpushed commits described
 by the supplied handoff, including the G-52 patch, are not present at this
 branch's `251f906` base. Therefore their behavior is not claimed as verified
@@ -544,11 +545,15 @@ this checkout's passing deletion and full-suite runs exercise only the older
 baseline, not that fix. G-52 remains open until the intended patch is restored
 and its tests run.
 
-**G-53 — Blocking and appeals have no mobile UI.** The typed client carries the
-whole surface (`ModerationRepository`) and the symbol check gates it, but no
-screen renders it. Both are gestures a listener needs in the moment - blocking
-while being harassed, appealing while reading a rejection - so an API-only
-surface is not the feature.
+**Closed in ledger 63: G-53.** The Settings safety screen lists and unblocks
+accounts, and displays/submits appeals. Rejected personal confessions expose an
+in-context appeal action in My Confessions; community story cards expose an
+in-context block action. The feed still omits author IDs: the new authenticated
+block-by-post endpoint resolves the author inside `internal/community.Store`,
+then writes the block boundary without disclosing identity. Authenticated
+community feeds apply each listener's blocks. Full Go race/build/vet and design
+checks passed; Flutter/Dart tests and analysis are owed to CI because those
+SDKs are unavailable. See `docs/63-MOBILE-SAFETY-UI.md`.
 
 New in PHASE 43: **G-55** (the recommendations endpoint read explicit interests
 only and claimed `personalized: true` for it; none of the seven behavioural

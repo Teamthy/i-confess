@@ -182,12 +182,12 @@
         "GET /bible/books/{id}/chapters",
         "GET /bible/passage",
         "GET /bible/search",
-      "GET /bible/cross-references",
-      "GET /bible/random",
-      "GET /bible/structure",
-      "GET /bible/topics",
-      "GET /bible/topics/{slug}",
-      "GET /bible/{translation}/{book}/{chapter}",
+        "GET /bible/cross-references",
+        "GET /bible/random",
+        "GET /bible/structure",
+        "GET /bible/topics",
+        "GET /bible/topics/{slug}",
+        "GET /bible/{translation}/{book}/{chapter}",
         "GET /bible/{translation}/{book}/{chapter}/{verse}",
         "GET /me/bible/bookmarks",
         "POST /me/bible/bookmarks",
@@ -500,9 +500,10 @@
         "GET /community/feed",
         "GET /community/confessions",
         "POST /community/posts",
-        "POST /community/posts/{id}/react"
+        "POST /community/posts/{id}/react",
+        "POST /community/posts/{id}/block-author"
       ],
-      "notes": "Deliberately one level down, not a tab. G-4: there is no PUBLIC visibility state yet, so this surface has nothing to publish to and must not appear in navigation until PHASE 30."
+      "notes": "Community posts remain anonymous; a story menu resolves the author only on the server to support contextual blocking without exposing account IDs."
     },
     {
       "id": "profile",
@@ -566,12 +567,25 @@
       ],
       "endpoints": [
         "GET /me/preferences",
-        "PATCH /me/preferences",
+        "PATCH /me/preferences"
+      ],
+      "notes": "Blocking lives here rather than on a moderation screen on purpose. It is a listener controlling their own view, not a moderator acting on someone else, and putting it beside the moderation vocabulary would make it read as a penalty against the blocked account - which is the confusion that turns a block feature into a harassment tool. The list is the blocker's own and is never shown to the blocked account. Block and appeal controls live on the Safety child screen."
+    },
+    {
+      "id": "settings/safety",
+      "title": "Safety",
+      "depth": 2,
+      "parents": [
+        "settings"
+      ],
+      "endpoints": [
         "GET /me/blocks",
         "POST /me/blocks",
-        "DELETE /me/blocks/{userId}"
+        "DELETE /me/blocks/{userId}",
+        "GET /me/appeals",
+        "POST /me/appeals"
       ],
-      "notes": "Blocking lives here rather than on a moderation screen on purpose. It is a listener controlling their own view, not a moderator acting on someone else, and putting it beside the moderation vocabulary would make it read as a penalty against the blocked account - which is the confusion that turns a block feature into a harassment tool. The list is the blocker's own and is never shown to the blocked account."
+      "notes": "Manage listener-owned blocks and file/track appeals. Rejected confessions also expose an in-context appeal action in My Confessions. Community-feed author IDs remain omitted; the story menu resolves the author privately on the server for contextual blocking."
     },
     {
       "id": "settings/interests",

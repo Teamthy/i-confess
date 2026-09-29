@@ -1,6 +1,8 @@
 package api
 
 import (
+	"database/sql"
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -63,7 +65,7 @@ func (h *Handler) createCommunityPost(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) feedCommunity(w http.ResponseWriter, r *http.Request) {
 	store := community.NewStore(h.db)
-	posts, err := store.Feed(r.Context(), 20)
+	posts, err := store.FeedFor(r.Context(), 20, h.userID(r))
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to load feed")
 		return
@@ -84,14 +86,16 @@ func (h *Handler) reactCommunity(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid reaction")
 		return
 	}
-	// A block stops a reaction in both directions (PHASE 42). If the author
-	// blocked the reactor, the reaction is exactly what the block was for. If
-	// the reactor blocked the author, honouring it would let a listener keep
-	// contacting someone they asked not to hear from, which makes the block
-	// half a boundary.
-	author, err := h.blocks.PostAuthor(r.Context(), id)
-	if err != nil {
+	// Resolve identity inside the community store. The author ID is never part
+	// of the public feed projection, but the block boundary still applies.
+	cStore := community.NewStore(h.db)
+	author, err := cStore.PostAuthor(r.Context(), id)
+	if errors.Is(err, sql.ErrNoRows) {
 		httpx.WriteError(w, http.StatusNotFound, "no such post")
+		return
+	}
+	if err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, "failed to react")
 		return
 	}
 	blocked, err := h.blocks.BlocksBetween(r.Context(), h.userID(r), author)
@@ -104,12 +108,48 @@ func (h *Handler) reactCommunity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cStore := community.NewStore(h.db)
 	if err := cStore.React(r.Context(), id, h.userID(r), community.Reaction(req.Reaction)); err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to react")
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// blockCommunityAuthor blocks the owner of a feed-visible post without
+// disclosing their account ID. Identity lookup remains server-side, preserving
+// the feed's anonymous projection while making the block gesture contextual.
+func (h *Handler) blockCommunityAuthor(w http.ResponseWriter, r *http.Request) {
+	viewerID := h.userID(r)
+	if viewerID == "" {
+		httpx.WriteError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+	authorID, err := community.NewStore(h.db).PostAuthor(r.Context(), r.PathValue("id"))
+	if errors.Is(err, sql.ErrNoRows) {
+		httpx.WriteError(w, http.StatusNotFound, "post not found")
+		return
+	}
+	if err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, "could not block this account")
+		return
+	}
+	if authorID == viewerID {
+		httpx.WriteError(w, http.StatusBadRequest, "you cannot block yourself")
+		return
+	}
+	_, created, err := h.blocks.Block(r.Context(), viewerID, authorID, "")
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		httpx.WriteError(w, http.StatusNotFound, "post not found")
+	case err != nil:
+		httpx.WriteError(w, http.StatusInternalServerError, "could not block this account")
+	default:
+		status := http.StatusOK
+		if created {
+			status = http.StatusCreated
+		}
+		httpx.WriteJSON(w, status, map[string]any{"blocked": true, "already_blocked": !created})
+	}
 }
 
 // feedUserConfessions is the public UGC reader that closes G-40. It returns

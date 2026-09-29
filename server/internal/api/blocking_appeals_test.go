@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -81,6 +82,69 @@ func TestBlockingEndToEnd(t *testing.T) {
 		if got := bodyJSON(t, body)["count"]; got != float64(0) {
 			t.Errorf("count after unblock = %v, want 0", got)
 		}
+	}
+}
+
+// TestBlockCommunityAuthorKeepsTheFeedAnonymous verifies that the community
+// store resolves an anonymous card's owner internally, while the endpoint
+// creates the same listener-owned boundary as /me/blocks.
+func TestBlockCommunityAuthorKeepsTheFeedAnonymous(t *testing.T) {
+	f := newModerationFixture(t)
+	readerTok, readerID := f.registerSecond(t, "community-reader@example.com")
+	status, body := doRequest(t, f.srv, http.MethodPost, "/community/posts", f.user,
+		`{"body":"A public story for the community","visibility":"private"}`)
+	if status != http.StatusCreated {
+		t.Fatalf("create post: %d %s", status, truncateBody(body))
+	}
+	postID := bodyJSON(t, body)["id"].(string)
+	if _, err := f.conn.ExecContext(context.Background(),
+		`UPDATE community_posts SET visibility='public',status='published' WHERE id=?`, postID); err != nil {
+		t.Fatal(err)
+	}
+
+	// The public response never includes the owner's ID.
+	status, body = doRequest(t, f.srv, http.MethodGet, "/community/feed", "", "")
+	if status != http.StatusOK || strings.Contains(string(body), f.userID) || strings.Contains(string(body), "author_id") {
+		t.Fatalf("community feed must remain anonymous: status=%d body=%s", status, truncateBody(body))
+	}
+
+	// A signed-in reader can block the author via the post ID; the author ID is
+	// neither sent by the client nor returned by this contextual endpoint.
+	if status, _ = doRequest(t, f.srv, http.MethodPost,
+		"/community/posts/"+postID+"/block-author", "", ""); status != http.StatusUnauthorized {
+		t.Errorf("anonymous contextual block: got %d, want 401", status)
+	}
+	if status, _ = doRequest(t, f.srv, http.MethodPost,
+		"/community/posts/"+postID+"/block-author", f.user, ""); status != http.StatusBadRequest {
+		t.Errorf("self-block through own story: got %d, want 400", status)
+	}
+	status, body = doRequest(t, f.srv, http.MethodPost,
+		"/community/posts/"+postID+"/block-author", readerTok, "")
+	if status != http.StatusCreated || strings.Contains(string(body), f.userID) || strings.Contains(string(body), "blocked_id") {
+		t.Fatalf("context block should succeed without disclosing identity: status=%d body=%s", status, truncateBody(body))
+	}
+	if status, _ = doRequest(t, f.srv, http.MethodPost,
+		"/community/posts/"+postID+"/block-author", readerTok, ""); status != http.StatusOK {
+		t.Errorf("repeat context block: got %d, want 200", status)
+	}
+
+	// The post disappears only from the blocker's feed. Anonymous readers still
+	// see it, and the boundary is visible only in the blocker's own list.
+	if status, body = doRequest(t, f.srv, http.MethodGet, "/community/feed", readerTok, ""); status != http.StatusOK || strings.Contains(string(body), postID) {
+		t.Errorf("blocked author should be filtered for the reader: status=%d body=%s", status, truncateBody(body))
+	}
+	if status, body = doRequest(t, f.srv, http.MethodGet, "/community/feed", "", ""); status != http.StatusOK || !strings.Contains(string(body), postID) {
+		t.Errorf("anonymous feed should remain unfiltered: status=%d body=%s", status, truncateBody(body))
+	}
+	if status, body = doRequest(t, f.srv, http.MethodGet, "/me/blocks", readerTok, ""); status != http.StatusOK || !strings.Contains(string(body), f.userID) {
+		t.Errorf("reader's private block list should contain the author: status=%d body=%s", status, truncateBody(body))
+	}
+	if status, _ = doRequest(t, f.srv, http.MethodPost,
+		"/community/posts/"+postID+"/react", readerTok, `{"reaction":"amen"}`); status != http.StatusForbidden {
+		t.Errorf("blocked reader reaction: got %d, want 403", status)
+	}
+	if readerID == "" {
+		t.Fatal("expected a registered reader")
 	}
 }
 

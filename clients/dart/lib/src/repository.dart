@@ -1004,6 +1004,10 @@ final class CommunityRepository extends Repository {
 
   Future<WriteResult<void>> react(String postId, String reaction) =>
       write(() => api.postCommunityPostsByIdReact(postId, reaction), (_) {});
+
+  /// Block a story's anonymous author without exposing the account ID.
+  Future<WriteResult<Map<String, dynamic>>> blockPostAuthor(String postId) =>
+      write(() => api.postCommunityPostsByIdBlockAuthor(postId), (json) => json);
 }
 
 /// Subscription plans, entitlements and trial.

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:iconfess_api/iconfess_api.dart';
 
+import '../../core/di/providers.dart';
 import '../../core/error/error_mapper.dart';
 import '../../core/routing/routes.dart';
 import '../../core/theme/theme.dart';
@@ -690,6 +691,15 @@ class _MyConfessionRow extends ConsumerWidget {
                 ),
               ),
             ],
+            if (confession.isRejected) ...[
+              const SizedBox(height: IConfess.space3),
+              OutlinedButton.icon(
+                key: ValueKey('appeal-${confession.id}'),
+                onPressed: () => _appeal(context, ref),
+                icon: const Icon(Icons.gavel_rounded),
+                label: const Text('Appeal this decision'),
+              ),
+            ],
             if (confession.canSubmit) ...[
               const SizedBox(height: IConfess.space3),
               Align(
@@ -718,6 +728,56 @@ class _MyConfessionRow extends ConsumerWidget {
       // cannot keep.
       success: (_) => messenger.showSnackBar(
         const SnackBar(content: Text('Sent for review')),
+      ),
+      failure: (error) => messenger.showSnackBar(
+        SnackBar(content: Text(ErrorMapper.describe(error).message)),
+      ),
+    );
+  }
+
+  Future<void> _appeal(BuildContext context, WidgetRef ref) async {
+    final statement = TextEditingController();
+    String? text;
+    try {
+      text = await showDialog<String>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Appeal this decision'),
+          content: TextField(
+            controller: statement,
+            autofocus: true,
+            minLines: 2,
+            maxLines: 5,
+            decoration: const InputDecoration(
+              labelText: 'Why should this be reviewed?',
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+            FilledButton(
+              onPressed: () {
+                final value = statement.text.trim();
+                if (value.isNotEmpty) Navigator.pop(context, value);
+              },
+              child: const Text('Submit appeal'),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      statement.dispose();
+    }
+    if (text == null || !context.mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    final result = await ref.read(moderationRepositoryProvider).appeal(
+          decisionType: 'confession',
+          decisionId: confession.id,
+          statement: text,
+        );
+    if (!context.mounted) return;
+    result.when(
+      success: (_) => messenger.showSnackBar(
+        const SnackBar(content: Text('Appeal submitted')),
       ),
       failure: (error) => messenger.showSnackBar(
         SnackBar(content: Text(ErrorMapper.describe(error).message)),

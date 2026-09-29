@@ -1065,6 +1065,19 @@ void main() {
     });
   });
 
+  test('community block action targets the post without sending or exposing an author ID', () async {
+    api.respond('/community/posts/post-1/block-author', 201, {
+      'blocked': true,
+      'already_blocked': false,
+    });
+
+    final result = await CommunityRepository(client, cache).blockPostAuthor('post-1');
+
+    expect(result, isA<WriteSuccess<Map<String, dynamic>>>());
+    expect(api.callCount('/community/posts/post-1/block-author'), 1);
+    expect(api.lastBody, isEmpty);
+  });
+
   test('person reports serialize the typed entity kind', () async {
     api.respond('/reports', 201, {
       'report': {'id': 'r-person', 'entity_type': 'user', 'entity_id': 'target-1'},

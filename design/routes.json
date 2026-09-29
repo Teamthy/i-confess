@@ -918,6 +918,13 @@
   },
   {
     "method": "POST",
+    "path": "/community/posts/{id}/block-author",
+    "auth": "user",
+    "summary": "Block an anonymous community post author",
+    "tag": "community"
+  },
+  {
+    "method": "POST",
     "path": "/community/posts/{id}/react",
     "auth": "user",
     "summary": "React amen/heart/pray",
@@ -2678,6 +2685,13 @@
     "path": "/v1/community/posts",
     "auth": "user",
     "summary": "Create community post (moderated, never auto-publish)",
+    "tag": "community"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/community/posts/{id}/block-author",
+    "auth": "user",
+    "summary": "Block an anonymous community post author",
     "tag": "community"
   },
   {

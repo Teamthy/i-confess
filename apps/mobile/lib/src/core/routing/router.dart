@@ -29,6 +29,7 @@ import '../../features/player/player_screen.dart';
 import '../../features/premium/premium_screen.dart';
 import '../../features/search/search_screen.dart';
 import '../../features/settings/settings_screen.dart';
+import '../../features/settings/safety_screen.dart';
 import '../../features/shell/app_shell.dart';
 import '../../features/shell/placeholder_screen.dart';
 import '../../features/splash/splash_screen.dart';
@@ -347,6 +348,11 @@ GoRouter createRouter(
             path: 'devices',
             name: AppRouteNames.settingsDevices,
             builder: (context, state) => const DevicesScreen(),
+          ),
+          GoRoute(
+            path: 'safety',
+            name: AppRouteNames.settingsSafety,
+            builder: (context, state) => const SafetyScreen(),
           ),
           GoRoute(
             path: 'deletion',

@@ -237,6 +237,26 @@ moderation_methods = method_names("ModerationRepository", repo_src)
 for required in ["report", "blocks", "block", "unblock", "appeals", "appeal"]:
     check(f"ModerationRepository.{required} exists", required in moderation_methods)
 
+community_methods = method_names("CommunityRepository", repo_src)
+check("CommunityRepository.blockPostAuthor exists", "blockPostAuthor" in community_methods)
+community_screen_src = read(MOBILE / "src/features/community/community_screen.dart")
+check(
+    "community story menu exposes contextual blocking",
+    "Block author" in community_screen_src and "blockPostAuthor" in community_screen_src,
+)
+safety_screen_src = read(MOBILE / "src/features/settings/safety_screen.dart")
+check(
+    "safety screen renders block and appeal management",
+    "moderationBlocksProvider" in safety_screen_src
+    and "moderationAppealsProvider" in safety_screen_src
+    and "Appeal a decision" in safety_screen_src,
+)
+library_screen_src = read(MOBILE / "src/features/library/library_screen.dart")
+check(
+    "rejected personal confessions can be appealed in context",
+    "Appeal this decision" in library_screen_src and "decisionType: 'confession'" in library_screen_src,
+)
+
 check("UserBlock model is declared", "final class UserBlock" in models_src)
 check("UserBlock has a fromJson factory", "factory UserBlock.fromJson" in models_src)
 check("ModerationAppeal model is declared", "final class ModerationAppeal" in models_src)
