@@ -28,10 +28,11 @@ restored verbatim. PR #82's first CI run found a Safety-screen syntax/import
 error and Go lint debt; a follow-up fixed those, and the next CI run passed Go
 build/vet/tests, lint, Dart client, web, container checks, and Flutter analysis.
 Flutter tests then found one stale drift guard still reading pre-refactor
-`handlers.go`; it now reads `handlers_sessions.go`. PR #82 was merged at
-`379ebb3` before this final guard fix was pushed as `e80bbc1`; follow-up PR #83
-is being used to verify that correction. Its CI is pending. Flutter/Dart SDKs
-and `golangci-lint` remain unavailable locally.
+`handlers.go`; it now reads `handlers_sessions.go`. PR #82 was merged at `379ebb3` before this final guard
+fix was pushed as `e80bbc1`; follow-up PR #83 verifies the correction. All PR
+#83 checks now pass: Go build/vet/tests, lint, Flutter analyze/tests, Dart
+client, web build, and container/deployment checks. Flutter/Dart SDKs and
+`golangci-lint` remain unavailable locally.
 
 **Previously verified:** 2026-09-25, at ledger 50 (`docs/50-CACHE-INVALIDATION.md`
 — the content caches now have an invalidation path, closing G-10. Two copies of
