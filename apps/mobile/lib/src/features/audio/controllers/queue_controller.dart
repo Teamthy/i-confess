@@ -3,7 +3,6 @@
 /// This controller provides full queue management functionality including
 /// add, remove, reorder, shuffle, repeat, and navigation operations.
 import 'dart:async';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import '../models/audio_queue.dart';
@@ -51,6 +50,9 @@ class QueueNotifier extends StateNotifier<QueueState> {
 
   /// Gets the current queue item.
   AudioQueueItem? get currentItem => state.queue.currentItem;
+
+  /// Gets the current playback position for persistence.
+  Duration get currentPosition => _audioController.currentPosition;
 
   /// Gets the next queue item.
   AudioQueueItem? get nextItem => state.queue.nextItem;
@@ -356,10 +358,8 @@ class QueueNotifier extends StateNotifier<QueueState> {
 
   /// Gets an item by ID.
   AudioQueueItem? getItemById(String itemId) {
-    return state.queue.items.firstWhere(
-      (item) => item.id == itemId,
-      orElse: () => null,
-    );
+    final index = state.queue.items.indexWhere((item) => item.id == itemId);
+    return index < 0 ? null : state.queue.items[index];
   }
 
   /// Gets items by confession ID.

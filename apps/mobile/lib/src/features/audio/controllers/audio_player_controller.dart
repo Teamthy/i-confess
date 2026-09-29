@@ -3,10 +3,10 @@
 /// This controller integrates the audio playback service with the audio generation
 /// service to provide a complete audio experience.
 import 'dart:async';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import '../../../core/di/providers.dart';
 import '../models/audio_generation_job.dart';
+import '../models/audio_generation_request.dart';
 import '../services/audio_generation_service.dart';
 import '../services/audio_url_service.dart';
 import '../../player/audio_playback_service.dart';
@@ -360,6 +360,9 @@ class AudioPlayerNotifier extends StateNotifier<AudioPlayerState> {
 
   /// Gets the current playback state.
   AudioPlayerState get currentState => state;
+
+  /// Gets the current playback position without exposing protected notifier state.
+  Duration get currentPosition => state.position;
 
   /// Gets the current position as a percentage of duration.
   double get positionPercentage {

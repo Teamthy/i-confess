@@ -1,6 +1,7 @@
 /// Unit tests for the queue management system.
 ///
 /// These tests verify the functionality of the audio queue model and controller.
+import 'package:flutter/material.dart' show Icons;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:iconfess/src/features/audio/models/audio_queue.dart';
 import 'package:iconfess/src/features/audio/models/audio_asset.dart';
@@ -334,7 +335,7 @@ void main() {
         ),
       ];
 
-      const queue = AudioQueue(
+      final queue = AudioQueue(
         items: items,
         currentIndex: 0,
         isShuffled: false,
@@ -372,7 +373,7 @@ void main() {
         ),
       ];
 
-      const original = AudioQueue(
+      final original = AudioQueue(
         items: items,
         currentIndex: 1,
         isShuffled: true,

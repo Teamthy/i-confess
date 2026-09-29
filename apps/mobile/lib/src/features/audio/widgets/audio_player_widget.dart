@@ -94,13 +94,19 @@ class AudioPlayerWidget extends ConsumerWidget {
     }
 
     if (compact) {
-      return _buildCompactPlayer(context, ref, controller, isPlaying, isLoading);
+      return _buildCompactPlayer(
+        context,
+        controller,
+        isPlaying,
+        isLoading,
+        displayPosition,
+      );
     }
 
     return _buildFullPlayer(
       context,
-      ref,
       controller,
+      playerState,
       isPlaying,
       isLoading,
       positionPercentage,
@@ -112,10 +118,10 @@ class AudioPlayerWidget extends ConsumerWidget {
 
   Widget _buildCompactPlayer(
     BuildContext context,
-    WidgetRef ref,
     AudioPlayerNotifier controller,
     bool isPlaying,
     bool isLoading,
+    String displayPosition,
   ) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -166,8 +172,8 @@ class AudioPlayerWidget extends ConsumerWidget {
 
   Widget _buildFullPlayer(
     BuildContext context,
-    WidgetRef ref,
     AudioPlayerNotifier controller,
+    AudioPlayerState playerState,
     bool isPlaying,
     bool isLoading,
     double positionPercentage,
@@ -219,7 +225,7 @@ class AudioPlayerWidget extends ConsumerWidget {
               child: Slider(
                 value: positionPercentage.clamp(0.0, 1.0),
                 onChanged: isLoading ? null : (value) async {
-                  final duration = controller.state.duration;
+                  final duration = playerState.duration;
                   if (duration > Duration.zero) {
                     await controller.seek(Duration(
                       milliseconds: (duration.inMilliseconds * value).round(),
@@ -305,7 +311,11 @@ class AudioPlayerWidget extends ConsumerWidget {
                   // Show volume slider
                   showModalBottomSheet(
                     context: context,
-                    builder: (context) => _buildVolumeSlider(context, ref, controller),
+                    builder: (context) => _buildVolumeSlider(
+                      context,
+                      controller,
+                      playerState.volume,
+                    ),
                   );
                 },
               ),
@@ -319,7 +329,11 @@ class AudioPlayerWidget extends ConsumerWidget {
                   // Show speed options
                   showModalBottomSheet(
                     context: context,
-                    builder: (context) => _buildSpeedOptions(context, ref, controller),
+                    builder: (context) => _buildSpeedOptions(
+                      context,
+                      controller,
+                      playerState.playbackSpeed,
+                    ),
                   );
                 },
               ),
@@ -354,10 +368,9 @@ class AudioPlayerWidget extends ConsumerWidget {
 
   Widget _buildVolumeSlider(
     BuildContext context,
-    WidgetRef ref,
     AudioPlayerNotifier controller,
+    double currentVolume,
   ) {
-    final currentVolume = controller.state.volume;
 
     return Padding(
       padding: const EdgeInsets.all(16),
@@ -402,10 +415,9 @@ class AudioPlayerWidget extends ConsumerWidget {
 
   Widget _buildSpeedOptions(
     BuildContext context,
-    WidgetRef ref,
     AudioPlayerNotifier controller,
+    double currentSpeed,
   ) {
-    final currentSpeed = controller.state.playbackSpeed;
     final speeds = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
 
     return Padding(

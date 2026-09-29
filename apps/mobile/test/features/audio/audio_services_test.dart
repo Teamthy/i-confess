@@ -76,7 +76,7 @@ void main() {
     });
 
     test('parses the server list response wrapped in data', () async {
-      client.getResponses['/admin/audio/generate/jobs'] = {
+      client.getResponses['/admin/audio/generate/jobs?limit=10'] = {
         'data': [
           {'id': 'job-1', 'confession_id': 'confession-1', 'status': 'queued'},
           {'id': 'job-2', 'confession_id': 'confession-2', 'status': 'processing'},

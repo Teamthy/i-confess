@@ -202,10 +202,8 @@ class BookmarkCollection {
 
   /// Get a specific bookmark by ID.
   AudioBookmark? getBookmark(String id) {
-    return bookmarks.firstWhere(
-      (bookmark) => bookmark.id == id,
-      orElse: () => null,
-    );
+    final index = bookmarks.indexWhere((bookmark) => bookmark.id == id);
+    return index < 0 ? null : bookmarks[index];
   }
 
   /// Check if a bookmark exists for an asset at a position.

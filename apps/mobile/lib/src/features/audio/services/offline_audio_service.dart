@@ -212,9 +212,9 @@ class OfflineAudioService {
   /// Creates an offline audio service.
   OfflineAudioService({
     OfflineAudioConfig? config,
-    SharedPreferences? prefs,
-  }) : _config = config ?? const OfflineAudioConfig(),
-       _prefs = prefs ?? throw ArgumentError('prefs cannot be null');
+    required SharedPreferences prefs,
+  })  : _config = config ?? const OfflineAudioConfig(),
+        _prefs = prefs;
 
   /// Creates an offline audio service with default SharedPreferences.
   static Future<OfflineAudioService> create([OfflineAudioConfig? config]) async {
@@ -322,6 +322,7 @@ class OfflineAudioService {
     if (!_isInitialized || _cacheDirectory == null) {
       throw StateError('OfflineAudioService.init() must complete before caching.');
     }
+    await _makeRoomIfNeeded();
     if (!isCacheFull) {
       await _addToDownloadQueue(assetId, url, fileName, fileSize, expiration);
     } else {
@@ -572,7 +573,9 @@ class OfflineAudioService {
     if (filePath == null) return null;
     
     final file = File(filePath);
-    return file.existsSync() ? file.openRead() : null;
+    return file.existsSync()
+        ? file.openRead().map(Uint8List.fromList)
+        : null;
   }
 
   /// Gets all cached assets.

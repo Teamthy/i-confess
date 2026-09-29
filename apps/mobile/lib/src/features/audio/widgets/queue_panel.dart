@@ -4,7 +4,6 @@
 /// the audio playback queue.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:reorderables/reorderables.dart';
 import '../models/audio_queue.dart';
 import '../controllers/queue_controller.dart';
 import '../controllers/audio_player_controller.dart';
@@ -39,8 +38,6 @@ class QueuePanel extends ConsumerStatefulWidget {
 class _QueuePanelState extends ConsumerState<QueuePanel> {
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
     final queueState = ref.watch(queueControllerProvider);
     final queue = queueState.queue;
     final controller = ref.read(queueControllerProvider.notifier);
@@ -172,58 +169,43 @@ class _QueuePanelState extends ConsumerState<QueuePanel> {
     AudioQueue queue,
     QueueNotifier queueController,
     AudioPlayerNotifier audioController,
-    AudioPlayerState playerState,
-    {required bool isFullScreen},
-  ) {
+    AudioPlayerState playerState, {
+    required bool isFullScreen,
+  }) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    
+
     if (queue.isEmpty) {
-      return Expanded(
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.queue_music,
-                size: 48,
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.queue_music,
+              size: 48,
+              color: colorScheme.onSurface.withOpacity(0.5),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Queue is empty',
+              style: theme.textTheme.bodyLarge?.copyWith(
                 color: colorScheme.onSurface.withOpacity(0.5),
               ),
-              const SizedBox(height: 16),
-              Text(
-                'Queue is empty',
-                style: theme.textTheme.bodyLarge?.copyWith(
-                  color: colorScheme.onSurface.withOpacity(0.5),
-                ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Add confessions to start listening',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: colorScheme.onSurface.withOpacity(0.3),
               ),
-              const SizedBox(height: 8),
-              Text(
-                'Add confessions to start listening',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: colorScheme.onSurface.withOpacity(0.3),
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       );
     }
-    
-    // Use ReorderableListView for drag-and-drop reordering
-    return ReorderableColumn(
-      padding: EdgeInsets.zero,
-      onReorder: (oldIndex, newIndex) {
-        // Adjust for the header (current player widget)
-        final itemOldIndex = oldIndex - 1;
-        final itemNewIndex = newIndex - 1;
-        
-        // Only reorder if both indices are valid (not the header)
-        if (itemOldIndex >= 0 && itemNewIndex >= 0) {
-          queueController.moveItem(itemOldIndex, itemNewIndex);
-        }
-      },
+
+    return Column(
       children: [
-        // Current player at the top (not reorderable)
         Padding(
           key: const ValueKey('current_player'),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -232,146 +214,27 @@ class _QueuePanelState extends ConsumerState<QueuePanel> {
             onClose: isFullScreen ? null : () => Navigator.of(context).pop(),
           ),
         ),
-        
-        // Queue items (reorderable)
-        for (var i = 0; i < queue.items.length; i++)
-          _buildReorderableQueueItem(
-            context,
-            queue.items[i],
-            i,
-            queue.currentIndex == i,
-            queueController,
-            audioController,
-            playerState,
-            key: ValueKey('queue_item_$i'),
+        Expanded(
+          child: ReorderableListView.builder(
+            padding: EdgeInsets.zero,
+            itemCount: queue.items.length,
+            onReorder: (oldIndex, newIndex) {
+              if (newIndex > oldIndex) newIndex -= 1;
+              queueController.moveItem(oldIndex, newIndex);
+            },
+            itemBuilder: (context, index) => _buildQueueItem(
+              context,
+              queue.items[index],
+              index,
+              queue.currentIndex == index,
+              queueController,
+              audioController,
+              playerState,
+              key: ValueKey(queue.items[index].id),
+            ),
           ),
+        ),
       ],
-    );
-  }
-
-  Widget _buildReorderableQueueItem(
-    BuildContext context,
-    AudioQueueItem item,
-    int index,
-    bool isCurrent,
-    QueueNotifier queueController,
-    AudioPlayerNotifier audioController,
-    AudioPlayerState playerState,
-    {required Key key},
-  ) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final isPlaying = isCurrent && playerState.playerState == AudioPlayerPhase.playing;
-    
-    return ReorderableItem(
-      key: key,
-      childBuilder: (context, child) => Material(
-        color: isCurrent 
-            ? colorScheme.primaryContainer.withOpacity(0.3)
-            : Colors.transparent,
-        child: InkWell(
-          onTap: () => queueController.playItemAt(index),
-          onLongPress: () => _showItemMenu(context, item, index, queueController),
-          child: child,
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        child: Row(
-          children: [
-            // Reorder handle
-            ReorderableListener(
-              child: Icon(
-                Icons.drag_handle,
-                color: colorScheme.onSurface.withOpacity(0.4),
-                size: 18,
-              ),
-            ),
-            const SizedBox(width: 8),
-            
-            // Now playing indicator or index
-            if (isCurrent)
-              Icon(
-                Icons.volume_up,
-                color: colorScheme.primary,
-                size: 20,
-              )
-            else
-              Text(
-                '${index + 1}',
-                style: theme.textTheme.bodySmall,
-              ),
-            
-            const SizedBox(width: 12),
-            
-            // Play/pause button for current item
-            if (isCurrent)
-              IconButton(
-                icon: Icon(
-                  isPlaying ? Icons.pause : Icons.play_arrow,
-                  size: 20,
-                ),
-                onPressed: () async {
-                  if (isPlaying) {
-                    await audioController.pause();
-                  } else {
-                    await audioController.resume();
-                  }
-                },
-              )
-            else
-              const SizedBox(width: 36),
-            
-            // Item info
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    item.title,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  if (item.subtitle != null)
-                    Text(
-                      item.subtitle!,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: colorScheme.onSurface.withOpacity(0.6),
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                ],
-              ),
-            ),
-            
-            // Duration
-            Text(
-              _formatDuration(item.duration),
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: colorScheme.onSurface.withOpacity(0.6),
-              ),
-            ),
-            
-            // Played indicator
-            if (item.played)
-              Icon(
-                Icons.check_circle,
-                color: colorScheme.primary,
-                size: 16,
-              ),
-            
-            // Menu button
-            IconButton(
-              icon: const Icon(Icons.more_vert, size: 18),
-              onPressed: () => _showItemMenu(context, item, index, queueController),
-            ),
-          ],
-        ),
-      ),
     );
   }
 
@@ -382,13 +245,15 @@ class _QueuePanelState extends ConsumerState<QueuePanel> {
     bool isCurrent,
     QueueNotifier queueController,
     AudioPlayerNotifier audioController,
-    AudioPlayerState playerState,
-  ) {
+    AudioPlayerState playerState, {
+    required Key key,
+  }) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final isPlaying = isCurrent && playerState.playerState == AudioPlayerPhase.playing;
     
     return Material(
+      key: key,
       color: isCurrent 
           ? colorScheme.primaryContainer.withOpacity(0.3)
           : Colors.transparent,
@@ -689,7 +554,7 @@ class QueueControls extends ConsumerWidget {
           onPressed: queueController.playNext,
           tooltip: 'Next',
         ),
-        QueueButton(compact: true),
+        QueueButton(showCount: false),
       ],
     );
   }

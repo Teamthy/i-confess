@@ -78,6 +78,7 @@ class AudioQueueItem {
     String? subtitle,
     required Duration duration,
     int orderIndex = 0,
+    bool played = false,
   }) {
     return AudioQueueItem(
       id: '${assetId}_${DateTime.now().millisecondsSinceEpoch}',
@@ -97,6 +98,7 @@ class AudioQueueItem {
       subtitle: subtitle,
       duration: duration,
       orderIndex: orderIndex,
+      played: played,
     );
   }
 

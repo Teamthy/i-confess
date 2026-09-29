@@ -5,7 +5,9 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../controllers/queue_controller.dart';
 import '../models/audio_queue.dart';
 
 /// Key for storing queue in shared preferences.
@@ -286,7 +288,7 @@ extension QueuePersistenceExtension on QueueNotifier {
   /// Saves the current queue state.
   Future<bool> saveQueueState() async {
     final service = await QueuePersistenceService.create();
-    return service.saveQueue(state.queue);
+    return service.saveQueue(currentQueue);
   }
 
   /// Restores the queue state.
@@ -299,8 +301,8 @@ extension QueuePersistenceExtension on QueueNotifier {
   Future<bool> saveCurrentState() async {
     final service = await QueuePersistenceService.create();
     return service.saveCurrentState(
-      queue: state.queue,
-      currentPosition: _audioController.state.position,
+      queue: currentQueue,
+      currentPosition: currentPosition,
     );
   }
 
