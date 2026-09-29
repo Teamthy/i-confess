@@ -165,47 +165,10 @@ func (h *Handler) generateMinisterVoice(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 	}
-	var req generateVoiceRequest
-	if err := httpx.DecodeJSON(r, &req); err != nil {
-		httpx.WriteError(w, http.StatusBadRequest, "invalid request body")
+	req, purpose, userText, ok := h.decodeVoiceRequest(w, r, email)
+	if !ok {
 		return
 	}
-	if req.Language == "" {
-		req.Language = "en"
-	}
-	if req.Style == "" {
-		req.Style = "reflection"
-	}
-	purpose := voicegov.ContentPurpose(req.Purpose)
-	if !voicegov.ValidPurpose(purpose) || purpose == voicegov.PurposeMarketing || purpose == voicegov.PurposeResearch {
-		httpx.WriteError(w, http.StatusBadRequest, "purpose must be one of confession, prayer, reflection, devotional, bible")
-		return
-	}
-	if !voiceengine.ValidStyle(req.Style) {
-		httpx.WriteError(w, http.StatusBadRequest, "unknown style")
-		return
-	}
-	if req.Speed != 0 && (req.Speed < 0.5 || req.Speed > 1.5) {
-		httpx.WriteError(w, http.StatusBadRequest, "speed must be between 0.5 and 1.5")
-		return
-	}
-	if req.Pitch < -6 || req.Pitch > 6 {
-		httpx.WriteError(w, http.StatusBadRequest, "pitch must be between -6 and 6 semitones")
-		return
-	}
-	// Anyone who is not a voice/content admin is supplying their own words.
-	// That needs its own licence capability and the stricter safety floor.
-	userText := !isVoiceAdmin(r)
-	if err := voiceengine.ValidateScript(req.Text, userText); err != nil {
-		var v *voiceengine.SafetyViolation
-		if errors.As(err, &v) {
-			_ = h.vplat.AppendRightsAudit(r.Context(), store.RightsAuditEntry{VoiceID: req.VoiceID, Actor: email,
-				Action: "GENERATION_REFUSED_CONTENT", Decision: "denied", Reason: v.Code, RemoteAddr: clientIP(r)})
-			httpx.WriteJSON(w, http.StatusUnprocessableEntity, map[string]any{"error": v.Detail, "code": v.Code})
-			return
-		}
-	}
-
 	ctx := r.Context()
 	plan, err := h.resolveVoicePlan(ctx, voiceengine.Request{
 		VoiceID: req.VoiceID, Markup: req.Text, Language: req.Language, Locale: req.Locale, Style: req.Style,
@@ -263,6 +226,53 @@ func (h *Handler) generateMinisterVoice(w http.ResponseWriter, r *http.Request) 
 			ModelID: plan.Model.ID, GenerationID: gen.ID, GrantVersion: plan.Decision.GrantVersion, Decision: "allowed", RemoteAddr: clientIP(r)})
 	}
 	h.writeGeneration(w, r, gen, http.StatusAccepted)
+}
+
+// decodeVoiceRequest parses and validates a generate/stream body, including
+// the script safety floor. It writes the error response itself.
+func (h *Handler) decodeVoiceRequest(w http.ResponseWriter, r *http.Request, email string) (generateVoiceRequest, voicegov.ContentPurpose, bool, bool) {
+	var req generateVoiceRequest
+	if err := httpx.DecodeJSON(r, &req); err != nil {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid request body")
+		return req, "", false, false
+	}
+	if req.Language == "" {
+		req.Language = "en"
+	}
+	if req.Style == "" {
+		req.Style = "reflection"
+	}
+	purpose := voicegov.ContentPurpose(req.Purpose)
+	if !voicegov.ValidPurpose(purpose) || purpose == voicegov.PurposeMarketing || purpose == voicegov.PurposeResearch {
+		httpx.WriteError(w, http.StatusBadRequest, "purpose must be one of confession, prayer, reflection, devotional, bible")
+		return req, "", false, false
+	}
+	if !voiceengine.ValidStyle(req.Style) {
+		httpx.WriteError(w, http.StatusBadRequest, "unknown style")
+		return req, "", false, false
+	}
+	if req.Speed != 0 && (req.Speed < 0.5 || req.Speed > 1.5) {
+		httpx.WriteError(w, http.StatusBadRequest, "speed must be between 0.5 and 1.5")
+		return req, "", false, false
+	}
+	if req.Pitch < -6 || req.Pitch > 6 {
+		httpx.WriteError(w, http.StatusBadRequest, "pitch must be between -6 and 6 semitones")
+		return req, "", false, false
+	}
+	// Anyone who is not a voice/content admin is supplying their own words.
+	// That needs its own licence capability and the stricter safety floor.
+	userText := !isVoiceAdmin(r)
+	if err := voiceengine.ValidateScript(req.Text, userText); err != nil {
+		var v *voiceengine.SafetyViolation
+		if errors.As(err, &v) {
+			_ = h.vplat.AppendRightsAudit(r.Context(), store.RightsAuditEntry{VoiceID: req.VoiceID, Actor: email,
+				Action: "GENERATION_REFUSED_CONTENT", Decision: "denied", Reason: v.Code, RemoteAddr: clientIP(r)})
+			httpx.WriteJSON(w, http.StatusUnprocessableEntity, map[string]any{"error": v.Detail, "code": v.Code})
+			return req, "", false, false
+		}
+	}
+
+	return req, purpose, userText, true
 }
 
 func mustParse(text string) []voiceengine.Segment {

@@ -46,6 +46,8 @@ type voicePlatformHarness struct {
 	*qaHarness
 	worker *fakeGPUWorker
 	queue  *jobs.MemoryQueue
+	docID  string
+	ws     *httptest.Server
 }
 
 func newVoicePlatformHarness(t *testing.T) *voicePlatformHarness {
@@ -64,7 +66,7 @@ func newVoicePlatformHarness(t *testing.T) *voicePlatformHarness {
 	qh.h.SetVoiceOrchestrator(&voiceengine.Orchestrator{Registry: reg})
 	qh.h.SetVoiceThresholds(voiceeval.Thresholds{MinScore: 0.7, MinCoverage: 0.8, MaxRegression: 0.03})
 	qh.h.RegisterVoiceJobs()
-	return &voicePlatformHarness{qaHarness: qh, worker: worker, queue: q}
+	return &voicePlatformHarness{qaHarness: qh, worker: worker, queue: q, ws: ws}
 }
 
 func (h *voicePlatformHarness) must(t *testing.T, want int, method, path string, body any, tok string) map[string]any {
@@ -81,7 +83,7 @@ func (h *voicePlatformHarness) must(t *testing.T, want int, method, path string,
 // onboard walks a minister voice through the full governed lifecycle over the
 // API: register -> terms -> document -> review -> approve -> reference ->
 // model -> evaluation gate -> promotion.
-func (h *voicePlatformHarness) onboard(t *testing.T) string {
+func (h *voicePlatformHarness) onboard(t *testing.T, extraCaps ...string) string {
 	t.Helper()
 	v := h.must(t, 201, "POST", "/v1/admin/minister-voices",
 		map[string]any{"name": "Minister A", "language": "en", "locale": "en-NG", "rightsHolder": "Minister A Ministries"}, h.admin)
@@ -93,11 +95,15 @@ func (h *voicePlatformHarness) onboard(t *testing.T) string {
 		"can_use_in_confessions", "can_use_user_submitted_text", "can_store_model_checkpoints", "can_distribute", "can_commercialize"} {
 		caps[c] = true
 	}
+	for _, c := range extraCaps {
+		caps[c] = true
+	}
 	h.must(t, 200, "PUT", "/v1/admin/voices/"+id+"/grant", map[string]any{
 		"rightsHolder": "Minister A Ministries", "capabilities": caps, "attestation": true}, h.admin)
-	h.must(t, 201, "POST", "/v1/admin/voices/"+id+"/rights-documents", map[string]any{
+	doc := h.must(t, 201, "POST", "/v1/admin/voices/"+id+"/rights-documents", map[string]any{
 		"documentType": "voice_license", "title": "Signed voice licence", "storageKey": "legal/a.pdf",
 		"sha256": strings.Repeat("ab", 32)}, h.admin)
+	h.docID = doc["documentId"].(string)
 	h.must(t, 200, "POST", "/v1/admin/voices/"+id+"/review", nil, h.admin)
 	h.must(t, 200, "POST", "/v1/admin/voices/"+id+"/approve", nil, h.admin)
 

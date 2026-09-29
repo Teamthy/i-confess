@@ -48,6 +48,9 @@ def test_silence_is_never_amplified():
 
 
 def test_checkpoint_traversal_refused(tmp_path, monkeypatch):
+    from icf_worker import storage
+    monkeypatch.setenv("ICF_STORAGE_ROOT", str(tmp_path))
+    storage.reset_store()
     monkeypatch.setenv("ICF_CHECKPOINT_ROOT", str(tmp_path))
     with pytest.raises(EngineError) as e:
         resolve_checkpoint("../../etc/passwd")

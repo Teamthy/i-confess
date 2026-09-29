@@ -82,7 +82,10 @@ type Handler struct {
 	vorch *voiceengine.Orchestrator
 	// vthresholds are the promotion quality thresholds.
 	vthresholds voiceeval.Thresholds
-	db          *db.DB
+	// vworker runs intake and training; nil disables those endpoints (503).
+	vworker *voiceengine.WorkerClient
+	vintake VoiceIntakeConfig
+	db      *db.DB
 	// devTokenSink receives one-time tokens in development and tests. Nil in
 	// production, where tokens go only to the email queue.
 	devTokenSink func(purpose, email, token string)

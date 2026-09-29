@@ -465,3 +465,40 @@ func preflightRights(grant *voicegov.Grant, req Request) error {
 	}
 	return nil
 }
+
+// Stream plans a render with the production model only and opens a streamed
+// synthesis. Streaming needs can_stream in addition to generation rights, and
+// never falls back: switching engines mid-utterance would be an audible,
+// silent voice substitution. The stream is ephemeral (not cached); the
+// mastered, cached render still comes from Generate via the queue.
+func (o *Orchestrator) Stream(ctx context.Context, grant *voicegov.Grant, models []Model, refs []Reference, req Request) (*Plan, *Stream, error) {
+	segs, err := o.parse(&req)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := preflightRights(grant, req); err != nil {
+		return nil, nil, err
+	}
+	if d := voicegov.Authorize(grant, voicegov.Request{Action: voicegov.ActionStream, Purpose: req.Purpose,
+		UserSubmittedText: req.UserText, Territory: req.Territory, Language: req.Language, At: req.At}); !d.Allowed {
+		return nil, nil, &ErrRightsDenied{Decision: d}
+	}
+	primary, _, err := Candidates(models, req.VoiceID, FallbackPolicy{})
+	if err != nil {
+		return nil, nil, err
+	}
+	rp, err := o.plan(ctx, grant, *primary, refs, req, segs)
+	if err != nil {
+		return nil, nil, err
+	}
+	sp, ok := rp.provider.(StreamingProvider)
+	if !ok || !rp.provider.Capabilities(ctx).Streaming {
+		return nil, nil, &Error{Class: ClassModel, Engine: primary.Engine, Msg: "engine does not support streaming"}
+	}
+	st, err := sp.GenerateStream(ctx, rp.Request)
+	if err != nil {
+		return nil, nil, err
+	}
+	st.Model = *primary
+	return rp.Plan, st, nil
+}

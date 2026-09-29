@@ -282,6 +282,18 @@ func main() {
 		})
 		h.RegisterVoiceJobs()
 	}
+	// Recording intake and fine-tuning run on a (possibly separate) worker
+	// pool. Independent of synthesis so intake can start before any model.
+	if url := os.Getenv("VOICE_WORKER_URL"); url != "" {
+		if cfg.IsProduction() && os.Getenv("VOICE_ENGINE_TOKEN") == "" {
+			log.Fatalf("voice: VOICE_ENGINE_TOKEN is required in production")
+		}
+		h.SetVoiceWorker(voiceengine.NewWorkerClient(url, os.Getenv("VOICE_ENGINE_TOKEN"), 0), api.VoiceIntakeConfig{
+			PollInterval: time.Duration(envFloat("VOICE_TRAIN_POLL_SECONDS", 60)) * time.Second,
+		})
+		h.RegisterVoiceIntakeJobs()
+		log.Printf("voice: intake/training worker at %s", url)
+	}
 
 	// Push notifications. Without a configured provider, scheduled reminders
 	// are logged rather than delivered - the schedule still fires, so the

@@ -5,6 +5,8 @@ report health, and be tested without a GPU. No backend downloads weights at
 runtime: checkpoints are resolved from ICF_CHECKPOINT_ROOT (populated from the
 private bucket by deployment), and are never returned to callers.
 
+Every engine passes the licence gate (licenses.check) at load time.
+
 VoiceStudio is deliberately absent: it is AGPL and is used only as an offline
 benchmarking tool (see docs/VOICESTUDIO_LICENSE.md), never linked in here.
 """
@@ -40,16 +42,17 @@ class Engine:
 
 
 def resolve_checkpoint(key: str) -> Path | None:
-    """Map a private object key to a local path, refusing path traversal."""
+    """Map a private object key to a local file via shared storage."""
     if not key:
         return None
-    root = Path(os.environ.get("ICF_CHECKPOINT_ROOT", "/models")).resolve()
-    p = (root / key).resolve()
-    if root not in p.parents:
-        raise EngineError("permanent", "checkpoint key escapes checkpoint root")
-    if not p.exists():
-        raise EngineError("model", "checkpoint not present on this worker")
-    return p
+    from .storage import StorageError, get_store, valid_key
+
+    if not valid_key(key):
+        raise EngineError("permanent", "invalid or disallowed object key")
+    try:
+        return get_store().local_path(key)
+    except StorageError as e:
+        raise EngineError("model", f"object not available on this worker: {e}")
 
 
 class CosyVoiceEngine(Engine):
@@ -119,13 +122,132 @@ class DevToneEngine(Engine):
         return 0.1 * np.sin(2 * np.pi * 220 * t)
 
 
+class GPTSoVITSEngine(Engine):
+    """Proxy to a GPT-SoVITS api_v2 server (ICF_GPTSOVITS_API, e.g.
+    http://127.0.0.1:9880) running on the same GPU host. The upstream server
+    loads the weights; fine-tuned checkpoints are switched in through its
+    /set_gpt_weights and /set_sovits_weights endpoints.
+
+    This backend has NOT been exercised against a live GPT-SoVITS instance in
+    CI; verify the api_v2 parameter names against the pinned upstream commit.
+    """
+
+    name = "gpt_sovits"
+    version = "v2"
+    sample_rate = 32000
+    capabilities = {"zero_shot": True, "fine_tune": True, "streaming": True, "languages": ["en", "zh", "ja", "ko"],
+                    "max_chunk_chars": 200, "self_hosted": True, "license": "see MODEL_LICENSES.md"}
+
+    def __init__(self):
+        self.base = os.environ.get("ICF_GPTSOVITS_API", "http://127.0.0.1:9880").rstrip("/")
+        self._loaded_ckpt: str | None = None
+
+    def _get(self, path: str, params: dict) -> bytes:
+        import urllib.parse
+        import urllib.request
+
+        url = f"{self.base}{path}?{urllib.parse.urlencode(params)}"
+        try:
+            with urllib.request.urlopen(url, timeout=300) as r:
+                return r.read()
+        except Exception as e:  # noqa: BLE001
+            raise EngineError("transient", f"GPT-SoVITS API: {e}")
+
+    def healthy(self) -> bool:
+        import urllib.request
+
+        try:
+            urllib.request.urlopen(self.base + "/docs", timeout=3)
+            return True
+        except Exception:  # noqa: BLE001
+            return False
+
+    def _ensure_weights(self, checkpoint: Path | None):
+        if checkpoint is None or str(checkpoint) == self._loaded_ckpt:
+            return
+        d = checkpoint.parent
+        gpt = next(iter(sorted(d.glob("*.ckpt"))), None)
+        sov = next(iter(sorted(d.glob("*.pth"))), None)
+        if not gpt or not sov:
+            raise EngineError("model", "fine-tuned GPT-SoVITS checkpoint needs a .ckpt (GPT) and a .pth (SoVITS)")
+        self._get("/set_gpt_weights", {"weights_path": str(gpt)})
+        self._get("/set_sovits_weights", {"weights_path": str(sov)})
+        self._loaded_ckpt = str(checkpoint)
+
+    def synthesize_chunk(self, text, *, reference, checkpoint, params, chunk):
+        self._ensure_weights(checkpoint)
+        if not reference:
+            raise EngineError("model", "GPT-SoVITS needs a reference clip and transcript")
+        ref = resolve_checkpoint(reference["uri"])
+        lang = "en"
+        audio = self._get("/tts", {
+            "text": text, "text_lang": lang, "ref_audio_path": str(ref), "prompt_text": reference["transcript"],
+            "prompt_lang": lang, "speed_factor": params.get("speed_factor", 1.0),
+            "temperature": params.get("temperature", 1.0), "media_type": "wav", "streaming_mode": "false",
+        })
+        from . import wav as _wav
+
+        x, rate = _wav.decode(audio)
+        self.sample_rate = rate
+        return x
+
+
+class VoxCPMEngine(Engine):
+    """In-process VoxCPM (pip package `voxcpm`), model at ICF_VOXCPM_MODEL.
+
+    Not exercised against the real model in CI; confirm the generate()
+    signature against the pinned package version.
+    """
+
+    name = "voxcpm"
+    version = "1"
+    sample_rate = 16000
+    capabilities = {"zero_shot": True, "fine_tune": False, "streaming": False, "languages": ["en", "zh"],
+                    "max_chunk_chars": 300, "self_hosted": True, "license": "see MODEL_LICENSES.md"}
+
+    def __init__(self):
+        self._model = None
+
+    def _load(self):
+        if self._model is None:
+            try:
+                from voxcpm import VoxCPM  # type: ignore
+            except ImportError as e:  # pragma: no cover
+                raise EngineError("model", f"voxcpm is not installed on this worker: {e}")
+            src = os.environ.get("ICF_VOXCPM_MODEL")
+            if not src:
+                raise EngineError("model", "ICF_VOXCPM_MODEL is not set")
+            self._model = VoxCPM.from_pretrained(src)
+            tts = getattr(self._model, "tts_model", None)
+            self.sample_rate = int(getattr(tts, "sample_rate", self.sample_rate))
+        return self._model
+
+    def healthy(self) -> bool:
+        try:
+            self._load()
+            return True
+        except EngineError:
+            return False
+
+    def synthesize_chunk(self, text, *, reference, checkpoint, params, chunk):  # pragma: no cover
+        model = self._load()
+        kw = {"text": text, "cfg_value": float(params.get("cfg_value", 2.0)),
+              "inference_timesteps": int(params.get("inference_timesteps", 10))}
+        if reference:
+            kw["prompt_wav_path"] = str(resolve_checkpoint(reference["uri"]))
+            kw["prompt_text"] = reference["transcript"]
+        return np.asarray(model.generate(**kw), dtype=np.float64)
+
+
 def load_engine(name: str) -> Engine:
-    if name == "cosyvoice":
-        return CosyVoiceEngine()
+    from . import licenses
+
     if name == "dev-tone":
         if os.environ.get("ICF_WORKER_DEV") != "1" or os.environ.get("ICF_ENV") == "production":
             raise SystemExit("dev-tone backend requires ICF_WORKER_DEV=1 and a non-production ICF_ENV")
         return DevToneEngine()
-    # GPT-SoVITS and VoxCPM run as their own API servers; add a proxying
-    # backend here once a checkpoint's licence has been reviewed.
-    raise SystemExit(f"unknown or unsupported engine {name!r}")
+    engines = {"cosyvoice": CosyVoiceEngine, "gpt_sovits": GPTSoVITSEngine, "voxcpm": VoxCPMEngine}
+    if name not in engines:
+        raise SystemExit(f"unknown or unsupported engine {name!r}")
+    licenses.check(name, "inference")
+    return engines[name]()

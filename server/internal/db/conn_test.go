@@ -123,8 +123,8 @@ func TestPostgresSchemaLoads(t *testing.T) {
 		 WHERE constraint_type = 'FOREIGN KEY' AND table_schema = 'public'`).Scan(&fks); err != nil {
 		t.Fatalf("count foreign keys: %v", err)
 	}
-	if fks != 149 {
-		t.Errorf("expected 149 foreign keys, got %d", fks)
+	if fks != 150 {
+		t.Errorf("expected 150 foreign keys, got %d", fks)
 	}
 
 	var flags int

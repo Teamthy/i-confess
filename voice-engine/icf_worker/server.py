@@ -3,7 +3,12 @@
     GET  /v1/health        -> 200 {"status":"ok"} | 503
     GET  /v1/capabilities  -> capabilities JSON
     POST /v1/synthesize    <- GenerateRequest JSON -> mastered audio/wav
+    POST /v1/synthesize/stream <- GenerateRequest -> streamed audio/wav (unknown length)
     POST /v1/clone         <- CloneRequest JSON  -> {"speaker_handle": ...}
+    POST /v1/ingest        <- IngestRequest -> segments + report (see ingest.py)
+    POST /v1/train         <- TrainRequest  -> 202          (see train.py)
+    GET  /v1/train/{id}    -> run status
+    POST /v1/train/{id}/cancel
 
 The Go API never performs inference: it enqueues a job, and its queue worker
 calls this server. Only the Go side authorizes rights; this process trusts a
@@ -24,8 +29,15 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import numpy as np
 
+import math
+import re
+import struct
+
+from . import ingest as ingest_mod
 from . import mastering, wav
 from .engines import Engine, EngineError, load_engine, resolve_checkpoint
+from .storage import StorageError
+from .train import TrainingError, TrainingManager
 
 log = logging.getLogger("icf_worker")
 MAX_BODY = 2 << 20
@@ -69,7 +81,60 @@ def render(engine: Engine, req: dict) -> tuple[bytes, dict]:
     return body, headers
 
 
-def make_handler(engine: Engine, token: str):
+def _stream_header(rate: int) -> bytes:
+    """WAV header with 0xFFFFFFFF sizes: 'length unknown', which players accept."""
+    return (b"RIFF" + struct.pack("<I", 0xFFFFFFFF) + b"WAVEfmt " + struct.pack("<IHHIIHH", 16, 1, 1, rate, rate * 2, 2, 16)
+            + b"data" + struct.pack("<I", 0xFFFFFFFF))
+
+
+def render_stream(engine: Engine, req: dict):
+    """Yield WAV bytes chunk by chunk.
+
+    Whole-file loudness mastering is impossible before the audio exists, so
+    the gain is set from the first chunk's loudness (clamped to +/-20 dB), and
+    each chunk is scaled down if its sample peak would exceed the ceiling. The
+    cached, queued render remains the canonical mastered asset.
+    """
+    chunks = req.get("chunks") or []
+    if not chunks:
+        raise EngineError("content", "no chunks to synthesize")
+    checkpoint = resolve_checkpoint(req.get("checkpoint_uri", ""))
+    params = dict(req.get("params") or {})
+    target, ceiling = mastering.config_from_env()
+    ceiling_lin = 10 ** (ceiling / 20)
+    gain, header_sent = None, False
+    for c in chunks:
+        text = (c.get("text") or "").strip()
+        parts = []
+        if text:
+            parts.append(np.asarray(engine.synthesize_chunk(text, reference=req.get("reference"), checkpoint=checkpoint,
+                                                            params=params, chunk=c), dtype=np.float64))
+        rate = engine.sample_rate
+        pause = int(c.get("silence_after_ms") or 0)
+        if pause > 0:
+            parts.append(np.zeros(int(rate * min(pause, 5000) / 1000)))
+        if not parts:
+            continue
+        x = np.concatenate(parts)
+        if gain is None and text:
+            lin = mastering.integrated_loudness(x, rate)
+            gain = 0.0 if not math.isfinite(lin) else float(np.clip(target - lin, -20, 20))
+        y = x * (10 ** ((gain or 0.0) / 20))
+        peak = float(np.max(np.abs(y))) if y.size else 0.0
+        if peak > ceiling_lin:
+            y *= ceiling_lin / peak
+        if not header_sent:
+            yield _stream_header(rate)
+            header_sent = True
+        yield (np.clip(y, -1, 1) * 32767).astype("<i2").tobytes()
+
+
+TRAIN_PATH = re.compile(r"^/v1/train/([A-Za-z0-9_-]{1,80})(/cancel)?$")
+
+
+def make_handler(engine: Engine, token: str, trainer: TrainingManager | None = None):
+    trainer = trainer or TrainingManager()
+
     class Handler(BaseHTTPRequestHandler):
         server_version = "icf-voice-worker/1"
 
@@ -99,6 +164,12 @@ def make_handler(engine: Engine, token: str):
             if self.path == "/v1/health":
                 ok = engine.healthy()
                 return self._json(200 if ok else 503, {"status": "ok" if ok else "unavailable"})
+            m = TRAIN_PATH.match(self.path)
+            if m and not m.group(2):
+                run = trainer.get(m.group(1))
+                if not run:
+                    return self._err(404, "permanent", "unknown run")
+                return self._json(200, run.view())
             if self.path == "/v1/capabilities":
                 caps = dict(engine.capabilities, engine=engine.name, engine_version=engine.version)
                 return self._json(200, caps)
@@ -124,12 +195,53 @@ def make_handler(engine: Engine, token: str):
                     self.end_headers()
                     self.wfile.write(body)
                     return
+                if self.path == "/v1/synthesize/stream":
+                    gen = render_stream(engine, req)
+                    first = next(gen, None)  # surface engine errors before headers
+                    if first is None:
+                        return self._err(422, "content", "nothing to synthesize")
+                    self.send_response(200)
+                    self.send_header("Content-Type", "audio/wav")
+                    self.send_header("X-Sample-Rate", str(engine.sample_rate))
+                    self.send_header("X-Synthetic", "true")
+                    self.send_header("Cache-Control", "no-store")
+                    self.end_headers()
+                    try:
+                        self.wfile.write(first)
+                        for b in gen:
+                            self.wfile.write(b)
+                            self.wfile.flush()
+                    except (BrokenPipeError, ConnectionResetError):
+                        log.info("stream client disconnected; stopping synthesis")
+                    self.close_connection = True
+                    return
+                if self.path == "/v1/ingest":
+                    for k in ("audio_key", "segment_prefix"):
+                        if not req.get(k):
+                            return self._err(400, "permanent", f"{k} is required")
+                    res = ingest_mod.ingest(req)
+                    return self._json(200, {"duration_ms": res.duration_ms, "segments": res.segments,
+                                            "report": res.report})
+                if self.path == "/v1/train":
+                    trainer.submit(req)
+                    return self._json(202, {"run_id": req.get("run_id"), "status": "RUNNING"})
+                m = TRAIN_PATH.match(self.path)
+                if m and m.group(2):
+                    ok = trainer.cancel(m.group(1))
+                    return self._json(200 if ok else 404, {"cancelled": ok})
                 if self.path == "/v1/clone":
                     ref = req.get("reference") or {}
                     resolve_checkpoint(ref.get("uri", ""))  # must exist locally
                     handle = hashlib.sha256(f"{req.get('voice_id')}|{ref.get('id')}".encode()).hexdigest()[:24]
                     return self._json(200, {"speaker_handle": handle})
                 self._err(404, "permanent", "not found")
+            except TrainingError as e:
+                code = {"content": 422, "permanent": 400, "model": 503}.get(e.cls, 500)
+                self._err(code, e.cls, str(e))
+            except StorageError as e:
+                self._err(404, "storage", str(e))
+            except ValueError as e:
+                self._err(422, "content", str(e))
             except EngineError as e:
                 code = {"content": 422, "permanent": 400, "model": 503, "gpu": 503}.get(e.cls, 500)
                 self._err(code, e.cls, str(e))
@@ -153,7 +265,7 @@ def main(argv=None):
     if not token and os.environ.get("ICF_ENV") == "production":
         raise SystemExit("ICF_WORKER_TOKEN is required in production")
     engine = load_engine(args.engine)
-    srv = ThreadingHTTPServer((args.host, args.port), make_handler(engine, token))
+    srv = ThreadingHTTPServer((args.host, args.port), make_handler(engine, token, TrainingManager()))
     log.info("voice worker %s listening on %s:%d", engine.name, args.host, args.port)
     srv.serve_forever()
 

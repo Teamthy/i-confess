@@ -36,7 +36,9 @@ type HTTPProvider struct {
 	baseURL string
 	token   string
 	client  *http.Client
-	mapper  ParamMapper
+	// streamClient has no overall timeout; the request context bounds it.
+	streamClient *http.Client
+	mapper       ParamMapper
 	// fallbackCaps are used when the worker cannot be reached, so a down
 	// worker is reported as unhealthy rather than as "supports nothing".
 	fallbackCaps ProviderCapabilities
@@ -67,7 +69,7 @@ func NewHTTPProvider(c HTTPProviderConfig) *HTTPProvider {
 	c.Caps.Engine = c.Engine
 	return &HTTPProvider{
 		engine: c.Engine, baseURL: strings.TrimRight(c.BaseURL, "/"), token: c.Token,
-		client: &http.Client{Timeout: c.Timeout}, mapper: c.Mapper, fallbackCaps: c.Caps,
+		client: &http.Client{Timeout: c.Timeout}, streamClient: &http.Client{}, mapper: c.Mapper, fallbackCaps: c.Caps,
 	}
 }
 
@@ -155,6 +157,10 @@ func (p *HTTPProvider) Capabilities(ctx context.Context) ProviderCapabilities {
 }
 
 func (p *HTTPProvider) do(ctx context.Context, method, path string, body any) (*http.Response, error) {
+	return p.doWith(ctx, p.client, method, path, body)
+}
+
+func (p *HTTPProvider) doWith(ctx context.Context, client *http.Client, method, path string, body any) (*http.Response, error) {
 	var rdr io.Reader
 	if body != nil {
 		b, err := json.Marshal(body)
@@ -173,7 +179,7 @@ func (p *HTTPProvider) do(ctx context.Context, method, path string, body any) (*
 	if p.token != "" {
 		req.Header.Set("Authorization", "Bearer "+p.token)
 	}
-	resp, err := p.client.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		if ctx.Err() == context.Canceled {
 			return nil, &Error{Class: ClassPermanent, Engine: p.engine, Msg: "cancelled"}

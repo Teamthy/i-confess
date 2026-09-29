@@ -73,7 +73,11 @@ func ParseSignedQuery(q url.Values) (expires int64, sig string, err error) {
 // allowedPrefixes are the namespaces objects may live under. An allowlist
 // rather than a denylist: a new caller must opt in deliberately instead of
 // being able to write anywhere the path checks happen not to forbid.
-var allowedPrefixes = []string{"audio/", "avatars/", "bible/offline/", "bible/audio/"}
+// voice-private/ holds licensed source recordings, intake segments, dataset
+// manifests and checkpoints. It is never linked publicly; reviewers get
+// short-lived signed URLs only. In production it should map to a separate
+// private bucket with no CDN route.
+var allowedPrefixes = []string{"audio/", "avatars/", "bible/offline/", "bible/audio/", "voice-private/"}
 
 // ValidKey rejects keys that could escape the permitted namespaces.
 //
