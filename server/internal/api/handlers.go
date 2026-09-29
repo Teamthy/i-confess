@@ -1,6 +1,8 @@
 package api
 
 import (
+	"github.com/Teamthy/i-confess/internal/voiceengine"
+	"github.com/Teamthy/i-confess/internal/voiceeval"
 	"net/http"
 	"sync"
 	"time"
@@ -72,6 +74,17 @@ type Handler struct {
 	urlGenerator *audio.URLGenerator
 	// vrights stores voice authorization metadata.
 	vrights *store.VoiceRightsStore
+	// vplat stores the licensed minister voice platform (granular rights,
+	// models, references, generations).
+	vplat *store.VoicePlatformStore
+	// vorch is the multi-engine TTS orchestrator. Nil when no voice-engine
+	// workers are configured; generation then reports 503.
+	vorch *voiceengine.Orchestrator
+	// vthresholds are the promotion quality thresholds.
+	vthresholds voiceeval.Thresholds
+	// vworker runs intake and training; nil disables those endpoints (503).
+	vworker *voiceengine.WorkerClient
+	vintake VoiceIntakeConfig
 	db      *db.DB
 	// devTokenSink receives one-time tokens in development and tests. Nil in
 	// production, where tokens go only to the email queue.
@@ -185,6 +198,7 @@ func NewHandler(cfg Config, db *db.DB) *Handler {
 		plans:        store.NewPlanStore(db),
 		queue:        jobs.NewMemoryQueue(),
 		vrights:      store.NewVoiceRightsStore(db),
+		vplat:        store.NewVoicePlatformStore(db),
 		db:           db,
 		limiter:      ratelimit.New(),
 		profiles:     store.NewProfileStore(db),

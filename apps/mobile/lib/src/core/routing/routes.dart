@@ -51,6 +51,7 @@ abstract final class AppRoutes {
   static const builderCreate = '/confess/create';
   static const rituals = '/rituals';
   static const saved = '/saved';
+  static const ministerVoices = '/minister-voices';
   static const downloads = '/downloads';
   static const history = '/history';
   static const premium = '/premium';
@@ -93,7 +94,7 @@ abstract final class AppRoutes {
   /// Home and Explore are deliberately not in here: a listener should be able to
   /// see what the product is before being asked to create an account. Requiring
   /// sign-in to browse is the fastest way to lose someone who arrived curious.
-  static const requiresAuth = <String>{confess, activity, me, player, rituals, saved, downloads};
+  static const requiresAuth = <String>{confess, activity, me, player, rituals, saved, downloads, ministerVoices};
 }
 
 /// Names used for `goNamed`, kept separate so a path can change without touching
@@ -125,6 +126,7 @@ abstract final class AppRouteNames {
   static const builderCreate = 'builderCreate';
   static const rituals = 'rituals';
   static const saved = 'saved';
+  static const ministerVoices = 'minister-voices';
   static const downloads = 'downloads';
   static const history = 'history';
   static const premium = 'premium';

@@ -668,5 +668,10 @@ func (h *Handler) Routes() http.Handler {
 	h.route(mux, "GET /v1/admin/security/overview", "admin", "admin-ops", "Security overview and recent events", admin, h.adminSecurityOverview)
 	h.route(mux, "GET /v1/admin/audit/export", "admin", "admin-ops", "Export audit logs", admin, h.adminAuditExport)
 
+	// Licensed minister voice platform (bare and /v1).
+	h.registerVoicePlatformRoutes(mux, authed, voiceMgr, audioMgr)
+	h.registerVoiceIntakeRoutes(mux, authed, voiceMgr, audioMgr)
+	h.registerVoiceOpsRoutes(mux)
+
 	return RequestIDMiddleware(tracing.Middleware(SecurityHeadersMiddleware(logRequests(mux), h.isProd)))
 }

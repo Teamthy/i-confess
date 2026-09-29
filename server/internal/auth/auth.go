@@ -215,4 +215,9 @@ const (
 	// RoleVoiceManager administers voice rights: the highest-consequence
 	// permission in the product, held separately from content and audio roles.
 	RoleVoiceManager = "voice_manager"
+	// RoleMLEngineer freezes datasets and runs training (§65). It cannot touch
+	// rights: a training run still needs a grant that voice_manager approved.
+	RoleMLEngineer = "ml_engineer"
+	// RoleAuditor reads voice audit logs, metrics and models, and changes nothing.
+	RoleAuditor = "auditor"
 )

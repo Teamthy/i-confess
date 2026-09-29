@@ -35,6 +35,7 @@ const (
 	PermVoiceWrite        Permission = "voice:write"
 	PermVoiceRightsRead   Permission = "voice:rights:read"
 	PermVoiceRightsManage Permission = "voice:rights:manage"
+	PermVoiceTrain        Permission = "voice:train"
 
 	// Bible permissions
 	PermBibleRead    Permission = "bible:read"
@@ -89,7 +90,7 @@ const (
 var AllPermissions = []Permission{
 	PermContentRead, PermContentWrite, PermContentPublish, PermContentReview, PermContentDelete, PermCategoryManage,
 	PermAudioRead, PermAudioWrite, PermAudioQA, PermAudioPublish, PermAudioArchive, PermAudioGenerate,
-	PermVoiceRead, PermVoiceWrite, PermVoiceRightsRead, PermVoiceRightsManage,
+	PermVoiceRead, PermVoiceWrite, PermVoiceRightsRead, PermVoiceRightsManage, PermVoiceTrain,
 	PermBibleRead, PermBibleWrite, PermBibleReview, PermBiblePublish, PermBibleAudio,
 	PermUserRead, PermUserWrite, PermUserSuspend, PermUserDelete, PermUserImpersonate,
 	PermRoleRead, PermRoleWrite, PermRoleAssign, PermRoleDelete,
@@ -156,13 +157,31 @@ var SystemRoles = map[string]RoleDefinition{
 		DisplayName: "Voice Manager",
 		Description: "Manages voice rights, licensing, and authorization. Highest-consequence permission for voice synthesis.",
 		Permissions: []Permission{
-			PermVoiceRead, PermVoiceWrite, PermVoiceRightsRead, PermVoiceRightsManage,
+			PermVoiceRead, PermVoiceWrite, PermVoiceRightsRead, PermVoiceRightsManage, PermVoiceTrain,
 			PermAudioRead, PermAudioWrite, PermAudioQA, PermAudioGenerate,
 			PermSystemRead,
 		},
 		IsSystem: true,
 		Level:    75,
 		Category: "audio",
+	},
+	RoleMLEngineer: {
+		Name:        RoleMLEngineer,
+		DisplayName: "ML Engineer",
+		Description: "Freezes voice datasets, runs and cancels training, reads models and evaluations. Cannot change voice rights.",
+		Permissions: []Permission{PermVoiceRead, PermAudioRead, PermVoiceTrain, PermSystemRead, PermQueueRead},
+		IsSystem:    true,
+		Level:       55,
+		Category:    "audio",
+	},
+	RoleAuditor: {
+		Name:        RoleAuditor,
+		DisplayName: "Auditor",
+		Description: "Read-only access to voice rights audit logs, voice metrics and model history.",
+		Permissions: []Permission{PermVoiceRead, PermVoiceRightsRead, PermAudioRead, PermAuditRead, PermSystemRead, PermSystemMetrics},
+		IsSystem:    true,
+		Level:       40,
+		Category:    "audit",
 	},
 	RoleTheologicalRev: {
 		Name:        RoleTheologicalRev,
@@ -370,7 +389,7 @@ var PermissionCategories = map[string][]Permission{
 	},
 	"audio": {
 		PermAudioRead, PermAudioWrite, PermAudioQA, PermAudioPublish, PermAudioArchive, PermAudioGenerate,
-		PermVoiceRead, PermVoiceWrite, PermVoiceRightsRead, PermVoiceRightsManage,
+		PermVoiceRead, PermVoiceWrite, PermVoiceRightsRead, PermVoiceRightsManage, PermVoiceTrain,
 	},
 	"bible": {
 		PermBibleRead, PermBibleWrite, PermBibleReview, PermBiblePublish, PermBibleAudio,
@@ -423,6 +442,7 @@ var PermissionDescriptions = map[Permission]PermissionInfo{
 	PermVoiceWrite:        {Name: string(PermVoiceWrite), DisplayName: "Manage Voices", Description: "Create and edit voices", Category: "audio"},
 	PermVoiceRightsRead:   {Name: string(PermVoiceRightsRead), DisplayName: "View Voice Rights", Description: "View voice licensing and rights", Category: "audio"},
 	PermVoiceRightsManage: {Name: string(PermVoiceRightsManage), DisplayName: "Manage Voice Rights", Description: "Manage voice rights and authorizations - high consequence", Category: "audio"},
+	PermVoiceTrain:        {Name: string(PermVoiceTrain), DisplayName: "Train Voices", Description: "Freeze voice datasets and run or cancel fine-tuning. Requires a grant that permits training", Category: "audio"},
 
 	PermBibleRead:    {Name: string(PermBibleRead), DisplayName: "View Bible", Description: "View Bible catalog and translations", Category: "bible"},
 	PermBibleWrite:   {Name: string(PermBibleWrite), DisplayName: "Manage Bible", Description: "Manage Bible translations", Category: "bible"},

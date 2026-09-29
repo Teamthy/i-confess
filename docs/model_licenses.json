@@ -1,0 +1,66 @@
+{
+  "_comment": "Machine-readable licence register for voice engines. null means NOT VERIFIED. Nothing may be promoted to production while commercial_use_verified is not true for BOTH code and the exact checkpoint in use. Record who verified, when, and against which commit/weights hash.",
+  "schema_version": 1,
+  "engines": [
+    {
+      "engine": "cosyvoice",
+      "repository": "https://github.com/FunAudioLLM/CosyVoice",
+      "role": "primary zero-shot / fine-tune candidate",
+      "code_license_reported": "Apache-2.0",
+      "code_license_verified_commit": null,
+      "checkpoints": [
+        {
+          "name": null,
+          "source": null,
+          "weights_sha256": null,
+          "weights_license": null,
+          "commercial_use_verified": null,
+          "verified_by": null,
+          "verified_at": null,
+          "notes": "Weights may carry a different licence from the code. Check the model card of the exact checkpoint."
+        }
+      ],
+      "production_allowed": false
+    },
+    {
+      "engine": "gpt_sovits",
+      "repository": "https://github.com/RVC-Boss/GPT-SoVITS",
+      "role": "fine-tune candidate",
+      "code_license_reported": "MIT",
+      "code_license_verified_commit": null,
+      "checkpoints": [
+        {
+          "name": null, "source": null, "weights_sha256": null, "weights_license": null,
+          "commercial_use_verified": null, "verified_by": null, "verified_at": null,
+          "notes": "Pretrained base models and bundled third-party components (e.g. ASR, G2P) must be reviewed separately."
+        }
+      ],
+      "production_allowed": false
+    },
+    {
+      "engine": "voxcpm",
+      "repository": "https://github.com/OpenBMB/VoxCPM",
+      "role": "benchmark candidate",
+      "code_license_reported": null,
+      "code_license_verified_commit": null,
+      "checkpoints": [
+        {
+          "name": null, "source": null, "weights_sha256": null, "weights_license": null,
+          "commercial_use_verified": null, "verified_by": null, "verified_at": null,
+          "notes": "Not yet reviewed."
+        }
+      ],
+      "production_allowed": false
+    },
+    {
+      "engine": "voicestudio",
+      "repository": null,
+      "role": "offline development and benchmarking tool only",
+      "code_license_reported": "AGPL-3.0 (as stated in the build brief; verify)",
+      "code_license_verified_commit": null,
+      "checkpoints": [],
+      "production_allowed": false,
+      "notes": "Never linked into, vendored into, or network-served from proprietary services. See VOICESTUDIO_LICENSE.md."
+    }
+  ]
+}

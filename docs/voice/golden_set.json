@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "description": "Golden prompt set for engine benchmarking and regression (spec sections 8, 19, 39). Scripture is KJV (public domain). Add prompts; never edit an existing prompt's text in place - bump its id so historical results stay comparable.",
+  "prompts": [
+    {"id": "prayer-short-01", "category": "short_prayer", "language": "en", "locale": "en-NG", "style": "prayer",
+     "text": "Father, thank you for this new morning. Guide my steps today, and let my words bring peace to everyone I meet. In Jesus' name, amen."},
+    {"id": "scripture-long-01", "category": "long_scripture", "language": "en", "locale": "en-NG", "style": "scripture",
+     "text": "The Lord is my shepherd; I shall not want. He maketh me to lie down in green pastures: he leadeth me beside the still waters. He restoreth my soul: he leadeth me in the paths of righteousness for his name's sake. {pause 600} Yea, though I walk through the valley of the shadow of death, I will fear no evil: for thou art with me; thy rod and thy staff they comfort me. Thou preparest a table before me in the presence of mine enemies: thou anointest my head with oil; my cup runneth over. Surely goodness and mercy shall follow me all the days of my life: and I will dwell in the house of the Lord for ever."},
+    {"id": "confession-01", "category": "confession_reflection", "language": "en", "locale": "en-NG", "style": "reflection",
+     "text": "I confess that I have been impatient with the people closest to me. {pause 400} Today I choose gentleness. Not because I have it all together, but because grace has been gentle with me."},
+    {"id": "names-places-01", "category": "nigerian_names_places", "language": "en", "locale": "en-NG", "style": "teaching",
+     "text": "Chukwuemeka travelled from Onitsha to Ile-Ife, while Oluwaseun and Ngozi stayed in Abeokuta. Later, Adaeze met Babatunde at the church in Oshogbo, near Ogbomosho."},
+    {"id": "numbers-refs-01", "category": "numbers_dates_references", "language": "en", "locale": "en-NG", "style": "teaching",
+     "text": "Read Psalm 23 verses 1 to 6, then John 3:16, and Romans 8:28. The meeting is on the 14th of March, 2026, at 7:30 in the evening, and about 1,250 people are expected."},
+    {"id": "pidgin-01", "category": "pidgin", "language": "en", "locale": "en-NG-PIDGIN", "style": "encouragement",
+     "text": "My brother, no worry yourself. God dey for you, e no go leave you. Wetin you dey face now, e go pass. Just hold am tight, you hear?"},
+    {"id": "question-01", "category": "question_intonation", "language": "en", "locale": "en-NG", "style": "reflection",
+     "text": "Have you ever wondered why rest feels so hard? What would change if you believed you were already loved?"},
+    {"id": "emotion-joy-01", "category": "emotional_range", "language": "en", "locale": "en-NG", "style": "encouragement",
+     "text": "Rejoice! {emph}This{/emph} is the day the Lord has made. Whatever yesterday held, today is new, and there is so much good ahead of you!"},
+    {"id": "emotion-solemn-01", "category": "emotional_range", "language": "en", "locale": "en-NG", "style": "prayer",
+     "text": "Lord, we bring before you those who are grieving tonight. {pause 800} Sit with them in the silence. Hold what they cannot carry."},
+    {"id": "longform-01", "category": "long_form_stability", "language": "en", "locale": "en-NG", "style": "teaching",
+     "text": "Blessed are the poor in spirit: for theirs is the kingdom of heaven. Blessed are they that mourn: for they shall be comforted. Blessed are the meek: for they shall inherit the earth. Blessed are they which do hunger and thirst after righteousness: for they shall be filled. Blessed are the merciful: for they shall obtain mercy. Blessed are the pure in heart: for they shall see God. Blessed are the peacemakers: for they shall be called the children of God. Blessed are they which are persecuted for righteousness' sake: for theirs is the kingdom of heaven. {pause 700} Ye are the salt of the earth: but if the salt have lost his savour, wherewith shall it be salted? Ye are the light of the world. A city that is set on an hill cannot be hid. Neither do men light a candle, and put it under a bushel, but on a candlestick; and it giveth light unto all that are in the house. Let your light so shine before men, that they may see your good works, and glorify your Father which is in heaven."}
+  ]
+}
