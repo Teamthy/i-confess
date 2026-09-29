@@ -17,16 +17,6 @@ func (h *Handler) listCollections(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, cols)
 }
 
-func (h *Handler) categoryConfessions(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	confs, err := h.cont.ConfessionsByCategory(r.Context(), id, true)
-	if err != nil {
-		httpx.WriteError(w, http.StatusInternalServerError, "failed to load confessions")
-		return
-	}
-	httpx.WriteJSON(w, http.StatusOK, confs)
-}
-
 func (h *Handler) getConfession(w http.ResponseWriter, r *http.Request) {
 	c, err := h.cont.ConfessionByID(r.Context(), r.PathValue("id"))
 	if errors.Is(err, store.ErrNotFound) {
@@ -38,15 +28,6 @@ func (h *Handler) getConfession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, c)
-}
-
-func (h *Handler) listVoices(w http.ResponseWriter, r *http.Request) {
-	voices, err := h.audio.ListVoices(r.Context())
-	if err != nil {
-		httpx.WriteError(w, http.StatusInternalServerError, "failed to load voices")
-		return
-	}
-	httpx.WriteJSON(w, http.StatusOK, voices)
 }
 
 // ---------- Sessions ----------

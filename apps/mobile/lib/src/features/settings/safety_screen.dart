@@ -42,7 +42,7 @@ class _BlocksTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => RefreshIndicator(
-        onRefresh: () async { _ = await ref.refresh(moderationBlocksProvider.future); },
+        onRefresh: () => ref.refresh(moderationBlocksProvider.future).then<void>((_) {}),
         child: ref.watch(moderationBlocksProvider).when(
               loading: () => const Center(child: CircularProgressIndicator()),
               error: (error, _) => _LoadError(message: '$error', onRetry: () => ref.invalidate(moderationBlocksProvider)),
@@ -145,7 +145,7 @@ class _AppealsTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => RefreshIndicator(
-        onRefresh: () async { _ = await ref.refresh(moderationAppealsProvider.future); },
+        onRefresh: () => ref.refresh(moderationAppealsProvider.future).then<void>((_) {}),
         child: ref.watch(moderationAppealsProvider).when(
               loading: () => const Center(child: CircularProgressIndicator()),
               error: (error, _) => _LoadError(message: '$error', onRetry: () => ref.invalidate(moderationAppealsProvider)),

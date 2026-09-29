@@ -6,9 +6,9 @@
   "task": "Tier B10 / G-52: prevent account-erasure failures from being swallowed or misattributed after PostgreSQL aborts a transaction.",
   "status": "VERIFIED_LOCAL_CI_REMEDIATION_PENDING",
   "attempt": 1,
-  "last_successful_step": "G-52 passed PostgreSQL tests and the full Go race suite, build, and vet; PR #82 was opened after the gate was met. Initial CI passed Go build/vet/tests, Dart client, web, and container jobs but identified a pre-existing mobile Safety-screen syntax/import error and Go lint debt in touched files. Corrected the reported issues locally; follow-up push and CI rerun are next.",
-  "next_action": "Push CI remediation for PR #82, rerun checks, then report remaining results.",
-  "timestamp": "2026-09-29T19:34:00Z",
+  "last_successful_step": "G-52 and the full Go race/build/vet suite are green. PR #82 CI's first run exposed a mobile Safety-screen compile issue and Go lint failures; the next run showed two additional unused catalog handlers plus a Dart unused-result error. All reported findings have been fixed locally; awaiting another pushed CI run.",
+  "next_action": "Commit and push the latest CI remediation, then review PR #82 checks.",
+  "timestamp": "2026-09-29T19:42:00Z",
   "current_phase": 67,
   "completed_phases": [
     0,
