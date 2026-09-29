@@ -26,10 +26,11 @@ The branch is the fixed session branch `arena/01a0ee4f-i-confess`, based on
 has now been implemented and fully verified in this checkout rather than
 restored verbatim. PR #82's first CI run passed Go build/vet/tests, Dart client,
 web, and container jobs, but found an existing Safety-screen Dart syntax/import
-error and Go lint debt in touched files. The local follow-up fixed the reported items; its CI rerun then exposed two
-additional unused catalog handlers and a Dart discard-result issue. Those have
-now also been removed/fixed locally; the next pushed rerun is pending. Flutter/Dart
-SDKs and `golangci-lint` remain unavailable locally.
+error and Go lint debt in touched files. The next CI rerun passed Go build/vet/tests, lint, Dart client, web, and
+container jobs, and Flutter analysis. Its Flutter tests found one stale drift
+guard still reading the pre-refactor `handlers.go` path; the guard now reads
+`handlers_sessions.go` and is pending another CI rerun. Flutter/Dart SDKs and
+`golangci-lint` remain unavailable locally.
 
 **Previously verified:** 2026-09-25, at ledger 50 (`docs/50-CACHE-INVALIDATION.md`
 — the content caches now have an invalidation path, closing G-10. Two copies of

@@ -6,9 +6,9 @@
   "task": "Tier B10 / G-52: prevent account-erasure failures from being swallowed or misattributed after PostgreSQL aborts a transaction.",
   "status": "VERIFIED_LOCAL_CI_REMEDIATION_PENDING",
   "attempt": 1,
-  "last_successful_step": "G-52 and the full Go race/build/vet suite are green. PR #82 CI's first run exposed a mobile Safety-screen compile issue and Go lint failures; the next run showed two additional unused catalog handlers plus a Dart unused-result error. All reported findings have been fixed locally; awaiting another pushed CI run.",
-  "next_action": "Commit and push the latest CI remediation, then review PR #82 checks.",
-  "timestamp": "2026-09-29T19:42:00Z",
+  "last_successful_step": "G-52 and the full Go race/build/vet suite are green. PR #82 CI now passes Go build/vet/tests, lint, Dart client, web, and container checks; Flutter analysis passes. Flutter tests found one stale drift guard reading the pre-refactor handler path, now corrected locally; another CI rerun is pending.",
+  "next_action": "Commit and push the Flutter drift-guard correction and monitor PR #82 checks.",
+  "timestamp": "2026-09-29T19:49:00Z",
   "current_phase": 67,
   "completed_phases": [
     0,
@@ -171,7 +171,8 @@
     "server/internal/deletion/schema_check_test.go",
     "server/internal/db/schema_coverage_test.go",
     "docs/42-MODERATION-BLOCKING-APPEALS.md",
-    "docs/67-DELETION-FAILURE-ATTRIBUTION.md"
+    "docs/67-DELETION-FAILURE-ATTRIBUTION.md",
+    "apps/mobile/test/builder_test.dart"
   ],
   "environment_notes": [
     "Go 1.27.1 from the PyPI go-bin wheel (extracted to /home/user/.local/go-extract/go); proxy.golang.org, sum.golang.org and golang.org are unreachable, so modules came from GOPROXY=direct over GitHub plus a local file:///tmp/goproxy holding golang.org/x/crypto v0.55.0 built from codeload.github.com/golang/crypto; GOSUMDB=off only for that fetch, go.mod/go.sum untouched (verified by git status)",
