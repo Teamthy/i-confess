@@ -102,7 +102,8 @@ func replaceDatabaseName(url, name string) string {
 // (PHASE 42); 0020 added bible_versions, bible_verses, verse_highlights and
 // verse_bookmarks, the imported Scripture, its registry and the two marks a
 // reader can leave on a verse. 0021–0022 add the provenance, review, plans,
-// offline, audio and private study tables with their owner/translation FKs.
+// offline, audio and private study tables with their owner/translation FKs;
+// 0024 adds the three RBAC tables and two user/role foreign keys.
 func TestPostgresSchemaLoads(t *testing.T) {
 	ctx := context.Background()
 	d := newTestDB(t)
@@ -112,8 +113,8 @@ func TestPostgresSchemaLoads(t *testing.T) {
 		`SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public'`).Scan(&tables); err != nil {
 		t.Fatalf("count tables: %v", err)
 	}
-	if tables != 97 {
-		t.Errorf("expected 97 tables, got %d", tables)
+	if tables != 100 {
+		t.Errorf("expected 100 tables, got %d", tables)
 	}
 
 	var fks int
@@ -122,8 +123,8 @@ func TestPostgresSchemaLoads(t *testing.T) {
 		 WHERE constraint_type = 'FOREIGN KEY' AND table_schema = 'public'`).Scan(&fks); err != nil {
 		t.Fatalf("count foreign keys: %v", err)
 	}
-	if fks != 126 {
-		t.Errorf("expected 126 foreign keys, got %d", fks)
+	if fks != 128 {
+		t.Errorf("expected 128 foreign keys, got %d", fks)
 	}
 
 	var flags int
