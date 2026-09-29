@@ -1,22 +1,20 @@
-**Last verified:** 2026-09-29. Ledger 55's CI gate repair remains as recorded
-below. On the current checkout, `gofmt -l .` returned no files; `go build
--modfile=/tmp/local.mod ./...`, `go vet -modfile=/tmp/local.mod ./...`,
-`go test -modfile=/tmp/local.mod -race -count=1 ./internal/deletion`, and the
-full Go race suite with PostgreSQL 17.10 and Redis 7.4 all passed. The full suite
-reported every package `ok` or `[no test files]`. `internal/health` now has a
-table-driven handler test proving healthy HTTP 200 and database-failure HTTP
-503; `go test -modfile=/tmp/local.mod -race -count=1 ./internal/health` passed
-(see `docs/58-HEALTH-CHECK-FAILURE-TEST.md`). Design verification after ledger
-59 passed: `python3 design/generate.py --check`, `python3 design/test_design.py`
-(132 tokens, including web CSS parity), `python3 design/test_ia.py` (39 screens,
-8 entry points, 162 endpoints), and `python3 scripts/check_dart_symbols.py`
-(133/133). A negative CSS color probe made the new G-57 assertion fail as
-intended. These commands were run on the fixed session branch
-`arena/01a0ee4f-i-confess`, based on `251f906`; B1 is commit `38b50eb`, and
-B2's changes are recorded in ledger 59 below. They were not run on the
-unpushed three-commit branch described in the supplied handoff. The
-supplied G-52 files are absent from this checkout, so the deletion run and full
-suite do **not** verify G-52. The local bootstrap required rebuilding Redis
+**Last verified:** 2026-09-29. On the current working tree, `gofmt -l .`
+returned no files; `go build -modfile=/tmp/local.mod ./...`,
+`go vet -modfile=/tmp/local.mod ./...`, and the full Go race suite with
+PostgreSQL 17.10 and Redis 7.4 all passed. The full suite reported every package
+`ok` or `[no test files]`; `TestRouteParityBetweenPrefixes` passed. The API
+handler composition file was reduced from 1,656 to 247 lines without dropping
+any function in the inventory comparison (ledger 60). Health 200/503 coverage
+passed (ledger 58). Design verification passed: `python3 design/generate.py
+--check`, `python3 design/test_design.py` (132 tokens, including web CSS
+parity), `python3 design/test_ia.py` (39 screens, 8 entry points, 162 endpoints),
+and `python3 scripts/check_dart_symbols.py` (133/133); the temporary G-57
+unknown-color probe failed as intended (ledger 59). These checks are on the
+fixed session branch `arena/01a0ee4f-i-confess`, based on `251f906`; B1 is
+commit `38b50eb`, B2 is recorded in ledger 59, and B3 is recorded in ledger 60.
+They were not run on the unpushed three-commit branch described in the supplied
+handoff. Its G-52 files remain absent from this checkout, so the deletion test
+and full suite do **not** verify G-52. Bootstrap required rebuilding Redis
 without LTO after GCC's LTO linker crashed; `https://github.com/` returned HTTP
 200. Flutter/Dart analyze/test and `make lint` were not run in this verification
 pass.
@@ -459,18 +457,20 @@ PHASE 43 Personalization: the seven listener signals — **PASS** (master-plan
 
 Open gaps carried forward (reconciled against the supplied ledger 57; this
 checkout does not contain `docs/57-GAP-LEDGER-RECONCILIATION.md`): **G-7,
-G-14, G-15, G-16, G-19, G-24, G-25, G-28, G-33, G-48, G-49, G-52, G-53,
-G-54, G-56.** G-9 was removed after the handler's healthy and 503 paths were
+G-14, G-15, G-16, G-19, G-24, G-28, G-33, G-48, G-49, G-52, G-53, G-54,
+G-56.** G-9 was removed after the handler's healthy and 503 paths were
 exercised by `go test -modfile=/tmp/local.mod -race -count=1 ./internal/health`
 (details: `docs/58-HEALTH-CHECK-FAILURE-TEST.md`). G-57 was removed after
 `design/test_design.py` enforced web custom-property color parity with
-`design/tokens.json` (details: `docs/59-WEB-DESIGN-TOKEN-PARITY.md`). The
+`design/tokens.json` (details: `docs/59-WEB-DESIGN-TOKEN-PARITY.md`). G-25 was
+removed after the 1,656-line handler file was decomposed and the full Go race
+suite passed (details: `docs/60-API-HANDLER-COMPOSITION-REFACTOR.md`). The
 reconciled ledger reports G-12, G-13, G-17, G-18, G-20, G-23, G-26 and G-27 as
-closed; G-25 and G-16 remain open with updated measurements; G-52 is still open
-and unverified. Important checkout limitation: the three unpushed commits
-described by the supplied handoff, including the G-52 patch, are not present at
-this branch's `251f906` HEAD. Therefore their behavior is not claimed as
-verified here.
+closed; G-16 remains open with its updated measurement; G-52 is still open and
+unverified. Important checkout limitation: the three unpushed commits described
+by the supplied handoff, including the G-52 patch, are not present at this
+branch's `251f906` base. Therefore their behavior is not claimed as verified
+here.
 
 Closed: **G-1** (queues are snapshots), **G-2** (23/23 status columns constrained),
 **G-8** (route parity), **G-11** (clients/dart is not a Flutter app),
@@ -560,6 +560,11 @@ decodes them, but the mobile home still shows the two ranked lists as before. A
 recommendation whose reason is never shown is indistinguishable from an
 arbitrary one to the listener, which is the complaint personalization exists to
 answer.
+
+**Closed in ledger 60: G-25.** `server/internal/api/handlers.go` is now 247
+lines (from 1,656); its 61 functions were moved without loss into eight
+cohesive files, and `TestRouteParityBetweenPrefixes` plus the full Go race suite
+passed. See `docs/60-API-HANDLER-COMPOSITION-REFACTOR.md`.
 
 **Closed in ledger 59: G-57.** `design/test_design.py` checks every hex-valued
 custom property in `web/app/globals.css` against the color values in
