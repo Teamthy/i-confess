@@ -122,7 +122,7 @@ class _DailySessionCard extends ConsumerWidget {
           padding: const EdgeInsets.all(IConfess.space5),
           child: Row(
             children: [
-              const Icon(Icons.graphic_eq_rounded, color: Colors.white),
+              const Icon(Icons.graphic_eq_rounded, color: IConfess.colorNeutral0),
               const SizedBox(width: IConfess.space4),
               Expanded(
                 child: Column(
@@ -130,18 +130,18 @@ class _DailySessionCard extends ConsumerWidget {
                   children: [
                     Text(
                       'Set aside a few minutes',
-                      style: IConfess.subheading.copyWith(color: Colors.white),
+                      style: IConfess.subheading.copyWith(color: IConfess.colorNeutral0),
                     ),
                     Text(
                       'Build a session for the time you have.',
                       style: IConfess.bodySm.copyWith(
-                        color: Colors.white.withValues(alpha: 0.85),
+                        color: IConfess.colorNeutral0.withValues(alpha: 0.85),
                       ),
                     ),
                   ],
                 ),
               ),
-              const Icon(Icons.chevron_right_rounded, color: Colors.white),
+              const Icon(Icons.chevron_right_rounded, color: IConfess.colorNeutral0),
             ],
           ),
         ),

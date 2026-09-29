@@ -5,6 +5,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+
+import '../../../core/theme/tokens.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../controllers/audio_player_controller.dart';
 import '../providers/audio_providers.dart';
@@ -130,7 +132,7 @@ class AudioPlayerWidget extends ConsumerWidget {
         borderRadius: BorderRadius.circular(8),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
+            color: IConfess.colorNeutral950.withOpacity(0.1),
             blurRadius: 4,
             offset: const Offset(0, 2),
           ),
@@ -281,7 +283,7 @@ class AudioPlayerWidget extends ConsumerWidget {
               foregroundColor: colorScheme.onPrimary,
               child: isLoading
                   ? const CircularProgressIndicator(
-                      valueColor: AlwaysStoppedAnimation(Colors.white),
+                      valueColor: AlwaysStoppedAnimation(IConfess.colorNeutral0),
                     )
                   : Icon(isPlaying ? Icons.pause : Icons.play_arrow, size: 32),
             ),
@@ -481,7 +483,7 @@ class AudioGenerationProgress extends ConsumerWidget {
             onComplete?.call(job);
           });
           return const Center(
-            child: Icon(Icons.check_circle, color: Colors.green, size: 48),
+            child: Icon(Icons.check_circle, color: IConfess.colorSemanticSuccessLight, size: 48),
           );
         }
 

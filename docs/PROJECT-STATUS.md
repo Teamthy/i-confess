@@ -8,10 +8,12 @@ any function in the inventory comparison (ledger 60). Health 200/503 coverage
 passed (ledger 58). Design verification passed: `python3 design/generate.py
 --check`, `python3 design/test_design.py` (132 tokens, including web CSS
 parity), `python3 design/test_ia.py` (39 screens, 8 entry points, 162 endpoints),
-and `python3 scripts/check_dart_symbols.py` (133/133); the temporary G-57
-unknown-color probe failed as intended (ledger 59). These checks are on the
-fixed session branch `arena/01a0ee4f-i-confess`, based on `251f906`; B1 is
-commit `38b50eb`, B2 is recorded in ledger 59, and B3 is recorded in ledger 60.
+and `python3 scripts/check_dart_symbols.py` (133/133). The design test now
+guards mobile source against raw hex and Material palette bypasses; negative
+probes for G-57 and G-16 failed as intended (ledgers 59 and 61). These checks
+are on the fixed session branch `arena/01a0ee4f-i-confess`, based on `251f906`;
+B1 is commit `38b50eb`, B2 is recorded in ledger 59, B3 in ledger 60, and B4 in
+ledger 61.
 They were not run on the unpushed three-commit branch described in the supplied
 handoff. Its G-52 files remain absent from this checkout, so the deletion test
 and full suite do **not** verify G-52. Bootstrap required rebuilding Redis
@@ -124,7 +126,7 @@ it.** Every claim below was produced by running something.
 | Area | State |
 |---|---|
 | **Content** | **Done in PHASES 39–40** — 78 canonical confessions, 312 object-backed audio fixtures, explicit theological-review metadata, and provenance-neutral authorship. |
-| **Mobile app** | Playback dependencies and playback services are present; navigation labels comply with §12. Flutter analyze/test was green on the 2026-09-29 `main` run described in the supplied ledger, but was not rerun locally. 92 hardcoded color literals still bypass generated tokens (G-16). |
+| **Mobile app** | Playback dependencies and services are present; navigation labels comply with §12. Handwritten hex colors and Material palette choices now use generated tokens, guarded by `design/test_design.py` (G-16 closed in ledger 61). Flutter analyze/test was not run locally and remains CI-only. |
 | **Website / admin** | Consolidated into the single Next.js app in `web/`; `apps/web` and `apps/admin` are deleted (ledger 54). |
 | **Payments** | **Done in PHASE 36** — production uses the Apple signed-transaction verifier or Google Play Developer API and fails closed without configuration; `TestProductionRefusesStubReceipts` remains green. |
 | **Trial lifecycle** | **Done in PHASE 36** — persistent `trials` row, explicit six-state graph, one-time start, expiry/conversion, and Premium projection tests. |
@@ -132,7 +134,7 @@ it.** Every claim below was produced by running something.
 | **Soft delete / versioning** | **Done in PHASE 38** — all 66 application tables carry `deleted_at` and `row_version`; retention writes are tombstoned and versioned. |
 | **Cache** | **Closed in ledger 50** — still per-process, but writes now invalidate locally and publish to every other instance over Redis pub/sub. Was G-10. |
 | **Design system** | 132 tokens are generated and consumed by mobile; `design/test_design.py` checks generated parity and every hex-valued custom property in web `globals.css` against `design/tokens.json` (G-57 closed in ledger 59). |
-| **Navigation** | 37 screens specified and validated; mobile has the shell plus real home, explore, category, confession, builder, activity, and production player surfaces; me and remaining secondary surfaces continue in subsequent phases. |
+| **Navigation** | 39 screens specified and validated by `design/test_ia.py`; mobile has the shell plus real home, explore, category, confession, builder, activity, and production player surfaces; remaining secondary surfaces continue in subsequent phases. |
 | **Observability** | `cache.hit_rate` and `cache.invalidations` are exposed and asserted (ledger 50). The claim about a missing hit-rate metric was stale since PHASE 07. Runtime dependency failure remains untested outside the busy-path and reconnect cases. |
 
 ## Phase progress
@@ -457,7 +459,7 @@ PHASE 43 Personalization: the seven listener signals — **PASS** (master-plan
 
 Open gaps carried forward (reconciled against the supplied ledger 57; this
 checkout does not contain `docs/57-GAP-LEDGER-RECONCILIATION.md`): **G-7,
-G-14, G-15, G-16, G-19, G-24, G-28, G-33, G-48, G-49, G-52, G-53, G-54,
+G-14, G-15, G-19, G-24, G-28, G-33, G-48, G-49, G-52, G-53, G-54,
 G-56.** G-9 was removed after the handler's healthy and 503 paths were
 exercised by `go test -modfile=/tmp/local.mod -race -count=1 ./internal/health`
 (details: `docs/58-HEALTH-CHECK-FAILURE-TEST.md`). G-57 was removed after
@@ -466,8 +468,8 @@ exercised by `go test -modfile=/tmp/local.mod -race -count=1 ./internal/health`
 removed after the 1,656-line handler file was decomposed and the full Go race
 suite passed (details: `docs/60-API-HANDLER-COMPOSITION-REFACTOR.md`). The
 reconciled ledger reports G-12, G-13, G-17, G-18, G-20, G-23, G-26 and G-27 as
-closed; G-16 remains open with its updated measurement; G-52 is still open and
-unverified. Important checkout limitation: the three unpushed commits described
+closed; ledgers 58–61 additionally close G-9, G-16, G-25 and G-57. G-52 is
+still open and unverified. Important checkout limitation: the three unpushed commits described
 by the supplied handoff, including the G-52 patch, are not present at this
 branch's `251f906` base. Therefore their behavior is not claimed as verified
 here.
@@ -560,6 +562,13 @@ decodes them, but the mobile home still shows the two ranked lists as before. A
 recommendation whose reason is never shown is indistinguishable from an
 arbitrary one to the listener, which is the complaint personalization exists to
 answer.
+
+**Closed in ledger 61: G-16.** The reported 92 raw color occurrences included 91
+generated constants; the only handwritten hex literal and the named Material
+palette references were replaced by generated `IConfess` tokens. `design/test_design.py`
+now fails on either kind of bypass, excluding the generated token file and
+`Colors.transparent`. See `docs/61-MOBILE-COLOR-TOKEN-CLEANUP.md`. Flutter
+analyze/test remain CI-only and are not claimed green locally.
 
 **Closed in ledger 60: G-25.** `server/internal/api/handlers.go` is now 247
 lines (from 1,656); its 61 functions were moved without loss into eight

@@ -56,7 +56,7 @@ class PlayerScreen extends ConsumerWidget {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(Icons.error_outline_rounded, size: 48, color: Colors.redAccent),
+                    const Icon(Icons.error_outline_rounded, size: 48, color: IConfess.colorSemanticDangerDark),
                     const SizedBox(height: IConfess.space3),
                     Text(
                       'Could not load session',
@@ -192,12 +192,12 @@ class PlayerScreen extends ConsumerWidget {
                   ),
                   margin: const EdgeInsets.only(bottom: IConfess.space3),
                   decoration: BoxDecoration(
-                    color: Colors.amber.withValues(alpha: 0.15),
+                    color: IConfess.colorSemanticWarningDark.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(IConfess.radiusMd),
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.info_outline_rounded, size: 16, color: Colors.amber),
+                      const Icon(Icons.info_outline_rounded, size: 16, color: IConfess.colorSemanticWarningDark),
                       const SizedBox(width: IConfess.space2),
                       Expanded(
                         child: Text(
@@ -391,7 +391,7 @@ class PlayerScreen extends ConsumerWidget {
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                       style: IConfess.bodySm.copyWith(
-                                        color: isCurrent ? Colors.white : surfaces.textPrimary,
+                                        color: isCurrent ? IConfess.colorNeutral0 : surfaces.textPrimary,
                                         fontWeight:
                                             isCurrent ? FontWeight.w600 : FontWeight.w400,
                                       ),
@@ -401,19 +401,19 @@ class PlayerScreen extends ConsumerWidget {
                                     Icon(
                                       Icons.check_circle_rounded,
                                       size: 14,
-                                      color: isCurrent ? Colors.white : IConfess.colorBrand500,
+                                      color: isCurrent ? IConfess.colorNeutral0 : IConfess.colorBrand500,
                                     )
                                   else if (isSkipped)
                                     Icon(
                                       Icons.skip_next_rounded,
                                       size: 14,
-                                      color: isCurrent ? Colors.white70 : surfaces.textSecondary,
+                                      color: isCurrent ? IConfess.colorNeutral0.withValues(alpha: 0.7) : surfaces.textSecondary,
                                     )
                                   else if (item.locked)
                                     Icon(
                                       Icons.lock_rounded,
                                       size: 14,
-                                      color: isCurrent ? Colors.white : surfaces.textSecondary,
+                                      color: isCurrent ? IConfess.colorNeutral0 : surfaces.textSecondary,
                                     ),
                                 ],
                               ),
@@ -422,7 +422,7 @@ class PlayerScreen extends ConsumerWidget {
                                 '${item.durationSeconds ~/ 60}:${(item.durationSeconds % 60).toString().padLeft(2, '0')}',
                                 style: IConfess.caption.copyWith(
                                   color: isCurrent
-                                      ? Colors.white.withValues(alpha: 0.85)
+                                      ? IConfess.colorNeutral0.withValues(alpha: 0.85)
                                       : surfaces.textSecondary,
                                 ),
                               ),

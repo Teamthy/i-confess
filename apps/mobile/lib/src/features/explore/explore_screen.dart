@@ -145,11 +145,11 @@ class _FeaturedCard extends StatelessWidget {
           Text(collection.name,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: IConfess.subheading.copyWith(color: Colors.white)),
+              style: IConfess.subheading.copyWith(color: IConfess.colorNeutral0)),
           Text(
             collection.premium ? 'Premium' : 'Free to explore',
             style: IConfess.caption
-                .copyWith(color: Colors.white.withValues(alpha: 0.85)),
+                .copyWith(color: IConfess.colorNeutral0.withValues(alpha: 0.85)),
           ),
         ],
       ),
