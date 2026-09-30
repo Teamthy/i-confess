@@ -189,16 +189,20 @@ func TestGetWaveformRejectsBadArgumentsBeforeShellingOut(t *testing.T) {
 	// These must fail on argument validation alone, so they hold on a machine
 	// with no ffmpeg installed and prove the old "return a sine wave anyway"
 	// fallback is gone.
-	if _, err := (Processor{}).GetWaveform(context.Background(), "", 10); err == nil {
+	// A named variable, not a composite literal: these methods have pointer
+	// receivers, and Processor{} is not addressable.
+	var p Processor
+
+	if _, err := p.GetWaveform(context.Background(), "", 10); err == nil {
 		t.Error("GetWaveform with an empty path should fail")
 	}
-	if _, err := (Processor{}).GetWaveform(context.Background(), "x.wav", 0); err == nil {
+	if _, err := p.GetWaveform(context.Background(), "x.wav", 0); err == nil {
 		t.Error("GetWaveform with width 0 should fail")
 	}
-	if _, err := (Processor{}).GetWaveform(context.Background(), "x.wav", -1); err == nil {
+	if _, err := p.GetWaveform(context.Background(), "x.wav", -1); err == nil {
 		t.Error("GetWaveform with a negative width should fail")
 	}
-	if _, err := (Processor{}).GetDuration(context.Background(), ""); err == nil {
+	if _, err := p.GetDuration(context.Background(), ""); err == nil {
 		t.Error("GetDuration with an empty path should fail")
 	}
 }
