@@ -313,6 +313,36 @@ class PlayerScreen extends ConsumerWidget {
 
               const SizedBox(height: IConfess.space3),
 
+              // Shuffle and repeat. These sit outside the transport row so
+              // the transport keeps its three fixed positions; they are
+              // preferences rather than transport, and a mis-tap should not
+              // move playback.
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.shuffle_rounded),
+                    color: state.isShuffled ? IConfess.colorBrand500 : null,
+                    tooltip: state.isShuffled ? 'Shuffle on' : 'Shuffle off',
+                    onPressed: items.length > 1 ? engine.toggleShuffle : null,
+                  ),
+                  IconButton(
+                    icon: Icon(
+                      state.repeatMode == PlayerRepeatMode.one
+                          ? Icons.repeat_one_rounded
+                          : Icons.repeat_rounded,
+                    ),
+                    color: state.repeatMode == PlayerRepeatMode.none
+                        ? null
+                        : IConfess.colorBrand500,
+                    tooltip: state.repeatMode.label,
+                    onPressed: engine.cycleRepeatMode,
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: IConfess.space3),
+
               // Control buttons: Previous, Play/Pause, Next/Skip
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,

@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:math';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:iconfess_api/iconfess_api.dart';
@@ -13,6 +15,38 @@ final audioPlaybackServiceProvider = Provider<AudioPlaybackService>((ref) {
   ref.onDispose(service.dispose);
   return service;
 });
+
+/// How playback continues when a confession finishes or is skipped.
+///
+/// This lives here rather than being imported from the audio feature because
+/// the session engine owns the queue and the audio service. features/audio has
+/// its own RepeatMode, and importing it would make the player depend on the
+/// audio feature while the audio feature already depends on the player - a
+/// cycle between features. Three values do not justify one.
+enum PlayerRepeatMode {
+  /// Play through once and stop.
+  none,
+
+  /// Start again from the beginning when the last item finishes.
+  all,
+
+  /// Play the current item again when it finishes.
+  one,
+}
+
+extension PlayerRepeatModeX on PlayerRepeatMode {
+  PlayerRepeatMode get next => switch (this) {
+        PlayerRepeatMode.none => PlayerRepeatMode.all,
+        PlayerRepeatMode.all => PlayerRepeatMode.one,
+        PlayerRepeatMode.one => PlayerRepeatMode.none,
+      };
+
+  String get label => switch (this) {
+        PlayerRepeatMode.none => 'Repeat off',
+        PlayerRepeatMode.all => 'Repeat session',
+        PlayerRepeatMode.one => 'Repeat this confession',
+      };
+}
 
 /// High-level session lifecycle statuses.
 enum PlayerLifecycleStatus {
@@ -37,6 +71,8 @@ class PersistedPlaybackState {
     required this.skippedItemIds,
     required this.lastPlaybackState,
     required this.lastUpdatedAt,
+    this.isShuffled = false,
+    this.repeatMode = PlayerRepeatMode.none,
   });
 
   final String sessionId;
@@ -48,6 +84,13 @@ class PersistedPlaybackState {
   final String lastPlaybackState;
   final String lastUpdatedAt;
 
+  /// Shuffle and repeat are a listener's choice about how to move through a
+  /// session, not progress, so the server has no opinion on them. They are
+  /// persisted locally and deliberately excluded from conflict resolution:
+  /// a server snapshot must never silently switch a listener's repeat off.
+  final bool isShuffled;
+  final PlayerRepeatMode repeatMode;
+
   Map<String, dynamic> toJson() => {
         'session_id': sessionId,
         'current_index': currentIndex,
@@ -57,6 +100,8 @@ class PersistedPlaybackState {
         'skipped_item_ids': skippedItemIds.toList(),
         'last_playback_state': lastPlaybackState,
         'last_updated_at': lastUpdatedAt,
+        'is_shuffled': isShuffled,
+        'repeat_mode': repeatMode.name,
       };
 
   factory PersistedPlaybackState.fromJson(Map<String, dynamic> json) =>
@@ -75,6 +120,11 @@ class PersistedPlaybackState {
             {},
         lastPlaybackState: json['last_playback_state'] as String? ?? 'READY',
         lastUpdatedAt: json['last_updated_at'] as String? ?? '',
+        isShuffled: json['is_shuffled'] as bool? ?? false,
+        repeatMode: PlayerRepeatMode.values.firstWhere(
+          (m) => m.name == json['repeat_mode'],
+          orElse: () => PlayerRepeatMode.none,
+        ),
       );
 }
 
@@ -92,6 +142,8 @@ class SessionPlaybackState {
     this.lastUpdatedAt = '',
     this.errorMessage = '',
     this.isRefreshingUrl = false,
+    this.isShuffled = false,
+    this.repeatMode = PlayerRepeatMode.none,
   });
 
   final String sessionId;
@@ -105,6 +157,11 @@ class SessionPlaybackState {
   final String lastUpdatedAt;
   final String errorMessage;
   final bool isRefreshingUrl;
+
+  /// Whether the listener has asked for a randomised order through the
+  /// session. See [PersistedPlaybackState.isShuffled] for why this is local.
+  final bool isShuffled;
+  final PlayerRepeatMode repeatMode;
 
   SessionItem? get currentItem {
     if (items.isEmpty || currentIndex < 0 || currentIndex >= items.length) {
@@ -133,6 +190,8 @@ class SessionPlaybackState {
     String? lastUpdatedAt,
     String? errorMessage,
     bool? isRefreshingUrl,
+    bool? isShuffled,
+    PlayerRepeatMode? repeatMode,
   }) =>
       SessionPlaybackState(
         sessionId: sessionId ?? this.sessionId,
@@ -146,6 +205,8 @@ class SessionPlaybackState {
         lastUpdatedAt: lastUpdatedAt ?? this.lastUpdatedAt,
         errorMessage: errorMessage ?? this.errorMessage,
         isRefreshingUrl: isRefreshingUrl ?? this.isRefreshingUrl,
+        isShuffled: isShuffled ?? this.isShuffled,
+        repeatMode: repeatMode ?? this.repeatMode,
       );
 }
 
@@ -174,6 +235,10 @@ class SessionEngine extends StateNotifier<SessionPlaybackState> {
   bool _disposed = false;
   Timer? _progressDebounce;
   int _lastSyncedPosition = 0;
+
+  /// Shuffle picks from what has not been heard yet. An instance field rather
+  /// than a global so two engines cannot draw from one sequence.
+  final Random _random = Random();
 
   void _init() {
     _posSub = _audio.positionStream.listen((d) {
@@ -234,6 +299,8 @@ class SessionEngine extends StateNotifier<SessionPlaybackState> {
           completedItemIds: localState.completedItemIds,
           skippedItemIds: localState.skippedItemIds,
           lastUpdatedAt: localState.lastUpdatedAt,
+          isShuffled: localState.isShuffled,
+          repeatMode: localState.repeatMode,
           errorMessage: 'Offline: loaded saved progress',
         );
         return;
@@ -262,6 +329,13 @@ class SessionEngine extends StateNotifier<SessionPlaybackState> {
     Set<String> completedIds = {};
     Set<String> skippedIds = {};
     String resolvedTimestamp = DateTime.now().toUtc().toIso8601String();
+
+    // Shuffle and repeat are restored from local state whoever wins the
+    // conflict, because the server has no concept of them. Letting a newer
+    // server snapshot reset them would silently undo a listener's choice
+    // every time another device advanced the session.
+    final resolvedShuffle = localState?.isShuffled ?? false;
+    final resolvedRepeat = localState?.repeatMode ?? PlayerRepeatMode.none;
 
     // Collect statuses from server queue snapshot
     for (final it in items) {
@@ -332,6 +406,8 @@ class SessionEngine extends StateNotifier<SessionPlaybackState> {
       skippedItemIds: skippedIds,
       lastUpdatedAt: resolvedTimestamp,
       errorMessage: '',
+      isShuffled: resolvedShuffle,
+      repeatMode: resolvedRepeat,
     );
 
     // 4. Load audio track at resolved position if playable
@@ -432,10 +508,11 @@ class SessionEngine extends StateNotifier<SessionPlaybackState> {
 
     _persist();
 
-    if (state.currentIndex < state.items.length - 1) {
-      await _transitionToItem(state.currentIndex + 1);
-    } else {
+    final next = _nextIndex(auto: false);
+    if (next == null) {
       await complete();
+    } else {
+      await _transitionToItem(next);
     }
   }
 
@@ -448,6 +525,79 @@ class SessionEngine extends StateNotifier<SessionPlaybackState> {
     if (state.currentIndex > 0) {
       await _transitionToItem(state.currentIndex - 1);
     }
+  }
+
+  /// Toggles randomised playback order.
+  ///
+  /// This affects which confession plays next, not the order the queue is
+  /// displayed in. The queue is composed by the server and shown as the
+  /// server composed it; shuffling the visible list would misrepresent a
+  /// curated devotional order while leaving the listener unable to tell what
+  /// had been reordered.
+  void toggleShuffle() {
+    state = state.copyWith(isShuffled: !state.isShuffled);
+    _persist();
+  }
+
+  /// Cycles repeat off -> repeat session -> repeat this confession.
+  void cycleRepeatMode() {
+    state = state.copyWith(repeatMode: state.repeatMode.next);
+    _persist();
+  }
+
+  /// Decides which item follows the current one, or null when the session
+  /// is over and should be completed.
+  ///
+  /// [auto] is true when a confession finished on its own and false when the
+  /// listener pressed skip. Repeat-one only applies to the former: honouring
+  /// it on a manual skip would make the skip button look broken, because
+  /// pressing it would replay what was just skipped.
+  int? _nextIndex({required bool auto}) {
+    final n = state.items.length;
+    if (n == 0) return null;
+
+    if (auto && state.repeatMode == PlayerRepeatMode.one) {
+      return state.currentIndex;
+    }
+
+    if (state.isShuffled && n > 1) {
+      final unplayed = <int>[];
+      for (var i = 0; i < n; i++) {
+        if (i == state.currentIndex) continue;
+        final id = state.items[i].id;
+        if (state.completedItemIds.contains(id)) continue;
+        if (state.skippedItemIds.contains(id)) continue;
+        unplayed.add(i);
+      }
+      if (unplayed.isNotEmpty) {
+        return unplayed[_random.nextInt(unplayed.length)];
+      }
+      // Everything has been heard. Repeat-all starts a fresh pass: without
+      // clearing the record, the session would stop even though the listener
+      // asked for it to continue.
+      if (state.repeatMode == PlayerRepeatMode.all) {
+        state = state.copyWith(
+          completedItemIds: <String>{},
+          skippedItemIds: <String>{},
+        );
+        return _nextIndex(auto: auto);
+      }
+      return null;
+    }
+
+    final next = state.currentIndex + 1;
+    if (next < n) return next;
+
+    // End of the queue. Repeat-all restarts, clearing progress for the same
+    // reason the shuffle branch does.
+    if (state.repeatMode == PlayerRepeatMode.all) {
+      state = state.copyWith(
+        completedItemIds: <String>{},
+        skippedItemIds: <String>{},
+      );
+      return 0;
+    }
+    return null;
   }
 
   /// Selects a specific item from the queue snapshot.
@@ -566,10 +716,11 @@ class SessionEngine extends StateNotifier<SessionPlaybackState> {
 
     _persist();
 
-    if (state.currentIndex < state.items.length - 1) {
-      await _transitionToItem(state.currentIndex + 1);
-    } else {
+    final next = _nextIndex(auto: true);
+    if (next == null) {
       await complete();
+    } else {
+      await _transitionToItem(next);
     }
   }
 
@@ -661,6 +812,8 @@ class SessionEngine extends StateNotifier<SessionPlaybackState> {
       skippedItemIds: state.skippedItemIds,
       lastPlaybackState: state.status.name,
       lastUpdatedAt: now,
+      isShuffled: state.isShuffled,
+      repeatMode: state.repeatMode,
     );
 
     _storage.writeJson(StoreKeys.sessionPlayback(sessionId), persisted.toJson());

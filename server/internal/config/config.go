@@ -37,6 +37,16 @@ type Config struct {
 	// ElevenLabsAPIKey enables synthesis. Server-side only; never sent to a
 	// client (PRD S14).
 	ElevenLabsAPIKey string
+	// TTSProvider selects which synthesis adapter to use when more than one
+	// is configured: "elevenlabs", "google" or "azure". Empty means
+	// "whichever is configured, elevenlabs first".
+	TTSProvider string
+	// GoogleTTSAPIKey enables Google Cloud Text-to-Speech. Server-side only.
+	GoogleTTSAPIKey string
+	// AzureSpeechKey and AzureSpeechRegion enable Azure AI Speech. Both are
+	// required: the region forms the endpoint host.
+	AzureSpeechKey    string
+	AzureSpeechRegion string
 
 	// --- Object storage (§6) ---
 	// StorageProvider selects where audio binaries live. "s3" in production,
@@ -112,6 +122,10 @@ func Load() Config {
 		CloudFrontPrivateKeyPath: os.Getenv("CLOUDFRONT_PRIVATE_KEY_PATH"),
 		AudioSignSecret:          getenv("AUDIO_SIGN_SECRET", "dev-only-audio-secret"),
 		ElevenLabsAPIKey:         os.Getenv("ELEVENLABS_API_KEY"),
+		TTSProvider:              strings.ToLower(strings.TrimSpace(os.Getenv("TTS_PROVIDER"))),
+		GoogleTTSAPIKey:          os.Getenv("GOOGLE_TTS_API_KEY"),
+		AzureSpeechKey:           os.Getenv("AZURE_SPEECH_KEY"),
+		AzureSpeechRegion:        os.Getenv("AZURE_SPEECH_REGION"),
 
 		StorageProvider: strings.ToLower(getenv("STORAGE_PROVIDER", "local")),
 		S3Bucket:        os.Getenv("S3_BUCKET"),
@@ -199,6 +213,33 @@ func (c Config) Validate() error {
 	}
 	if c.AudioSignSecret == "" || c.AudioSignSecret == "dev-only-audio-secret" {
 		return errors.New("AUDIO_SIGN_SECRET must be set to a non-default value in production")
+	}
+
+	// Synthesis configuration is validated at boot because a wrong provider
+	// name is otherwise silent: the server would start with no pipeline and
+	// every generation endpoint would report 503 until somebody read the logs.
+	switch c.TTSProvider {
+	case "", "elevenlabs", "google", "azure":
+	default:
+		return fmt.Errorf("TTS_PROVIDER=%q is not one of elevenlabs, google, azure", c.TTSProvider)
+	}
+	if c.TTSProvider == "elevenlabs" && c.ElevenLabsAPIKey == "" {
+		return errors.New("TTS_PROVIDER=elevenlabs requires ELEVENLABS_API_KEY")
+	}
+	if c.TTSProvider == "google" && c.GoogleTTSAPIKey == "" {
+		return errors.New("TTS_PROVIDER=google requires GOOGLE_TTS_API_KEY")
+	}
+	if c.TTSProvider == "azure" && c.AzureSpeechKey == "" {
+		return errors.New("TTS_PROVIDER=azure requires AZURE_SPEECH_KEY and AZURE_SPEECH_REGION")
+	}
+	// Half a credential is worse than none: the region forms the endpoint
+	// host, so without a key the failure is a clean 401, and without a region
+	// it is a DNS error the queue would retry for an hour.
+	if c.AzureSpeechKey != "" && c.AzureSpeechRegion == "" {
+		return errors.New("AZURE_SPEECH_KEY is set but AZURE_SPEECH_REGION is not; the region forms the endpoint host")
+	}
+	if c.AzureSpeechRegion != "" && c.AzureSpeechKey == "" {
+		return errors.New("AZURE_SPEECH_REGION is set but AZURE_SPEECH_KEY is not")
 	}
 	if err := storage.ValidateProvider(&storage.StorageConfig{
 		Provider:      c.StorageProvider,

@@ -513,3 +513,39 @@ func TestRightsUpdateAlsoPersistsTheFlags(t *testing.T) {
 		t.Errorf("generation after revoking AI rights: %d, want 451", rec.Code)
 	}
 }
+
+// TestQueueGenerationRefusesWhenNothingWouldRunIt pins the bug this endpoint
+// had.
+//
+// POST /admin/audio/generate/job used to write a job row and answer 202
+// "Job queued for processing" without ever handing the work to a queue. The
+// row sat in 'queued' forever, and an operator watching it could not tell a
+// render that was slow from one that would never start. An endpoint that
+// promises to queue work must be able to queue work.
+func TestQueueGenerationRefusesWhenNothingWouldRunIt(t *testing.T) {
+	h := newQAHarness(t)
+	h.grantRights(t)
+
+	// The fixture installs a synthesis pipeline but no job queue, which is
+	// exactly the configuration that used to produce a phantom job.
+	rec := h.do(t, http.MethodPost, "/admin/audio/generate/job", map[string]any{
+		"confession_id": h.confessionID(t),
+		"voice_id":      h.voiceStd,
+	}, h.admin)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("POST /admin/audio/generate/job with no queue = %d, want 503: %s",
+			rec.Code, rec.Body.String())
+	}
+
+	// Refusing must also mean not recording. A job row for work that will
+	// never run is worse than no row: it shows up in the list and in the
+	// statistics as if something were going to happen.
+	var n int
+	if err := h.db.QueryRowContext(context.Background(),
+		`SELECT COUNT(*) FROM audio_generation_jobs`).Scan(&n); err != nil {
+		t.Fatalf("count generation jobs: %v", err)
+	}
+	if n != 0 {
+		t.Errorf("%d job row(s) recorded for a request that was refused", n)
+	}
+}

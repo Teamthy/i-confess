@@ -225,11 +225,21 @@ func main() {
 		log.Printf("redis: REDIS_ADDR unset - cache invalidation is local to this instance only")
 	}
 
-	if cfg.ElevenLabsAPIKey != "" {
-		h.SetPipeline(voice.NewPipeline(voice.NewElevenLabs(cfg.ElevenLabsAPIKey), objStore))
-		log.Printf("voice: elevenlabs synthesis enabled")
+	// Pick one synthesis provider.
+	//
+	// Only one is installed at a time, and which one is decided here rather
+	// than per request: a render is a paid operation against a voice whose
+	// rights were checked for a specific engine, so silently switching
+	// mid-flight would make two attempts of the same job incomparable.
+	//
+	// The choice is logged at boot because a misconfigured provider is
+	// otherwise invisible until every generation starts returning 503.
+	if provider := selectVoiceProvider(cfg); provider != nil {
+		h.SetPipeline(voice.NewPipeline(provider, objStore))
+		log.Printf("voice: %s synthesis enabled", provider.Name())
 	} else {
-		log.Printf("voice: ELEVENLABS_API_KEY unset - synthesis endpoints report 503")
+		log.Printf("voice: no TTS provider configured (TTS_PROVIDER=%q) - synthesis endpoints report 503",
+			cfg.TTSProvider)
 	}
 
 	// Audio Platform Phase 1: configure signed playback URL resolution.
@@ -544,4 +554,44 @@ func envFloat(key string, def float64) float64 {
 		return v
 	}
 	return def
+}
+
+// selectVoiceProvider returns the configured synthesis provider, or nil when
+// none is usable.
+//
+// The order matters. With no explicit TTS_PROVIDER, ElevenLabs wins so an
+// existing deployment keeps behaving exactly as it did before the others
+// existed. Naming a provider is a hard requirement, not a preference: a
+// deployment that says "azure" and has no Azure key must fail loudly at boot
+// rather than quietly fall back to a provider whose costs and voice library
+// are different.
+func selectVoiceProvider(cfg config.Config) voice.Provider {
+	switch cfg.TTSProvider {
+	case "google":
+		if cfg.GoogleTTSAPIKey == "" {
+			log.Fatal("voice: TTS_PROVIDER=google but GOOGLE_TTS_API_KEY is unset")
+		}
+		return voice.NewGoogle(cfg.GoogleTTSAPIKey)
+	case "azure":
+		if cfg.AzureSpeechKey == "" || cfg.AzureSpeechRegion == "" {
+			log.Fatal("voice: TTS_PROVIDER=azure but AZURE_SPEECH_KEY or AZURE_SPEECH_REGION is unset")
+		}
+		return voice.NewAzure(cfg.AzureSpeechKey, cfg.AzureSpeechRegion)
+	case "elevenlabs":
+		if cfg.ElevenLabsAPIKey == "" {
+			log.Fatal("voice: TTS_PROVIDER=elevenlabs but ELEVENLABS_API_KEY is unset")
+		}
+		return voice.NewElevenLabs(cfg.ElevenLabsAPIKey)
+	}
+
+	// No provider named: take the first one that is actually configured.
+	switch {
+	case cfg.ElevenLabsAPIKey != "":
+		return voice.NewElevenLabs(cfg.ElevenLabsAPIKey)
+	case cfg.GoogleTTSAPIKey != "":
+		return voice.NewGoogle(cfg.GoogleTTSAPIKey)
+	case cfg.AzureSpeechKey != "" && cfg.AzureSpeechRegion != "":
+		return voice.NewAzure(cfg.AzureSpeechKey, cfg.AzureSpeechRegion)
+	}
+	return nil
 }
