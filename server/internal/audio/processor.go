@@ -7,13 +7,14 @@ package audio
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"log"
-	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -30,6 +31,10 @@ type Processor struct {
 	config ProcessorConfig
 	// ffmpegPath is the path to the ffmpeg binary
 	ffmpegPath string
+	// ffprobePath is the path to the ffprobe binary. Metadata reads use
+	// ffprobe, not ffmpeg: ffmpeg accepts no -show_entries and would fail,
+	// so duration measurement must not be handed to it.
+	ffprobePath string
 	// tempDir is the directory for temporary files
 	tempDir string
 }
@@ -52,9 +57,20 @@ type ProcessorConfig struct {
 	TempDir string
 	// FFmpegPath to ffmpeg binary (defaults to "ffmpeg")
 	FFmpegPath string
-	// Timeout for processing operations
+	// FFprobePath to ffprobe binary. Defaults to ffmpeg's own path with the
+	// "ffmpeg" component replaced by "ffprobe", which is how the two ship
+	// together; set it explicitly when they do not.
+	FFprobePath string
+	// Timeout bounds a single ffmpeg/ffprobe invocation. It is per operation
+	// rather than per pipeline: a normalise plus a transcode is two renders
+	// and must not share one budget.
 	Timeout time.Duration
 }
+
+// waveformSampleRate is the rate audio is decoded at to build a waveform.
+// Peaks per second is far below the source rate, and decoding a 60-minute
+// render at 48 kHz to draw a thousand bars would waste most of the work.
+const waveformSampleRate = 8000
 
 // DefaultProcessorConfig returns sensible defaults for audio processing.
 func DefaultProcessorConfig() ProcessorConfig {
@@ -67,6 +83,7 @@ func DefaultProcessorConfig() ProcessorConfig {
 		OutputFormat:   "m4a",
 		TempDir:        "/tmp/iconfess-audio",
 		FFmpegPath:     "ffmpeg",
+		FFprobePath:    "ffprobe",
 		Timeout:        30 * time.Second,
 	}
 }
@@ -79,29 +96,58 @@ func NewProcessor(cfg ProcessorConfig) (*Processor, error) {
 	if cfg.FFmpegPath == "" {
 		cfg.FFmpegPath = "ffmpeg"
 	}
+	if cfg.FFprobePath == "" {
+		cfg.FFprobePath = defaultFFprobePath(cfg.FFmpegPath)
+	}
 
 	// Ensure temp directory exists
 	if err := os.MkdirAll(cfg.TempDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create temp directory: %w", err)
 	}
 
-	// Verify ffmpeg is available
+	// Verify both binaries are available. ffprobe is checked separately: it
+	// ships with ffmpeg but not always, and a missing one must fail at
+	// construction rather than on the first duration measurement.
 	if err := verifyFFmpeg(cfg.FFmpegPath); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: %v", ErrFFmpegNotAvailable, err)
+	}
+	if err := verifyFFmpeg(cfg.FFprobePath); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrFFmpegNotAvailable, err)
 	}
 
 	return &Processor{
-		config:     cfg,
-		ffmpegPath: cfg.FFmpegPath,
-		tempDir:    cfg.TempDir,
+		config:      cfg,
+		ffmpegPath:  cfg.FFmpegPath,
+		ffprobePath: cfg.FFprobePath,
+		tempDir:     cfg.TempDir,
 	}, nil
 }
 
-// verifyFFmpeg checks if ffmpeg is available.
+// defaultFFprobePath derives the ffprobe path from the ffmpeg path.
+func defaultFFprobePath(ffmpeg string) string {
+	if i := strings.LastIndex(ffmpeg, "ffmpeg"); i >= 0 {
+		return ffmpeg[:i] + "ffprobe" + ffmpeg[i+len("ffmpeg"):]
+	}
+	return "ffprobe"
+}
+
+// withTimeout bounds one subprocess invocation. A zero Timeout means the
+// caller's context is the only limit, which is the behaviour this had before
+// the field existed and is what the tests rely on.
+func (p *Processor) withTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
+	if p.config.Timeout <= 0 {
+		return context.WithCancel(ctx)
+	}
+	return context.WithTimeout(ctx, p.config.Timeout)
+}
+
+// verifyFFmpeg checks that a media binary runs. It reports the bare reason
+// only; the caller adds ErrFFmpegNotAvailable, so the sentinel is wrapped
+// exactly once and errors.Is stays useful.
 func verifyFFmpeg(path string) error {
 	cmd := exec.Command(path, "-version")
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("%w: %v", ErrFFmpegNotAvailable, err)
+		return fmt.Errorf("could not run %q: %v", path, err)
 	}
 	return nil
 }
@@ -198,6 +244,9 @@ func (p *Processor) validate(ctx context.Context, path string) error {
 
 // normalize applies loudness normalization and peak limiting.
 func (p *Processor) normalize(ctx context.Context, inputPath string) (string, error) {
+	ctx, cancel := p.withTimeout(ctx)
+	defer cancel()
+
 	outputPath := p.tempFilePath("normalized", p.config.OutputFormat)
 
 	// Build ffmpeg command for loudness normalization
@@ -226,6 +275,9 @@ func (p *Processor) normalize(ctx context.Context, inputPath string) (string, er
 
 // transcode converts the audio to the target format and bitrate.
 func (p *Processor) transcode(ctx context.Context, inputPath string) (string, error) {
+	ctx, cancel := p.withTimeout(ctx)
+	defer cancel()
+
 	outputPath := p.tempFilePath("transcoded", p.config.OutputFormat)
 
 	var args []string
@@ -291,6 +343,9 @@ func (p *Processor) ConvertFormat(ctx context.Context, inputData []byte, inputFo
 	}
 	defer os.Remove(inputPath)
 
+	ctx, cancel := p.withTimeout(ctx)
+	defer cancel()
+
 	outputPath := p.tempFilePath("convert-output", outputFormat)
 
 	args := []string{
@@ -347,8 +402,18 @@ func isLossyFormat(format string) bool {
 }
 
 // GetDuration returns the duration of an audio file in seconds.
+//
+// It shells out to ffprobe rather than ffmpeg. These arguments are ffprobe's
+// (-show_entries/-of); ffmpeg rejects both, so this measurement silently
+// failed for every caller until the binary was corrected.
 func (p *Processor) GetDuration(ctx context.Context, path string) (float64, error) {
-	// Use ffprobe to get duration
+	if path == "" {
+		return 0, fmt.Errorf("%w: no input path", ErrProcessingFailed)
+	}
+
+	ctx, cancel := p.withTimeout(ctx)
+	defer cancel()
+
 	args := []string{
 		"-v", "error",
 		"-show_entries", "format=duration",
@@ -356,10 +421,17 @@ func (p *Processor) GetDuration(ctx context.Context, path string) (float64, erro
 		path,
 	}
 
-	cmd := exec.CommandContext(ctx, p.ffmpegPath, append([]string{"-probesize", "5000000"}, args...)...)
+	cmd := exec.CommandContext(ctx, p.ffprobePath, args...)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
 	output, err := cmd.Output()
 	if err != nil {
-		return 0, fmt.Errorf("failed to get duration: %w", err)
+		detail := strings.TrimSpace(stderr.String())
+		if detail == "" {
+			detail = err.Error()
+		}
+		return 0, fmt.Errorf("%w: could not measure duration: %s", ErrProcessingFailed, detail)
 	}
 
 	duration, err := parseDuration(string(bytes.TrimSpace(output)))
@@ -375,73 +447,124 @@ func parseDuration(s string) (float64, error) {
 	return strToFloat(s)
 }
 
-// strToFloat is a simple string to float64 parser.
+// strToFloat parses a duration string (e.g., "123.456") to float64.
+// Uses Go's standard library for robustness.
 func strToFloat(s string) (float64, error) {
-	var result float64
-	var sign float64 = 1
-	var decimal bool
-	var decimalPlace float64 = 1
-
-	i := 0
-	for i < len(s) {
-		c := s[i]
-		switch {
-		case c == '-':
-			sign = -1
-			i++
-		case c == '.':
-			decimal = true
-			i++
-		case c >= '0' && c <= '9':
-			digit := float64(c - '0')
-			if decimal {
-				decimalPlace /= 10
-				result += digit * decimalPlace
-			} else {
-				result = result*10 + digit
-			}
-			i++
-		default:
-			// Stop at first non-numeric character (except . and -)
-			return result * sign, nil
-		}
-	}
-
-	return result * sign, nil
+	return strconv.ParseFloat(strings.TrimSpace(s), 64)
 }
 
-// GetWaveform generates a simplified waveform representation.
+// GetWaveform returns `width` peak amplitudes in the range 0..1, normalised so
+// the loudest bar is 1.
+//
+// It decodes the file to mono 16-bit PCM at a reduced rate and takes the peak
+// of each bucket. The previous implementation rendered a sine wave and returned
+// it even when ffmpeg had failed, so a caller drawing a waveform for a file
+// that could not be decoded got a plausible-looking picture of nothing.
 func (p *Processor) GetWaveform(ctx context.Context, path string, width int) ([]float64, error) {
-	// Use ffmpeg to generate waveform data
-	// This is a simplified implementation
+	if path == "" {
+		return nil, fmt.Errorf("%w: no input path", ErrProcessingFailed)
+	}
+	if width <= 0 {
+		return nil, fmt.Errorf("%w: width must be positive, got %d", ErrProcessingFailed, width)
+	}
+
+	ctx, cancel := p.withTimeout(ctx)
+	defer cancel()
+
 	args := []string{
+		"-v", "error",
 		"-i", path,
-		"-filter_complex", fmt.Sprintf("astats=measure_perchannel=none:reset=1,metadata=print:key=lavfi.astats.Overall.RMS_level:file=- "),
-		"-f", "null",
+		// First audio stream only: an input carrying artwork or a second
+		// language track must not widen the buckets.
+		"-map", "0:a:0",
+		"-ac", "1",
+		"-ar", strconv.Itoa(waveformSampleRate),
+		"-f", "s16le",
+		"-c:a", "pcm_s16le",
 		"-",
 	}
 
 	cmd := exec.CommandContext(ctx, p.ffmpegPath, args...)
-	output, err := cmd.CombinedOutput()
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	raw, err := cmd.Output()
 	if err != nil {
-		// Fallback: return a dummy waveform
-		waveform := make([]float64, width)
-		for i := range waveform {
-			waveform[i] = math.Sin(float64(i) * 2 * math.Pi / float64(width))
+		detail := strings.TrimSpace(stderr.String())
+		if detail == "" {
+			detail = err.Error()
 		}
-		return waveform, nil
+		return nil, fmt.Errorf("%w: could not decode audio for a waveform: %s", ErrProcessingFailed, detail)
 	}
 
-	// Parse the RMS level from output
-	// This is a simplified parser - actual implementation would need to parse ffmpeg output
-	_ = output
-
-	// For now, return a dummy waveform
-	waveform := make([]float64, width)
-	for i := range waveform {
-		waveform[i] = math.Sin(float64(i) * 2 * math.Pi / float64(width))
+	peaks, ok := pcmPeaks(raw, width)
+	if !ok {
+		return nil, fmt.Errorf("%w: decoded no audio samples", ErrProcessingFailed)
 	}
-	return waveform, nil
+	return peaks, nil
+}
+
+// pcmPeaks buckets little-endian 16-bit PCM into width peak amplitudes and
+// normalises them to 0..1.
+//
+// It is separate from GetWaveform so the arithmetic can be tested without a
+// media binary on the machine. The second return is false when there is no
+// sample to draw, which is a decode failure rather than silence: silence is
+// representable (all zeros) and must stay distinguishable from it.
+func pcmPeaks(raw []byte, width int) ([]float64, bool) {
+	// Two bytes per sample; a trailing odd byte is a truncated frame and is
+	// dropped rather than allowed to shift every later sample.
+	samples := len(raw) / 2
+	if samples == 0 {
+		return nil, false
+	}
+
+	peaks := make([]float64, width)
+	perBucket := samples / width
+	if perBucket < 1 {
+		perBucket = 1
+	}
+
+	for i := 0; i < width; i++ {
+		start := i * perBucket
+		if start >= samples {
+			// Fewer samples than buckets: the tail stays at zero, which is
+			// honest - there is no audio there.
+			break
+		}
+		end := start + perBucket
+		if i == width-1 || end > samples {
+			end = samples
+		}
+
+		var peak int
+		for b := start; b < end; b++ {
+			// int16 round-trips through uint16 so the sign is preserved.
+			v := int(int16(binary.LittleEndian.Uint16(raw[b*2 : b*2+2])))
+			if v < 0 {
+				v = -v
+			}
+			if v > peak {
+				peak = v
+			}
+		}
+		peaks[i] = float64(peak) / 32768
+	}
+
+	// Normalise so a quiet render still fills the height it was given. Without
+	// this a well-mastered-but-quiet file draws as a flat line.
+	var max float64
+	for _, v := range peaks {
+		if v > max {
+			max = v
+		}
+	}
+	if max > 0 {
+		for i := range peaks {
+			peaks[i] /= max
+		}
+	}
+	return peaks, true
 }
 
 // tempFilePath generates a path for a temporary file.
