@@ -1,10 +1,14 @@
 "use client";
 
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import Link from "next/link";
 import { Icon } from "./ui";
-import { CONFESSIONS, VOICES, type QueueItem } from "@/lib/data";
-import { useAudio } from "@/lib/ui";
+import { CONFESSIONS, type QueueItem } from "@/lib/data";
+import { useAudio, useToast } from "@/lib/ui";
+import { useApp, mutate } from "@/lib/store";
+import { useVoiceCatalogue, playableSample, preferredVoiceId } from "@/lib/catalogue";
+import { selectDeviceVoice } from "@/lib/audio-playback";
+import { DeviceVoicePicker } from "./voice-preferences";
 
 type VoiceSample = {
   id: string;
@@ -35,10 +39,6 @@ const FALLBACK_SAMPLES: VoiceSample[] = CONFESSIONS.slice(0, 3).map((item) => ({
   text: item.medium,
 }));
 const SAMPLES = SAMPLE_COPY.length >= 3 ? SAMPLE_COPY : FALLBACK_SAMPLES;
-const LISTED_VOICES = VOICES.filter((voice) => voice.status === "active" && /licensed/i.test(voice.rights));
-const ACTIVE_VOICE = LISTED_VOICES.find((voice) => voice.slug === "grace") || LISTED_VOICES[0]!;
-const LISTED_VOICE_COUNT = String(LISTED_VOICES.length).padStart(2, "0");
-const ACTIVE_VOICE_STYLE = "Warm · Calm";
 const CURATION_STEPS = [
   { id: "identity", focus: "Voice identity & sample approval", detail: "A voice is named and previewed only after permission to publish its identity and sample is confirmed." },
   { id: "rights", focus: "Recording & usage rights", detail: "Recording, distribution and commercial use are reviewed separately before a voice becomes selectable." },
@@ -56,6 +56,7 @@ function sampleQueueItem(sample: VoiceSample): QueueItem {
     title: `Device speech sample · ${sample.title}`,
     category: sample.category,
     text: sample.text,
+    preview: true,
   };
 }
 
@@ -101,7 +102,7 @@ function useSamplePlayback(sample: VoiceSample) {
     audio.play([item]);
   };
 
-  return { toggle, playing, progress };
+  return { toggle, playing, progress, error: isCurrent ? audio.error : null };
 }
 
 function PlayIcon({ playing }: { playing: boolean }) {
@@ -111,18 +112,20 @@ function PlayIcon({ playing }: { playing: boolean }) {
 function HeroPlayer({ sample }: { sample: VoiceSample }) {
   const playback = useSamplePlayback(sample);
   const label = playback.playing ? "Pause device-speech sample" : "Play device-speech sample";
+  const audio = useAudio();
+  const { settings } = useApp();
+  const voice = selectDeviceVoice(audio.deviceVoices, settings.deviceVoice);
   return (
     <div className="voice-feature-player">
       <div className="voice-feature-person">
         <div className="voice-portrait-wrap">
-          <img src="/assets/voice-grace.jpg" alt="Portrait of Grace" />
-          <span className="voice-live-dot" aria-label="Available" />
+          <span className="device-voice-portrait"><Icon n="mic" s={44} /></span>
         </div>
         <div className="voice-person-copy">
-          <span className="voice-person-eyebrow">Available voice</span>
-          <h2>{ACTIVE_VOICE.name}</h2>
-          <p>{ACTIVE_VOICE_STYLE}</p>
-          <span className="voice-license"><Icon n="check" s={12} /> {ACTIVE_VOICE.rights}</span>
+          <span className="voice-person-eyebrow">Your device voice</span>
+          <h2>{voice?.name || "Browser default"}</h2>
+          <p>{voice?.lang || "Device speech"}</p>
+          <span className="voice-license"><Icon n="info" s={12} /> {voice?.localService ? "On-device speech engine" : "Browser-provided speech engine"}</span>
         </div>
       </div>
 
@@ -149,8 +152,9 @@ function HeroPlayer({ sample }: { sample: VoiceSample }) {
           </Link>
         </div>
         <p className="voice-disclosure">
-          The web preview uses your device’s speech engine; it is not a studio recording of Grace. Published audio stays rights-cleared.
+          This preview uses the device voice shown here, not a recording or imitation of any published narrator. Some device voices require a network connection.
         </p>
+        {playback.error && <p role="alert" className="voice-disclosure">{playback.error}</p>}
       </div>
     </div>
   );
@@ -190,52 +194,69 @@ function CurationCard({ focus, detail }: (typeof CURATION_STEPS)[number]) {
 
 export function VoiceLibrary({ inApp = false }: { inApp?: boolean }) {
   const sample = SAMPLES[0];
+  const catalogue = useVoiceCatalogue();
+  const audio = useAudio();
+  const toast = useToast();
+  const { settings } = useApp();
+  const [query, setQuery] = useState("");
+  const voices = (catalogue.data || []).filter((v) => v.status === "active");
+  const filtered = voices.filter((v) => `${v.name} ${v.language} ${v.description || ""}`.toLowerCase().includes(query.toLowerCase()));
+  const selected = preferredVoiceId(voices, settings.voice);
   return (
     <section className={`voice-library${inApp ? " in-app" : " public-page"}`}>
       <header className="voice-library-intro">
         <div>
           <span className="eyebrow">Voice library</span>
           <h1>Let the words <span>find their pace.</span></h1>
-          <p>Grace is the licensed narration voice listed today. This web preview uses your device’s speech engine; any future voice will be named only after its identity, sample and usage rights are approved.</p>
+          <p>Choose published narration for account sessions, or a voice from your own device for browser speech. They are distinct sources, always labelled.</p>
         </div>
         <div className="voice-library-counts" aria-label="Voice availability">
-          <div><b>{LISTED_VOICE_COUNT}</b><span>{LISTED_VOICES.length === 1 ? "listed voice" : "listed voices"}</span></div>
-          <div><b>Rights</b><span>reviewed first</span></div>
+          <div><b>{catalogue.loading ? "…" : String(voices.length).padStart(2, "0")}</b><span>published voices</span></div>
+          <div><b>{String(audio.deviceVoices.length).padStart(2, "0")}</b><span>device voices</span></div>
         </div>
       </header>
 
-      <HeroPlayer sample={sample} />
+      <section className="voice-library-section" aria-labelledby="published-voices-title">
+        <div className="voice-section-heading"><div><span className="voice-section-overline">From the live catalogue</span><h2 id="published-voices-title">Published narration</h2></div><p>Your choice is used by the session builder and saved schedules. The server checks voice availability and access when a session starts.</p></div>
+        {catalogue.loading && <p className="small" role="status">Loading published voices…</p>}
+        {catalogue.error && <div className="feature-notice" role="alert"><p>{catalogue.error.message} Device samples below are still available.</p><button className="btn btn-ghost btn-sm" onClick={catalogue.reload}>Retry voice catalogue</button></div>}
+        {!catalogue.loading && !catalogue.error && <>
+          <div className="field voice-search"><label htmlFor="voice-filter">Find a published voice</label><input id="voice-filter" type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Name or language" /></div>
+          <div className="published-voice-grid">
+            {filtered.map((voice) => {
+              const current = audio.current()?.slug === `voice-preview-published-${voice.id}`;
+              return <article className={`published-voice-card${selected === voice.id ? " selected" : ""}`} key={voice.id}>
+                <div className="published-voice-heading"><span className="published-voice-avatar"><Icon n="mic" s={22} /></span><span className="tag private">{voice.playable === false ? "Audio in review" : voice.premium ? "Premium" : "Standard"}</span></div>
+                <h3>{voice.name}</h3><p>{voice.description || "Published narration voice."}</p><span className="small">{voice.language} · {voice.type}{voice.playable === false ? " · no playable render yet" : " · ready to use"}</span>
+                <div className="published-voice-actions">
+                  <button type="button" className="btn btn-primary btn-sm" disabled={voice.playable === false} aria-pressed={selected === voice.id} onClick={() => { mutate((s) => { s.settings.voice = voice.id; }); toast(`${voice.name} selected for published sessions`); }}>{selected === voice.id ? "Selected ✓" : voice.playable === false ? "Not available yet" : "Use this voice"}</button>
+                  {voice.playable !== false && playableSample(voice.sample_url) ? <button className="btn btn-ghost btn-sm" type="button" onClick={() => {
+                    if (current && audio.status === "playing") audio.pause();
+                    else if (current && audio.status === "paused") audio.resume();
+                    else audio.play([{ slug: `voice-preview-published-${voice.id}`, title: `${voice.name} · published sample`, category: voice.language, text: "", src: voice.sample_url!, preview: true }]);
+                  }}><Icon n={current && audio.status === "playing" ? "pause" : "play"} s={13} /> {current && audio.status === "playing" ? "Pause sample" : "Published sample"}</button> : <span className="small">No published sample yet</span>}
+                </div>
+                {current && audio.error && <p className="feature-error" role="alert">{audio.error}</p>}
+              </article>;
+            })}
+          </div>
+          {!filtered.length && <p className="small">{voices.length ? "No voices match that search." : "No active published voices are available. You can still use your device's speech engine below."}</p>}
+        </>}
+      </section>
 
+      <section className="voice-library-section" aria-labelledby="device-voices-title">
+        <div className="voice-section-heading"><div><span className="voice-section-overline">Available on this browser</span><h2 id="device-voices-title">Device speech</h2></div><p>No cloning, no narrator impersonation. These samples use the actual voice supplied by your browser.</p></div>
+        <div className="form-card voice-device-settings"><DeviceVoicePicker id="library-device-voice" /><Link className="textlink" href="/app/settings/playback">Speed, sound and listening preferences →</Link></div>
+        <HeroPlayer sample={sample} />
+      </section>
       <section className="voice-library-section" aria-labelledby="voice-samples-title">
-        <div className="voice-section-heading">
-          <div>
-            <span className="voice-section-overline">Hear a few words</span>
-            <h2 id="voice-samples-title">Samples for different moments</h2>
-          </div>
-          <p>Each sample uses reviewed iCONFESS wording. Tap to listen, pause, or resume.</p>
-        </div>
-        <div className="voice-sample-grid">
-          {SAMPLES.map((item, index) => <SampleCard key={item.id} sample={item} index={index} />)}
-        </div>
+        <div className="voice-section-heading"><div><span className="voice-section-overline">Hear a few words</span><h2 id="voice-samples-title">Samples for different moments</h2></div><p>Reviewed wording, spoken in your selected device voice. Samples never repeat or count towards listening history.</p></div>
+        <div className="voice-sample-grid">{SAMPLES.map((item, index) => <SampleCard key={item.id} sample={item} index={index} />)}</div>
       </section>
-
       <section className="voice-library-section voice-curation" aria-labelledby="voice-curation-title">
-        <div className="voice-section-heading">
-          <div>
-            <span className="voice-section-overline">No names before approval</span>
-            <h2 id="voice-curation-title">The curation pipeline</h2>
-          </div>
-          <p>These are review checkpoints, not additional voice listings. We publish identities and samples only after permission and usage rights are confirmed.</p>
-        </div>
-        <div className="voice-curation-grid">
-          {CURATION_STEPS.map((step) => <CurationCard key={step.id} {...step} />)}
-        </div>
+        <div className="voice-section-heading"><div><span className="voice-section-overline">Rights before release</span><h2 id="voice-curation-title">The curation pipeline</h2></div><p>Review checkpoints, not additional voice listings. Minister-voice models and consent are managed in the admin Voice Studio.</p></div>
+        <div className="voice-curation-grid">{CURATION_STEPS.map((step) => <CurationCard key={step.id} {...step} />)}</div>
       </section>
-
-      <div className="voice-library-footnote">
-        <Icon n="shield" s={17} />
-        <p>Rights are checked before a voice or recording is published. A review checkpoint never implies that another voice has already been licensed.</p>
-      </div>
     </section>
   );
 }

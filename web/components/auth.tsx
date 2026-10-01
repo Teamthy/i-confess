@@ -7,6 +7,7 @@ import { useApp, mutate, track } from "@/lib/store";
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/lib/ui";
 import { CATEGORIES } from "@/lib/data";
+import { ALL_DAYS, deviceTimezone } from "@/lib/schedules";
 
 type PasswordFieldProps = Omit<React.InputHTMLAttributes<HTMLInputElement>, "type"> & {
   label: string;
@@ -185,7 +186,7 @@ function Onboarding() {
     mutate((s) => {
       s.user = { name: name.trim(), email: email.trim(), plan: "free", interests };
       s.routines = [{ slot: time, cats }];
-      s.schedule = cats.map((c, i) => ({ id: Date.now() + i, category: c, time, days: "Every day" }));
+      s.schedule = [...s.schedule.filter((sc) => sc.localOwner !== email.trim()), ...cats.map((c, i) => ({ id: `local-${Date.now()}-${i}`, label: `${CATEGORIES.find((cat) => cat.slug === c)?.name || c} practice`, time, days_of_week: [...ALL_DAYS], timezone: deviceTimezone(), duration_seconds: Number(len) * 60, category_ids: [c], enabled: remind, localOwner: email.trim() }))];
       s.settings.notifications.reminders = remind;
     });
     track("account_created"); track("onboarding_complete", { interests: interests.length });

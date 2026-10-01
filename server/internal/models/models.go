@@ -89,9 +89,12 @@ type Voice struct {
 	Language    string `json:"language"`
 	Premium     bool   `json:"premium"`
 	Status      string `json:"status"`
-	SampleURL   string `json:"sample_url,omitempty"`
-	CreatedAt   string `json:"created_at"`
-	UpdatedAt   string `json:"updated_at"`
+	// Playable is derived from a rights-cleared, QA-served asset. A voice can
+	// be active in the catalogue while its first render is still processing.
+	Playable  bool   `json:"playable"`
+	SampleURL string `json:"sample_url,omitempty"`
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
 }
 
 // AudioAsset is a rendered audio file (PRD S12).
@@ -282,6 +285,8 @@ func (s Subscription) EffectiveStatus(now time.Time) string {
 }
 
 type Schedule struct {
+	// NextRunAt is derived from the IANA timezone at read time, never persisted.
+	NextRunAt       string   `json:"next_run_at,omitempty"`
 	ID              string   `json:"id"`
 	UserID          string   `json:"user_id"`
 	Label           string   `json:"label"`

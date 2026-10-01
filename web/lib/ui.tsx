@@ -1,134 +1,78 @@
 "use client";
 import React, { createContext, useContext, useEffect, useRef, useState } from "react";
+import { usePlayer } from "./player";
 import { useRouter } from "next/navigation";
 import { CATEGORIES, CONFESSIONS, ARTICLES, VOICES, ALL_SESSIONS, catBySlug, motifStyle, queueItem, type QueueItem } from "./data";
 import { useApp, mutate, track } from "./store";
 import { Icon } from "@/components/ui";
 
-/* ---------------- audio engine (Web Speech — real audio, zero files) ---------------- */
-type AudioState = { queue: QueueItem[]; idx: number; status: "idle" | "playing" | "paused" | "completed" | "error"; progress: number };
-type AudioApi = AudioState & {
-  play: (q: QueueItem[], start?: number) => void; pause: () => void; resume: () => void; stop: () => void;
-  next: () => void; prev: () => void; current: () => QueueItem | null;
-  updateQueue: (q: QueueItem[], idx: number) => void;
+/* The UI facade and the full player share PlayerProvider's ONE queue. */
+export type AudioApi = Omit<ReturnType<typeof usePlayer>, "play"> & {
+  play: (queue: QueueItem[], start?: number) => void;
+  resume: () => void;
+  stop: () => void;
+  current: () => QueueItem | null;
 };
 const AudioCtx = createContext<AudioApi | null>(null);
-export const useAudio = () => useContext(AudioCtx)!;
-const ToastCtx = createContext<(m: string) => void>(() => { });
+export const useAudio = () => {
+  const audio = useContext(AudioCtx);
+  if (!audio) throw new Error("useAudio requires UiProvider");
+  return audio;
+};
+const ToastCtx = createContext<(m: string) => void>(() => {});
 export const useToast = () => useContext(ToastCtx);
-const SearchCtx = createContext<() => void>(() => { });
+const SearchCtx = createContext<() => void>(() => {});
 export const useSearch = () => useContext(SearchCtx);
 
 export function UiProvider({ children }: { children: React.ReactNode }) {
-  React.useEffect(() => {
+  useEffect(() => {
     if (process.env.NODE_ENV === "production" && "serviceWorker" in navigator) {
-      navigator.serviceWorker.register("/sw.js").catch(() => { });
+      navigator.serviceWorker.register("/sw.js").catch(() => {});
     }
   }, []);
   const router = useRouter();
-  const [audio, setAudio] = useState<AudioState>({ queue: [], idx: 0, status: "idle", progress: 0 });
-  const ref = useRef(audio); ref.current = audio;
-  const synthRef = useRef<any>(typeof window !== "undefined" ? window.speechSynthesis || null : null);
+  const player = usePlayer();
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [mpHidden, setMpHidden] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
-  const st = useApp();
-
-  const toast = (m: string) => { setToastMsg(m); window.setTimeout(() => setToastMsg(null), 2600); };
-
-  const pickVoice = () => {
-    const synth = synthRef.current; if (!synth) return null;
-    const vs = synth.getVoices();
-    return vs.find((v: any) => v.lang.startsWith("en") && /female|zira|samantha|aria|moira|tessa/i.test(v.name)) || vs.find((v: any) => v.lang.startsWith("en")) || vs[0] || null;
+  const toast = (message: string) => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setToastMsg(message);
+    toastTimer.current = setTimeout(() => setToastMsg(null), 4000);
   };
-  const set = (p: Partial<AudioState>) => setAudio((a) => ({ ...a, ...p }));
-
-  const record = (item: QueueItem) => {
-    if (st.settings.privacy.pauseHistory) return;
-    mutate((s) => {
-      s.history = [{ slug: item.slug, title: item.title, category: item.category, at: Date.now() }, ...s.history.filter((h) => !(h.slug === item.slug && h.at > Date.now() - 60000))].slice(0, 60);
-      const today = new Date().toDateString();
-      if (s.streak.last !== today) {
-        const yest = new Date(Date.now() - 864e5).toDateString();
-        s.streak = { count: s.streak.last === yest ? s.streak.count + 1 : 1, last: today };
-      }
-    });
-    track("confession_played", { slug: item.slug });
-  };
-
+  useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current); }, []);
   const api: AudioApi = {
-    ...audio,
-    current: () => ref.current.queue[ref.current.idx] || null,
-    play(q, start = 0) {
-      if (!synthRef.current) { set({ queue: q, idx: start, status: "error" }); return; }
-      set({ queue: q, idx: start, status: "playing", progress: 0 });
-      speak(q, start);
-    },
-    pause() { synthRef.current?.pause(); set({ status: "paused" }); },
-    resume() { synthRef.current?.resume(); set({ status: "playing" }); },
-    stop() { synthRef.current?.cancel(); set({ queue: [], idx: 0, status: "idle", progress: 0 }); },
-    next() { const i = ref.current.idx; if (i < ref.current.queue.length - 1) { set({ idx: i + 1, status: "playing" }); speak(ref.current.queue, i + 1); } },
-    prev() { const i = ref.current.idx; if (i > 0) { set({ idx: i - 1, status: "playing" }); speak(ref.current.queue, i - 1); } },
-    updateQueue(q, idx) { repeatLeft.current = 0; set({ queue: q, idx, status: "playing", progress: 0 }); speak(q, idx); },
+    ...player,
+    play: player.playQueue,
+    resume: () => { void player.play(); },
+    stop: player.clear,
+    current: () => player.queue[player.idx] || null,
   };
-  const repeatLeft = useRef(0);
-
-  function speak(q: QueueItem[], idx: number) {
-    const synth = synthRef.current; const item = q[idx];
-    if (!synth) return;
-    if (!item) {
-      set({ status: "completed", progress: 0 });
-      if (!q.some((queued) => queued.slug.startsWith("voice-preview-"))) track("session_completed", { items: q.length });
-      return;
-    }
-    synth.cancel();
-    const u = new SpeechSynthesisUtterance(item.text);
-    const v = pickVoice(); if (v) u.voice = v;
-    const conf = CONFESSIONS.find((c) => c.slug === item.slug);
-    const inten = conf?.intensity ?? 2;
-    u.rate = (st.settings.rate || 1) * (st.settings.eq === "bright" ? 1.08 : st.settings.eq === "calm" ? 0.92 : 1);
-    u.pitch = (st.settings.pitch ?? 1) * (st.settings.eq === "bright" ? 1.1 : st.settings.eq === "calm" ? 0.95 : 1);
-    u.volume = st.settings.normalize ? (st.settings.volume ?? 1) : Math.min(1, (st.settings.volume ?? 1) * (0.8 + inten * 0.07));
-    if (idx !== ref.current.idx || repeatLeft.current === 0) repeatLeft.current = Math.max(0, (st.settings.repeat || 1) - 1);
-    u.onboundary = (e: any) => set({ progress: Math.min(1, (e.charIndex || 0) / Math.max(1, item.text.length)) });
-    const previewOnly = item.slug.startsWith("voice-preview-");
-    u.onend = () => { if (ref.current.status === "playing") { if (repeatLeft.current > 0) { repeatLeft.current -= 1; speak(q, idx); return; } if (!previewOnly) record(item); speak(q, idx + 1); set({ idx: idx + 1, progress: 0 }); } };
-    u.onerror = () => set({ status: "error" });
-    if (!previewOnly) record(item);
-    synth.speak(u);
-  }
-
-  useEffect(() => { synthRef.current?.getVoices(); }, []);
-
-  const item = audio.queue[audio.idx] || null;
-  const playerOn = !!item && audio.status !== "idle";
-
+  const item = api.current();
+  const playerOn = !!item && player.status !== "idle";
   return (
     <AudioCtx.Provider value={api}>
       <ToastCtx.Provider value={toast}>
         <SearchCtx.Provider value={() => setSearchOpen(true)}>
           {children}
-          {/* mini player */}
           <div className={"mini-player" + (playerOn ? " on" : "") + (mpHidden ? " hid" : "")} aria-hidden={!playerOn}>
             <button className="mp-hide" aria-label={mpHidden ? "Show player" : "Hide player"} onClick={() => setMpHidden(!mpHidden)}>{mpHidden ? "▲" : "▼"}</button>
-            {item && (
-              <div className="mp-in">
-                <div className="mp-art" style={motifStyle(catBySlug(item.category)?.slug || "peace")}>{<Icon n="wave" s={16} />}</div>
-                <div className="mp-main">
-                  <div className="mp-title">{item.title}</div>
-                  <div className="mp-sub">{item.category} · {item.slug.startsWith("voice-preview-") ? "Device speech preview" : "Browser speech"} · {audio.status}</div>
-                  <div className="progress"><i style={{ width: Math.round(audio.progress * 100) + "%" }} /></div>
-                </div>
-                <button className="icon-btn ghost-dark" onClick={api.prev} aria-label="Previous"><Icon n="prev" s={16} /></button>
-                <button className="icon-btn accent" onClick={() => (audio.status === "playing" ? api.pause() : audio.status === "paused" ? api.resume() : null)} aria-label="Play or pause"><Icon n={audio.status === "playing" ? "pause" : "play"} s={16} /></button>
-                <button className="icon-btn ghost-dark" onClick={api.next} aria-label="Next"><Icon n="next" s={16} /></button>
-                <button className="icon-btn ghost-dark" onClick={() => router.push("/app/player")} aria-label="Open player"><Icon n="arrow" s={14} /></button>
+            {item && <div className="mp-in">
+              <div className="mp-art" style={motifStyle(catBySlug(item.category)?.slug || "peace")}><Icon n="wave" s={16} /></div>
+              <div className="mp-main">
+                <div className="mp-title">{item.title}</div>
+                <div className="mp-sub">{player.source === "file" ? "Published audio" : "Device speech"} · {player.status}</div>
+                <div className="progress" role="progressbar" aria-label="Playback progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(player.progress * 100)}><i style={{ width: Math.round(player.progress * 100) + "%" }} /></div>
               </div>
-            )}
+              <button className="icon-btn ghost-dark" onClick={api.prev} disabled={player.idx === 0} aria-label="Previous"><Icon n="prev" s={16} /></button>
+              <button className="icon-btn accent" onClick={() => player.status === "error" ? api.retry() : player.status === "playing" || player.status === "loading" ? api.pause() : api.resume()} aria-label={player.status === "error" ? "Retry audio" : player.status === "playing" || player.status === "loading" ? "Pause" : "Play"}><Icon n={player.status === "playing" || player.status === "loading" ? "pause" : "play"} s={16} /></button>
+              <button className="icon-btn ghost-dark" onClick={api.next} disabled={player.idx >= player.queue.length - 1} aria-label="Next"><Icon n="next" s={16} /></button>
+              <button className="icon-btn ghost-dark" onClick={() => router.push("/app/player")} aria-label="Open player"><Icon n="arrow" s={14} /></button>
+              <button className="icon-btn ghost-dark" onClick={api.stop} aria-label="Stop playback"><Icon n="x" s={14} /></button>
+            </div>}
           </div>
-          {/* toast */}
           <div className={"toast" + (toastMsg ? " on" : "")} role="status">{toastMsg}</div>
-          {/* search overlay */}
           <div className={"search-ovl" + (searchOpen ? " open" : "")} onClick={(e) => e.target === e.currentTarget && setSearchOpen(false)}>
             <SearchPanel close={() => setSearchOpen(false)} />
           </div>

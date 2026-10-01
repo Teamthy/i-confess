@@ -172,7 +172,9 @@ func (h *Handler) Routes() http.Handler {
 	h.route(mux, "GET /sessions", "user", "sessions", "List sessions", authed, h.listMySessions)
 
 	h.route(mux, "GET /schedules", "user", "schedules", "List schedules", authed, h.listSchedules)
-	h.route(mux, "POST /schedules", "user", "schedules", "Create a schedule", authed, h.createSchedule)
+	h.route(mux, "POST /schedules", "user", "schedules", "Create a schedule", authed, func(w http.ResponseWriter, r *http.Request) {
+		idempotent(http.HandlerFunc(h.createSchedule)).ServeHTTP(w, r)
+	})
 	h.route(mux, "PATCH /schedules/{id}", "user", "schedules", "Update a schedule", authed, h.updateSchedule)
 	h.route(mux, "DELETE /schedules/{id}", "user", "schedules", "Delete a schedule", authed, h.deleteSchedule)
 	h.route(mux, "POST /schedules/{id}/start", "user", "schedules", "Trigger a schedule — builds a session", authed, func(w http.ResponseWriter, r *http.Request) {
@@ -539,7 +541,9 @@ func (h *Handler) Routes() http.Handler {
 	})
 	h.route(mux, "POST /v1/sessions/{id}/skip", "user", "sessions", "Skip queue item", authed, h.skipSessionItem)
 	h.route(mux, "GET /v1/schedules", "user", "schedules", "List schedules", authed, h.listSchedules)
-	h.route(mux, "POST /v1/schedules", "user", "schedules", "Create a schedule", authed, h.createSchedule)
+	h.route(mux, "POST /v1/schedules", "user", "schedules", "Create a schedule", authed, func(w http.ResponseWriter, r *http.Request) {
+		idempotent(http.HandlerFunc(h.createSchedule)).ServeHTTP(w, r)
+	})
 	h.route(mux, "PATCH /v1/schedules/{id}", "user", "schedules", "Update a schedule", authed, h.updateSchedule)
 	h.route(mux, "DELETE /v1/schedules/{id}", "user", "schedules", "Delete a schedule", authed, h.deleteSchedule)
 	h.route(mux, "POST /v1/schedules/{id}/start", "user", "schedules", "Trigger a schedule — builds a session (deep link target)", authed, func(w http.ResponseWriter, r *http.Request) {

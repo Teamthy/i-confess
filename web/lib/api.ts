@@ -68,6 +68,8 @@ export type Voice = {
   language: string;
   premium: boolean;
   status: string;
+  /** False when the voice is catalogued but has no QA-served render yet. */
+  playable?: boolean;
   sample_url?: string;
 };
 

@@ -30,7 +30,8 @@ func (s *AudioStore) CreateVoice(ctx context.Context, v *models.Voice) error {
 
 func (s *AudioStore) ListVoices(ctx context.Context) ([]models.Voice, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id,name,COALESCE(description,''),type,COALESCE(provider,''),COALESCE(gender,''),language,premium,status,COALESCE(sample_url,''),created_at,updated_at
+		`SELECT id,name,COALESCE(description,''),type,COALESCE(provider,''),COALESCE(gender,''),language,premium,status,COALESCE(sample_url,''),created_at,updated_at,
+			EXISTS (SELECT 1 FROM audio_assets aa WHERE aa.voice_id = voices.id AND aa.deleted_at IS NULL AND aa.status IN ('ready','published'))
 		 FROM voices WHERE deleted_at IS NULL ORDER BY premium, name`)
 	if err != nil {
 		return nil, err
@@ -39,7 +40,7 @@ func (s *AudioStore) ListVoices(ctx context.Context) ([]models.Voice, error) {
 	out := make([]models.Voice, 0)
 	for rows.Next() {
 		var v models.Voice
-		if err := rows.Scan(&v.ID, &v.Name, &v.Description, &v.Type, &v.Provider, &v.Gender, &v.Language, &v.Premium, &v.Status, &v.SampleURL, &v.CreatedAt, &v.UpdatedAt); err != nil {
+		if err := rows.Scan(&v.ID, &v.Name, &v.Description, &v.Type, &v.Provider, &v.Gender, &v.Language, &v.Premium, &v.Status, &v.SampleURL, &v.CreatedAt, &v.UpdatedAt, &v.Playable); err != nil {
 			return nil, err
 		}
 		out = append(out, v)
@@ -50,9 +51,10 @@ func (s *AudioStore) ListVoices(ctx context.Context) ([]models.Voice, error) {
 func (s *AudioStore) VoiceByID(ctx context.Context, id string) (*models.Voice, error) {
 	var v models.Voice
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id,name,COALESCE(description,''),type,COALESCE(provider,''),COALESCE(gender,''),language,premium,status,COALESCE(sample_url,''),created_at,updated_at
+		`SELECT id,name,COALESCE(description,''),type,COALESCE(provider,''),COALESCE(gender,''),language,premium,status,COALESCE(sample_url,''),created_at,updated_at,
+			EXISTS (SELECT 1 FROM audio_assets aa WHERE aa.voice_id = voices.id AND aa.deleted_at IS NULL AND aa.status IN ('ready','published'))
 		 FROM voices WHERE id = ? AND deleted_at IS NULL`, id).
-		Scan(&v.ID, &v.Name, &v.Description, &v.Type, &v.Provider, &v.Gender, &v.Language, &v.Premium, &v.Status, &v.SampleURL, &v.CreatedAt, &v.UpdatedAt)
+		Scan(&v.ID, &v.Name, &v.Description, &v.Type, &v.Provider, &v.Gender, &v.Language, &v.Premium, &v.Status, &v.SampleURL, &v.CreatedAt, &v.UpdatedAt, &v.Playable)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -227,6 +229,26 @@ func (s *AudioStore) AssetsFor(ctx context.Context, confessionID, voiceID string
 		out = append(out, a)
 	}
 	return out, rows.Err()
+}
+
+// FirstServableAssetForVoice returns a stable public sample candidate. It is
+// intentionally read from the same served-status vocabulary as session
+// selection, so the catalogue never advertises a voice whose first render is
+// still in processing or has been QA-rejected.
+func (s *AudioStore) FirstServableAssetForVoice(ctx context.Context, voiceID string) (models.AudioAsset, error) {
+	served := audio.ServedStatuses()
+	args := []any{voiceID}
+	for _, st := range served {
+		args = append(args, string(st))
+	}
+	a, err := scanAsset(s.db.QueryRowContext(ctx,
+		`SELECT `+assetColumns+` FROM audio_assets
+		 WHERE voice_id = ? AND deleted_at IS NULL AND status IN (`+placeholders(len(served))+`)
+		 ORDER BY created_at, id LIMIT 1`, args...))
+	if errors.Is(err, sql.ErrNoRows) {
+		return models.AudioAsset{}, ErrNotFound
+	}
+	return a, err
 }
 
 // ConfessionIDsWithVoice returns confession ids that have a servable asset for

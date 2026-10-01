@@ -196,11 +196,17 @@ func (e *Engine) resolveVoice(ctx context.Context, req Request) (v *models.Voice
 			return nil, false, err
 		}
 		if !requested.Premium {
+			if !requested.Playable {
+				return nil, false, ErrNoVoice
+			}
 			return requested, false, nil
 		}
 		// Entitlement is resolved server-side; the client never asserts a plan.
 		plan, _ := e.users.Subscription(ctx, req.UserID)
 		if plan == "premium" {
+			if !requested.Playable {
+				return nil, false, ErrNoVoice
+			}
 			return requested, false, nil
 		}
 		// A premium voice requested on a free plan falls back, and the caller
@@ -213,7 +219,7 @@ func (e *Engine) resolveVoice(ctx context.Context, req Request) (v *models.Voice
 		return nil, false, err
 	}
 	for i := range voices {
-		if voices[i].Status == "active" && !voices[i].Premium {
+		if voices[i].Status == "active" && !voices[i].Premium && voices[i].Playable {
 			return &voices[i], downgraded, nil
 		}
 	}

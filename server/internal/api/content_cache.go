@@ -3,8 +3,10 @@ package api
 import (
 	"context"
 	"net/http"
+	"time"
 
 	"github.com/Teamthy/i-confess/internal/httpx"
+	"github.com/Teamthy/i-confess/internal/models"
 )
 
 // content_cache.go — Phase 7 §7.1 Redis cache (stale-while-revalidate) on
@@ -95,6 +97,7 @@ func (h *Handler) cachedListVoices(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to load voices")
 		return
 	}
+	h.enrichVoiceSamples(r.Context(), voices)
 	h.voicesCache.Set(cacheKeyVoices, voices)
 	httpx.WriteJSON(w, http.StatusOK, voices)
 }
@@ -102,7 +105,31 @@ func (h *Handler) cachedListVoices(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) refreshVoices() {
 	voices, err := h.audio.ListVoices(context.Background())
 	if err == nil {
+		h.enrichVoiceSamples(context.Background(), voices)
 		h.voicesCache.Set(cacheKeyVoices, voices)
+	}
+}
+
+// enrichVoiceSamples adds short-lived signed URLs for the first QA-served
+// render of a public voice. Raw storage keys never leave the API, and a voice
+// without a served asset remains selectable only as a catalogue record, not as
+// a promise that sessions can play it.
+func (h *Handler) enrichVoiceSamples(ctx context.Context, voices []models.Voice) {
+	if h.signer == nil {
+		return
+	}
+	for i := range voices {
+		if !voices[i].Playable {
+			continue
+		}
+		asset, err := h.audio.FirstServableAssetForVoice(ctx, voices[i].ID)
+		if err != nil {
+			continue
+		}
+		signed, err := h.signer.GenerateSignedURL(ctx, asset.URL, 30*time.Minute)
+		if err == nil {
+			voices[i].SampleURL = signed
+		}
 	}
 }
 

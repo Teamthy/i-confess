@@ -54,7 +54,7 @@ func (s *ScheduleStore) ListByUser(ctx context.Context, userID string) ([]models
 		return nil, err
 	}
 	defer rows.Close()
-	var out []models.Schedule
+	out := make([]models.Schedule, 0)
 	for rows.Next() {
 		sc, err := scanSchedule(rows)
 		if err != nil {
@@ -67,12 +67,22 @@ func (s *ScheduleStore) ListByUser(ctx context.Context, userID string) ([]models
 
 func (s *ScheduleStore) Update(ctx context.Context, sc *models.Schedule) error {
 	sc.UpdatedAt = now()
-	_, err := s.db.ExecContext(ctx,
+	res, err := s.db.ExecContext(ctx,
 		`UPDATE schedules SET label=?, time=?, days_of_week=?, timezone=?, duration_seconds=?, voice_id=?, category_ids=?, enabled=?, updated_at=?
 		 WHERE id=? AND user_id=?`,
 		sc.Label, sc.Time, daysToStr(sc.DaysOfWeek), sc.Timezone, sc.DurationSeconds, nullIfEmpty(sc.VoiceID),
 		nullIfEmpty(strings.Join(sc.CategoryIDs, ",")), boolInt(sc.Enabled), sc.UpdatedAt, sc.ID, sc.UserID)
-	return err
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 func (s *ScheduleStore) Delete(ctx context.Context, id, userID string) error {

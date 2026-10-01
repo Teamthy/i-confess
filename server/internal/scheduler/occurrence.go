@@ -120,9 +120,10 @@ func Due(s Schedule, after, now time.Time) (key string, due bool) {
 
 	for !day.After(end) {
 		if containsDay(s.DaysOfWeek, isoWeekday(day.Weekday())) {
-			// Constructing the local time this way lets the zone resolve DST.
-			fire := time.Date(day.Year(), day.Month(), day.Day(), hour, minute, 0, 0, loc)
-			if fire.After(localAfter) && !fire.After(localNow) {
+			// A missing spring-forward wall time is skipped. A repeated
+			// fall-back wall time always uses its first occurrence.
+			fire := wallTime(day, hour, minute)
+			if !fire.IsZero() && fire.After(localAfter) && !fire.After(localNow) {
 				return OccurrenceKey(fire), true
 			}
 		}
@@ -156,8 +157,8 @@ func NextOccurrence(s Schedule, from time.Time) time.Time {
 		if !containsDay(s.DaysOfWeek, isoWeekday(day.Weekday())) {
 			continue
 		}
-		fire := time.Date(day.Year(), day.Month(), day.Day(), hour, minute, 0, 0, loc)
-		if fire.After(local) {
+		fire := wallTime(day, hour, minute)
+		if !fire.IsZero() && fire.After(local) {
 			return fire
 		}
 	}
@@ -171,4 +172,29 @@ func containsDay(days []int, want int) bool {
 		}
 	}
 	return false
+}
+
+// wallTime resolves one local intent consistently for display and delivery.
+// time.Date can normalize a spring DST gap backwards (e.g. New York 02:30
+// becomes 01:30), which would wake a listener early. Never use that normalized
+// time. On a fall overlap choose the earliest matching instant; the local
+// occurrence key then prevents a second firing when the clock repeats.
+func wallTime(day time.Time, hour, minute int) time.Time {
+	loc := day.Location()
+	fire := time.Date(day.Year(), day.Month(), day.Day(), hour, minute, 0, 0, loc)
+	matches := func(t time.Time) bool {
+		return t.Year() == day.Year() && t.Month() == day.Month() && t.Day() == day.Day() && t.Hour() == hour && t.Minute() == minute
+	}
+	if !matches(fire) {
+		return time.Time{}
+	}
+	first := fire
+	// Covers modern DST transitions including Lord Howe's half-hour overlap.
+	for delta := 15 * time.Minute; delta <= 3*time.Hour; delta += 15 * time.Minute {
+		earlier := fire.Add(-delta)
+		if matches(earlier) {
+			first = earlier
+		}
+	}
+	return first
 }
