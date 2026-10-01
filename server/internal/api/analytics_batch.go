@@ -33,10 +33,12 @@ func (h *Handler) analyticsBatch(w http.ResponseWriter, r *http.Request) {
 	allowed := map[string]bool{}
 	for _, n := range []string{
 		analytics.EventAppOpened, analytics.EventSessionCreated, analytics.EventSessionStarted,
-		analytics.EventSessionCompleted, analytics.EventScheduleCreated, analytics.EventDownloadCreated,
-		analytics.EventTrialDayViewed, analytics.EventSubscriptionVerified, analytics.EventSubscriptionCancelled,
-		analytics.EventSearchPerformed, analytics.EventCategoryViewed, analytics.EventTemplateCreated,
-		analytics.EventPlaybackProgressSynced,
+		analytics.EventSessionPaused, analytics.EventSessionResumed, analytics.EventSessionSkipped,
+		analytics.EventSessionCompleted, analytics.EventScheduleCreated, analytics.EventScheduleTriggered,
+		analytics.EventDownloadCreated, analytics.EventDownloadRevoked, analytics.EventTrialDayViewed,
+		analytics.EventSubscriptionStarted, analytics.EventSubscriptionVerified, analytics.EventSubscriptionCancelled,
+		analytics.EventSearchPerformed, analytics.EventCategoryViewed, analytics.EventVoicePreviewed,
+		analytics.EventTemplateCreated, analytics.EventTemplateShared, analytics.EventPlaybackProgressSynced,
 		// Client-observed funnel events. Day *completion* is deliberately not
 		// here: it is written by the server from a real session completion, and
 		// accepting it from a client would make the conversion rate a number

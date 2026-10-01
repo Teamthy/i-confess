@@ -30,9 +30,16 @@ func DecodeJSON(r *http.Request, dst any) error {
 	if err := dec.Decode(dst); err != nil {
 		return err
 	}
-	// Ensure there is no trailing data.
-	if dec.More() {
-		return errors.New("unexpected trailing JSON")
+	// Decode one more value to ensure the body contains exactly one JSON
+	// document. dec.More only has meaning while decoding an array or object;
+	// using it here allowed payloads such as `{"ok":true}{"extra":true}` to
+	// pass silently.
+	var extra any
+	if err := dec.Decode(&extra); err != io.EOF {
+		if err == nil {
+			return errors.New("unexpected trailing JSON")
+		}
+		return err
 	}
 	return nil
 }
