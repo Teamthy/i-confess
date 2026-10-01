@@ -6,6 +6,7 @@
    the retired apps/web content/articles.ts (journal essays)  */
 import catsJson from "./cats.json";
 import confsJson from "./confs.json";
+import type { PlaybackItem } from "./audio-playback";
 
 export type Category = { name: string; slug: string; description: string; tagline: string; icon: string };
 export type Scripture = { book: string; chapter: number; verse: string; translation: string; direct: boolean };
@@ -69,7 +70,7 @@ export function sessionsFor(catSlug: string): Session[] {
 export const ALL_SESSIONS: Session[] = CATEGORIES.slice(0, 12).flatMap((c) => sessionsFor(c.slug));
 export const sessionBySlug = (s: string) => ALL_SESSIONS.find((x) => x.slug === s);
 
-export type QueueItem = { slug: string; title: string; category: string; text: string };
+export type QueueItem = PlaybackItem;
 export const queueItem = (c: Confession, variant: "short" | "medium" | "long" = "medium"): QueueItem => ({ slug: c.slug, title: c.title, category: c.category, text: c[variant] });
 export function buildQueue(s: Session): QueueItem[] {
   const target = s.minutes * 60; const wps = 2.4; const q: QueueItem[] = []; let t = 0; let g = 0;

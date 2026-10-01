@@ -12,6 +12,7 @@
    ========================================================================= */
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { AUDIO_FOCUS } from "@/lib/player";
 
 export type AudioVariant = { url: string; contentType: string; bytes?: number };
 
@@ -84,6 +85,11 @@ export function SyntheticPlayer({ render, title }: { render: RenderedAudio; titl
     if (g.ctx.state === "suspended") void g.ctx.resume();
   };
 
+  useEffect(() => {
+    const stop = (event: Event) => { if ((event as CustomEvent).detail?.owner === "main") audioRef.current?.pause(); };
+    window.addEventListener(AUDIO_FOCUS, stop);
+    return () => window.removeEventListener(AUDIO_FOCUS, stop);
+  }, []);
   useEffect(() => { if (graph.current) connect(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [preset]);
   useEffect(() => { if (audioRef.current) audioRef.current.playbackRate = rate; }, [rate]);
   useEffect(() => () => { void graph.current?.ctx.close(); }, []);
@@ -106,7 +112,7 @@ export function SyntheticPlayer({ render, title }: { render: RenderedAudio; titl
         <span className="adm-pill blue" role="note">{label}</span>
       </div>
       {/* crossOrigin lets Web Audio read signed CDN media; the CDN must send CORS headers. */}
-      <audio ref={audioRef} controls preload="metadata" crossOrigin="anonymous" src={source.url} onPlay={connect} style={{ width: "100%" }} />
+      <audio ref={audioRef} controls preload="metadata" crossOrigin="anonymous" src={source.url} onPlay={() => { window.dispatchEvent(new CustomEvent(AUDIO_FOCUS, { detail: { owner: "synthetic" } })); connect(); }} style={{ width: "100%" }} />
       <div className="adm-row-actions">
         <label className="small">EQ{" "}
           <select className="adm-input" value={preset} onChange={(e) => setPreset(e.target.value)} aria-label="Listener EQ preset">

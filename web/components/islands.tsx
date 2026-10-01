@@ -64,7 +64,7 @@ export function VoicePreviewBtn({ light }: { light?: boolean }) {
   const sample = CONFESSIONS[0];
   return (
     <button className={"btn " + (light ? "btn-light" : "btn-primary")} onClick={() => {
-      audio.play([{ slug: `voice-preview-${sample.slug}`, title: `Device speech sample · ${sample.title}`, category: sample.category, text: sample.medium }]);
+      audio.play([{ slug: `voice-preview-${sample.slug}`, title: `Device speech sample · ${sample.title}`, category: sample.category, text: sample.medium, preview: true }]);
       toast("Playing a device-speech sample — this is not a recording of Grace.");
     }}><Icon n="play" s={13} /> Listen to a sample</button>
   );

@@ -78,9 +78,9 @@ func (h *Handler) adminCreateAudioGeneration(w http.ResponseWriter, r *http.Requ
 			"voice synthesis is not configured on this server")
 		return
 	}
-	if h.queue == nil {
+	if h.queue == nil || !h.queueDurable {
 		httpx.WriteError(w, http.StatusServiceUnavailable,
-			"the background queue is not configured on this server; use POST /admin/audio/generate to render synchronously")
+			"the durable background queue is not configured on this server; use POST /admin/audio/generate to render synchronously")
 		return
 	}
 

@@ -9,6 +9,10 @@ import { useApp, mutate, track } from "@/lib/store";
 import { useAudio, useToast, useSearch } from "@/lib/ui";
 import { CATEGORIES, CONFESSIONS, PLANS as PLANS_LOCAL, catBySlug, confBySlug, sessionsFor, ALL_SESSIONS, sessionBySlug, buildQueue, motifStyle, queueItem, CAT_IMAGES, MOMENTS, PACKS, type Session, type QueueItem } from "@/lib/data";
 import { VoiceLibrary } from "@/components/voices";
+import { SoundSettings } from "./sound-settings";
+import { SessionPlayer } from "./session-player";
+import { SchedulePage, ScheduleReminderSettings } from "./schedules";
+import { useAuth } from "@/lib/auth-context";
 
 const SIDE_LIBRARY: [string, string, string][] = [
   ["/app", "home", "Home"],
@@ -183,6 +187,12 @@ function MoodCard({ mood }: { mood: (typeof MOODS)[number] }) {
 
 export function AppPage({ kind, slug, token }: { kind: string; slug?: string; token?: string }) {
   const st = useApp();
+  const auth = useAuth();
+  useEffect(() => {
+    if (auth.user && (!st.user || st.user.email !== auth.user.email)) mutate((s) => {
+      s.user = { name: auth.user!.display_name || auth.user!.email.split("@")[0], email: auth.user!.email, plan: "free", interests: s.user?.email === auth.user!.email ? s.user.interests : [] };
+    });
+  }, [auth.user, st.user?.email]);
   const needsAuth = !["player", "shared"].includes(kind);
   useEffect(() => { }, [kind, slug]);
   if (needsAuth && !st.user) return <NeedAuth />;
@@ -210,7 +220,7 @@ export function AppPage({ kind, slug, token }: { kind: string; slug?: string; to
       <div className="card-row three">{ALL_SESSIONS.map((s) => <SessionTile key={s.slug} s={s} />)}</div></>;
     case "session": return <AppSession slug={slug!} />;
     case "builder": return <Builder />;
-    case "player": return <Player />;
+    case "player": return <React.Suspense fallback={<div className="form-card" role="status">Loading player…</div>}><SessionPlayer /></React.Suspense>;
     case "voices": return <VoiceLibrary inApp />;
     case "voice": return <AppPage kind="voices" />;
     case "journal": return <JournalApp />;
@@ -227,19 +237,19 @@ export function AppPage({ kind, slug, token }: { kind: string; slug?: string; to
       {packs.length > 0 && <div className="app-section" style={{ marginTop: 0 }}><div className="section-head"><h3>Mixtapes</h3></div><div className="downloads-grid">{packs.map((p) => { const pk = PACKS.find((x) => "pack:" + x.id === p); return pk ? <div className="tile" key={p}><span className="t-meta">Pack</span><h4>{pk.title}</h4><p>{pk.desc}</p></div> : null; })}</div></div>}
       {pins.length > 0 && <div className="app-section"><div className="section-head"><h3>Pinned categories</h3></div><div className="downloads-grid downloads-categories">{pins.map((p) => { const c = catBySlug(p.slice(4)); return c ? <TCard key={p} c={c} /> : null; })}</div></div>}
       {dl.length ? <div className="app-section"><div className="section-head"><h3>Sessions</h3></div><div className="downloads-grid">{dl.map((x) => <SessionTile key={x!.slug} s={x!} />)}</div></div> : !pins.length && !packs.length ? <EmptyState icon="dl" title="Nothing saved offline yet" sub="Pin a category, grab a mixtape pack, or save any session — Premium keeps it on this device for bad-network mornings." cta={<Link className="btn btn-primary" href="/app/sessions">Browse sessions</Link>} /> : null}</>; }
-    case "schedule": return <Schedule />;
+    case "schedule": return <SchedulePage />;
     case "routines": return <Routines />;
-    case "notifications": return <><Head title="Notifications" /><div className="form-card" style={{ maxWidth: 560 }}><Switch title="Daily words" sub="A quiet nudge with today's confession" path="notifications.daily" /><Switch title="Reminders" sub="If you miss a morning, we offer the words again at midday" path="notifications.reminders" /><Switch title="Community" sub="When a submission you follow is approved" path="notifications.community" /><Switch title="Weekly review digest" sub="One optional Sunday email: the words you returned to, plus a journal prompt. Never more." path="notifications.digest" /><div className="setting-row"><div><b>Quiet hours</b><span>A hard blackout. Nothing can nudge you inside this window.</span></div><div style={{ display: "flex", gap: 8, alignItems: "center" }}><input type="time" defaultValue={st.settings.notifications.quietStart} style={{ width: 110 }} onChange={(e) => mutate((x) => { x.settings.notifications.quietStart = e.target.value; })} aria-label="Quiet hours start" /><span>–</span><input type="time" defaultValue={st.settings.notifications.quietEnd} style={{ width: 110 }} onChange={(e) => mutate((x) => { x.settings.notifications.quietEnd = e.target.value; })} aria-label="Quiet hours end" /></div></div></div></>;
+    case "notifications": return <><Head title="Notifications" /><div className="form-card" style={{ maxWidth: 560 }}><Switch title="Daily words" sub="A quiet nudge with today's confession" path="notifications.daily" /><Switch title="Reminders" sub="If you miss a morning, we offer the words again at midday" path="notifications.reminders" /><ScheduleReminderSettings /><Switch title="Community" sub="When a submission you follow is approved" path="notifications.community" /><Switch title="Weekly review digest" sub="One optional Sunday email: the words you returned to, plus a journal prompt. Never more." path="notifications.digest" /><div className="setting-row"><div><b>Quiet hours</b><span>Browser schedule reminders are suppressed in this window. Mobile push follows your account preference.</span></div><div style={{ display: "flex", gap: 8, alignItems: "center" }}><input type="time" defaultValue={st.settings.notifications.quietStart} style={{ width: 110 }} onChange={(e) => mutate((x) => { x.settings.notifications.quietStart = e.target.value; })} aria-label="Quiet hours start" /><span>–</span><input type="time" defaultValue={st.settings.notifications.quietEnd} style={{ width: 110 }} onChange={(e) => mutate((x) => { x.settings.notifications.quietEnd = e.target.value; })} aria-label="Quiet hours end" /></div></div></div></>;
     case "community": { const pub = st.community.filter((c) => c.status === "public" || c.status === "approved"); return <><Head title="Community" sub="Private by default. Shared intentionally." right={<Link className="btn btn-primary btn-sm" href="/app/community/create"><Icon n="plus" s={12} /> Create</Link>} />
       <div className="form-card rv in" style={{ maxWidth: 640, marginBottom: 20 }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><div><h4>Your creator page</h4><p className="small">{pub.length} published · {st.community.filter((c) => c.status === "pending_review").length} in review · decisions always recorded with a reason</p></div><span className="tag shared">reviewed</span></div><p className="small" style={{ marginTop: 8 }}>When your words publish, this page lists them. Followers get a quiet "new words" notice — never a feed, never a feed algorithm.</p></div>{st.community.length ? st.community.map((c) => <Link className="list-row" href={`/app/community/${c.slug}`} key={c.slug} style={{ display: "flex" }}><div className="lr-main"><h4>{c.title}</h4><p>{new Date(c.at).toLocaleDateString()}</p></div><span className={"tag " + (c.status === "pending_review" ? "pending" : c.visibility)}>{c.status.replace("_", " ")}</span></Link>) : <EmptyState icon="edit" title="No confessions yet" sub="Write your first words — they stay private unless you say otherwise." />}</>; }
     case "communityCreate": return <CreateConfession />;
     case "communityDetail": return <CommunityDetail slug={slug!} />;
     case "profile": return <Profile />;
-    case "settings": return <><Head title="Settings" /><div className="card-row snap">{[["/app/settings/account", "Account", "Name, email, password"], ["/app/settings/privacy", "Privacy", "Defaults and data"], ["/app/settings/notifications", "Notifications", "Nudges and reminders"], ["/app/settings/playback", "Playback", "Voice, speed, volume"], ["/app/settings/accessibility", "Accessibility", "Text, captions, motion"]].map(([h, t, s]) => <Link className="tile" href={h} key={h}><h4>{t}</h4><p>{s}</p><span className="textlink" style={{ marginTop: 6 }}>Open <Icon n="arrow" s={12} /></span></Link>)}</div></>;
+    case "settings": return <><Head title="Settings" /><div className="card-row snap">{[["/app/settings/account", "Account", "Name, email, password"], ["/app/settings/privacy", "Privacy", "Defaults and data"], ["/app/settings/notifications", "Notifications", "Nudges and reminders"], ["/app/settings/playback", "Voice & sound", "Voices, soundscapes, EQ and sleep timer"], ["/app/settings/accessibility", "Accessibility", "Text, captions, motion"]].map(([h, t, s]) => <Link className="tile" href={h} key={h}><h4>{t}</h4><p>{s}</p><span className="textlink" style={{ marginTop: 6 }}>Open <Icon n="arrow" s={12} /></span></Link>)}</div></>;
     case "settingsAccount": return <><Head title="Account" /><div className="form-card" style={{ maxWidth: 560 }}><div className="setting-row"><div><b>Name</b><span>{st.user!.name}</span></div></div><div className="setting-row"><div><b>Email</b><span>{st.user!.email}</span></div></div><div className="setting-row"><div><b>Password</b><span>••••••••</span></div><Link className="btn btn-ghost btn-sm" href="/reset-password">Change</Link></div></div></>;
     case "settingsPrivacy": return <><Head title="Privacy" /><div className="form-card" style={{ maxWidth: 560 }}><Switch title="Private by default" sub="New confessions start private" path="privacy.privateByDefault" /><Switch title="Show streak" sub="Let your streak be visible in your profile" path="privacy.showStreak" /><Switch title="Pause history" sub="Practise without recording anything. Streaks and charts pause too." path="privacy.pauseHistory" /><div className="setting-row"><div><b>Your data</b><span>Export or delete everything</span></div><ExportBtn /></div><Switch title="Monthly auto-export" sub="A human-readable backup of your journal and confessions, emailed to you on the 1st." path="notifications.autoExport" /><div className="field" style={{ marginTop: 12 }}><label>Export email</label><input type="email" defaultValue={st.settings.notifications.autoExportEmail} placeholder="you@example.com" onBlur={(e) => mutate((x) => { x.settings.notifications.autoExportEmail = e.target.value; })} /></div></div></>;
     case "settingsNotifications": return <AppPage kind="notifications" />;
-    case "settingsPlayback": return <Playback />;
+    case "settingsPlayback": return <SoundSettings />;
     case "settingsAccess": return <><Head title="Accessibility" /><div className="form-card" style={{ maxWidth: 560 }}><Switch title="Captions / transcripts" sub="Always show the words being spoken" path="accessibility.captions" /><Switch title="Large text" sub="Increase reading sizes" path="accessibility.largeText" /><DataSaverSwitch /><div className="setting-row"><div><b>Reduced motion</b><span>Respects your device preference automatically</span></div><span className="tag private">Auto</span></div></div></>;
     case "subscription": return <Sub manage={false} />;
     case "subscriptionManage": return <Sub manage />;
@@ -362,110 +372,6 @@ function Builder() {
   );
 }
 
-function Player() {
-  const audio = useAudio(); const router = useRouter(); const st = useApp(); const toast = useToast();
-  const it = audio.current();
-  const [speed, setSpeed] = useState(1);
-  const [timer, setTimer] = useState(0);
-  const tRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [still, setStill] = useState(0);
-  const [ambient, setAmbient] = useState(false);
-  const ambRef = React.useRef<{ ctx: AudioContext; src: AudioBufferSourceNode } | null>(null);
-  const chime = () => { try { const C = window.AudioContext; const ctx = new C(); const o = ctx.createOscillator(); const g = ctx.createGain(); o.frequency.value = 528; g.gain.setValueAtTime(0.07, ctx.currentTime); g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 1.4); o.connect(g); g.connect(ctx.destination); o.start(); o.stop(ctx.currentTime + 1.5); } catch { } };
-  React.useEffect(() => { if (audio.status === "completed") setStill(30); }, [audio.status]);
-  React.useEffect(() => { if (still <= 0) return; if (still === 1) chime(); const t = setTimeout(() => setStill((v) => v - 1), 1000); return () => clearTimeout(t); }, [still]);
-  const toggleAmbient = () => {
-    if (st.user?.plan === "free") { toast("Ambient bed is a Premium feature"); return; }
-    if (ambient) { ambRef.current?.src.stop(); ambRef.current?.ctx.close(); ambRef.current = null; setAmbient(false); return; }
-    try {
-      const ctx = new window.AudioContext(); const len = ctx.sampleRate * 2; const buf = ctx.createBuffer(1, len, ctx.sampleRate); const d = buf.getChannelData(0); let last = 0;
-      for (let i = 0; i < len; i++) { const w = Math.random() * 2 - 1; last = (last + 0.02 * w) / 1.02; d[i] = last * 3.5; }
-      const src = ctx.createBufferSource(); src.buffer = buf; src.loop = true; const g = ctx.createGain(); g.gain.value = 0.05; src.connect(g); g.connect(ctx.destination); src.start();
-      ambRef.current = { ctx, src }; setAmbient(true);
-    } catch { toast("Audio not available"); }
-  };
-  const whisper = () => {
-    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SR || !it) { toast("Speech recognition isn't available in this browser"); return; }
-    const r = new SR(); r.lang = "en-US"; r.interimResults = false;
-    toast("Listening — say the words out loud");
-    r.onresult = (e: any) => { const said = String(e.results[0][0].transcript).toLowerCase(); const target = it.text.toLowerCase().split(/[^a-z]+/).filter((w: string) => w.length > 3); const hit = target.filter((w: string) => said.includes(w)).length; toast(target.length ? Math.round((hit / target.length) * 100) + "% of the words spoken — it counts when you say it" : "Heard you — keep going"); };
-    r.onerror = () => toast("Couldn't hear you — try again somewhere quiet");
-    r.start();
-  };
-  const cycleTimer = () => {
-    const opts = [0, 5, 10, 15];
-    const next = opts[(opts.indexOf(timer) + 1) % opts.length];
-    if (next > 0 && st.user?.plan === "free") { toast("Sleep timer is a Premium feature"); return; }
-    setTimer(next);
-    if (tRef.current) clearTimeout(tRef.current);
-    if (next > 0) { tRef.current = setTimeout(() => { audio.pause(); }, next * 60000); toast("Sleep timer: " + next + " min"); }
-  };
-  const catSlug = it ? catBySlug(it.category)?.slug || "" : "";
-  const sents = it ? (it.text.match(/[^.!?]+[.!?]?/g) || [it.text]) : [];
-  const activeLine = Math.min(sents.length - 1, Math.floor(audio.progress * sents.length));
-  const cycleRepeat = () => { const opts = [1, 3, 7]; const next = opts[(opts.indexOf(st.settings.repeat || 1) + 1) % opts.length]; mutate((x) => { x.settings.repeat = next; }); toast(next === 1 ? "Repeat off" : "Repeat " + next + "×"); };
-  const handoff = () => {
-    if (st.user?.plan === "free") { toast("Device handoff is a Premium feature"); return; }
-    localStorage.setItem("ic-handoff", JSON.stringify({ slugs: audio.queue.map((q) => q.slug), idx: audio.idx }));
-    toast("Handoff saved — open iCONFESS on another device to resume");
-  };
-  useEffect(() => { }, [audio.status, audio.progress, audio.idx]);
-  return (
-    <div className="player-stage">
-      {it && CAT_IMAGES[catSlug] && <img className="ps-canvas" src={`/assets/${CAT_IMAGES[catSlug]}`} alt="" aria-hidden="true" />}
-      <div className="ps-voice"><span className="ps-voice-icon"><Icon n="wave" s={15} /></span><span>{it?.slug.startsWith("voice-preview-") ? "Device speech preview" : "Browser speech"}</span></div>
-      <Link className="btn btn-ghost on-dark btn-sm ps-exit" href="/app"><Icon n="exit" s={14} /> Exit</Link>
-      <span className="ps-cat">{it ? it.category : "—"}</span>
-      <h1>{it ? it.title : "Nothing playing"}</h1>
-      {it && st.settings.accessibility.captions ? (
-        <p className="ps-text tr-sync">{sents.map((sn, i) => <span key={i} className={"tr-line" + (i === activeLine && audio.status === "playing" ? " on" : "")}>{sn} </span>)}</p>
-      ) : (
-        <p className="ps-text">{it ? "“" + it.text + "”" : "Start a session from Sessions or the Builder, or play any confession — the words appear here as your browser’s speech engine reads them."}</p>
-      )}
-      <div className="player-controls">
-        <button className="pc-btn" onClick={audio.prev} aria-label="Previous"><Icon n="prev" s={18} /></button>
-        <button className="pc-btn main" onClick={() => (audio.status === "playing" ? audio.pause() : audio.status === "paused" ? audio.resume() : router.push("/app/sessions"))} aria-label="Play or pause"><Icon n={audio.status === "playing" ? "pause" : "play"} s={22} /></button>
-        <button className="pc-btn" onClick={audio.next} aria-label="Next"><Icon n="next" s={18} /></button>
-        <button className="pc-btn" style={{ fontSize: 12, fontWeight: 700 }} aria-label="Speed" onClick={() => { const r = speed >= 1.4 ? 0.8 : +(speed + 0.2).toFixed(1); setSpeed(r); mutate((s) => { s.settings.rate = r; }); }}>{speed}×</button>
-        <button className="pc-btn" style={{ fontSize: 12, fontWeight: 700 }} aria-label="Sleep timer" title="Sleep timer (Premium)" onClick={cycleTimer}>{timer ? timer + "m" : <Icon n="moon" s={16} />}</button>
-        <button className="pc-btn" aria-label="Say it — whisper check" title="Whisper check: say the words, on-device only" onClick={whisper}><Icon n="mic" s={16} /></button>
-        <button className="pc-btn" aria-label="Ambient bed" title="Ambient bed (Premium)" onClick={toggleAmbient} style={ambient ? { background: "var(--blue2)", color: "#fff" } : undefined}><Icon n="spark" s={16} /></button>
-        <button className="pc-btn" aria-label="30 seconds of stillness" title="Stillness outro" onClick={() => setStill(30)}><Icon n="ast" s={16} /></button>
-        <button className="pc-btn" style={{ fontSize: 12, fontWeight: 700 }} aria-label="Repeat mode" title="Repeat this confession" onClick={cycleRepeat}>{(st.settings.repeat || 1) > 1 ? st.settings.repeat + "×" : "1×"}</button>
-        <button className="pc-btn" style={{ fontSize: 11, fontWeight: 700 }} aria-label="Continue on another device" title="Device handoff (Premium)" onClick={handoff}><Icon n="exit" s={14} /></button>
-      </div>
-      {it && audio.queue.length > audio.idx + 1 && (
-        <div className="ps-queue" aria-label="Up next">
-          <h4 style={{ color: "var(--tint2)", fontSize: 11, letterSpacing: ".14em", textTransform: "uppercase", marginBottom: 8 }}>Up next</h4>
-          {audio.queue.slice(audio.idx + 1).map((q2, i) => (
-            <div className="psq-row" key={q2.slug + i}>
-              <div className="lr-main" style={{ minWidth: 0 }}><h4 style={{ color: "#fff", fontSize: 13 }}>{q2.title}</h4><p style={{ color: "var(--tint3)", fontSize: 11 }}>{q2.category}</p></div>
-              <button className="pc-btn" style={{ width: 30, height: 30 }} aria-label={"Play " + q2.title + " next"} onClick={() => { const nq = [...audio.queue]; const [mv] = nq.splice(audio.idx + 1 + i, 1); nq.splice(audio.idx + 1, 0, mv); audio.updateQueue(nq, audio.idx + 1); }}><Icon n="next" s={12} /></button>
-              <button className="pc-btn" style={{ width: 30, height: 30 }} aria-label={"Remove " + q2.title} onClick={() => { const nq = audio.queue.filter((_, j) => j !== audio.idx + 1 + i); audio.updateQueue(nq, audio.idx); }}><Icon n="x" s={12} /></button>
-            </div>
-          ))}
-        </div>
-      )}
-      <div role="status" aria-live="polite" className="sr-only">{it ? `Now ${audio.status}: ${it.title}, ${it.category}` : "Nothing playing"}</div>
-      {still > 0 && (
-        <div className="still-veil" role="dialog" aria-label="Stillness">
-          <div className="still-card">
-            <span className="eyebrow on-dark">Stillness</span>
-            <div className="still-num">{still}</div>
-            <p>Let the words settle. Nothing else is asked of you.</p>
-            <button className="btn btn-ghost on-dark" onClick={() => setStill(0)}>End stillness</button>
-          </div>
-        </div>
-      )}
-      <div className="ps-progress">
-        <div className="progress"><i style={{ width: Math.round(audio.progress * 100) + "%" }} /></div>
-        <div className="ps-meta"><span>{audio.status}</span><span>{it ? `${audio.idx + 1} / ${audio.queue.length}` : ""}</span></div>
-      </div>
-    </div>
-  );
-}
-
 function Switch({ title, sub, path }: { title: string; sub: string; path: string }) {
   const st = useApp();
   const parts = path.split(".");
@@ -473,27 +379,8 @@ function Switch({ title, sub, path }: { title: string; sub: string; path: string
   return (
     <div className="setting-row">
       <div><b>{title}</b><span>{sub}</span></div>
-      <button className="switch" role="switch" aria-checked={!!val} aria-label={title} onClick={() => mutate((s) => { let o: any = s.settings; while (parts.length > 1) o = o[parts.shift()!]; o[parts[0]] = !val; })} />
+      <button className="switch" role="switch" aria-checked={!!val} aria-label={title} onClick={() => mutate((s) => { const keys = path.split("."); let o: any = s.settings; while (keys.length > 1) o = o[keys.shift()!]; o[keys[0]] = !val; })} />
     </div>
-  );
-}
-
-function Schedule() {
-  const st = useApp(); const toast = useToast();
-  const [cat, setCat] = useState("peace"); const [time, setTime] = useState("07:00"); const [days, setDays] = useState("Daily");
-  return (
-    <>
-      <Head title="Schedule" sub="Sessions at the times you choose" />
-      <form className="form-card rv in" style={{ maxWidth: 560, marginBottom: 24 }} onSubmit={(e) => { e.preventDefault(); mutate((s) => { s.schedule.push({ id: Date.now(), category: cat, time, days }); }); toast("Scheduled"); }}>
-        <div className="field"><label>Category</label><select value={cat} onChange={(e) => setCat(e.target.value)}>{CATEGORIES.map((c) => <option key={c.slug}>{c.slug}</option>)}</select></div>
-        <div style={{ display: "flex", gap: 12 }}>
-          <div className="field" style={{ flex: 1 }}><label>Time</label><input type="time" value={time} onChange={(e) => setTime(e.target.value)} required /></div>
-          <div className="field" style={{ flex: 1 }}><label>Days</label><select value={days} onChange={(e) => setDays(e.target.value)}><option>Daily</option><option>Weekdays</option><option>Weekends</option></select></div>
-        </div>
-        <button className="btn btn-primary" type="submit" style={{ marginTop: 16 }}><Icon n="plus" s={13} /> Add to schedule</button>
-      </form>
-      {st.schedule.length ? st.schedule.map((s) => <div className="list-row" key={s.id}><div className="lr-main"><h4>{catBySlug(s.category)?.name || s.category} · {s.time}</h4><p>{s.days}</p></div><button className="icon-btn" aria-label="Delete" onClick={() => mutate((x) => { x.schedule = x.schedule.filter((y) => y.id !== s.id); })}><Icon n="x" s={14} /></button></div>) : <EmptyState icon="cal" title="Nothing scheduled" sub="The practice survives a bad week when it's scheduled." />}
-    </>
   );
 }
 
@@ -557,6 +444,7 @@ function CommunityDetail({ slug }: { slug: string }) {
 }
 
 function Profile() {
+  const auth = useAuth();
   const st = useApp(); const u = st.user!; const router = useRouter(); const toast = useToast();
   return (
     <>
@@ -571,30 +459,13 @@ function Profile() {
           <Link className="btn btn-ghost btn-sm" href="/app/settings">Settings</Link>
           <Link className="btn btn-ghost btn-sm" href="/app/subscription">Subscription</Link>
           <Link className="btn btn-ghost btn-sm" href="/app/achievements">Achievements</Link>
-          <button className="btn btn-ghost btn-sm" onClick={() => { mutate((s) => { s.user = null; }); toast("Logged out"); router.push("/"); }}>Log out</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => { auth.logout(); mutate((s) => { s.user = null; }); toast("Logged out"); router.push("/"); }}>Log out</button>
         </div>
       </div>
     </>
   );
 }
 
-function Playback() {
-  const st = useApp(); const toast = useToast();
-  return (
-    <>
-      <Head title="Playback" />
-      <div className="form-card" style={{ maxWidth: 560 }}>
-        <div className="setting-row"><div><b>Web narration</b><span>Your browser or device supplies the speech voice; availability varies.</span></div><span className="tag private">Device</span></div>
-        <div className="setting-row"><div><b>Speed</b><span>Current: {st.settings.rate}×</span></div><SpeedChips /></div>
-        <div className="setting-row"><div><b>Volume</b><span>Browser speech volume</span></div><input type="range" min={0} max={1} step={0.1} defaultValue={st.settings.volume} style={{ width: 140 }} onChange={(e) => { mutate((s) => { s.settings.volume = Number(e.target.value); }); toast("Volume saved"); }} /></div>
-        <div className="setting-row"><div><b>Voice EQ</b><span>Tone shaping for browser speech</span></div><div className="chip-row">{[["warm", "Warm"], ["bright", "Bright"], ["calm", "Calm"]].map(([v, l]) => <button className="chip" key={v} aria-pressed={st.settings.eq === v} onClick={() => { mutate((x) => { x.settings.eq = v; }); toast(l + " EQ"); }}>{l}</button>)}</div></div>
-        <Switch title="Loudness normalisation" sub="Even volume across every confession and session" path="normalize" />
-        <div className="setting-row"><div><b>Voice warmth preset</b><span>Premium · pace and tone per part of day</span></div><div className="chip-row">{[["dawn", "Calm dawn"], ["steady", "Steady midday"], ["night", "Soft night"]].map(([v, l]) => <button className="chip" key={v} aria-pressed={st.settings.preset === v} onClick={() => { if (st.user?.plan === "free") { toast("Presets are a Premium feature"); return; } mutate((x) => { x.settings.preset = v; x.settings.rate = v === "night" ? 0.9 : 1; }); toast(l + " preset on"); }}>{l}</button>)}</div></div>
-        <div className="setting-row"><div><b>Offline quality</b><span>Premium · lossless packs for saved sessions</span></div><div className="chip-row">{[["std", "Standard"], ["lossless", "Lossless"]].map(([v, l]) => <button className="chip" key={v} aria-pressed={st.settings.dlQuality === v} onClick={() => { if (st.user?.plan === "free") { toast("Lossless downloads are Premium"); return; } mutate((x) => { x.settings.dlQuality = v; }); toast(l + " quality"); }}>{l}</button>)}</div></div>
-      </div>
-    </>
-  );
-}
 function SpeedChips() {
   const st = useApp();
   return <div className="chip-row" style={{ marginTop: 10 }}>{[0.8, 1, 1.2].map((r) => <button className="chip" key={r} aria-pressed={st.settings.rate === r} onClick={() => mutate((s) => { s.settings.rate = r; })}>{r}×</button>)}</div>;

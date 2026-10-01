@@ -4,6 +4,8 @@ import "./globals.css";
 import { UiProvider } from "@/lib/ui";
 import { AuthProvider } from "@/lib/auth-context";
 import { PlayerProvider } from "@/lib/player";
+import { ScheduleProvider } from "@/lib/schedule-context";
+import { ScheduleReminders } from "@/components/schedules";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://iconfess.app"),
@@ -30,12 +32,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             it. Local UI state (player, toasts, preferences) stays in
             UiProvider. */}
         <AuthProvider>
-          {/* Two audio paths, deliberately: UiProvider drives the local
-              speech engine the demo surfaces use, PlayerProvider drives real
-              API-served audio files and owns the Media Session controls
-              (lock screen, headset, Bluetooth). */}
+          {/* One persistent queue for device speech, published session and
+              Bible audio, with shared sound controls and Media Session. */}
           <PlayerProvider>
-            <UiProvider>{children}</UiProvider>
+            <UiProvider><ScheduleProvider>{children}<ScheduleReminders /></ScheduleProvider></UiProvider>
           </PlayerProvider>
         </AuthProvider>
       </body>

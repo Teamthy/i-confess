@@ -11,6 +11,7 @@ import (
 	"github.com/Teamthy/i-confess/internal/httpx"
 	"github.com/Teamthy/i-confess/internal/models"
 	"github.com/Teamthy/i-confess/internal/search"
+	"github.com/Teamthy/i-confess/internal/store"
 )
 
 // home is the landing feed (§14): what to listen to next, and what the
@@ -77,12 +78,16 @@ func resumable(sessions []models.Session) *models.Session {
 func (h *Handler) triggerSchedule(w http.ResponseWriter, r *http.Request) {
 	userID := h.userID(r)
 	sched, err := h.sched.ByID(r.Context(), r.PathValue("id"))
-	if err != nil {
+	if errors.Is(err, store.ErrNotFound) {
 		httpx.WriteError(w, http.StatusNotFound, "schedule not found")
 		return
 	}
+	if err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, "failed to load schedule")
+		return
+	}
 	if sched.UserID != userID {
-		httpx.WriteError(w, http.StatusForbidden, "not your schedule")
+		httpx.WriteError(w, http.StatusNotFound, "schedule not found")
 		return
 	}
 
@@ -129,14 +134,22 @@ func (h *Handler) triggerSchedule(w http.ResponseWriter, r *http.Request) {
 		writePlanLimit(w, ent)
 		return
 	}
+	if errors.Is(err, engine.ErrNoContent) || errors.Is(err, engine.ErrNoVoice) {
+		writeCode(w, http.StatusUnprocessableEntity, "CONTENT_UNAVAILABLE", "no published audio is available for this routine’s categories and voice")
+		return
+	}
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to build session")
 		return
 	}
+	sess.Title = sched.Label
 	if err := h.sess.Create(r.Context(), sess); err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to save session")
 		return
 	}
+	// The schedule start path must mint the same signed URLs as POST /sessions;
+	// exposing the persisted storage keys made its sessions unplayable.
+	h.signSessionAudio(r.Context(), sess, ent)
 	httpx.WriteJSON(w, http.StatusCreated, sess)
 }
 

@@ -114,9 +114,9 @@ for (const c of CONFS) {
 
 // Mirrors the three canonical voices seeded by internal/seed/ensure.go.
 const VOICES = [
-  { id: "voice-grace", name: "Grace", description: "Warm, calm professional narration voice.", type: "professional", provider: "i-confess", gender: "female", language: "en", premium: false, status: "active", sample_url: "/media/sample.wav", created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z" },
-  { id: "voice-david", name: "David", description: "Clear, grounded and reflective voice.", type: "professional", provider: "i-confess", gender: "male", language: "en", premium: false, status: "active", sample_url: "/media/sample.wav", created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z" },
-  { id: "voice-faith", name: "Faith", description: "Uplifting, resonant expressive voice.", type: "professional", provider: "i-confess", gender: "female", language: "en", premium: true, status: "active", sample_url: "/media/sample.wav", created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z" },
+  { id: "voice-grace", name: "Grace", description: "Warm, calm professional narration voice.", type: "professional", provider: "i-confess", gender: "female", language: "en", premium: false, status: "active", playable: true, sample_url: "/media/sample.wav", created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z" },
+  { id: "voice-david", name: "David", description: "Clear, grounded and reflective voice.", type: "professional", provider: "i-confess", gender: "male", language: "en", premium: false, status: "active", playable: false, sample_url: "", created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z" },
+  { id: "voice-faith", name: "Faith", description: "Uplifting, resonant expressive voice.", type: "professional", provider: "i-confess", gender: "female", language: "en", premium: true, status: "active", playable: false, sample_url: "", created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z" },
 ];
 
 // Mirror the Go billing.DefaultPlans response used by the admin pricing page.
