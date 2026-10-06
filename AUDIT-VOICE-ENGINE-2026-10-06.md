@@ -1735,6 +1735,33 @@ the same term survives beside the test's universal one.
 | Workflow | `yaml.safe_load` | parses; 6 jobs; no `pull-requests` permission remains |
 | Formatting | `gofmt -l .` | only pre-existing `internal/voice/google_test.go` (untouched; gofmt version delta) |
 
+## Gate repairs found by running the pipeline, not by reading it
+
+Appendix A could not compile the Go code. This wave could, and running the full
+pipeline turned up three facts that no amount of reading would have produced:
+
+1. **The `gofmt check` step was red on main** (at least since 2026-10-01):
+   `internal/voice/google_test.go`'s trailing comments in a composite literal
+   are aligned the pre-1.19 way, which any current gofmt re-aligns. The step has
+   no diff filter, so it was red for everyone and told nobody anything about
+   their own change. Formatted.
+2. **The trivy filesystem scan was red on main** since the #89 merge, and its
+   findings exist only in an Actions log that cannot be read from the
+   development sandbox. A temporary step posted the table to the PR, which is
+   how the two findings were identified: `sharp` 0.35.4 (pinned by this
+   repository's own override) and `source-map-js` 1.2.1, both HIGH, both with
+   fixes released. Bumped in `web/package.json`/`package-lock.json`; `npm ci`,
+   `npm run typecheck` and `npm run build` all re-run locally. The temporary
+   step and the permissions it needed are removed again.
+3. **A `prealloc` violation this wave introduced** in the seed test — invisible
+   to `go build`, `go vet` and `go test`, and visible in CI only as the word
+   "Lint". Found through the check-run annotations API; this is the argument for
+   the lint gate existing rather than being tolerated as noise.
+
+After those three, the pipeline is green end to end: `Build, vet & test`,
+`Voice engine worker`, `Container and deployment checks`, `Typecheck & build
+(web)`, `Flutter analyze & test`, `Dart test`.
+
 ## What remains open after this wave
 
 - **P0-1 (no engine licence-cleared) and P0-2 (no sample of speech has ever been
