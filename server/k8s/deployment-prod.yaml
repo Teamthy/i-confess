@@ -28,6 +28,18 @@ data:
   LOG_LEVEL: "warn"
   QUEUE_WORKERS: "16"
   TOKEN_TTL: "4h"
+  # GPU spend (audit VE-017). A batch is refused *before* any job is queued when
+  # its estimated inference time exceeds this ceiling. 0 disables the per-batch
+  # ceiling; that is a decision to make loudly, not by omission.
+  VOICE_BATCH_GPU_BUDGET_SECONDS: "3600"
+  # Ceiling for the whole UTC day across every voice. 0 means unlimited, which
+  # is the stance until the daily GPU allocation is agreed.
+  VOICE_GPU_DAILY_BUDGET_SECONDS: "0"
+  # USD per GPU-second as measured by the worker. Deliberately unset: no price
+  # means seconds are reported and dollars are not, whereas 0 would assert in
+  # every metric and report that this compute is free. Set it once the A100 rate
+  # is agreed and dollars appear without touching the worker.
+  # VOICE_GPU_SECOND_COST_USD: "0.00079"
 
 ---
 apiVersion: apps/v1

@@ -165,7 +165,62 @@ func (s *VoicePlatformStore) AudioSessionByID(ctx context.Context, id string) (*
 	return &sess, nil
 }
 
-// ---------------------------------------------------------------- batches (§83)
+// AudioSpend is measured cost for a set of generations.
+type AudioSpend struct {
+	// InferenceSeconds is the sum of what workers reported spending on
+	// inference. Rows from a worker that reported nothing contribute 0, which
+	// is why Completed and Metered differ: a spend total computed over 3 of 400
+	// renders has to be readable as such.
+	InferenceSeconds float64 `json:"inferenceSeconds"`
+	AudioSeconds     float64 `json:"audioSeconds"`
+	Completed        int     `json:"completed"`
+	// Metered counts rows with a reported inference_seconds; Priced counts rows
+	// with a cost, which additionally requires the deployment to have set a
+	// price. Both are needed to tell "no spend" from "spend nobody measured".
+	Metered    int   `json:"metered"`
+	Priced     int   `json:"priced"`
+	CostMicros int64 `json:"costUsdMicros"`
+}
+
+// SecondsPerAudioSecond is the measured cost ratio - how many GPU-seconds one
+// second of finished audio takes. ok is false when nothing has been measured
+// yet, and the caller must then fall back to a stated assumption instead of
+// dividing by zero or treating the engine as free.
+func (s AudioSpend) SecondsPerAudioSecond() (float64, bool) {
+	if s.Metered == 0 || s.AudioSeconds <= 0 {
+		return 0, false
+	}
+	return s.InferenceSeconds / s.AudioSeconds, true
+}
+
+// VoiceSpend measures cost over completed generations, optionally for one
+// voice and optionally bounded to those created at or after `since`
+// (RFC3339 UTC; empty means unbounded). This is the only place spend is
+// aggregated from, so the daily budget, the batch estimate and the metrics
+// endpoint cannot drift to different definitions of "what a render cost".
+func (s *VoicePlatformStore) VoiceSpend(ctx context.Context, voiceID, since string) (AudioSpend, error) {
+	var out AudioSpend
+	q := `SELECT COUNT(*),
+	       COALESCE(SUM(inference_seconds), 0),
+	       COALESCE(SUM(CASE WHEN inference_seconds IS NOT NULL THEN COALESCE(duration_ms, 0) / 1000.0 ELSE 0 END), 0),
+	       COALESCE(SUM(cost_usd_micros), 0),
+	       COUNT(inference_seconds),
+	       COUNT(cost_usd_micros)
+	   FROM voice_generations
+	  WHERE status = 'COMPLETED' AND deleted_at IS NULL`
+	args := make([]any, 0, 2)
+	if voiceID != "" {
+		q += ` AND voice_id = ?`
+		args = append(args, voiceID)
+	}
+	if since != "" {
+		q += ` AND created_at >= ?`
+		args = append(args, since)
+	}
+	err := s.db.QueryRowContext(ctx, q, args...).Scan(&out.Completed, &out.InferenceSeconds, &out.AudioSeconds,
+		&out.CostMicros, &out.Metered, &out.Priced)
+	return out, err
+}
 
 // BatchItem is one line of an admin batch.
 type BatchItem struct {
@@ -190,6 +245,16 @@ type Batch struct {
 	CreatedAt string         `json:"createdAt"`
 	Progress  map[string]int `json:"progress,omitempty"`
 	Items     []BatchItem    `json:"items,omitempty"`
+	// The planned spend, recorded when the batch was queued (VE-017). Nil
+	// means the batch predates the budget or was queued with no ceiling
+	// configured; the distinction matters when reading an old batch back.
+	EstInferenceSeconds *float64 `json:"estInferenceSeconds,omitempty"`
+	EstCostMicros       *int64   `json:"estCostUsdMicros,omitempty"`
+	EstimateBasis       string   `json:"estimateBasis,omitempty"`
+	// Actual is measured spend for this batch's renders. Filled in by
+	// BatchByID only: the list endpoint stays at one query per batch rather
+	// than two.
+	Actual *AudioSpend `json:"actualSpend,omitempty"`
 }
 
 // CreateBatch records a batch and its items.
@@ -208,9 +273,10 @@ func (s *VoicePlatformStore) CreateBatch(ctx context.Context, b *Batch) error {
 			b.Refused++
 		}
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO voice_batches (id, voice_id, title, purpose, style, kind, total, refused, created_by, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, b.ID, b.VoiceID, b.Title, b.Purpose, b.Style, b.Kind, b.Total, b.Refused,
-		nullIfEmpty(b.CreatedBy), b.CreatedAt); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO voice_batches (id, voice_id, title, purpose, style, kind, total, refused,
+		created_by, created_at, est_inference_seconds, est_cost_usd_micros, estimate_basis)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, b.ID, b.VoiceID, b.Title, b.Purpose, b.Style, b.Kind, b.Total, b.Refused,
+		nullIfEmpty(b.CreatedBy), b.CreatedAt, b.EstInferenceSeconds, b.EstCostMicros, nullIfEmpty(b.EstimateBasis)); err != nil {
 		return err
 	}
 	for _, it := range b.Items {
@@ -225,7 +291,8 @@ func (s *VoicePlatformStore) CreateBatch(ctx context.Context, b *Batch) error {
 
 // Batches lists a voice's batches with per-status progress.
 func (s *VoicePlatformStore) Batches(ctx context.Context, voiceID string) ([]Batch, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, voice_id, title, purpose, style, kind, total, refused, COALESCE(created_by,''), created_at
+	rows, err := s.db.QueryContext(ctx, `SELECT id, voice_id, title, purpose, style, kind, total, refused, COALESCE(created_by,''), created_at,
+		est_inference_seconds, est_cost_usd_micros, COALESCE(estimate_basis,'')
 		FROM voice_batches WHERE voice_id = ? AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 100`, voiceID)
 	if err != nil {
 		return nil, err
@@ -233,7 +300,8 @@ func (s *VoicePlatformStore) Batches(ctx context.Context, voiceID string) ([]Bat
 	var out []Batch
 	for rows.Next() {
 		var b Batch
-		if err := rows.Scan(&b.ID, &b.VoiceID, &b.Title, &b.Purpose, &b.Style, &b.Kind, &b.Total, &b.Refused, &b.CreatedBy, &b.CreatedAt); err != nil {
+		if err := rows.Scan(&b.ID, &b.VoiceID, &b.Title, &b.Purpose, &b.Style, &b.Kind, &b.Total, &b.Refused, &b.CreatedBy, &b.CreatedAt,
+			&b.EstInferenceSeconds, &b.EstCostMicros, &b.EstimateBasis); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -256,9 +324,11 @@ func (s *VoicePlatformStore) Batches(ctx context.Context, voiceID string) ([]Bat
 // BatchByID returns one batch with items and live generation status.
 func (s *VoicePlatformStore) BatchByID(ctx context.Context, id string) (*Batch, error) {
 	var b Batch
-	err := s.db.QueryRowContext(ctx, `SELECT id, voice_id, title, purpose, style, kind, total, refused, COALESCE(created_by,''), created_at
+	err := s.db.QueryRowContext(ctx, `SELECT id, voice_id, title, purpose, style, kind, total, refused, COALESCE(created_by,''), created_at,
+		est_inference_seconds, est_cost_usd_micros, COALESCE(estimate_basis,'')
 		FROM voice_batches WHERE id = ? AND deleted_at IS NULL`, id).
-		Scan(&b.ID, &b.VoiceID, &b.Title, &b.Purpose, &b.Style, &b.Kind, &b.Total, &b.Refused, &b.CreatedBy, &b.CreatedAt)
+		Scan(&b.ID, &b.VoiceID, &b.Title, &b.Purpose, &b.Style, &b.Kind, &b.Total, &b.Refused, &b.CreatedBy, &b.CreatedAt,
+			&b.EstInferenceSeconds, &b.EstCostMicros, &b.EstimateBasis)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -283,7 +353,32 @@ func (s *VoicePlatformStore) BatchByID(ctx context.Context, id string) (*Batch, 
 		return nil, err
 	}
 	b.Progress, err = s.batchProgress(ctx, id)
-	return &b, err
+	if err != nil {
+		return nil, err
+	}
+	// What the batch actually cost, next to what it was budgeted for. Reading
+	// only the estimate would leave the gate unfalsifiable: the number that
+	// matters in hindsight is the one measured off the renders.
+	spend, err := s.batchSpend(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	b.Actual = &spend
+	return &b, nil
+}
+
+// batchSpend aggregates measured cost over the generations one batch queued.
+func (s *VoicePlatformStore) batchSpend(ctx context.Context, id string) (AudioSpend, error) {
+	var out AudioSpend
+	err := s.db.QueryRowContext(ctx, `SELECT COUNT(g.id),
+	       COALESCE(SUM(g.inference_seconds), 0),
+	       COALESCE(SUM(CASE WHEN g.inference_seconds IS NOT NULL THEN COALESCE(g.duration_ms, 0) / 1000.0 ELSE 0 END), 0),
+	       COALESCE(SUM(g.cost_usd_micros), 0),
+	       COUNT(g.inference_seconds), COUNT(g.cost_usd_micros)
+	   FROM voice_batch_items i JOIN voice_generations g ON g.id = i.generation_id
+	  WHERE i.batch_id = ? AND g.status = 'COMPLETED' AND g.deleted_at IS NULL`, id).
+		Scan(&out.Completed, &out.InferenceSeconds, &out.AudioSeconds, &out.CostMicros, &out.Metered, &out.Priced)
+	return out, err
 }
 
 func (s *VoicePlatformStore) batchProgress(ctx context.Context, id string) (map[string]int, error) {

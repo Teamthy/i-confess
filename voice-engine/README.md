@@ -140,6 +140,53 @@ Response headers report what happened: `X-Loudness-LUFS`, `X-True-Peak-dBTP`,
 `X-Peak-Limited`, `X-DSP-Chain`, `X-Limiter-Max-dB`, `X-Trimmed-Ms`, and
 `X-Synthetic: true`.
 
+### Cost telemetry
+
+`/v1/synthesize` also reports two measured durations, and the API stores both
+on the generation (audit VE-017):
+
+| Header | What it measures | Who needs it |
+|---|---|---|
+| `X-Inference-Seconds` | time spent inside the model | pricing: the number a GPU-hour bill multiplies |
+| `X-Worker-Seconds` | the whole request: model + mastering + WAV | capacity: how much of one worker's hour a render occupies |
+
+Both are observations, never estimates — a worker that cannot time itself
+reports nothing and the field stays `NULL` rather than defaulting to zero,
+because zero is a *result* and would silently mean "this render was free".
+
+`/v1/synthesize/stream` deliberately reports neither: a stream cannot report a
+total it has not spent, and the preview bytes are not stored. Live preview is
+therefore the one unmetered synthesis path, stated here rather than discovered
+in a bill.
+
+### Golden-audio regression set (`icf_worker/golden.py`)
+
+`tests/golden/manifest.json` holds reference measurements of every prompt in
+`docs/voice/golden_set.json` pushed through the audio path, and
+`tests/test_golden_audio.py` replays it on every CI run (audit VE-020). The
+gate answers *"did our audio path change?"* — the DSP chain, mastering, the
+limiter, the WAV writer — and it can answer that without a GPU because the
+`dev-tone` backend it captures from is a pure function of its input.
+
+It does **not** gate voice quality; the manifest's own `provenance` block says
+so, and a test asserts it stays written. Measuring *"does it still sound like
+the minister"* needs a licence-cleared engine on a GPU host (P0-1 / P0-2), and
+the capture path takes an engine name rather than hard-coding dev-tone so the
+same manifest shape carries the real thing when one exists.
+
+```bash
+# after a deliberate, reviewed change to the audio path:
+ICF_WORKER_DEV=1 ICF_GOLDEN_UPDATE=1 python -m pytest -q tests/test_golden_audio.py
+git diff voice-engine/tests/golden/manifest.json   # the diff is the review
+```
+
+Durations are compared exactly (the trim stage is integer-sample arithmetic);
+loudness, peak and RMS carry ±0.15–0.25 dB because numpy and scipy are declared
+as ranges and a different BLAS may round one float differently. Every case also
+cross-checks the worker's own `X-Loudness-LUFS` / `X-True-Peak-dBTP` claims
+against the bytes it produced, so a chain that misreports itself fails even
+when the audio is fine — those headers are what the asset record stores.
+
 ### Delivery encodings (`POST /v1/encode`)
 
 The WAV master is the canonical asset. After the master is stored, the Go

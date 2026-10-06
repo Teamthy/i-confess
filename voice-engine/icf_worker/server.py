@@ -25,6 +25,7 @@ import hmac
 import json
 import logging
 import os
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import numpy as np
@@ -55,11 +56,22 @@ def render(engine: Engine, req: dict) -> tuple[bytes, dict]:
     params = dict(req.get("params") or {})
     rate = engine.sample_rate
     parts: list[np.ndarray] = []
+    # Two clocks, because they answer two different questions (audit VE-017).
+    # `inference_seconds` is the time spent inside the model - the number a
+    # GPU-hour bill multiplies. `worker_seconds` is the whole request, model
+    # plus mastering plus WAV encoding, which is what a capacity planner needs
+    # to know how much of one worker's hour a render occupies. Reporting only
+    # the first would silently under-report a request that spent 40 s in a
+    # limiter and 2 s in the model; reporting only the second would price CPU
+    # mastering as if it were an A100.
+    infer_s, t_all = 0.0, time.perf_counter()
     for c in chunks:
         text = (c.get("text") or "").strip()
         if text:
+            t0 = time.perf_counter()
             audio = engine.synthesize_chunk(text, reference=req.get("reference"), checkpoint=checkpoint,
                                             params=params, chunk=c)
+            infer_s += time.perf_counter() - t0
             rate = engine.sample_rate
             parts.append(np.asarray(audio, dtype=np.float64))
         pause = int(c.get("silence_after_ms") or 0)
@@ -71,6 +83,7 @@ def render(engine: Engine, req: dict) -> tuple[bytes, dict]:
     y, chain = dsp.process(x, rate)
     rep = chain.master
     body = wav.encode(y, rate)
+    worker_s = time.perf_counter() - t_all
     headers = {
         "Content-Type": "audio/wav",
         "X-Sample-Rate": str(rate),
@@ -82,6 +95,11 @@ def render(engine: Engine, req: dict) -> tuple[bytes, dict]:
         "X-DSP-Chain": ",".join(chain.stages),
         "X-Limiter-Max-dB": f"{chain.limiter_max_db:.2f}",
         "X-Trimmed-Ms": f"{chain.trimmed_ms:.0f}",
+        # Cost telemetry (audit VE-017). The Go API stores both numbers on the
+        # generation, and the batch budget is derived from the measured
+        # inference seconds rather than from a guess.
+        "X-Inference-Seconds": f"{infer_s:.3f}",
+        "X-Worker-Seconds": f"{worker_s:.3f}",
         # Provenance travels with the bytes (Go also writes it to the DB).
         "X-Synthetic": "true",
         "X-Audio-SHA256": hashlib.sha256(body).hexdigest(),
@@ -102,6 +120,12 @@ def render_stream(engine: Engine, req: dict):
     the gain is set from the first chunk's loudness (clamped to +/-20 dB), and
     each chunk is scaled down if its sample peak would exceed the ceiling. The
     cached, queued render remains the canonical mastered asset.
+
+    Deliberately unmetered: a stream cannot report a total it has not spent
+    yet, and HTTP trailers are not reliably readable through every proxy in the
+    chain. Live preview is therefore the one synthesis path with no cost
+    header, and the README says so rather than implying the accounting is
+    complete.
     """
     chunks = req.get("chunks") or []
     if not chunks:

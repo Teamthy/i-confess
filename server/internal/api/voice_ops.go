@@ -418,7 +418,26 @@ func (h *Handler) adminCreateBatch(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusBadRequest, "kind must be batch or pregeneration")
 		return
 	}
+	// The GPU budget is consulted before a single render is queued (VE-017).
+	// The order is the fix: this handler used to queue up to 10,000 renders and
+	// record the batch afterwards, so a ceiling checked here would have been a
+	// ceiling on money already spent.
+	texts := make([]string, len(req.Items))
+	for i, it := range req.Items {
+		texts[i] = it.Text
+	}
+	verdict, err := h.checkBatchBudget(r.Context(), voiceID, texts)
+	var be *budgetExceeded
+	if errors.As(err, &be) {
+		h.writeBudgetError(w, r, voiceID, email, be)
+		return
+	}
+	if err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, "could not evaluate the GPU budget")
+		return
+	}
 	b := &store.Batch{VoiceID: voiceID, Title: req.Title, Purpose: string(purpose), Style: req.Style, Kind: req.Kind, CreatedBy: email}
+	queued := make([]string, 0, len(texts))
 	for i, it := range req.Items {
 		bi := store.BatchItem{Position: i, Label: it.Label}
 		if err := voiceengine.ValidateScript(it.Text, false); err != nil {
@@ -444,14 +463,25 @@ func (h *Handler) adminCreateBatch(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		bi.GenerationID = gen.ID
+		queued = append(queued, it.Text)
 		b.Items = append(b.Items, bi)
+	}
+	// The recorded estimate covers what was actually queued. The ceiling above
+	// was checked against everything the admin asked for - that is the request
+	// that needed bounding - but a batch item refused by the safety floor never
+	// reaches a GPU, and leaving it in the recorded plan would over-state what
+	// this batch was expected to spend.
+	est := estimateVoiceCost(queued, verdict.History, verdict.Config)
+	if est.Items > 0 {
+		b.EstInferenceSeconds, b.EstCostMicros, b.EstimateBasis = &est.InferenceSecs, est.CostMicros, est.Basis
 	}
 	if err := h.vplat.CreateBatch(r.Context(), b); err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to record batch")
 		return
 	}
 	_ = h.vplat.AppendRightsAudit(r.Context(), store.RightsAuditEntry{VoiceID: voiceID, Actor: email, Action: "VOICE_BATCH_QUEUED",
-		Decision: "allowed", Detail: b.ID + ": " + strconv.Itoa(b.Total-b.Refused) + " queued, " + strconv.Itoa(b.Refused) + " refused",
+		Decision: "allowed", Detail: b.ID + ": " + strconv.Itoa(b.Total-b.Refused) + " queued, " + strconv.Itoa(b.Refused) +
+			" refused; planned " + strconv.FormatFloat(est.InferenceSecs, 'f', 1, 64) + " GPU-seconds (" + est.Basis + ")",
 		RemoteAddr: clientIP(r)})
 	full, _ := h.vplat.BatchByID(r.Context(), b.ID)
 	httpx.WriteJSON(w, http.StatusAccepted, map[string]any{"batch": full})

@@ -686,6 +686,15 @@ type Generation struct {
 	RequestedBy    string `json:"-"`
 	CreatedAt      string `json:"createdAt"`
 	UpdatedAt      string `json:"updatedAt"`
+	// Measured cost (VE-017). A nil field means the worker that produced this
+	// render did not report a duration, which is not the same fact as a render
+	// that reported zero, so these stay pointers rather than floats.
+	InferenceSeconds *float64 `json:"inferenceSeconds,omitempty"`
+	WorkerSeconds    *float64 `json:"workerSeconds,omitempty"`
+	// CostUSDMicros is the allocation of GPU time to this render at the price
+	// configured when it completed. Nil when no price is configured, which the
+	// metrics endpoint reports as "unpriced" rather than as free.
+	CostUSDMicros *int64 `json:"costUsdMicros,omitempty"`
 	// Variants are derived delivery encodings of the WAV master.
 	Variants map[string]AudioVariant `json:"-"`
 }
@@ -701,7 +710,8 @@ type AudioVariant struct {
 const genCols = `id, content_hash, voice_id, COALESCE(model_id,''), COALESCE(engine,''), COALESCE(engine_version,''), purpose, style,
 	language, COALESCE(locale,''), text_sha256, COALESCE(audio_sha256,''), COALESCE(storage_key,''), COALESCE(duration_ms,0), synthetic,
 	fell_back, COALESCE(fallback_reason,''), COALESCE(grant_version,0), queue, COALESCE(job_id,''), COALESCE(owner_user_id,''), visibility,
-	status, COALESCE(error_class,''), COALESCE(error_message,''), COALESCE(requested_by,''), created_at, updated_at, variants`
+	status, COALESCE(error_class,''), COALESCE(error_message,''), COALESCE(requested_by,''), created_at, updated_at, variants,
+	inference_seconds, worker_seconds, cost_usd_micros`
 
 func scanGen(sc interface{ Scan(...any) error }) (*Generation, error) {
 	var g Generation
@@ -710,7 +720,7 @@ func scanGen(sc interface{ Scan(...any) error }) (*Generation, error) {
 	err := sc.Scan(&g.ID, &g.ContentHash, &g.VoiceID, &g.ModelID, &g.Engine, &g.EngineVersion, &g.Purpose, &g.Style, &g.Language,
 		&g.Locale, &g.TextSHA256, &g.AudioSHA256, &g.StorageKey, &g.DurationMS, &syn, &fb, &g.FallbackReason, &g.GrantVersion,
 		&g.Queue, &g.JobID, &g.OwnerUserID, &g.Visibility, &g.Status, &g.ErrorClass, &g.ErrorMessage, &g.RequestedBy,
-		&g.CreatedAt, &g.UpdatedAt, &variants)
+		&g.CreatedAt, &g.UpdatedAt, &variants, &g.InferenceSeconds, &g.WorkerSeconds, &g.CostUSDMicros)
 	if err != nil {
 		return nil, err
 	}
@@ -795,9 +805,11 @@ func (s *VoicePlatformStore) AdvanceGeneration(ctx context.Context, id string, s
 func (s *VoicePlatformStore) CompleteGeneration(ctx context.Context, g *Generation) error {
 	_, err := s.db.ExecContext(ctx, `UPDATE voice_generations SET status = 'COMPLETED', model_id = ?, engine = ?, engine_version = ?,
 		audio_sha256 = ?, storage_key = ?, duration_ms = ?, fell_back = ?, fallback_reason = ?, grant_version = ?, updated_at = ?,
+		inference_seconds = ?, worker_seconds = ?, cost_usd_micros = ?,
 		row_version = row_version + 1 WHERE id = ? AND status NOT IN ('COMPLETED','CANCELLED')`,
 		g.ModelID, g.Engine, g.EngineVersion, g.AudioSHA256, g.StorageKey, g.DurationMS, boolInt(g.FellBack),
-		nullIfEmpty(g.FallbackReason), g.GrantVersion, tsNow(), g.ID)
+		nullIfEmpty(g.FallbackReason), g.GrantVersion, tsNow(),
+		g.InferenceSeconds, g.WorkerSeconds, g.CostUSDMicros, g.ID)
 	return err
 }
 

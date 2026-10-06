@@ -1,0 +1,390 @@
+{
+ "cases": [
+  {
+   "category": "short_prayer",
+   "chunks": [
+    {
+     "text": "Father, thank you for this new morning."
+    },
+    {
+     "text": "Guide my steps today, and let my words bring peace to everyone I meet."
+    },
+    {
+     "text": "In Jesus' name, amen."
+    }
+   ],
+   "expect": {
+    "bytes": 249644,
+    "chain": "dc,trim,declick,eq,deess,compress,loudness,limit",
+    "claimed_loudness_lufs": -16.0,
+    "claimed_true_peak_dbtp": -9.52,
+    "clipped_samples": 0,
+    "duration_ms": 7800,
+    "limiter_max_db": "-0.00",
+    "loudness_lufs": -16.0,
+    "peak_dbfs": -9.53,
+    "peak_limited": false,
+    "rms_dbfs": -15.18,
+    "sample_rate": 16000,
+    "sha256": "1a5acce0816d0e75179b8c21e7b87080fd984bad53d1f213213a38cf2920db55",
+    "trimmed_ms": 0,
+    "true_peak_dbtp": -9.52
+   },
+   "id": "prayer-short-01",
+   "style": "prayer"
+  },
+  {
+   "category": "long_scripture",
+   "chunks": [
+    {
+     "text": "The Lord is my shepherd; I shall not want."
+    },
+    {
+     "text": "He maketh me to lie down in green pastures: he leadeth me beside the still waters."
+    },
+    {
+     "silence_after_ms": 600,
+     "text": "He restoreth my soul: he leadeth me in the paths of righteousness for his name's sake."
+    },
+    {
+     "text": "Yea, though I walk through the valley of the shadow of death, I will fear no evil: for thou art with me; thy rod and thy staff they comfort me."
+    },
+    {
+     "text": "Thou preparest a table before me in the presence of mine enemies: thou anointest my head with oil; my cup runneth over."
+    },
+    {
+     "text": "Surely goodness and mercy shall follow me all the days of my life: and I will dwell in the house of the Lord for ever."
+    }
+   ],
+   "expect": {
+    "bytes": 1152044,
+    "chain": "dc,trim,declick,eq,deess,compress,loudness,limit",
+    "claimed_loudness_lufs": -16.0,
+    "claimed_true_peak_dbtp": -9.49,
+    "clipped_samples": 0,
+    "duration_ms": 36000,
+    "limiter_max_db": "-0.00",
+    "loudness_lufs": -16.0,
+    "peak_dbfs": -9.49,
+    "peak_limited": false,
+    "rms_dbfs": -15.22,
+    "sample_rate": 16000,
+    "sha256": "e774232b68c6e62909cd01a8843776b15971b05c3191bc986a891fe659f9a416",
+    "trimmed_ms": 0,
+    "true_peak_dbtp": -9.49
+   },
+   "id": "scripture-long-01",
+   "style": "scripture"
+  },
+  {
+   "category": "confession_reflection",
+   "chunks": [
+    {
+     "silence_after_ms": 400,
+     "text": "I confess that I have been impatient with the people closest to me."
+    },
+    {
+     "text": "Today I choose gentleness."
+    },
+    {
+     "text": "Not because I have it all together, but because grace has been gentle with me."
+    }
+   ],
+   "expect": {
+    "bytes": 341162,
+    "chain": "dc,trim,declick,eq,deess,compress,loudness,limit",
+    "claimed_loudness_lufs": -16.0,
+    "claimed_true_peak_dbtp": -9.4,
+    "clipped_samples": 0,
+    "duration_ms": 10660,
+    "limiter_max_db": "-0.00",
+    "loudness_lufs": -16.0,
+    "peak_dbfs": -9.4,
+    "peak_limited": false,
+    "rms_dbfs": -15.22,
+    "sample_rate": 16000,
+    "sha256": "417d5d14941eff7abf0c224fec4d10f529ddde62e560c085b3a40fd9b1e951e8",
+    "trimmed_ms": 0,
+    "true_peak_dbtp": -9.4
+   },
+   "id": "confession-01",
+   "style": "reflection"
+  },
+  {
+   "category": "nigerian_names_places",
+   "chunks": [
+    {
+     "text": "Chukwuemeka travelled from Onitsha to Ile-Ife, while Oluwaseun and Ngozi stayed in Abeokuta."
+    },
+    {
+     "text": "Later, Adaeze met Babatunde at the church in Oshogbo, near Ogbomosho."
+    }
+   ],
+   "expect": {
+    "bytes": 309164,
+    "chain": "dc,trim,declick,eq,deess,compress,loudness,limit",
+    "claimed_loudness_lufs": -16.0,
+    "claimed_true_peak_dbtp": -9.52,
+    "clipped_samples": 0,
+    "duration_ms": 9660,
+    "limiter_max_db": "-0.00",
+    "loudness_lufs": -16.0,
+    "peak_dbfs": -9.53,
+    "peak_limited": false,
+    "rms_dbfs": -15.18,
+    "sample_rate": 16000,
+    "sha256": "1c1a6bcae05b7518a25f531661ecb96867bca94abe9485c750926b48f1574235",
+    "trimmed_ms": 0,
+    "true_peak_dbtp": -9.52
+   },
+   "id": "names-places-01",
+   "style": "teaching"
+  },
+  {
+   "category": "numbers_dates_references",
+   "chunks": [
+    {
+     "text": "Read Psalm 23 verses 1 to 6, then John 3:16, and Romans 8:28."
+    },
+    {
+     "text": "The meeting is on the 14th of March, 2026, at 7:30 in the evening, and about 1,250 people are expected."
+    }
+   ],
+   "expect": {
+    "bytes": 314922,
+    "chain": "dc,trim,declick,eq,deess,compress,loudness,limit",
+    "claimed_loudness_lufs": -16.0,
+    "claimed_true_peak_dbtp": -9.52,
+    "clipped_samples": 0,
+    "duration_ms": 9840,
+    "limiter_max_db": "-0.00",
+    "loudness_lufs": -16.0,
+    "peak_dbfs": -9.53,
+    "peak_limited": false,
+    "rms_dbfs": -15.18,
+    "sample_rate": 16000,
+    "sha256": "07054c58a3f06d7ac501c47c3b4a265e902ac5cacdec7164a565f690cbad8142",
+    "trimmed_ms": 0,
+    "true_peak_dbtp": -9.52
+   },
+   "id": "numbers-refs-01",
+   "style": "teaching"
+  },
+  {
+   "category": "pidgin",
+   "chunks": [
+    {
+     "text": "My brother, no worry yourself."
+    },
+    {
+     "text": "God dey for you, e no go leave you."
+    },
+    {
+     "text": "Wetin you dey face now, e go pass."
+    },
+    {
+     "text": "Just hold am tight, you hear?"
+    }
+   ],
+   "expect": {
+    "bytes": 245802,
+    "chain": "dc,trim,declick,eq,deess,compress,loudness,limit",
+    "claimed_loudness_lufs": -16.0,
+    "claimed_true_peak_dbtp": -9.52,
+    "clipped_samples": 0,
+    "duration_ms": 7680,
+    "limiter_max_db": "-0.00",
+    "loudness_lufs": -16.0,
+    "peak_dbfs": -9.53,
+    "peak_limited": false,
+    "rms_dbfs": -15.18,
+    "sample_rate": 16000,
+    "sha256": "3a08c57fe69a1179a77cdac6af42013ae50a4dc08291a5e2362a82c3e44eecba",
+    "trimmed_ms": 0,
+    "true_peak_dbtp": -9.52
+   },
+   "id": "pidgin-01",
+   "style": "encouragement"
+  },
+  {
+   "category": "question_intonation",
+   "chunks": [
+    {
+     "text": "Have you ever wondered why rest feels so hard?"
+    },
+    {
+     "text": "What would change if you believed you were already loved?"
+    }
+   ],
+   "expect": {
+    "bytes": 197804,
+    "chain": "dc,trim,declick,eq,deess,compress,loudness,limit",
+    "claimed_loudness_lufs": -16.0,
+    "claimed_true_peak_dbtp": -9.52,
+    "clipped_samples": 0,
+    "duration_ms": 6180,
+    "limiter_max_db": "-0.00",
+    "loudness_lufs": -16.0,
+    "peak_dbfs": -9.53,
+    "peak_limited": false,
+    "rms_dbfs": -15.18,
+    "sample_rate": 16000,
+    "sha256": "86699c9b3e1251d36e7b88480c73478c8b448ae40137245a7389306b99af8943",
+    "trimmed_ms": 0,
+    "true_peak_dbtp": -9.52
+   },
+   "id": "question-01",
+   "style": "reflection"
+  },
+  {
+   "category": "emotional_range",
+   "chunks": [
+    {
+     "text": "Rejoice!"
+    },
+    {
+     "text": "This is the day the Lord has made."
+    },
+    {
+     "text": "Whatever yesterday held, today is new, and there is so much good ahead of you!"
+    }
+   ],
+   "expect": {
+    "bytes": 230444,
+    "chain": "dc,trim,declick,eq,deess,compress,loudness,limit",
+    "claimed_loudness_lufs": -16.0,
+    "claimed_true_peak_dbtp": -9.52,
+    "clipped_samples": 0,
+    "duration_ms": 7200,
+    "limiter_max_db": "-0.00",
+    "loudness_lufs": -16.0,
+    "peak_dbfs": -9.53,
+    "peak_limited": false,
+    "rms_dbfs": -15.18,
+    "sample_rate": 16000,
+    "sha256": "6576a60ec352a4278efc3d2d5e21d2a908274769cf1a7a56d58983ab4b9744f9",
+    "trimmed_ms": 0,
+    "true_peak_dbtp": -9.52
+   },
+   "id": "emotion-joy-01",
+   "style": "encouragement"
+  },
+  {
+   "category": "emotional_range",
+   "chunks": [
+    {
+     "silence_after_ms": 800,
+     "text": "Lord, we bring before you those who are grieving tonight."
+    },
+    {
+     "text": "Sit with them in the silence."
+    },
+    {
+     "text": "Hold what they cannot carry."
+    }
+   ],
+   "expect": {
+    "bytes": 244524,
+    "chain": "dc,trim,declick,eq,deess,compress,loudness,limit",
+    "claimed_loudness_lufs": -16.0,
+    "claimed_true_peak_dbtp": -9.33,
+    "clipped_samples": 0,
+    "duration_ms": 7640,
+    "limiter_max_db": "-0.00",
+    "loudness_lufs": -16.0,
+    "peak_dbfs": -9.34,
+    "peak_limited": false,
+    "rms_dbfs": -15.46,
+    "sample_rate": 16000,
+    "sha256": "4edee048e27ff71fac746a5a834f4465c0b65194265744aa8838d83535503ccc",
+    "trimmed_ms": 0,
+    "true_peak_dbtp": -9.33
+   },
+   "id": "emotion-solemn-01",
+   "style": "prayer"
+  },
+  {
+   "category": "long_form_stability",
+   "chunks": [
+    {
+     "text": "Blessed are the poor in spirit: for theirs is the kingdom of heaven."
+    },
+    {
+     "text": "Blessed are they that mourn: for they shall be comforted."
+    },
+    {
+     "text": "Blessed are the meek: for they shall inherit the earth."
+    },
+    {
+     "text": "Blessed are they which do hunger and thirst after righteousness: for they shall be filled."
+    },
+    {
+     "text": "Blessed are the merciful: for they shall obtain mercy."
+    },
+    {
+     "text": "Blessed are the pure in heart: for they shall see God."
+    },
+    {
+     "text": "Blessed are the peacemakers: for they shall be called the children of God."
+    },
+    {
+     "silence_after_ms": 700,
+     "text": "Blessed are they which are persecuted for righteousness' sake: for theirs is the kingdom of heaven."
+    },
+    {
+     "text": "Ye are the salt of the earth: but if the salt have lost his savour, wherewith shall it be salted?"
+    },
+    {
+     "text": "Ye are the light of the world."
+    },
+    {
+     "text": "A city that is set on an hill cannot be hid."
+    },
+    {
+     "text": "Neither do men light a candle, and put it under a bushel, but on a candlestick; and it giveth light unto all that are in the house."
+    },
+    {
+     "text": "Let your light so shine before men, that they may see your good works, and glorify your Father which is in heaven."
+    }
+   ],
+   "expect": {
+    "bytes": 1879066,
+    "chain": "dc,trim,declick,eq,deess,compress,loudness,limit",
+    "claimed_loudness_lufs": -16.0,
+    "claimed_true_peak_dbtp": -9.49,
+    "clipped_samples": 0,
+    "duration_ms": 58719,
+    "limiter_max_db": "-0.00",
+    "loudness_lufs": -16.0,
+    "peak_dbfs": -9.5,
+    "peak_limited": false,
+    "rms_dbfs": -15.21,
+    "sample_rate": 16000,
+    "sha256": "9cb0420f3d03ee1d5cf5e6b6d70c212b5abd80bf3486c7f4e468eadd224548c5",
+    "trimmed_ms": 0,
+    "true_peak_dbtp": -9.49
+   },
+   "id": "longform-01",
+   "style": "teaching"
+  }
+ ],
+ "measure_version": 1,
+ "provenance": {
+  "ceiling_dbtp": "-1",
+  "engine": "dev-tone",
+  "engine_version": "dev",
+  "note": "dev-tone renders a tone, never speech. These references gate the audio path (DSP chain, mastering, WAV) - NOT voice quality. Voice quality is gated by docs/voice/golden_set.json + server/cmd/voice-bench on a GPU host, which P0-1/P0-2 keep out of CI.",
+  "numpy": "2.4.6",
+  "scipy": "1.17.1",
+  "synthetic": true,
+  "target_lufs": "-16"
+ },
+ "tolerance": {
+  "claim_db": 0.1,
+  "duration_ms": 0,
+  "loudness_db": 0.15,
+  "rms_db": 0.25,
+  "true_peak_db": 0.15
+ },
+ "version": 1
+}
