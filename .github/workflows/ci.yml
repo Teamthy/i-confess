@@ -297,18 +297,27 @@ jobs:
       # development sandbox, so the findings are posted where they can be:
       # a PR comment. Remove this step and the job-level permissions block
       # above once the scan is green.
+      - name: Trivy findings, non-failing (temporary)
+        if: failure()
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: .
+          severity: CRITICAL,HIGH
+          format: table
+          output: trivy-findings.txt
+          exit-code: '0'
+
       - name: Report trivy findings (temporary)
         if: failure()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUM: ${{ github.event.pull_request.number }}
         run: |
-          docker run --rm -v "$PWD:/work" aquasecurity/trivy:latest fs --no-progress --format table \
-            --severity CRITICAL,HIGH /work > /tmp/trivy.txt 2>&1 || true
           {
             echo '### trivy fs — CRITICAL,HIGH'
             echo '```'
-            head -c 5500 /tmp/trivy.txt
+            head -c 5500 trivy-findings.txt
             echo '```'
           } > /tmp/trivy.md
           gh pr comment "$PR_NUM" --body-file /tmp/trivy.md || echo "could not post comment"
