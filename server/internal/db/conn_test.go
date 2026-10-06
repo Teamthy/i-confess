@@ -113,8 +113,10 @@ func TestPostgresSchemaLoads(t *testing.T) {
 		`SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public'`).Scan(&tables); err != nil {
 		t.Fatalf("count tables: %v", err)
 	}
-	if tables != 120 {
-		t.Errorf("expected 120 tables, got %d", tables)
+	// 119 since migration 0032 dropped voice_licenses, the never-read orphan
+	// that made a third rights model look possible (VE-002).
+	if tables != 119 {
+		t.Errorf("expected 119 tables, got %d", tables)
 	}
 
 	var fks int
@@ -123,8 +125,8 @@ func TestPostgresSchemaLoads(t *testing.T) {
 		 WHERE constraint_type = 'FOREIGN KEY' AND table_schema = 'public'`).Scan(&fks); err != nil {
 		t.Fatalf("count foreign keys: %v", err)
 	}
-	if fks != 156 {
-		t.Errorf("expected 156 foreign keys, got %d", fks)
+	if fks != 155 {
+		t.Errorf("expected 155 foreign keys, got %d", fks)
 	}
 
 	var flags int

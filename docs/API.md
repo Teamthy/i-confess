@@ -108,9 +108,14 @@ approved → published → archived`
 
 ## Data model (summary)
 
-See `migrations/postgres/0001_schema.sql` for the canonical schema. Core entities:
+See `server/internal/db/migrations/` for the canonical schema (it is embedded in
+the binary and applied on startup; the old `migrations/postgres/` directory no
+longer exists). Voice licensing is `voice_rights` for the legacy coarse record
+and `voice_rights_grants` + `voice_usage_permissions` for the granular grants
+that authorize generation; `voice_licenses` was dropped in 0032 because nothing
+ever read it. Core entities:
 `collections`, `categories`, `collection_categories`, `confessions`,
-`confession_variants`, `scripture_references`, `voices`, `voice_licenses`,
+`confession_variants`, `scripture_references`, `voices`,
 `audio_assets`, `users`, `subscriptions`, `session_preferences`, `schedules`,
 `sessions`, `session_items`, `favorites`, `playback_history`, `user_confessions`,
 `user_confession_audio`, `admin_users`, `audit_logs`.
