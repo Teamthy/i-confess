@@ -1686,3 +1686,70 @@ After that abuse the worker still reported healthy.
   but `go build ./...` and `go test ./...` must be run before merge.
 - VE-001 (two rights models), VE-004 (text normalisation), VE-005 (dictionary
   seed) were P1/P2 findings, not §35 blockers, and were **not** addressed here.
+
+---
+
+# Appendix B — Remediation wave 2 (2026-10-06, `arena/5f7c8b8b-i-confess`)
+
+Appendix A left the P1/P2 findings and most quick wins open. This wave closes
+them. It differs from Appendix A in one respect that matters: a Go 1.27.1
+toolchain and a real PostgreSQL 17 were available, so every Go change below was
+compiled, vetted and exercised, not pattern-matched.
+
+## Findings closed
+
+| Finding | Priority | What changed | Commit |
+|---|---|---|---|
+| **VE-001** two rights models | P1 | `voice.Pipeline.Generate` takes a `*voicegov.Grant`. Authorization is `voicegov.Authorize` (action × purpose × third-party × territory × language, at call time) with `ThirdParty = !Provider.SelfHosted()`, so a capability revoked in the granular model stops a cloud render too. `Handler.voiceAuthority` prefers the granular grant and falls back to `rights.License.ToGrant` (faithful, pessimistic projection) only for voices that predate it; a grant load error is a 503, never a fail-open. Refusal is `451` with `{error, reason, detail, job_id}`. | `c5c8a6e` |
+| **VE-004** no text normalisation | P2 | `NormaliseSegments` runs inside `Orchestrator.parse` before `Dictionary.Apply`: Bible references (`John 3:16` → "John chapter three verse sixteen"), verse ranges, ordinals, dates, times, grouped numbers, naira, acronyms, URLs — locale-aware (`en-US` says "March fourteenth"). `HashInput` gained `TextNormalised` + `NormaliseVersion`, so normalised text is part of the cache key. | `14c0cee` |
+| **VE-005** empty pronunciation dictionary | P2 | Migration `0031` seeds 152 en-NG entries (biblical names/places, Nigerian names/places, translation acronyms, church terms) plus 152 `en-NG-PIDGIN` copies, `ON CONFLICT (term, locale) DO NOTHING`, with `updated_at` set so `DictVersion` moves and cached renders invalidate. Respellings only (no IPA), documented as un-reviewed starting data. | `37d73a7` |
+| **VE-016** unguarded reference transcript | P3 | `reference_transcript()` validates once, before any path is resolved or provider contacted, and raises a classified `content` error (422). All three zero-shot backends use it; a transcript-less reference is no longer a retryable 500. | `7d43b2a` |
+| **VE-002** dead generator + orphan table | P4 | Deleted `audio/generator.go` (495 lines, zero references) and dropped `voice_licenses` (zero references from Go, tests, scripts or clients — a table whose name made a third rights model look real). Schema inventory assertions moved 120→119 tables, 156→155 FKs, with the reason recorded beside the number. | `10e5d93` |
+| **VE-008** duplicate HMAC scheme | P4 | Not just dead validators: `Handler.urlGenerator` was written and never read, so `audio/urls.go` (326 lines) was unreachable in its entirety. `audio.URLGenerator`, its random per-process dev secret and the parallel verify path are deleted; `storage.ObjectStorage.GenerateSignedURL` is the single signing authority, reached via `h.signer`. | wave-2 commit |
+| **VE-018** no dependency scanning | P3 | `pip-audit --strict` on the worker's runtime requirements in the `voice-engine` job (numpy/scipy ship into the GPU image and nothing watched them); `govulncheck` in the `test` job, advisory (`continue-on-error`) until a human triages its first report — an unverified blocking gate is how a red main that proves nothing begins. | `7d43b2a` |
+| **VE-015** Matcha-TTS never on `PYTHONPATH` | P3 | Closed by PR #89 and verified here: the requirement is in the README, in `Dockerfile`'s header, and — the part that matters — set as a concrete value in `voice-engine/k8s/deployment-gpu.yaml` (`/engine:/engine/third_party/Matcha-TTS`), so it is no longer operator-only. | #89 |
+
+Owed from PR #89 and done here: the TEMPORARY "Report failure diagnostics" step
+and the job-level `pull-requests: write` permission it needed are removed from
+`.github/workflows/ci.yml`, as that step's own comment required.
+
+## A regression this wave found and fixed
+
+Seeding the dictionary (VE-005) broke `internal/store.TestReferencesAndPronunciations`,
+which assumed an empty table (`len(entries) != 1`). That is the useful kind of
+breakage: the test was asserting emptiness rather than behaviour. It is now
+scoped to the rows it writes, and pins the property the seed depends on — an
+upsert replaces only its own `(term, locale)`, so the seeded `en-NG` entry for
+the same term survives beside the test's universal one.
+
+## Verification performed (all on the shipped tree)
+
+| Check | Command | Result |
+|---|---|---|
+| Build + vet | `go build ./... && go vet ./...` | exit 0 |
+| Full suite, race detector, real PG17 + Redis 7.4.2 | `go test -race -count=1 ./...` | **45 packages ok, exit 0** |
+| Worker suite | `ICF_WORKER_DEV=1 pytest -q tests` | **49 passed, 1 skipped** in 12.5 s |
+| Licence register, strict | `check_model_licenses.py --strict` | exit 0 |
+| Licence gate in production | `ICF_ENV=production check_model_licenses.py --gate` | exit 0 — all four engines still `production_allowed=false` |
+| Dependency vulnerabilities | `pip-audit -r requirements.txt --strict` | no known vulnerabilities |
+| Workflow | `yaml.safe_load` | parses; 6 jobs; no `pull-requests` permission remains |
+| Formatting | `gofmt -l .` | only pre-existing `internal/voice/google_test.go` (untouched; gofmt version delta) |
+
+## What remains open after this wave
+
+- **P0-1 (no engine licence-cleared) and P0-2 (no sample of speech has ever been
+  produced) remain open and remain not engineering tasks.** Everything around
+  them is enforced rather than trusted; `production_allowed` was not touched.
+- **VE-004/VE-005 are verified by unit tests, not by ear.** Their expansions and
+  respellings are what the tests say they are; whether they *sound* right cannot
+  be known until an engine runs on a GPU host (P0-2). The seeded respellings in
+  particular are a starting set and should be reviewed by someone who speaks the
+  names before they are shipped to users.
+- **VE-018 is half-gated:** pip-audit blocks, govulncheck advises. The production
+  checklist's gate needs the first govulncheck report triaged and
+  `continue-on-error` removed.
+- Still open, in the order they should be taken: VE-006 (`inference_instruct2`
+  unused), VE-007 (R2 untested, no cache metrics), VE-009 (cross-user audio
+  isolation untested), VE-012 (hardcoded `engine_version`), VE-014 (numpy+scipy
+  only), VE-017 (no cost telemetry), VE-019 (no word timestamps), VE-020 (no
+  golden-audio set).

@@ -70,8 +70,6 @@ type Handler struct {
 	pipeline *voice.Pipeline
 	// playbackResolver resolves playback requests with entitlement checking.
 	playbackResolver *audio.PlaybackResolver
-	// urlGenerator generates signed URLs for audio streaming and downloads.
-	urlGenerator *audio.URLGenerator
 	// vrights stores voice authorization metadata.
 	vrights *store.VoiceRightsStore
 	// vplat stores the licensed minister voice platform (granular rights,
@@ -166,9 +164,6 @@ func (h *Handler) SetProduction(prod bool) { h.isProd = prod }
 
 // SetPlaybackResolver installs the audio playback resolver.
 func (h *Handler) SetPlaybackResolver(r *audio.PlaybackResolver) { h.playbackResolver = r }
-
-// SetURLGenerator installs the signed URL generator.
-func (h *Handler) SetURLGenerator(g *audio.URLGenerator) { h.urlGenerator = g }
 
 type Config struct {
 	JWTSecret string

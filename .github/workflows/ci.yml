@@ -13,10 +13,6 @@ jobs:
   test:
     name: Build, vet & test
     runs-on: ubuntu-latest
-    # TEMPORARY: needed only by the diagnostics step below. Remove with it.
-    permissions:
-      contents: read
-      pull-requests: write
     strategy:
       matrix:
         go-version: ["1.25.x"]
@@ -163,33 +159,6 @@ jobs:
           go install golang.org/x/vuln/cmd/govulncheck@latest
           "$(go env GOPATH)/bin/govulncheck" ./...
 
-      # TEMPORARY diagnostics step. Sandbox cannot read Actions logs, so the
-      # failure is posted as a PR comment where it can actually be read.
-      # Remove this step and the job-level permissions block before merge.
-      - name: Report failure diagnostics
-        if: failure()
-        run: |
-          go test -race ./... > /tmp/gotest.log 2>&1 || true
-          {
-            echo "### gofmt -l ."
-            echo '```'
-            gofmt -l . 2>&1 || true
-            echo '```'
-            echo
-            echo "### go test: FAIL lines"
-            echo '```'
-            grep -E "^(--- FAIL|FAIL|ok)" /tmp/gotest.log | grep -vE "^ok" || echo "(no FAIL lines)"
-            echo '```'
-            echo
-            echo "### go test: surrounding output"
-            echo '```'
-            grep -B 5 -A 25 -m 3 -- "--- FAIL" /tmp/gotest.log || tail -60 /tmp/gotest.log
-            echo '```'
-          } > /tmp/diag.md 2>&1
-          gh pr comment "$PR_NUM" --body-file /tmp/diag.md || echo "could not post comment"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUM: ${{ github.event.pull_request.number }}
 
   # The Dart and Flutter clients have no job here before this change, and their
   # fifteen test files had never been executed by anything - not CI, not a

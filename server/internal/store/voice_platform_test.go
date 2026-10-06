@@ -260,7 +260,43 @@ func TestReferencesAndPronunciations(t *testing.T) {
 		t.Fatal(err)
 	}
 	entries, ver, err := s.Pronunciations(ctx)
-	if err != nil || len(entries) != 1 || entries[0].Respelling != "HAB-a-kuk" || ver == "" {
-		t.Fatalf("%+v %s %v", entries, ver, err)
+	if err != nil || ver == "" {
+		t.Fatalf("pronunciations: %d entries version %q err %v", len(entries), ver, err)
+	}
+
+	// The dictionary is no longer empty at rest: migration 0031 ships the
+	// en-NG seed (VE-005). The assertions are therefore scoped to the rows
+	// this test wrote, and they pin the two properties the seed relies on:
+	// an upsert replaces only its own (term, locale), and the seeded en-NG
+	// entry for the same term survives untouched beside it.
+	if len(entries) < 150 {
+		t.Fatalf("seeded dictionary missing: only %d entries", len(entries))
+	}
+	var universal, seededNG bool
+	for _, e := range entries {
+		if e.Term != "Habakkuk" {
+			continue
+		}
+		switch e.Locale {
+		case "":
+			if universal {
+				t.Errorf("two universal Habakkuk rows: %+v", e)
+			}
+			universal = true
+			if e.Respelling != "HAB-a-kuk" {
+				t.Errorf("universal Habakkuk respelling = %q, want the later upsert to win", e.Respelling)
+			}
+		case "en-NG":
+			if seededNG {
+				t.Errorf("two en-NG Habakkuk rows: %+v", e)
+			}
+			seededNG = true
+			if e.Respelling == "" || e.Respelling == "HAB-a-kuk" {
+				t.Errorf("seeded en-NG Habakkuk was overwritten by the universal upsert: %+v", e)
+			}
+		}
+	}
+	if !universal || !seededNG {
+		t.Fatalf("Habakkuk rows: universal=%v en-NG=%v, want both", universal, seededNG)
 	}
 }

@@ -11,14 +11,18 @@ coverage was at the API/request boundary: an invalidation publish failure during
 a committed write, and object-storage URL-signing failure during session
 creation.
 
-The signing paths are not interchangeable: `audio.URLGenerator` falls back to
-local URL signing when its storage presigner errors, while `PlaybackResolver`
-returns a signing error. Both are initialized at startup, but neither is
-currently called by an API route. The live session response path instead signs
-through the handler's `ObjectStorage` dependency; its outage behavior is
-exercised directly below. This phase avoids claiming API-level coverage for the
-two unwired paths or conflating a locally signed URL with proof that an object
-can currently be fetched.
+The signing paths are not interchangeable: `audio.URLGenerator` fell back to
+local URL signing when its storage presigner errored, while `PlaybackResolver`
+returns a signing error. Both were initialized at startup, but neither was
+called by an API route. The live session response path instead signs through the
+handler's `ObjectStorage` dependency; its outage behavior is exercised directly
+below. This phase avoids claiming API-level coverage for the two unwired paths
+or conflating a locally signed URL with proof that an object can currently be
+fetched.
+
+> Update (VE-008): `audio.URLGenerator` has since been deleted. Nothing read the
+> handler field it was installed into, so its fallback was unreachable — the
+> presigner it fell back *from* is the only signing path that ever ran.
 
 ## Changes
 
