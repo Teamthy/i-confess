@@ -1653,7 +1653,7 @@ caught by reading it:
 | Licence checker **catches a neutered gate** | monkeypatched `licenses.check` to a no-op | 4 errors, exit 1 |
 | YAML validity | `yaml.safe_load_all` × 3 files | OK (5 + 8 + 1 docs) |
 | Web typecheck | `npx tsc --noEmit` | exit 0 |
-| Go edits | brace/paren balance + pattern-match against `adminPromoteVoiceModel` | balanced; **not compile-verified** (no Go toolchain) |
+| Go edits | CI job `Build, vet & test (1.25.x)` on this branch | **Build ✅ · Vet ✅ · `go test -race` vs PostgreSQL 17 + Redis 7 ✅ · golangci-lint ✅** (see below) |
 
 ### Live worker exercised end to end
 
@@ -1680,9 +1680,35 @@ After that abuse the worker still reported healthy.
 - **P0-1 and P0-2 are still open and are not engineering tasks.** The licence
   decision needs counsel; the first sample needs a GPU. Everything around them
   is now enforced rather than trusted.
-- **The Go changes are not compile-verified.** No Go toolchain was obtainable in
-  this sandbox. They are mechanical copies of adjacent verified patterns
-  (`adminPromoteVoiceModel`, the five existing sweepers) and the files balance,
-  but `go build ./...` and `go test ./...` must be run before merge.
+- ~~The Go changes are not compile-verified.~~ **Resolved by CI.** No Go toolchain
+  was obtainable in the sandbox that produced this work, so the edits shipped
+  unverified and said so. CI then ran them: `Build, vet & test (1.25.x)` passed
+  Build, Vet, **`go test -race ./...` against real PostgreSQL 17 and Redis 7**, and
+  golangci-lint. Both Go edits compile and pass the race-enabled suite.
 - VE-001 (two rights models), VE-004 (text normalisation), VE-005 (dictionary
   seed) were P1/P2 findings, not §35 blockers, and were **not** addressed here.
+
+
+## CI outcome on PR #89 (added after push)
+
+| Step | Result |
+|---|---|
+| **Voice engine worker (voice-engine)** — new job | ✅ **pass, 27 s** |
+| Build, vet & test (1.25.x): Build / Vet / **Test** / Lint | ✅ ✅ ✅ ✅ |
+| Build, vet & test (1.25.x): `gofmt check` | ❌ **pre-existing** |
+| Container and deployment checks: image build, non-root, **kubeconform**, cfn-lint | ✅ ✅ ✅ ✅ |
+| Container and deployment checks: `Scan filesystem` (Trivy) | ❌ **pre-existing** |
+| Typecheck & build (web) · Flutter · Dart client | ✅ ✅ ✅ |
+
+Both failures were checked against `main` rather than assumed:
+
+- `gofmt check` fails on `main` at **`5ffca64f`**, the exact commit this branch was
+  cut from (run `36903796188`), and at `81d4e6d8` and `76ddb2b4`.
+- `Scan filesystem` fails on a `main` run from the **same day** (run `37413873705`,
+  2026-10-06). The step uses `aquasecurity/trivy-action@master` — unpinned — so it
+  tracks a moving CVE database.
+
+The added Go lines were checked directly for gofmt compliance (tab indentation, no
+trailing whitespace, no alignment runs); they are clean, so this change adds nothing
+to the existing gofmt debt. Clearing that debt is a one-line `make fmt`, out of scope
+here.
