@@ -9,7 +9,13 @@ import numpy as np
 import pytest
 
 from icf_worker import mastering, wav
-from icf_worker.engines import DevToneEngine, EngineError, resolve_checkpoint
+from icf_worker.engines import (
+    DevToneEngine,
+    EngineError,
+    GPTSoVITSEngine,
+    reference_transcript,
+    resolve_checkpoint,
+)
 from icf_worker.server import make_handler
 
 RATE = 48000
@@ -55,6 +61,37 @@ def test_checkpoint_traversal_refused(tmp_path, monkeypatch):
     with pytest.raises(EngineError) as e:
         resolve_checkpoint("../../etc/passwd")
     assert e.value.cls == "permanent"
+
+
+def test_missing_reference_transcript_is_a_classified_content_error():
+    # VE-016: the engines used to index the transcript key directly, so a
+    # reference without one raised KeyError - which the handler can only report
+    # as an unexpected fault, for a request that can never succeed.
+    for reference in (None, {}, {"uri": "voice-private/a.wav"}, {"transcript": "   "}):
+        with pytest.raises(EngineError) as e:
+            reference_transcript(reference)
+        assert e.value.cls == "content"
+
+
+def test_gpt_sovits_refuses_an_untranscribed_reference_before_any_network_call(monkeypatch):
+    # The guard runs before the reference path is resolved and before the
+    # upstream api_v2 server is contacted, so the failure is classified rather
+    # than a storage or connection error.
+    def no_network(*_args, **_kwargs):
+        raise AssertionError("the guard must run before any provider call")
+
+    monkeypatch.setattr(GPTSoVITSEngine, "_ensure_weights", lambda self, checkpoint: None)
+    monkeypatch.setattr(GPTSoVITSEngine, "_get", no_network)
+
+    with pytest.raises(EngineError) as e:
+        GPTSoVITSEngine().synthesize_chunk(
+            "Peace be still.",
+            reference={"uri": "voice-private/ref.wav"},
+            checkpoint=None,
+            params={},
+            chunk={},
+        )
+    assert e.value.cls == "content"
 
 
 @pytest.fixture

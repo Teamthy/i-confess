@@ -94,13 +94,32 @@ class CosyVoiceEngine(Engine):
         model = self._load()
         if not reference:
             raise EngineError("model", "zero-shot synthesis requires a reference clip")
+        transcript = reference_transcript(reference)
         ref_path = resolve_checkpoint(reference["uri"])
         speed = float(params.get("speed") or 1.0)
         out = []
-        for piece in model.inference_zero_shot(text, reference["transcript"], str(ref_path),
+        for piece in model.inference_zero_shot(text, transcript, str(ref_path),
                                                stream=False, speed=speed):
             out.append(piece["tts_speech"].squeeze().cpu().numpy())
         return np.concatenate(out) if out else np.zeros(0)
+
+
+def reference_transcript(reference: dict) -> str:
+    """The verified transcript a zero-shot clone needs.
+
+    A reference clip recorded without one is a data fault, not a crash. Before
+    this guard each backend read the transcript key directly, so the request
+    died with a KeyError that the server could only classify as an unexpected
+    fault: a retryable 500 for something that can never succeed, and a
+    traceback instead of a reason (audit VE-016).
+
+    Every backend that clones from a reference goes through here, so the failure
+    is a classified "content" error (422) that names what is missing.
+    """
+    text = (reference or {}).get("transcript") or ""
+    if not text.strip():
+        raise EngineError("content", "reference clip has no verified transcript")
+    return text
 
 
 class DevToneEngine(Engine):
@@ -178,10 +197,11 @@ class GPTSoVITSEngine(Engine):
         self._ensure_weights(checkpoint)
         if not reference:
             raise EngineError("model", "GPT-SoVITS needs a reference clip and transcript")
+        transcript = reference_transcript(reference)
         ref = resolve_checkpoint(reference["uri"])
         lang = "en"
         audio = self._get("/tts", {
-            "text": text, "text_lang": lang, "ref_audio_path": str(ref), "prompt_text": reference["transcript"],
+            "text": text, "text_lang": lang, "ref_audio_path": str(ref), "prompt_text": transcript,
             "prompt_lang": lang, "speed_factor": params.get("speed_factor", 1.0),
             "temperature": params.get("temperature", 1.0), "media_type": "wav", "streaming_mode": "false",
         })
@@ -234,8 +254,10 @@ class VoxCPMEngine(Engine):
         kw = {"text": text, "cfg_value": float(params.get("cfg_value", 2.0)),
               "inference_timesteps": int(params.get("inference_timesteps", 10))}
         if reference:
+            # Validated before the path is resolved: a reference with no
+            # transcript is a content fault whatever storage would say.
+            kw["prompt_text"] = reference_transcript(reference)
             kw["prompt_wav_path"] = str(resolve_checkpoint(reference["uri"]))
-            kw["prompt_text"] = reference["transcript"]
         return np.asarray(model.generate(**kw), dtype=np.float64)
 
 

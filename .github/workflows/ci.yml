@@ -149,6 +149,20 @@ jobs:
             exit 1
           fi
 
+      # VE-018: reachable-vulnerability scanning for the Go module graph.
+      #
+      # Advisory, not blocking, and that is deliberate: govulncheck's first run
+      # against a dependency set this size will report something, and a red main
+      # on an unreviewed report teaches people to ignore it. Triage the first
+      # report, then remove continue-on-error so this becomes the gate the
+      # production checklist asks for. It reports only vulnerabilities reachable
+      # from this code, so the list should be short.
+      - name: Vulnerability scan (govulncheck, advisory)
+        continue-on-error: true
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          "$(go env GOPATH)/bin/govulncheck" ./...
+
       # TEMPORARY diagnostics step. Sandbox cannot read Actions logs, so the
       # failure is posted as a PR comment where it can actually be read.
       # Remove this step and the job-level permissions block before merge.
@@ -255,6 +269,18 @@ jobs:
           ICF_WORKER_DEV: "1"
           ICF_ENV: development
         run: ../scripts/ci-check.sh python -m pytest -q tests
+
+      # VE-018: nothing in this repository watched the worker's dependencies.
+      # numpy and scipy ship into the GPU image and are not covered by any
+      # Dependabot configuration, so a known-vulnerable pin would only be found
+      # by whoever happened to read an advisory. --strict fails the job on any
+      # known vulnerability rather than printing a report nobody acts on.
+      # Verified against the shipped requirements: no known vulnerabilities.
+      - name: Dependency vulnerability scan (pip-audit)
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        run: |
+          pip install pip-audit
+          pip-audit -r requirements.txt --strict
 
       # The licence register is what stops an uncleared model reaching
       # production, so a malformed or silently-weakened register is a release
