@@ -398,80 +398,195 @@ func (h *Handler) adminGetAudioGenerationStats(w http.ResponseWriter, r *http.Re
 	httpx.WriteJSON(w, http.StatusOK, stats)
 }
 
-// adminTriggerBatchGeneration triggers batch generation for multiple confessions.
+// adminTriggerBatchGeneration queues one render per confession given.
 // POST /admin/audio/generate/batch
+//
+// This is the older bulk path: it speaks in confession ids, and its renders are
+// produced by the cloud-TTS pipeline rather than the GPU worker. Until now it
+// was also a no-op wearing a receipt. It called CreateJob without a
+// content_version_id - which the store refuses, because a job must point at
+// the exact text a render was made from - the loop logged every failure and
+// continued, and the response still read "Created 0 generation jobs" with a
+// 202 in front of it. Any list of ids therefore "succeeded" having queued
+// nothing, and the only signal was a zero in a body phrased as a success.
+//
+// It now runs the same sequence the single-item endpoint above runs - resolve,
+// editorial gate, snapshot the text, record, enqueue - per item, bounded by the
+// same GPU budget, and reports each item's outcome so "0 queued, 12 refused" is
+// a result an operator can act on instead of a mystery.
 func (h *Handler) adminTriggerBatchGeneration(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		ConfessionIDs []string `json:"confession_ids"`
 		VoiceID       string   `json:"voice_id"`
 		Provider      string   `json:"provider,omitempty"`
 		QualityTier   string   `json:"quality_tier,omitempty"`
+		Language      string   `json:"language,omitempty"`
 	}
 
 	if err := httpx.DecodeJSON(r, &req); err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-
-	// Validate required fields
 	if len(req.ConfessionIDs) == 0 {
 		httpx.WriteError(w, http.StatusBadRequest, "confession_ids is required")
+		return
+	}
+	if len(req.ConfessionIDs) > maxBatchItems {
+		httpx.WriteError(w, http.StatusBadRequest, "a batch is limited to 10000 confessions")
 		return
 	}
 	if req.VoiceID == "" {
 		httpx.WriteError(w, http.StatusBadRequest, "voice_id is required")
 		return
 	}
-
-	// Get the authenticated user
+	if req.Language == "" {
+		req.Language = "en"
+	}
+	if req.QualityTier == "" {
+		req.QualityTier = "standard"
+	}
 	actor := ""
 	if c := auth.FromContext(r); c != nil {
 		actor = c.Sub
 	}
 
-	// Set defaults
-	if req.Provider == "" {
-		req.Provider = "default"
+	// Same guards as the single endpoint: a batch is not a licence to queue work
+	// this server cannot run, and it must not answer 202 when nothing can.
+	if h.pipeline == nil {
+		httpx.WriteError(w, http.StatusServiceUnavailable, "voice synthesis is not configured on this server")
+		return
 	}
-	if req.QualityTier == "" {
-		req.QualityTier = "standard"
+	if h.queue == nil || !h.queueDurable {
+		httpx.WriteError(w, http.StatusServiceUnavailable,
+			"the durable background queue is not configured on this server; use POST /admin/audio/generate to render synchronously")
+		return
 	}
 
-	// Create jobs for each confession
-	var createdJobs []string
-	for _, confessionID := range req.ConfessionIDs {
-		job, _, err := h.audio.CreateJob(r.Context(), &models.AudioJob{
-			ConfessionID:   confessionID,
-			VoiceID:        req.VoiceID,
-			Provider:       req.Provider,
-			QualityTier:    req.QualityTier,
-			Status:         string(audio.JobQueued),
-			MaxAttempts:    3,
-			RequestedBy:    actor,
-			IdempotencyKey: fmt.Sprintf("%s-%s-batch", confessionID, req.VoiceID),
-		})
+	type itemResult struct {
+		ConfessionID string `json:"confession_id"`
+		JobID        string `json:"job_id,omitempty"`
+		Status       string `json:"status,omitempty"`
+		Outcome      string `json:"outcome"` // queued | reused | refused
+		Error        string `json:"error,omitempty"`
+		Note         string `json:"note,omitempty"`
+	}
+
+	// Resolve and gate everything first, read-only. The budget needs the texts,
+	// and a batch that cannot fit the budget must not have touched a single row.
+	type pending struct {
+		conf    *models.Confession
+		id      string
+		variant string
+		text    string
+	}
+	items := make([]pending, 0, len(req.ConfessionIDs))
+	results := make([]itemResult, 0, len(req.ConfessionIDs))
+	for _, id := range req.ConfessionIDs {
+		conf, err := h.cont.ConfessionByID(r.Context(), id)
 		if err != nil {
-			log.Printf("Failed to create batch job for confession %s: %v", confessionID, err)
-			// Continue with other confessions
+			results = append(results, itemResult{ConfessionID: id, Outcome: "refused", Error: "confession not found"})
 			continue
 		}
-		createdJobs = append(createdJobs, job.ID)
+		switch conf.Status {
+		case "approved", "published", "ready":
+		default:
+			results = append(results, itemResult{ConfessionID: id, Outcome: "refused",
+				Error: "confession is " + conf.Status + "; an editor must approve it before audio can be generated"})
+			continue
+		}
+		text := textForVariant(conf, "")
+		if strings.TrimSpace(text) == "" {
+			results = append(results, itemResult{ConfessionID: id, Outcome: "refused", Error: "confession has no text for this variant"})
+			continue
+		}
+		items = append(items, pending{conf: conf, id: id, text: text})
 	}
 
-	// Record audit
-	if err := h.audio.RecordAudit(r.Context(), actor, "audio_generation_batch",
-		"audio_generation_job", "",
-		fmt.Sprintf("confessions=%d, voice=%s", len(req.ConfessionIDs), req.VoiceID),
+	texts := make([]string, len(items))
+	for i, it := range items {
+		texts[i] = it.text
+	}
+	if _, err := h.checkBatchBudget(r.Context(), req.VoiceID, texts); err != nil {
+		var be *budgetExceeded
+		if errors.As(err, &be) {
+			h.writeBudgetError(w, r, req.VoiceID, actor, be)
+			return
+		}
+		log.Printf("batch budget check failed for voice %s: %v", req.VoiceID, err)
+		httpx.WriteError(w, http.StatusInternalServerError, "could not evaluate the GPU budget")
+		return
+	}
+
+	queued, reused, refused := 0, 0, len(results)
+	for _, it := range items {
+		// Snapshot the text now, exactly as the single endpoint does: an edit
+		// between queueing and rendering must not change what the audio says
+		// while the job record still points at the approved version.
+		version, err := h.cont.EnsureVersion(r.Context(), it.conf.ID, it.conf.Title,
+			it.conf.ShortText, it.conf.MediumText, it.conf.LongText, it.conf.Language, actor)
+		if err != nil {
+			refused++
+			results = append(results, itemResult{ConfessionID: it.id, Outcome: "refused", Error: "could not snapshot the confession text"})
+			continue
+		}
+		job, created, err := h.audio.CreateJob(r.Context(), &models.AudioJob{
+			ConfessionID: it.id, ContentVersionID: version.ID, VariantID: it.variant, VoiceID: req.VoiceID,
+			Provider: providerName(h.pipeline), QualityTier: req.QualityTier, Status: string(audio.JobQueued),
+			MaxAttempts: jobs.DefaultMaxAttempts, RequestedBy: actor,
+			IdempotencyKey: generationKey(it.id, it.variant, req.VoiceID, req.Language, version.ID, false),
+		})
+		if err != nil {
+			refused++
+			results = append(results, itemResult{ConfessionID: it.id, Outcome: "refused", Error: err.Error()})
+			continue
+		}
+		if !created {
+			reused++
+			results = append(results, itemResult{ConfessionID: it.id, JobID: job.ID, Status: job.Status, Outcome: "reused",
+				Note: "this render was already requested; see the job for its status"})
+			continue
+		}
+		if _, err := h.queue.Enqueue(r.Context(), jobs.Job{
+			Type: workers.TypeAudioGenerate,
+			Payload: map[string]any{"confession_id": it.id, "variant_id": it.variant, "voice_id": req.VoiceID,
+				"language": req.Language, "actor": actor},
+			IdempotencyKey: "job:" + job.ID,
+			MaxAttempts:    jobs.DefaultMaxAttempts,
+		}); err != nil && !errors.Is(err, jobs.ErrDuplicateJob) {
+			log.Printf("Failed to enqueue generation job %s: %v", job.ID, err)
+			// The row exists and nothing will run it. The job lifecycle has no
+			// queued -> failed edge, so it cannot be closed from here without
+			// widening that; recording the item as unqueued is the honest
+			// answer until it does.
+			refused++
+			results = append(results, itemResult{ConfessionID: it.id, JobID: job.ID, Status: job.Status, Outcome: "refused",
+				Error: "the job was recorded but could not be queued; retry or use POST /admin/audio/generate"})
+			continue
+		}
+		queued++
+		results = append(results, itemResult{ConfessionID: it.id, JobID: job.ID, Status: job.Status, Outcome: "queued"})
+	}
+
+	if err := h.audio.RecordAudit(r.Context(), actor, "audio_generation_batch", "audio_generation_job", "",
+		fmt.Sprintf("confessions=%d, queued=%d, reused=%d, refused=%d, voice=%s, provider=%s",
+			len(req.ConfessionIDs), queued, reused, refused, req.VoiceID, providerName(h.pipeline)),
 		"ok"); err != nil {
 		log.Printf("Failed to record audit: %v", err)
 	}
 
-	httpx.WriteJSON(w, http.StatusAccepted, map[string]any{
-		"message":         fmt.Sprintf("Created %d generation jobs", len(createdJobs)),
-		"job_ids":         createdJobs,
+	// A batch that queued nothing *and* found nothing already queued is not a
+	// request being processed, and must not be reported as one. Reuse alone is
+	// success: the render is queued, just not by this call.
+	status := http.StatusAccepted
+	if queued == 0 && reused == 0 {
+		status = http.StatusUnprocessableEntity
+	}
+	httpx.WriteJSON(w, status, map[string]any{
+		"message": fmt.Sprintf("%d queued, %d reused, %d refused of %d requested",
+			queued, reused, refused, len(req.ConfessionIDs)),
+		"queued": queued, "reused": reused, "refused": refused,
 		"total_requested": len(req.ConfessionIDs),
-		"success_count":   len(createdJobs),
-		"fail_count":      len(req.ConfessionIDs) - len(createdJobs),
+		"items":           results,
 	})
 }
 

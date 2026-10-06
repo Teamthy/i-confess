@@ -20,6 +20,10 @@ import (
 type fakeGPUWorker struct {
 	calls   atomic.Int32
 	lastReq atomic.Value // string
+	// reportCosts mirrors a real worker's X-Inference-Seconds / X-Worker-Seconds
+	// headers. Cleared in one test to cover the other half of the contract: a
+	// worker that measures nothing must leave the cost columns NULL, not 0.
+	reportCosts bool
 }
 
 func (f *fakeGPUWorker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -36,6 +40,10 @@ func (f *fakeGPUWorker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Sample-Rate", "8000")
 		w.Header().Set("X-Duration-Ms", "3000")
 		w.Header().Set("X-Engine-Version", "3.0-test")
+		if f.reportCosts {
+			w.Header().Set("X-Inference-Seconds", "2.5")
+			w.Header().Set("X-Worker-Seconds", "3.25")
+		}
 		w.Write(synthWAV(3))
 	default:
 		http.NotFound(w, r)
@@ -53,7 +61,7 @@ type voicePlatformHarness struct {
 func newVoicePlatformHarness(t *testing.T) *voicePlatformHarness {
 	t.Helper()
 	qh := newQAHarness(t)
-	worker := &fakeGPUWorker{}
+	worker := &fakeGPUWorker{reportCosts: true}
 	ws := httptest.NewServer(worker)
 	t.Cleanup(ws.Close)
 

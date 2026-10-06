@@ -384,7 +384,7 @@ func (h *Handler) Routes() http.Handler {
 	h.route(mux, "POST /admin/audio/generate/job/{id}/retry", "audio_producer,voice_manager", "admin-audio", "Retry a failed generation job", audioMgr, h.adminRetryAudioGeneration)
 	h.route(mux, "POST /admin/audio/generate/job/{id}/cancel", "audio_producer,voice_manager", "admin-audio", "Cancel a pending generation job", audioMgr, h.adminCancelAudioGeneration)
 	h.route(mux, "GET /admin/audio/generate/stats", "audio_producer,voice_manager", "admin-audio", "Get generation statistics", audioMgr, h.adminGetAudioGenerationStats)
-	h.route(mux, "POST /admin/audio/generate/batch", "audio_producer,voice_manager", "admin-audio", "Trigger batch generation for multiple confessions", audioMgr, h.adminTriggerBatchGeneration)
+	h.route(mux, "POST /admin/audio/generate/batch", "audio_producer,voice_manager", "admin-audio", "Queue generation for each confession; already-rendered items are reused; 422 when the batch would exceed the GPU budget; 503 when no durable queue is configured", audioMgr, h.adminTriggerBatchGeneration)
 	h.route(mux, "GET /admin/audio/providers", "audio_producer,voice_manager", "admin-audio", "List available TTS providers", audioMgr, h.adminGetAudioGenerationProviders)
 
 	// ─────────────────────────────────────────────────────────────────
@@ -650,7 +650,7 @@ func (h *Handler) Routes() http.Handler {
 	h.route(mux, "POST /v1/admin/audio/generate/job/{id}/retry", "audio_producer,voice_manager", "admin-audio", "Retry a failed generation job", audioMgr, h.adminRetryAudioGeneration)
 	h.route(mux, "POST /v1/admin/audio/generate/job/{id}/cancel", "audio_producer,voice_manager", "admin-audio", "Cancel a pending generation job", audioMgr, h.adminCancelAudioGeneration)
 	h.route(mux, "GET /v1/admin/audio/generate/stats", "audio_producer,voice_manager", "admin-audio", "Get generation statistics", audioMgr, h.adminGetAudioGenerationStats)
-	h.route(mux, "POST /v1/admin/audio/generate/batch", "audio_producer,voice_manager", "admin-audio", "Trigger batch generation for multiple confessions", audioMgr, h.adminTriggerBatchGeneration)
+	h.route(mux, "POST /v1/admin/audio/generate/batch", "audio_producer,voice_manager", "admin-audio", "Queue generation for each confession; already-rendered items are reused; 422 when the batch would exceed the GPU budget; 503 when no durable queue is configured", audioMgr, h.adminTriggerBatchGeneration)
 	h.route(mux, "GET /v1/admin/audio/providers", "audio_producer,voice_manager", "admin-audio", "List available TTS providers", audioMgr, h.adminGetAudioGenerationProviders)
 
 	// RBAC & enhanced user management (v1)

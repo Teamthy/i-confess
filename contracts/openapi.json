@@ -247,7 +247,7 @@
             "bearerAuth": []
           }
         ],
-        "summary": "Trigger batch generation for multiple confessions",
+        "summary": "Queue generation for each confession; already-rendered items are reused; 422 when the batch would exceed the GPU budget; 503 when no durable queue is configured",
         "tags": [
           "admin-audio"
         ]
@@ -19927,7 +19927,7 @@
             "bearerAuth": []
           }
         ],
-        "summary": "Trigger batch generation for multiple confessions",
+        "summary": "Queue generation for each confession; already-rendered items are reused; 422 when the batch would exceed the GPU budget; 503 when no durable queue is configured",
         "tags": [
           "admin-audio"
         ]

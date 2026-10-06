@@ -104,6 +104,26 @@ of either.
 
 ---
 
+### 8. GPU spend had no ceiling and no measurement
+
+A batch of 10,000 confessions was a request the API accepted without saying what
+it would cost or checking whether it could be paid for, and `audio_generations`
+recorded no duration or seconds at all: the cost of the whole voice programme was
+unknowable after the fact as well as before it. There is now an estimate gate in
+front of queueing and measured cost behind it, with the price kept separate from
+the seconds so that an unagreed rate never turns into a rate of zero.
+
+### 9. The benchmark could not fail
+
+`voice-bench` rendered the golden set, printed numbers, and exited 0 whatever it
+heard - including three seconds of audio for a ninety-second reading. A report
+nobody can act on is a costume around an absent test, so expectations now live in
+the golden set itself (`expect` blocks) and are checked against the bytes and the
+text actually sent to the engine, with `-strict` turning a failed expectation into
+exit 2. What this can judge is signal-level: truncation, silence, clipping,
+runaway length, a broken normaliser. Speaker similarity against the minister still
+needs a model, and the report says which of the two it measured.
+
 ## IMPLEMENTATION
 
 ### One authority for the asset lifecycle
@@ -178,6 +198,41 @@ paid for. The job record makes any loss visible.
 under both `/` and `/v1/`, as the route-parity test requires.
 
 ---
+
+### Cost ceiling, and what a price means
+
+`internal/api/voice_cost.go` estimates a batch before queueing it: characters
+converted to audio-seconds at 132 wpm (or, once history exists, at the engine's
+measured GPU-seconds per audio-second), then checked against
+`VOICE_BATCH_GPU_BUDGET_SECONDS` (per batch, default 3600) and
+`VOICE_GPU_DAILY_BUDGET_SECONDS` (per UTC day, default unlimited). A refusal is
+422 with `code: "voice_budget_exceeded"`, `refused: "before_queueing"`, the
+budget, the estimate, how many items would have fit, and a `next` sentence - never
+a partial queue with a warning. After a render, the worker's
+`X-Inference-Seconds` / `X-Worker-Seconds` are stored on the generation; a worker
+that reports nothing leaves those columns NULL, and NULL stays distinct from 0 in
+every aggregate. Dollars require `VOICE_GPU_SECOND_COST_USD`; unset means
+"unpriced", so the response says `priced: false` and no USD figure is invented.
+
+`GET /v1/admin/voice-metrics` (JSON, or `?format=prometheus` for `icf_voice_*`)
+exposes seconds, metered vs unmetered render counts, cost micros and budget
+refusals. `server/k8s/deployment-prod.yaml` carries the ceilings; the price is
+left commented out on purpose.
+
+### The benchmark gate
+
+```
+go run ./cmd/voice-bench -engine cosyvoice=$ICF_WORKER_URL -runs 2 \
+  -set ../docs/voice/golden_set.json -out /tmp/bench -strict
+```
+
+Exit 0 is "every check that could run, passed"; exit 1 is "the harness could not
+judge anything" (bad flags, unreachable worker); exit 2 is "audio came back and an
+expectation on it failed". Keeping 1 and 2 distinct is the point: a CI box with no
+worker token must not read as a pass, and must not read as a truncated reading
+either. The worker-side half of the same gate is `voice-engine/tests/golden/`,
+which asserts the mastering chain's signal properties with tolerances rather than
+byte hashes, so it runs on a laptop with no GPU and no model weights.
 
 ## TESTING
 

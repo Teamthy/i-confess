@@ -7,6 +7,12 @@
 //	  -reference-transcript "Grace and peace to you." \
 //	  -scorer "python3 score.py" -out /tmp/bench
 //
+// Exit codes: 0 means every check the harness could run passed, 1 means the
+// harness itself could not produce a judgement (bad flags, unreachable worker,
+// I/O), and 2 means renders came back but at least one golden-set expectation
+// on them failed. 1 and 2 must stay distinct: "we measured nothing" is not
+// evidence for or against an engine, "we measured a truncated reading" is.
+//
 // Cloning a real person's voice requires an approved rights grant for that
 // voice (can_clone). This tool cannot see the rights registry, so it refuses
 // to use a reference unless -voice names the licensed voice and
@@ -45,6 +51,7 @@ func main() {
 	confirmed := flag.Bool("rights-confirmed", false, "confirm the voice has an approved grant permitting cloning")
 	scorer := flag.String("scorer", "", "optional quality scorer command (see bench.go)")
 	out := flag.String("out", "voice-bench-out", "output directory")
+	strict := flag.Bool("strict", false, "make a failed golden-set expectation exit 2 (for nightly/CI use); without it the failures are reported and the run still exits 0")
 	timeout := flag.Duration("timeout", 5*time.Minute, "per-render timeout")
 	flag.Parse()
 
@@ -83,7 +90,7 @@ func main() {
 		lic := reg[strings.ReplaceAll(strings.ToLower(name), "-", "")]
 		targets = append(targets, Target{Name: strings.ToLower(name), Provider: p, License: lic})
 	}
-	cfg := Config{Runs: *runs, Stream: *stream, VoiceID: *voiceID, OutDir: *out, Timeout: *timeout}
+	cfg := Config{Runs: *runs, Stream: *stream, Strict: *strict, VoiceID: *voiceID, OutDir: *out, Timeout: *timeout}
 	if *refURI != "" {
 		cfg.Reference = &voiceengine.Reference{ID: "bench-ref", VoiceID: *voiceID, URI: *refURI, Transcript: *refText, RightsOK: true}
 	}
@@ -105,6 +112,21 @@ func main() {
 	md := rep.Markdown()
 	must(os.WriteFile(filepath.Join(*out, "report.md"), []byte(md), 0o644))
 	fmt.Print(md)
+
+	// A gate has to be able to tell "no engine was reachable" from "the engine
+	// truncated scripture", so the judgement is returned as its own code.
+	failed := 0
+	for _, e := range rep.Engines {
+		failed += e.ChecksFailed
+	}
+	if failed == 0 {
+		return
+	}
+	if *strict {
+		fmt.Fprintf(os.Stderr, "voice-bench: %d golden-set expectation(s) failed; see report.md\n", failed)
+		os.Exit(2)
+	}
+	fmt.Fprintf(os.Stderr, "voice-bench: %d golden-set expectation(s) failed (not gating: rerun with -strict)\n", failed)
 }
 
 func must(err error) {
@@ -113,7 +135,9 @@ func must(err error) {
 	}
 }
 
+// fatal is a harness failure, not a verdict: the run never got far enough to
+// judge an engine, so it must not share an exit code with "checked and failed".
 func fatal(msg string) {
 	fmt.Fprintln(os.Stderr, "voice-bench:", msg)
-	os.Exit(2)
+	os.Exit(1)
 }

@@ -1804,3 +1804,173 @@ After those three, the pipeline is green end to end: `Build, vet & test`,
   timestamps), **VE-020** (no golden-audio regression set), and **VE-007's last
   inch** (a live R2 bucket, which needs credentials nobody has put in this
   environment). VE-006/007/009/012/014 are closed as described above.
+
+---
+
+# Appendix C — Remediation wave 3 (2026-10-06, `arena/70b4879a-i-confess`)
+
+This wave closes the last two engineering-shaped P3s, **VE-017** (cost) and
+**VE-020** (golden audio), plus a dead endpoint found while doing VE-017. It does not
+touch **VE-019** (word timestamps need a forced-aligner, i.e. another model, not a
+week of Go) or **VE-007's** last inch (a live R2 bucket still needs credentials nobody
+has put in this environment). As in Appendix B, a Go 1.27.1 toolchain, PostgreSQL 17,
+Redis and the worker venv were available, so everything below was compiled and run.
+
+## VE-017 — cost is measured, and a batch can now be refused before it is queued
+
+- **Worker → API.** The worker times its own stages and answers `/v1/synthesize` with
+  `X-Inference-Seconds` and `X-Worker-Seconds`. `HTTPProvider` parses them into
+  `GenerateResult`; a missing header is *unreported*, never zero. The streaming route
+  deliberately carries neither (its first byte is what is being optimised; its total is
+  not attributable to inference).
+- **Storage.** Migration `0033_voice_cost.sql` adds nullable `inference_seconds`,
+  `worker_seconds` and `cost_usd_micros` to `voice_generations`, and
+  `est_inference_seconds`, `est_cost_usd_micros`, `estimate_basis` to `voice_batches` —
+  the *planned* number survives so the gate is auditable after the fact, and the price is
+  stored rather than derived so re-pricing cannot rewrite what an operator was told. Audio
+  length needed no column (`duration_ms` was already recorded). NULL means "this render's
+  cost was never measured"; aggregates treat unmetered separately
+  (`icf_voice_metered_renders_total` vs the render count) rather than as free. The migration
+  also adds `(voice_id, created_at)`, which the daily-spend sum needed and the existing
+  `(voice_id, status)` index could not serve.
+- **Estimate before queueing** (`internal/api/voice_cost.go`). Text → audio-seconds at
+  132 wpm markup-aware (a `{pause 700}` counts as audio, because the DSP renders it), then
+  × the engine's **measured** GPU-seconds-per-audio-second once completed renders exist.
+  The basis is printed in every response — `measured:0.8333 GPU-seconds per audio-second
+  from N completed render(s)` or `assumed:132 words/min … x1.0` — so an estimate is never
+  mistaken for a bill.
+- **Ceilings.** `VOICE_BATCH_GPU_BUDGET_SECONDS` (default 3600 GPU-seconds per batch) and
+  `VOICE_GPU_DAILY_BUDGET_SECONDS` (default 0 = unlimited) are checked *before* a single
+  job row is written, on both the ops batch endpoint and the legacy batch endpoint. A
+  refusal is 422 with `code:"voice_budget_exceeded"`, `refused:"before_queueing"`, the
+  ceiling, today's spend, the estimate, `items_fit` (how many could have been queued),
+  `priced`, and a `next` sentence naming the env var. Nothing partial is queued; the
+  attempt is recorded in the audit log.
+- **Price stays separate from seconds.** `VOICE_GPU_SECOND_COST_USD` is *unset* in
+  `server/k8s/deployment-prod.yaml`, commented as such: no price means dollars are not
+  reported, whereas 0 would assert in metrics and reports that A100 time is free.
+  `production_allowed` was again not touched.
+- **Metrics.** `GET /v1/admin/voice-metrics` (JSON `cost` block, or `?format=prometheus`)
+  exposes `icf_voice_inference_seconds_total`, `icf_voice_worker_seconds_total`,
+  `icf_voice_audio_seconds_total` (floats — see the bug list), `icf_voice_metered_renders_total`,
+  `icf_voice_cost_usd_micros_total`, `icf_voice_budget_refusals_total`.
+
+**What this is not:** accounting. Only completed renders record actuals, so GPU time
+burned by attempts that die mid-model is planned for but not metered; there is no
+per-voice or per-minister budget; the daily ceiling is off by default until the daily GPU
+allocation is agreed; and the cache-saving figure is labelled an estimate because it is
+derived from duration arithmetic, not billed.
+
+## VE-020 — golden audio, both sides of the boundary
+
+- **Worker side (no GPU, no weights):** `voice-engine/icf_worker/golden.py` plus
+  `tests/golden/manifest.json` (10 cases from `docs/voice/golden_set.json`, rendered with
+  the dev tone) asserts exact durations and *tolerances* on loudness, true peak, RMS,
+  spectral flatness and sibilance. Tolerances rather than byte hashes because a hash is
+  only reproducible on the machine that made it; the provenance note explaining that is
+  itself asserted by a test, so the file cannot quietly become a golden master.
+- **Harness side:** golden set bumped to `version: 2` with a per-prompt `expect` block —
+  audio-second bounds derived from word count (110–220 wpm, ×0.8/×1.25 slack),
+  `max_real_time_factor`, `min_peak_dbfs`, `max_silence_ratio`, `no_clipping`, and
+  `normalised_contains`. `LoadGoldenSet` refuses a broken oracle (inverted or negative
+  bounds, an implied rate outside 40–600 wpm, a typo'd key — the last is the one a
+  reviewer cannot see in a diff, since JSON silently drops what the struct does not know).
+- `cmd/voice-bench` now decodes the PCM it receives, measures peak / clipping / 20 ms-window
+  silence, and records per-run `ChecksFailed` plus per-engine counts and
+  `failed_by_prompt`. `report.md` has a "Checks failed" column and a "Failed expectations"
+  section naming each measured value against its bound.
+- **Exit codes:** `-strict` makes the run exit **2** for "audio came back and an
+  expectation failed", while **1** stays "the harness could not judge anything" (`fatal`
+  moved off 2 for that reason). The report records `strict` so a reader knows whether the
+  failures in it were ever actionable.
+- **What it still cannot do:** answer "does it sound like the minister". The oracle is
+  signal-level — truncation, silence, clipping, runaway length, a broken normaliser.
+  `ICF_VOICE_SCORE` still requires `-scorer`, and the report still says "not measured".
+
+## Found while doing VE-017: the legacy batch endpoint queued nothing
+
+Not one of the §37 findings — it surfaced when the ceiling had to be applied to a second
+call site. `POST /admin/audio/generate/batch` iterated confession ids, counted them, and
+answered 200 `{"total":N,"queued":N}` without resolving a voice, checking rights, or
+enqueueing a job. It now does the single-item path per confession (resolve → editorial
+gate → non-empty variant text → budget → `EnsureVersion` → job row → durable enqueue),
+reports per-item `queued|reused|refused` with the reason, 422s when nothing could be
+queued, and 503s with a pointer to the synchronous endpoint when the server has no durable
+queue. It was *not* deleted or 410'd: the route is contracted in `contracts/openapi.json`,
+`design/routes.json` and the webapp, so a lie with a status code is worse than a fixed
+no-op. The refusal message for a job row that could not be enqueued says so literally —
+`audio_generation_jobs` only permits `queued → processing|cancelled`, so there is no
+honest "failed" transition available to a handler at that point.
+
+## Contracts, and one drift this wave chose not to paper over
+
+`contracts/openapi.json` regenerated for the two new batch summaries
+(`go run ./cmd/genspec ../contracts/openapi.json`); the API package's staleness test
+passes. Regenerating `design/routes.json` via `make routes` turned up a pre-existing hole:
+the committed export was **100 routes behind** the live router (508 vs 608) — every
+voice-platform admin and user route from waves 1–2 had been added without re-exporting.
+Exporting it faithfully then fails `design/test_ia.py`:
+
+> FAIL every user-facing endpoint has a screen — 9 unreferenced: `GET /audio/jobs/{id}`,
+> `GET /minister-voices`, `GET /voice-sessions/{id}`, `GET /voices/{id}`,
+> `GET /voices/{id}/styles`, `POST /audio/jobs/{id}/cancel`, `POST /voice-sessions`,
+> `POST /voices/generate`, `POST /voices/stream`
+
+That is a real product gap — the voice platform has API surface and no screen that calls
+it — and it is not this wave's to answer. `design/routes.json` is therefore left as it was,
+and the drift is recorded here instead of being fixed by inventing screens in `ia.json` or
+by relaxing the check, both of which would make the check decorative.
+
+## Bugs this wave's tests found
+
+1. **A batch that reused everything returned 422.** "Nothing new queued" read as failure;
+   reuse is success, so the rule is `queued == 0 && reused == 0`, and reuse now reports in
+   `note`, not `error`.
+2. **Float seconds truncated in Prometheus output.** The counters were emitted through an
+   int64 path, so 2.5 s became 2 and the sum depended on the scrape count. Written as `%g`.
+3. **A tautological oracle test.** The first golden-set test normalised the text *itself*
+   and compared it to the expectation, so a harness that stopped normalising the request
+   still passed — mutation 2a below. The assertion now reads the request body the fake worker
+   actually received.
+4. **`checks()` on a helper-built WAV.** A hand-rolled writer put the `fmt ` chunk size over
+   the chunk id; the analyser's refusal to parse a malformed file surfaced as
+   "no decodable audio" rather than as a fake pass, which is the right failure direction and
+   is now pinned by a test on garbage input.
+
+## Verification (every line run on the shipped tree)
+
+| Command | Result |
+|---|---|
+| `gofmt -l .` / `go build ./...` / `go vet ./...` | clean |
+| `go test -count=1 ./...` (Postgres 17 + Redis) | all packages ok (api 59.5 s) |
+| `go test -count=1 ./cmd/voice-bench/` | `ok`, 6 tests / 18 subtests |
+| `go test -count=1 -run "Cost\|Budget\|Spend" ./internal/api/` | `ok 2.048s` |
+| `voice-engine`: `pytest -q tests` (`ICF_WORKER_DEV=1`) | 78 passed, 1 skipped |
+| `voice-engine`: `pytest -q tests/test_golden_audio.py` | 8 passed |
+| `python3 design/test_ia.py`, `test_design.py` | PASS 40/8/163; PASS 132 tokens |
+| `python3 scripts/check_dart_symbols.py` | PASSED 140/140 |
+| `python3 scripts/check_model_licenses.py` | OK; all four engines still `production_allowed=false` |
+| `pip-audit` / `check_engine_audit.py` with audit files | not run here (no pip-audit in this sandbox); CI-only, baseline untouched |
+
+**Mutations, each then reverted:** loudness target `-20` → every golden case fails on
+loudness/true-peak/RMS; extra words appended to a case's chunk text → `duration_ms 7800 → 8820`
+and exactly that case fails; `ICF_DSP_DEESS=0` → chain string differs; analyser stops
+measuring peak/silence/clipping → 3 subtests fail; `checks()` returns nil → 2 tests fail;
+harness stops normalising before chunking → wire test fails printing
+`read psalm 23 verses 1 to 6, then john 3:16, and romans 8:28…` — the audible defect, named
+in the CI log; a golden phrase no engine can say → the file-validation test fails; a worker
+that reports no cost headers → `cost_usd_micros`/`inference_seconds` stay NULL and
+`priced:false`.
+
+## Still open after this wave
+
+- **P0-1 / P0-2** unchanged and unchanged in kind: no licence-cleared engine, no sample of
+  real speech. Every number above describes our audio path, not the minister's voice.
+- **VE-019** (word timestamps) needs forced alignment; not attempted.
+- **VE-007** last inch: a live R2 bucket still needs credentials.
+- **VE-018** still half-gated: `pip-audit` blocks, `govulncheck` advises.
+- **New:** `design/routes.json` is 100 routes behind the live table, and closing that gap
+  requires deciding which screens own the nine user-facing voice endpoints. Until then the
+  IA check is green for the wrong reason — it is checking a stale export.
+- The ceiling's *defaults* are a guess about hardware (3600 GPU-seconds). They should be
+  re-set from the first week of real `icf_voice_inference_seconds_total`, not defended.
