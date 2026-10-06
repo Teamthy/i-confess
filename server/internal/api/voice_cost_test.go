@@ -191,6 +191,15 @@ func TestBatchOverGpuBudgetIsRefusedBeforeAnythingIsQueued(t *testing.T) {
 	if !found {
 		t.Fatalf("no budget refusal in the audit log: %v", audit["entries"])
 	}
+	// And in the metric a dashboard will page on. Asserted last because the
+	// counter is process-global: a pass here proves *this* refusal incremented
+	// it, which a bare "> 0" would not.
+	rec = h.do(t, "GET", "/v1/admin/voice-metrics?format=prometheus", nil, h.admin)
+	// A dashboard pages on this counter; it is only meaningful if the same code
+	// path that answers 422 is what moved it.
+	if metricCounter(t, rec.Body.String(), "icf_voice_budget_refusals_total") < 1 {
+		t.Fatalf("icf_voice_budget_refusals_total did not move: %s", rec.Body.String())
+	}
 }
 
 func TestBatchRecordsPlannedSpendThenActualSpend(t *testing.T) {

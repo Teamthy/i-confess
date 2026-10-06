@@ -1932,7 +1932,16 @@ by relaxing the check, both of which would make the check decorative.
    and compared it to the expectation, so a harness that stopped normalising the request
    still passed — mutation 2a below. The assertion now reads the request body the fake worker
    actually received.
-4. **`checks()` on a helper-built WAV.** A hand-rolled writer put the `fmt ` chunk size over
+4. **A cost counter that could not move, caught by CI and not by this sandbox.**
+   `voiceMetricsSet.budgetRefused()` existed, was rendered in the Prometheus output, and was
+   never called — `icf_voice_budget_refusals_total` would have sat at zero on the dashboard
+   that pages on it, which is the decorative-gate failure mode in its purest form: the
+   metric exists, the help text exists, the number is a lie. `golangci-lint`'s `unused`
+   found it in one line; `go vet`, `go build` and 59 seconds of API tests did not. The
+   counter is now incremented inside `writeBudgetError` — the one place a refusal becomes
+   visible to a client — and the budget test asserts the counter moved, so deleting the
+   call fails the suite (verified: `icf_voice_budget_refusals_total did not move`).
+5. **`checks()` on a helper-built WAV.** A hand-rolled writer put the `fmt ` chunk size over
    the chunk id; the analyser's refusal to parse a malformed file surfaced as
    "no decodable audio" rather than as a fake pass, which is the right failure direction and
    is now pinned by a test on garbage input.

@@ -312,7 +312,7 @@ func fakeWorker(t *testing.T, truncate bool, floorSeconds float64, sentText *str
 			}
 			_ = json.NewDecoder(r.Body).Decode(&req)
 			words := 0
-			var got []string
+			got := make([]string, 0, len(req.Chunks))
 			for _, c := range req.Chunks {
 				words += len(strings.Fields(c.Text))
 				got = append(got, c.Text)

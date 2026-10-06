@@ -237,6 +237,10 @@ func (b *budgetExceeded) Error() string {
 // names the number that fits, because "no" without a threshold the operator can
 // act on just produces a smaller request and the same conversation.
 func (h *Handler) writeBudgetError(w http.ResponseWriter, r *http.Request, voiceID, actor string, b *budgetExceeded) {
+	// Counted here rather than at each call site: this is the one place a
+	// refusal becomes visible to a client, so icf_voice_budget_refusals_total
+	// cannot drift out of step with the 422s that were actually sent.
+	voiceMetrics.budgetRefused()
 	_ = h.vplat.AppendRightsAudit(r.Context(), store.RightsAuditEntry{VoiceID: voiceID, Actor: actor,
 		Action: "VOICE_BATCH_REFUSED_BUDGET", Decision: "denied", Reason: "budget", Detail: b.Error(),
 		RemoteAddr: clientIP(r)})
