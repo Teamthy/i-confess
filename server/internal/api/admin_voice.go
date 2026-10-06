@@ -18,6 +18,7 @@ import (
 	"github.com/Teamthy/i-confess/internal/models"
 	"github.com/Teamthy/i-confess/internal/rights"
 	"github.com/Teamthy/i-confess/internal/voice"
+	"github.com/Teamthy/i-confess/internal/voicegov"
 	"github.com/Teamthy/i-confess/internal/workers"
 )
 
@@ -56,6 +57,36 @@ func (h *Handler) rightsFor(ctx context.Context, voiceID string) (*rights.Licens
 		ProviderVoiceID:        vr.ProviderVoiceID,
 		RevocationTerms:        vr.RevocationTerms,
 	}), vr, nil
+}
+
+// voiceAuthority resolves who decides whether a voice may be synthesized, and
+// the provider-side configuration a render needs.
+//
+// The granular grant wins whenever one exists: it is the same record the GPU
+// path authorizes against, so revoking a capability there now stops a cloud
+// render too (audit VE-001). Only a voice that predates the granular model
+// falls back to the coarse record, projected faithfully into the granular shape
+// by rights.License.ToGrant, so there is a single decision function either way.
+//
+// A failure to load the grant is returned rather than swallowed: falling back
+// to the projection on a database error would answer an easier question than
+// the one that was asked, and answer it in the platform's favour.
+func (h *Handler) voiceAuthority(ctx context.Context, voiceID string, lic *rights.License) (*voicegov.Grant, string, error) {
+	providerVoiceID := ""
+	if lic != nil {
+		providerVoiceID = lic.ProviderVoiceID
+	}
+	if h.vplat == nil {
+		return lic.ToGrant(), providerVoiceID, nil
+	}
+	grant, err := h.vplat.Grant(ctx, voiceID)
+	if err != nil {
+		return nil, "", err
+	}
+	if grant != nil {
+		return grant, providerVoiceID, nil
+	}
+	return lic.ToGrant(), providerVoiceID, nil
 }
 
 // adminGetVoiceRights returns a voice's rights with a live evaluation attached,
@@ -290,6 +321,11 @@ func (h *Handler) adminGenerateAudio(w http.ResponseWriter, r *http.Request) {
 	}
 
 	lic, _, _ := h.rightsFor(r.Context(), req.VoiceID)
+	grant, providerVoiceID, err := h.voiceAuthority(r.Context(), req.VoiceID, lic)
+	if err != nil {
+		httpx.WriteError(w, http.StatusServiceUnavailable, "could not load this voice's rights")
+		return
+	}
 
 	actor := ""
 	if c := auth.FromContext(r); c != nil {
@@ -362,9 +398,10 @@ func (h *Handler) adminGenerateAudio(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res, err := h.pipeline.Generate(genCtx, lic, voice.GenerateRequest{
+	res, err := h.pipeline.Generate(genCtx, grant, voice.GenerateRequest{
 		ConfessionID: req.ConfessionID, VariantID: req.VariantID, VoiceID: req.VoiceID,
-		Language: req.Language, Text: text, Use: rights.UseSynthesis,
+		ProviderVoiceID: providerVoiceID,
+		Language:        req.Language, Text: text, Purpose: voicegov.PurposeConfession,
 		Territory: req.Territory, RequestedBy: actor, Force: req.Force,
 	})
 
@@ -376,11 +413,15 @@ func (h *Handler) adminGenerateAudio(w http.ResponseWriter, r *http.Request) {
 		if _, ferr := h.audio.FailJob(genCtx, job.ID, code, denied.Decision.Detail); ferr != nil {
 			log.Printf("audio: could not record rights refusal on job %s: %v", job.ID, ferr)
 		}
+		// An operator holding the grant needs to see the whole gap, not the
+		// first missing capability, or fixing a licence becomes a guessing
+		// game played one request at a time.
 		httpx.WriteJSON(w, http.StatusUnavailableForLegalReasons, map[string]any{
-			"error":  "voice rights do not permit this generation",
-			"reason": code,
-			"detail": denied.Decision.Detail,
-			"job_id": job.ID,
+			"error":   "voice rights do not permit this generation",
+			"reason":  code,
+			"detail":  denied.Decision.Detail,
+			"missing": denied.Decision.Missing,
+			"job_id":  job.ID,
 		})
 		return
 	}

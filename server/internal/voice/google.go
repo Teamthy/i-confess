@@ -57,6 +57,11 @@ func NewGoogle(apiKey string) *Google {
 // Name implements Provider.
 func (g *Google) Name() string { return "google" }
 
+// SelfHosted implements Provider. Cloud Text-to-Speech is a hosted third-party
+// API, so synthesis in a minister's cloned voice needs
+// can_use_third_party_infrastructure on the grant.
+func (g *Google) SelfHosted() bool { return false }
+
 type googleRequest struct {
 	Input       googleInput       `json:"input"`
 	Voice       googleVoice       `json:"voice"`

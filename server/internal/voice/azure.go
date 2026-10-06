@@ -47,6 +47,11 @@ func NewAzure(subscriptionKey, region string) *Azure {
 // Name implements Provider.
 func (a *Azure) Name() string { return "azure" }
 
+// SelfHosted implements Provider. Azure Speech is a hosted third-party API, so
+// synthesis in a minister's cloned voice needs
+// can_use_third_party_infrastructure on the grant.
+func (a *Azure) SelfHosted() bool { return false }
+
 // Synthesize implements Provider.
 func (a *Azure) Synthesize(ctx context.Context, req SynthesisRequest) (*SynthesisResult, error) {
 	if a.SubscriptionKey == "" {

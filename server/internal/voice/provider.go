@@ -25,6 +25,15 @@ type Provider interface {
 	Name() string
 	// Synthesize renders text with the given provider-side voice id.
 	Synthesize(ctx context.Context, req SynthesisRequest) (*SynthesisResult, error)
+	// SelfHosted reports whether synthesis runs on infrastructure the platform
+	// operates. It is what makes can_use_third_party_infrastructure
+	// enforceable rather than a comment: every hosted adapter answers false,
+	// and the pipeline adds that capability to the rights request before the
+	// grant is asked (audit VE-001). Sending a minister's cloned voice to a
+	// hosted API is exactly the question the capability exists to answer, and
+	// it must be answered by the code that knows where the request goes, not
+	// by whoever wires the provider up.
+	SelfHosted() bool
 }
 
 // SynthesisRequest is a single render.

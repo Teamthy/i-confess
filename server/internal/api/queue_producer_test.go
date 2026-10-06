@@ -16,7 +16,8 @@ import (
 // the other is not, and the queue is only useful if the two are told apart.
 type failingSynth struct{ err error }
 
-func (s *failingSynth) Name() string { return "failing" }
+func (s *failingSynth) Name() string     { return "failing" }
+func (s *failingSynth) SelfHosted() bool { return false }
 
 func (s *failingSynth) Synthesize(context.Context, voice.SynthesisRequest) (*voice.SynthesisResult, error) {
 	return nil, s.err
