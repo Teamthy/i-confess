@@ -249,7 +249,22 @@ jobs:
         if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
         run: |
           pip install pip-audit
+          # The worker's own dependencies: fully resolved, blocking.
           pip-audit -r requirements.txt --strict
+          # The engine manifests (VE-014) are not installed here — the image stays
+          # engine-free — so only their declared pins can be audited: --no-deps,
+          # and --disable-pip so the result does not depend on whatever happens to
+          # be installed in the runner's environment.
+          #
+          # They mirror an upstream project whose pins carry known advisories
+          # (most of them in the demo stack the manifest excludes), so --strict
+          # would be red forever and useless. Instead the known set is enumerated
+          # in voice-engine/engine-audit-baseline.json and this fails on anything
+          # NEW — a decision on the record, not an unbounded pin nobody looked at.
+          for manifest in requirements-cosyvoice.txt requirements-voxcpm.txt; do
+            pip-audit --no-deps --disable-pip --format=json -r "$manifest" -o "/tmp/audit-${manifest}.json" || true
+            python ../scripts/check_engine_audit.py "/tmp/audit-${manifest}.json"
+          done
 
       # The licence register is what stops an uncleared model reaching
       # production, so a malformed or silently-weakened register is a release

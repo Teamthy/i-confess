@@ -53,6 +53,26 @@ one warning, and reports `style_instruction: false` in `/v1/capabilities`
 thereafter. Check that flag when judging output quality — an engine quietly
 ignoring the style is exactly the failure this reporting exists to prevent.
 
+### Engine dependencies
+
+`requirements.txt` is the worker's own dependency set: numpy and scipy are enough
+to master and encode audio, not to synthesise it. The engines are supplied by the
+deployment, so their dependency sets are declared separately and installed on the
+GPU host, not in this image:
+
+| Backend | Manifest | Notes |
+|---|---|---|
+| CosyVoice | `requirements-cosyvoice.txt` | The engine repository's own pins, verbatim, including its `--extra-index-url` lines. Install in the same environment as the engine checkout. |
+| VoxCPM | `requirements-voxcpm.txt` | `voxcpm` plus a pinned torch pair. Its transitive set is unpinned upstream — freeze the resolved set once a GPU host has verified it. |
+| GPT-SoVITS | none | Runs as a separate `api_v2` service; the worker only proxies to `ICF_GPTSOVITS_API`. |
+
+None of these pins has been exercised on a GPU by CI — there is no GPU in CI and
+no licence-cleared checkpoint yet — and the Dockerfile deliberately installs none
+of them, so an uncleared engine cannot ride into the image. CosyVoice pins
+torch 2.3.1 while voxcpm requires 2.5.0 or newer: the two backends need separate
+environments, which is written down in the VoxCPM manifest because a resolver
+error on a GPU host is an expensive way to learn it.
+
 ## Deploy
 
 `Dockerfile` builds the worker; `k8s/deployment-gpu.yaml` runs it.
