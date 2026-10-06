@@ -531,9 +531,12 @@ func (h *Handler) runVoiceGeneration(ctx context.Context, p map[string]any) erro
 	if err := h.signer.Upload(ctx, key, res.Audio, meta); err != nil {
 		return fail(voiceengine.ClassStorage, err)
 	}
-	if err := h.vplat.CompleteGeneration(ctx, &store.Generation{ID: genID, ModelID: plan.Model.ID, Engine: string(res.Engine),
+	completed := &store.Generation{ID: genID, ModelID: plan.Model.ID, Engine: string(res.Engine),
 		EngineVersion: res.EngineVersion, AudioSHA256: audioHash, StorageKey: key, DurationMS: res.DurationMS,
-		FellBack: plan.FellBack, FallbackReason: plan.FallbackReason, GrantVersion: plan.Decision.GrantVersion}); err != nil {
+		FellBack: plan.FellBack, FallbackReason: plan.FallbackReason, GrantVersion: plan.Decision.GrantVersion}
+	// What the worker measured, stored alongside the asset it measured (VE-017).
+	h.recordRenderCost(completed, res, voiceCostFromEnv())
+	if err := h.vplat.CompleteGeneration(ctx, completed); err != nil {
 		return err
 	}
 	voiceMetrics.generatedIn(string(res.Engine), time.Since(started), plan.FellBack)

@@ -92,6 +92,13 @@ type GenerateResult struct {
 	Engine        Engine
 	EngineVersion string
 	ModelID       string
+	// InferenceSeconds and WorkerSeconds are the worker's own measurement of
+	// what this render cost (audit VE-017): time inside the model, and time in
+	// the whole request. Zero means "not reported", which is recorded as NULL
+	// rather than as a free render - a cloud adapter that times nothing must
+	// not end up looking cheaper than one that times nothing but said so.
+	InferenceSeconds float64
+	WorkerSeconds    float64
 }
 
 // CloneRequest registers reference audio with an engine for zero-shot use.

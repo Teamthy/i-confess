@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -13,13 +14,16 @@ import (
 	"time"
 )
 
-// Worker HTTP contract (implemented by voice-engine/inference/server.py):
+// Worker HTTP contract (implemented by voice-engine/icf_worker/server.py):
 //
 //	GET  /v1/health        -> 200 {"status":"ok"} | 503
 //	GET  /v1/capabilities  -> ProviderCapabilities JSON
 //	POST /v1/synthesize    <- GenerateRequest JSON
 //	                       -> 200 audio/wav body, headers X-Sample-Rate,
-//	                          X-Duration-Ms, X-Engine-Version
+//	                          X-Duration-Ms, X-Engine-Version, and the measured
+//	                          cost headers X-Inference-Seconds /
+//	                          X-Worker-Seconds (VE-017; absent means "not
+//	                          reported", never "cost nothing")
 //	                       -> 4xx/5xx {"error":{"class":"gpu","message":"..."}}
 //	POST /v1/clone         <- CloneRequest JSON -> CloneResult JSON
 //
@@ -96,7 +100,24 @@ func (p *HTTPProvider) Generate(ctx context.Context, req GenerateRequest) (*Gene
 	return &GenerateResult{
 		Audio: body, ContentType: resp.Header.Get("Content-Type"), SampleRate: sr, DurationMS: dur,
 		Engine: p.engine, EngineVersion: resp.Header.Get("X-Engine-Version"), ModelID: req.ModelID,
+		InferenceSeconds: headerSeconds(resp.Header, "X-Inference-Seconds"),
+		WorkerSeconds:    headerSeconds(resp.Header, "X-Worker-Seconds"),
 	}, nil
+}
+
+// headerSeconds reads a measured duration header. Anything unreadable, empty
+// or negative becomes 0, which the caller records as NULL: an unreported cost
+// must never be mistaken for a render that cost nothing.
+func headerSeconds(h http.Header, key string) float64 {
+	v := strings.TrimSpace(h.Get(key))
+	if v == "" {
+		return 0
+	}
+	f, err := strconv.ParseFloat(v, 64)
+	if err != nil || math.IsNaN(f) || math.IsInf(f, 0) || f < 0 {
+		return 0
+	}
+	return f
 }
 
 // Clone implements VoiceProvider.

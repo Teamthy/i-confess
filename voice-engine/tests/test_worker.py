@@ -310,6 +310,45 @@ def test_synthesize_returns_mastered_provenanced_wav(worker):
     assert float(resp.headers["X-True-Peak-dBTP"]) <= -0.9
 
 
+def test_synthesize_reports_measured_seconds(worker):
+    """VE-017: cost telemetry, measured rather than estimated.
+
+    The API prices a render from these two numbers, so they have to be
+    observations and not decoration: non-negative, nested (the request cannot
+    take less time than the inference inside it), and responsive to how much
+    work was asked for.
+    """
+
+    def secs(url, text):
+        resp = call(url, {"chunks": [{"text": text}], "params": {}})
+        resp.read()
+        return float(resp.headers["X-Inference-Seconds"]), float(resp.headers["X-Worker-Seconds"])
+
+    short_inf, short_all = secs(worker + "/v1/synthesize", "Grace and peace.")
+    long_inf, long_all = secs(worker + "/v1/synthesize", "Be still and know. " * 120)
+    for inf, all_ in ((short_inf, short_all), (long_inf, long_all)):
+        assert inf >= 0 and all_ >= 0
+        assert all_ >= inf, "a request cannot be shorter than the inference inside it"
+    assert long_inf > short_inf, "inference seconds did not move with the work: it is a constant"
+    assert long_all > short_all
+
+
+def test_stream_carries_no_cost_header(worker):
+    """Live preview is metered nowhere, and that is stated rather than implied.
+
+    A total cannot be reported before it is spent, and the render is discarded
+    rather than stored, so the stream path deliberately has no cost header. If
+    someone adds one, this test is where the contract gets re-read.
+    """
+    req = urllib.request.Request(worker + "/v1/synthesize/stream",
+                                 data=json.dumps({"chunks": [{"text": "Grace and peace."}]}).encode(),
+                                 headers={"Authorization": "Bearer s3cret"})
+    resp = urllib.request.urlopen(req)
+    resp.read()
+    assert "X-Inference-Seconds" not in resp.headers
+    assert "X-Worker-Seconds" not in resp.headers
+
+
 def test_errors_are_classified(worker):
     with pytest.raises(urllib.error.HTTPError) as e:
         call(worker + "/v1/synthesize", {"chunks": []})

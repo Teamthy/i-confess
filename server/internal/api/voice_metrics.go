@@ -28,6 +28,15 @@ type voiceMetricsSet struct {
 	queueWait latency             // enqueue -> worker start
 	firstByte latency             // stream request -> first audio byte
 	failed    map[string]int64    // by error class
+
+	// Measured cost (VE-017). Seconds are summed from what workers reported,
+	// not from a model: a deployment whose workers report nothing keeps these at
+	// zero and sees `metered: 0` alongside, which is the difference between
+	// "this is cheap" and "nobody measured it".
+	infSeconds, workSeconds, audioSeconds float64
+	metered                               int64
+	costMicros                            int64
+	budgetRefusals                        int64
 }
 
 type latency struct {
@@ -117,6 +126,29 @@ func (m *voiceMetricsSet) streamStarted(ttfb time.Duration) {
 	m.mu.Unlock()
 }
 
+// cost records one completed render's measured cost. micros is nil when the
+// deployment has no GPU price configured, which keeps "unpriced" distinct from
+// "free" in every view of these numbers.
+func (m *voiceMetricsSet) cost(inferenceSeconds, workerSeconds, audioSeconds float64, micros *int64) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if inferenceSeconds > 0 {
+		m.metered++
+	}
+	m.infSeconds += inferenceSeconds
+	m.workSeconds += workerSeconds
+	m.audioSeconds += audioSeconds
+	if micros != nil {
+		m.costMicros += *micros
+	}
+}
+
+func (m *voiceMetricsSet) budgetRefused() {
+	m.mu.Lock()
+	m.budgetRefusals++
+	m.mu.Unlock()
+}
+
 // snapshot is the JSON view.
 func (m *voiceMetricsSet) snapshot() map[string]any {
 	m.mu.Lock()
@@ -140,6 +172,27 @@ func (m *voiceMetricsSet) snapshot() map[string]any {
 	if t := ok + failed; t > 0 {
 		successRate = float64(ok) / float64(t)
 	}
+	// Cost view (VE-017). Every field here is measured by a worker and summed;
+	// the one exception is named as an estimate inside the payload.
+	cost := map[string]any{
+		"inferenceSeconds": round2(m.infSeconds), "workerSeconds": round2(m.workSeconds),
+		"audioSeconds": round2(m.audioSeconds), "metered": m.metered,
+		"priced": m.costMicros > 0, "budgetRefusals": m.budgetRefusals,
+	}
+	if m.metered > 0 {
+		cost["meanInferenceSeconds"] = round2(m.infSeconds / float64(m.metered))
+	}
+	if m.metered > 0 && m.audioSeconds > 0 && m.infSeconds > 0 {
+		cost["secondsPerAudioSecond"] = round4(m.infSeconds / m.audioSeconds)
+		if m.costMicros > 0 {
+			usd := float64(m.costMicros) / 1e6
+			cost["costUSD"] = round6(usd)
+			cost["costPerAudioMinuteUSD"] = round6(usd / m.audioSeconds * 60)
+			saved := float64(m.cacheHits) * (m.infSeconds / float64(m.metered))
+			cost["estimatedCacheSavingUSD"] = round6(usd * saved / m.infSeconds)
+			cost["estimatedCacheSavingBasis"] = "cache hits x mean inference seconds per metered render; an estimate, not a bill"
+		}
+	}
 	return map[string]any{
 		"cacheHits": m.cacheHits, "cacheMisses": m.cacheMisses, "cacheHitRate": round2(hitRate),
 		"generated": ok, "failed": failed, "failedByClass": fails, "successRate": round2(successRate),
@@ -147,6 +200,7 @@ func (m *voiceMetricsSet) snapshot() map[string]any {
 		"rightsRefusals": m.rightsRefusals, "contentRefusals": m.contentRefusals,
 		"queueWaitMeanMs": round2(m.queueWait.meanMS()), "queueWaitMaxMs": m.queueWait.MaxMS,
 		"streams": m.streams, "streamFirstByteMeanMs": round2(m.firstByte.meanMS()),
+		"cost": cost,
 	}
 }
 
@@ -164,6 +218,18 @@ func (m *voiceMetricsSet) prometheus() string {
 	counter("icf_voice_content_refusals_total", "Requests refused by the script safety floor.", m.contentRefusals)
 	counter("icf_voice_fallbacks_total", "Renders produced by an approved fallback model.", m.fallbacks)
 	counter("icf_voice_streams_total", "Live preview streams started.", m.streams)
+	// Seconds are counters in float, not int64: truncating a 2.5 s render to 2
+	// per scrape would make the sum drift with the number of scrapes, which is
+	// a strange property for a number whose only job is to be added up.
+	counterF := func(name, help string, v float64) {
+		fmt.Fprintf(&b, "# HELP %s %s\n# TYPE %s counter\n%s %g\n", name, help, name, name, v)
+	}
+	counterF("icf_voice_inference_seconds_total", "Seconds workers reported spending inside the model: measured, not modelled.", m.infSeconds)
+	counterF("icf_voice_worker_seconds_total", "Seconds workers spent on synthesis end to end, mastering and encoding included.", m.workSeconds)
+	counterF("icf_voice_audio_seconds_total", "Seconds of audio produced.", m.audioSeconds)
+	counter("icf_voice_metered_renders_total", "Completed renders whose worker reported inference seconds. Fewer than the total means unmeasured engines, not free ones.", m.metered)
+	counter("icf_voice_cost_usd_micros_total", "GPU time allocated to completed renders at the configured price. Absent price means unpriced, not free.", m.costMicros)
+	counter("icf_voice_budget_refusals_total", "Bulk requests refused by the GPU budget ceiling before anything was queued.", m.budgetRefusals)
 
 	b.WriteString("# HELP icf_voice_failures_total Failed renders by error class.\n# TYPE icf_voice_failures_total counter\n")
 	classes := make([]string, 0, len(m.failed))
@@ -201,6 +267,12 @@ func (m *voiceMetricsSet) prometheus() string {
 }
 
 func round2(f float64) float64 { return float64(int64(f*100+0.5)) / 100 }
+
+// round4 and round6 keep the derived cost figures readable without printing
+// float noise: a rate like 0.17 GPU-seconds per audio-second is meaningful,
+// 0.17000000000000004 is not.
+func round4(f float64) float64 { return float64(int64(f*1e4+0.5)) / 1e4 }
+func round6(f float64) float64 { return float64(int64(f*1e6+0.5)) / 1e6 }
 
 func (h *Handler) adminVoiceMetrics(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Query().Get("format") == "prometheus" {
