@@ -13,10 +13,14 @@ benchmarking tool (see docs/VOICESTUDIO_LICENSE.md), never linked in here.
 
 from __future__ import annotations
 
+import hashlib
+import logging
 import os
 from pathlib import Path
 
 import numpy as np
+
+log = logging.getLogger("icf_worker.engines")
 
 
 class EngineError(Exception):
@@ -29,9 +33,20 @@ class EngineError(Exception):
 
 class Engine:
     name = "base"
-    version = "0"
+    # base_version is the upstream generation ("0", "1", "v2"); `version` adds a
+    # fingerprint of the checkpoint actually in use. See checkpoint_revision.
+    base_version = "0"
     sample_rate = 24000
     capabilities: dict = {}
+
+    def checkpoint_paths(self) -> tuple[str, ...]:
+        """Where this backend's weights live, for version fingerprinting."""
+        return ()
+
+    @property
+    def version(self) -> str:
+        rev = checkpoint_revision(*self.checkpoint_paths())
+        return f"{self.base_version}+{rev}" if rev else self.base_version
 
     def synthesize_chunk(self, text: str, *, reference: dict | None, checkpoint: Path | None,
                          params: dict, chunk: dict) -> np.ndarray:
@@ -39,6 +54,56 @@ class Engine:
 
     def healthy(self) -> bool:
         return True
+
+    def runtime_capabilities(self) -> dict:
+        """Capabilities that are only known once the engine is in use."""
+        return {}
+
+
+def checkpoint_revision(*paths: str) -> str:
+    """A short fingerprint of the checkpoint a backend will load.
+
+    ``engine_version`` used to be a hardcoded string per backend ("0" for
+    CosyVoice, "1" for VoxCPM). Two different checkpoints published under the
+    same version were therefore indistinguishable in the asset record, and the
+    content hash - which includes engine_version - would treat a render from the
+    old checkpoint and a render from the new one as the same audio (audit
+    VE-012).
+
+    This fingerprints the deployment's *layout*, not the weights: the path plus
+    the name and size of each file in the checkpoint directory. It is not a
+    checksum - two checkpoints with identical file names and sizes collide - but
+    it costs a directory listing instead of reading gigabytes, and it changes
+    whenever a deployment swaps in a different build. Operators who need
+    certainty set ICF_CHECKPOINT_REVISION, which wins over the derived value.
+
+    An empty result means "no checkpoint configured", and the version stays the
+    plain upstream generation rather than gaining a meaningless suffix.
+    """
+    explicit = os.environ.get("ICF_CHECKPOINT_REVISION", "").strip()
+    if explicit:
+        return explicit
+    h = hashlib.sha256()
+    found = False
+    for raw in paths:
+        if not raw:
+            continue
+        found = True
+        p = Path(raw)
+        h.update(str(p).encode())
+        try:
+            entries = sorted(p.iterdir()) if p.is_dir() else [p]
+        except OSError:
+            continue
+        for e in entries[:200]:  # a checkpoint directory is not a corpus
+            try:
+                st = e.stat()
+            except OSError:
+                continue
+            h.update(f"{e.name}:{st.st_size}".encode())
+    if not found:
+        return ""
+    return h.hexdigest()[:12]
 
 
 def resolve_checkpoint(key: str) -> Path | None:
@@ -64,11 +129,25 @@ class CosyVoiceEngine(Engine):
     """
 
     name = "cosyvoice"
+    base_version = "0"
     capabilities = {"zero_shot": True, "fine_tune": True, "streaming": True, "languages": ["en", "zh"],
                     "max_chunk_chars": 300, "self_hosted": True, "license": "see MODEL_LICENSES.md"}
 
     def __init__(self):
         self._model = None
+        # VE-006: the Go adapter sends `instruct`, a natural-language style
+        # instruction, alongside the numeric prosody. Inference uses
+        # inference_instruct2 when this build has it and zero-shot when it does
+        # not - the render must not fail because a build lacks the richer API,
+        # but the fact that the instruction was dropped has to be visible, so
+        # the flag is reported in /v1/capabilities as style_instruction.
+        self._instruct_supported = True
+
+    def checkpoint_paths(self) -> tuple[str, ...]:
+        return (os.environ.get("ICF_COSYVOICE_MODEL_DIR") or "",)
+
+    def runtime_capabilities(self) -> dict:
+        return {"style_instruction": self._instruct_supported}
 
     def _load(self):
         if self._model is None:
@@ -94,13 +173,62 @@ class CosyVoiceEngine(Engine):
         model = self._load()
         if not reference:
             raise EngineError("model", "zero-shot synthesis requires a reference clip")
+        transcript = reference_transcript(reference)
         ref_path = resolve_checkpoint(reference["uri"])
         speed = float(params.get("speed") or 1.0)
+        instruction = str(params.get("instruct") or "").strip()
+
         out = []
-        for piece in model.inference_zero_shot(text, reference["transcript"], str(ref_path),
+        if instruction and self._instruct_supported:
+            pieces = None
+            if hasattr(model, "inference_instruct2"):
+                try:
+                    pieces = model.inference_instruct2(text, instruction, str(ref_path),
+                                                       stream=False, speed=speed)
+                except TypeError as e:
+                    self._drop_instruct(f"signature mismatch: {e}")
+            else:
+                self._drop_instruct("this CosyVoice build has no inference_instruct2")
+            if pieces is not None:
+                for piece in pieces:
+                    out.append(piece["tts_speech"].squeeze().cpu().numpy())
+                return np.concatenate(out) if out else np.zeros(0)
+
+        for piece in model.inference_zero_shot(text, transcript, str(ref_path),
                                                stream=False, speed=speed):
             out.append(piece["tts_speech"].squeeze().cpu().numpy())
         return np.concatenate(out) if out else np.zeros(0)
+
+    def _drop_instruct(self, reason: str) -> None:
+        """Stop asking for style instructions, once, and say why.
+
+        The render continues zero-shot - a build without the richer API is still
+        usable - but the loss is recorded rather than hidden: one warning per
+        process, and style_instruction=false in /v1/capabilities for anyone who
+        asks instead of watching logs.
+        """
+        if self._instruct_supported:
+            self._instruct_supported = False
+            log.warning("cosyvoice: style instructions cannot be used (%s); "
+                        "rendering zero-shot from here on", reason)
+
+
+def reference_transcript(reference: dict) -> str:
+    """The verified transcript a zero-shot clone needs.
+
+    A reference clip recorded without one is a data fault, not a crash. Before
+    this guard each backend read the transcript key directly, so the request
+    died with a KeyError that the server could only classify as an unexpected
+    fault: a retryable 500 for something that can never succeed, and a
+    traceback instead of a reason (audit VE-016).
+
+    Every backend that clones from a reference goes through here, so the failure
+    is a classified "content" error (422) that names what is missing.
+    """
+    text = (reference or {}).get("transcript") or ""
+    if not text.strip():
+        raise EngineError("content", "reference clip has no verified transcript")
+    return text
 
 
 class DevToneEngine(Engine):
@@ -133,7 +261,9 @@ class GPTSoVITSEngine(Engine):
     """
 
     name = "gpt_sovits"
-    version = "v2"
+    # The upstream service owns the base weights; once a fine-tuned checkpoint
+    # is pushed to it, the version names that checkpoint too.
+    base_version = "v2"
     sample_rate = 32000
     capabilities = {"zero_shot": True, "fine_tune": True, "streaming": True, "languages": ["en", "zh", "ja", "ko"],
                     "max_chunk_chars": 200, "self_hosted": True, "license": "see MODEL_LICENSES.md"}
@@ -141,6 +271,9 @@ class GPTSoVITSEngine(Engine):
     def __init__(self):
         self.base = os.environ.get("ICF_GPTSOVITS_API", "http://127.0.0.1:9880").rstrip("/")
         self._loaded_ckpt: str | None = None
+
+    def checkpoint_paths(self) -> tuple[str, ...]:
+        return (self._loaded_ckpt or "",)
 
     def _get(self, path: str, params: dict) -> bytes:
         import urllib.parse
@@ -178,10 +311,11 @@ class GPTSoVITSEngine(Engine):
         self._ensure_weights(checkpoint)
         if not reference:
             raise EngineError("model", "GPT-SoVITS needs a reference clip and transcript")
+        transcript = reference_transcript(reference)
         ref = resolve_checkpoint(reference["uri"])
         lang = "en"
         audio = self._get("/tts", {
-            "text": text, "text_lang": lang, "ref_audio_path": str(ref), "prompt_text": reference["transcript"],
+            "text": text, "text_lang": lang, "ref_audio_path": str(ref), "prompt_text": transcript,
             "prompt_lang": lang, "speed_factor": params.get("speed_factor", 1.0),
             "temperature": params.get("temperature", 1.0), "media_type": "wav", "streaming_mode": "false",
         })
@@ -200,13 +334,16 @@ class VoxCPMEngine(Engine):
     """
 
     name = "voxcpm"
-    version = "1"
+    base_version = "1"
     sample_rate = 16000
     capabilities = {"zero_shot": True, "fine_tune": False, "streaming": False, "languages": ["en", "zh"],
                     "max_chunk_chars": 300, "self_hosted": True, "license": "see MODEL_LICENSES.md"}
 
     def __init__(self):
         self._model = None
+
+    def checkpoint_paths(self) -> tuple[str, ...]:
+        return (os.environ.get("ICF_VOXCPM_MODEL") or "",)
 
     def _load(self):
         if self._model is None:
@@ -234,8 +371,10 @@ class VoxCPMEngine(Engine):
         kw = {"text": text, "cfg_value": float(params.get("cfg_value", 2.0)),
               "inference_timesteps": int(params.get("inference_timesteps", 10))}
         if reference:
+            # Validated before the path is resolved: a reference with no
+            # transcript is a content fault whatever storage would say.
+            kw["prompt_text"] = reference_transcript(reference)
             kw["prompt_wav_path"] = str(resolve_checkpoint(reference["uri"]))
-            kw["prompt_text"] = reference["transcript"]
         return np.asarray(model.generate(**kw), dtype=np.float64)
 
 

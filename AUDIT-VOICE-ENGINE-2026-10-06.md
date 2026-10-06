@@ -1686,3 +1686,121 @@ After that abuse the worker still reported healthy.
   but `go build ./...` and `go test ./...` must be run before merge.
 - VE-001 (two rights models), VE-004 (text normalisation), VE-005 (dictionary
   seed) were P1/P2 findings, not §35 blockers, and were **not** addressed here.
+
+---
+
+# Appendix B — Remediation wave 2 (2026-10-06, `arena/5f7c8b8b-i-confess`)
+
+Appendix A left the P1/P2 findings and most quick wins open. This wave closes
+them. It differs from Appendix A in one respect that matters: a Go 1.27.1
+toolchain and a real PostgreSQL 17 were available, so every Go change below was
+compiled, vetted and exercised, not pattern-matched.
+
+## Findings closed
+
+| Finding | Priority | What changed | Commit |
+|---|---|---|---|
+| **VE-001** two rights models | P1 | `voice.Pipeline.Generate` takes a `*voicegov.Grant`. Authorization is `voicegov.Authorize` (action × purpose × third-party × territory × language, at call time) with `ThirdParty = !Provider.SelfHosted()`, so a capability revoked in the granular model stops a cloud render too. `Handler.voiceAuthority` prefers the granular grant and falls back to `rights.License.ToGrant` (faithful, pessimistic projection) only for voices that predate it; a grant load error is a 503, never a fail-open. Refusal is `451` with `{error, reason, detail, job_id}`. | `c5c8a6e` |
+| **VE-004** no text normalisation | P2 | `NormaliseSegments` runs inside `Orchestrator.parse` before `Dictionary.Apply`: Bible references (`John 3:16` → "John chapter three verse sixteen"), verse ranges, ordinals, dates, times, grouped numbers, naira, acronyms, URLs — locale-aware (`en-US` says "March fourteenth"). `HashInput` gained `TextNormalised` + `NormaliseVersion`, so normalised text is part of the cache key. | `14c0cee` |
+| **VE-005** empty pronunciation dictionary | P2 | Migration `0031` seeds 152 en-NG entries (biblical names/places, Nigerian names/places, translation acronyms, church terms) plus 152 `en-NG-PIDGIN` copies, `ON CONFLICT (term, locale) DO NOTHING`, with `updated_at` set so `DictVersion` moves and cached renders invalidate. Respellings only (no IPA), documented as un-reviewed starting data. | `37d73a7` |
+| **VE-016** unguarded reference transcript | P3 | `reference_transcript()` validates once, before any path is resolved or provider contacted, and raises a classified `content` error (422). All three zero-shot backends use it; a transcript-less reference is no longer a retryable 500. | `7d43b2a` |
+| **VE-002** dead generator + orphan table | P4 | Deleted `audio/generator.go` (495 lines, zero references) and dropped `voice_licenses` (zero references from Go, tests, scripts or clients — a table whose name made a third rights model look real). Schema inventory assertions moved 120→119 tables, 156→155 FKs, with the reason recorded beside the number. | `10e5d93` |
+| **VE-008** duplicate HMAC scheme | P4 | Not just dead validators: `Handler.urlGenerator` was written and never read, so `audio/urls.go` (326 lines) was unreachable in its entirety. `audio.URLGenerator`, its random per-process dev secret and the parallel verify path are deleted; `storage.ObjectStorage.GenerateSignedURL` is the single signing authority, reached via `h.signer`. | wave-2 commit |
+| **VE-018** no dependency scanning | P3 | `pip-audit --strict` on the worker's runtime requirements in the `voice-engine` job (numpy/scipy ship into the GPU image and nothing watched them); `govulncheck` in the `test` job, advisory (`continue-on-error`) until a human triages its first report — an unverified blocking gate is how a red main that proves nothing begins. | `7d43b2a` |
+| **VE-015** Matcha-TTS never on `PYTHONPATH` | P3 | Closed by PR #89 and verified here: the requirement is in the README, in `Dockerfile`'s header, and — the part that matters — set as a concrete value in `voice-engine/k8s/deployment-gpu.yaml` (`/engine:/engine/third_party/Matcha-TTS`), so it is no longer operator-only. | #89 |
+
+Owed from PR #89 and done here: the TEMPORARY "Report failure diagnostics" step
+and the job-level `pull-requests: write` permission it needed are removed from
+`.github/workflows/ci.yml`, as that step's own comment required.
+
+## A regression this wave found and fixed
+
+Seeding the dictionary (VE-005) broke `internal/store.TestReferencesAndPronunciations`,
+which assumed an empty table (`len(entries) != 1`). That is the useful kind of
+breakage: the test was asserting emptiness rather than behaviour. It is now
+scoped to the rows it writes, and pins the property the seed depends on — an
+upsert replaces only its own `(term, locale)`, so the seeded `en-NG` entry for
+the same term survives beside the test's universal one.
+
+## Verification performed (all on the shipped tree)
+
+| Check | Command | Result |
+|---|---|---|
+| Build + vet | `go build ./... && go vet ./...` | exit 0 |
+| Full suite, race detector, real PG17 + Redis 7.4.2 | `go test -race -count=1 ./...` | **45 packages ok, exit 0** |
+| Worker suite | `ICF_WORKER_DEV=1 pytest -q tests` | **49 passed, 1 skipped** in 12.5 s |
+| Licence register, strict | `check_model_licenses.py --strict` | exit 0 |
+| Licence gate in production | `ICF_ENV=production check_model_licenses.py --gate` | exit 0 — all four engines still `production_allowed=false` |
+| Dependency vulnerabilities | `pip-audit -r requirements.txt --strict` | no known vulnerabilities |
+| Workflow | `yaml.safe_load` | parses; 6 jobs; no `pull-requests` permission remains |
+| Formatting | `gofmt -l .` | only pre-existing `internal/voice/google_test.go` (untouched; gofmt version delta) |
+| Engine manifests | `check_engine_audit.py` over both manifests | 92 findings, all baselined; the gate exits 1 on an invented finding |
+| Style instructions | worker suite with a stub model | instruction reaches inference_instruct2; missing/TypeError both fall back and report `style_instruction: false` |
+
+## Increment 3 — VE-006, VE-007, VE-009, VE-012, VE-014
+
+| Finding | What changed |
+|---|---|
+| **VE-006** `inference_instruct2` unused | The Go adapter already put the style *name* on the wire as `instruct_style` and the worker ignored it, so "prayer" and "preaching" differed only in speed and pause scaling. `params.instruct` now carries the natural-language instruction (voiceengine.InstructionFor, keyed to the prosody profiles), and the worker renders it through inference_instruct2. A build whose API is missing or differs falls back to zero-shot, warns once, and reports `style_instruction: false` in `/v1/capabilities` — dropping the style silently is what VE-006 was about. Tests drive a stub model through both call shapes; writing them caught a real gap in the first implementation (a missing method took a different branch from a TypeError and dropped the style without saying so). |
+| **VE-009** cross-user isolation unobserved | Now observed: eight session routes driven as a third account, asserting the refusal carries no signed URL, asset id or storage key, and that the owner's session survives unchanged and playable. The mutation check is the argument: with the ownership comparison in `ownSession` disabled, the intruder reads the owner's queue with live signed URLs, writes progress, resumes the session, and deletes it (204) after which the owner gets 404. |
+| **VE-012** hardcoded `engine_version` | Version is now the upstream generation plus a 12-hex fingerprint of the checkpoint the backend loads (`ICF_COSYVOICE_MODEL_DIR`, `ICF_VOXCPM_MODEL`, or the fine-tuned GPT-SoVITS checkpoint once pushed). The docstring is explicit that it fingerprints the deployment's *layout* (names and sizes), not the weights; `ICF_CHECKPOINT_REVISION` wins for deployments that track a real identifier. |
+| **VE-014** `requirements.txt` cannot produce speech | Two engine manifests now exist in the repository, per backend, with GPT-SoVITS needing none (it is proxied). The CosyVoice manifest is upstream's list **minus its demo and training stack** — taken verbatim it produced 116 known advisories, 60+ in `gradio`, the model's public web demo, which this worker never serves. The remaining 91 inherited advisories are enumerated in `engine-audit-baseline.json` with reasons, and `scripts/check_engine_audit.py` fails CI on anything new. |
+| **VE-007** R2 + cache metrics | Half of this finding was stale, and the honest fix is to say so: voice metrics already carry `cacheHits`/`cacheMisses`/`cacheHitRate` in JSON and `icf_voice_cache_hits_total` / `_misses_total` in the Prometheus exposition, and `/metrics` reports the content cache's hits, misses, stale and invalidation counts. Verified by reading the exporter. The R2 half was reachable: a new test builds the real SigV4 client against a local S3 origin configured exactly as R2 is and checks request shape, signing scope, payload hash, content type, cache-control, the presigned playback URL and error classification over a socket (404 is an answer, 500 retryable). A live R2 bucket still needs credentials — the test comment says so rather than implying otherwise. |
+
+Two things this increment established that are worth keeping:
+
+1. **The verbatim upstream dependency list is not a safe default.** "Sync with
+   upstream" would have imported a demo UI's web stack into a production voice
+   worker. The subtraction is now documented, asserted by a test, and gated by a
+   baseline so a future sync cannot undo it silently.
+2. **A wire test cannot pin a client option.** The R2 test looked like it proved
+   `UsePathStyle`, and a mutation check showed it did not: the SDK falls back to
+   path-style for an endpoint it cannot virtual-host, so the request is identical
+   either way. The option was extracted into `s3ClientOptions` and asserted
+   directly — including that a config with no endpoint override invents none.
+
+## Gate repairs found by running the pipeline, not by reading it
+
+Appendix A could not compile the Go code. This wave could, and running the full
+pipeline turned up three facts that no amount of reading would have produced:
+
+1. **The `gofmt check` step was red on main** (at least since 2026-10-01):
+   `internal/voice/google_test.go`'s trailing comments in a composite literal
+   are aligned the pre-1.19 way, which any current gofmt re-aligns. The step has
+   no diff filter, so it was red for everyone and told nobody anything about
+   their own change. Formatted.
+2. **The trivy filesystem scan was red on main** since the #89 merge, and its
+   findings exist only in an Actions log that cannot be read from the
+   development sandbox. A temporary step posted the table to the PR, which is
+   how the two findings were identified: `sharp` 0.35.4 (pinned by this
+   repository's own override) and `source-map-js` 1.2.1, both HIGH, both with
+   fixes released. Bumped in `web/package.json`/`package-lock.json`; `npm ci`,
+   `npm run typecheck` and `npm run build` all re-run locally. The temporary
+   step and the permissions it needed are removed again.
+3. **A `prealloc` violation this wave introduced** in the seed test — invisible
+   to `go build`, `go vet` and `go test`, and visible in CI only as the word
+   "Lint". Found through the check-run annotations API; this is the argument for
+   the lint gate existing rather than being tolerated as noise.
+
+After those three, the pipeline is green end to end: `Build, vet & test`,
+`Voice engine worker`, `Container and deployment checks`, `Typecheck & build
+(web)`, `Flutter analyze & test`, `Dart test`.
+
+## What remains open after this wave
+
+- **P0-1 (no engine licence-cleared) and P0-2 (no sample of speech has ever been
+  produced) remain open and remain not engineering tasks.** Everything around
+  them is enforced rather than trusted; `production_allowed` was not touched.
+- **VE-004/VE-005 are verified by unit tests, not by ear.** Their expansions and
+  respellings are what the tests say they are; whether they *sound* right cannot
+  be known until an engine runs on a GPU host (P0-2). The seeded respellings in
+  particular are a starting set and should be reviewed by someone who speaks the
+  names before they are shipped to users.
+- **VE-018 is half-gated:** pip-audit blocks, govulncheck advises. The production
+  checklist's gate needs the first govulncheck report triaged and
+  `continue-on-error` removed.
+- Still open after increment 3: **VE-017** (no cost telemetry or batch ceiling —
+  a 10,000-item batch remains an unbounded GPU spend), **VE-019** (no word
+  timestamps), **VE-020** (no golden-audio regression set), and **VE-007's last
+  inch** (a live R2 bucket, which needs credentials nobody has put in this
+  environment). VE-006/007/009/012/014 are closed as described above.

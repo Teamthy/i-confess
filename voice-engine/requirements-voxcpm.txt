@@ -1,0 +1,50 @@
+# VoxCPM engine dependencies (audit VE-014).
+#
+# In-process backend: the worker imports `voxcpm` directly and loads the model
+# from ICF_VOXCPM_MODEL. Unlike CosyVoice there is no repository to clone, so the
+# package is declared — but its transitive dependencies are not pinned upstream
+# (`torch>=2.5.0`, `transformers>=4.36.2`, `funasr`, `gradio`, `datasets`, ...),
+# and any of those can move under a deployment.
+#
+# Two consequences, both deliberate:
+#
+#   1. A reproducible deployment must freeze the resolved set. Install, verify on
+#      the GPU host, then commit the frozen output (`pip freeze`) beside this file
+#      rather than trusting these pins to be sufficient.
+#   2. Torch is pinned here anyway, even though voxcpm only states a floor.
+#      Left unpinned, every install can silently change the model's numerics,
+#      and the content hash assumes a given engine version renders the same
+#      audio.
+#
+# Install, on a GPU host:
+#
+#   pip install -r requirements.txt        # the worker itself
+#   pip install -r requirements-voxcpm.txt # the model package
+#   export ICF_VOXCPM_MODEL=/models/voxcpm/<checkpoint>
+#
+# ONE HOST, ONE ENGINE ENVIRONMENT. CosyVoice's own requirements pin torch 2.3.1
+# and voxcpm requires >= 2.5.0, so the two backends cannot share a virtualenv.
+# That is a real deployment constraint worth knowing before it is discovered by a
+# resolver error on a GPU host: give each engine its own environment, or accept
+# the newer torch for both and take CosyVoice out of its tested pin (a decision
+# that should be recorded, not assumed).
+#
+# Not installed by the Dockerfile, and not verified on a GPU by CI — the same two
+# caveats as requirements-cosyvoice.txt, for the same reasons. Wheel CUDA tags
+# must be matched to the host driver; PyPI's Linux wheels carry a CUDA build, so
+# the tag is a fleet decision rather than something this file can assert.
+
+# Pinned as a matched pair: torchaudio's version numbers do not track torch's, so
+# a mismatched pair is a runtime failure rather than an install failure.
+#
+# 2.11.0 and not 2.13.0, which is where torch's remaining advisory is fixed:
+# torchaudio's newest release is 2.11.0, so taking the fix means shipping a
+# mismatched pair. The residual finding is PYSEC-2025-194, it is ignored
+# explicitly in the CI audit rather than by making the audit non-failing, and it
+# should be revisited the moment torchaudio publishes a 2.13 release.
+torch==2.11.0
+torchaudio==2.11.0
+
+# The model package itself, at the version whose generate() signature the worker
+# was written against.
+voxcpm==2.0.3

@@ -179,7 +179,8 @@ def make_handler(engine: Engine, token: str, trainer: TrainingManager | None = N
                     return self._err(404, "permanent", "unknown run")
                 return self._json(200, run.view())
             if self.path == "/v1/capabilities":
-                caps = dict(engine.capabilities, engine=engine.name, engine_version=engine.version)
+                caps = dict(engine.capabilities, **engine.runtime_capabilities(),
+                            engine=engine.name, engine_version=engine.version)
                 # /v1/synthesize/stream works for every engine: it emits audio
                 # chunk by chunk even when the engine itself can't stream inside
                 # a chunk. The granularity tells callers which of the two they get.

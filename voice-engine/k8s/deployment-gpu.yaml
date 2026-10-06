@@ -38,6 +38,11 @@ metadata:
 data:
   ICF_ENV: "production"
   ICF_ENGINE: "cosyvoice"
+  # Names the weights in engine_version, which is stored per generation and is
+  # part of the content hash. Without it the value is derived from the
+  # checkpoint directory listing (cheap, not cryptographic) - set this to the
+  # identifier you actually track.
+  # ICF_CHECKPOINT_REVISION: "cosyvoice2-2026-09"
   ICF_WORKER_PORT: "8601"
   ICF_CHECKPOINT_ROOT: "/models"
   # Mastering targets. Overridable here rather than baked into the image.

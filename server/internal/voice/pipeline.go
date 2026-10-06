@@ -8,18 +8,19 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Teamthy/i-confess/internal/audio"
-	"github.com/Teamthy/i-confess/internal/rights"
 	"github.com/Teamthy/i-confess/internal/storage"
+	"github.com/Teamthy/i-confess/internal/voicegov"
 )
 
 // ErrRightsDenied is returned when a generation is refused on rights grounds.
 // It wraps the machine-readable decision so callers can report the exact reason
 // rather than a generic failure.
 type ErrRightsDenied struct {
-	Decision rights.Decision
+	Decision voicegov.Decision
 }
 
 func (e *ErrRightsDenied) Error() string {
@@ -95,9 +96,20 @@ type GenerateRequest struct {
 	Language     string
 	Text         string
 	Version      int
-	// Use distinguishes editorial content from user-submitted text; the latter
-	// requires its own rights grant because it cannot be reviewed in advance.
-	Use rights.Use
+	// ProviderVoiceID is the provider's own identifier for the voice, taken
+	// from the voice's stored configuration - never from client input. It is
+	// configuration, not authority: it does not grant anything, and an empty
+	// value is a misconfiguration the pipeline refuses rather than a rights
+	// question.
+	ProviderVoiceID string
+	// Purpose is the product surface the render is for. It selects the
+	// content-specific capabilities the grant must carry, so a licence that
+	// covers confessions does not silently cover marketing.
+	Purpose voicegov.ContentPurpose
+	// UserSubmittedText marks words an end user wrote rather than reviewed
+	// editorial content. It needs its own capability because the platform
+	// cannot vet the text in advance.
+	UserSubmittedText bool
 	// Territory optionally narrows the rights check to a distribution region.
 	Territory   string
 	RequestedBy string
@@ -119,23 +131,28 @@ type GenerateResult struct {
 	Reused bool
 }
 
-// Generate renders text to stored audio, refusing anything the licence does not
+// Generate renders text to stored audio, refusing anything the grant does not
 // explicitly permit.
-func (p *Pipeline) Generate(ctx context.Context, lic *rights.License, req GenerateRequest) (*GenerateResult, error) {
+//
+// The gate is voicegov.Authorize: the same authority, the same capability set
+// and the same refusal vocabulary the GPU path uses, which is what closes audit
+// VE-001. A capability revoked there stops a cloud render here, and a hosted
+// provider additionally needs can_use_third_party_infrastructure - the
+// capability that exists precisely because sending a voice to someone else's
+// servers is a separate clause in a voice licence.
+func (p *Pipeline) Generate(ctx context.Context, grant *voicegov.Grant, req GenerateRequest) (*GenerateResult, error) {
 	if req.Language == "" {
 		req.Language = "en"
 	}
 	if req.Version < 1 {
 		req.Version = 1
 	}
-	use := req.Use
-	if use == "" {
-		use = rights.UseSynthesis
-	}
 
 	providerName := "none"
+	thirdParty := true
 	if p.Provider != nil {
 		providerName = p.Provider.Name()
+		thirdParty = !p.Provider.SelfHosted()
 	}
 	audit := AuditEntry{
 		At: p.now(), VoiceID: req.VoiceID, ConfessionID: req.ConfessionID,
@@ -144,8 +161,17 @@ func (p *Pipeline) Generate(ctx context.Context, lic *rights.License, req Genera
 	}
 
 	// ---- 1. Rights gate. Nothing reaches the provider before this passes. ----
-	decision := rights.Evaluate(lic, rights.Request{
-		Use: use, Territory: req.Territory, Language: req.Language, At: p.now(),
+	//
+	// A render must say what it is for. Refusing an unnamed purpose here keeps
+	// the purpose capabilities from being skipped by a caller that forgot to
+	// set them, which would quietly widen the licence.
+	if req.Purpose == "" {
+		return nil, PermanentError("generation request does not name its content purpose")
+	}
+	decision := voicegov.Authorize(grant, voicegov.Request{
+		Action: voicegov.ActionGenerate, Purpose: req.Purpose, ThirdParty: thirdParty,
+		UserSubmittedText: req.UserSubmittedText, Territory: req.Territory,
+		Language: req.Language, At: p.now(),
 	})
 	if !decision.Allowed {
 		audit.Allowed = false
@@ -160,6 +186,16 @@ func (p *Pipeline) Generate(ctx context.Context, lic *rights.License, req Genera
 
 	if p.Store == nil {
 		return nil, errors.New("no object storage configured")
+	}
+
+	// The provider id is configuration, checked after rights so an
+	// unlicensed voice reports the rights refusal rather than this.
+	if strings.TrimSpace(req.ProviderVoiceID) == "" {
+		audit.Allowed = false
+		audit.Reason = "no_provider_voice"
+		audit.Detail = "no provider voice id is configured for this voice"
+		p.record(ctx, audit)
+		return nil, PermanentError("no provider voice id is configured for voice %q", req.VoiceID)
 	}
 
 	// ---- 2. Dedupe. Never pay the provider for audio we already hold. ----
@@ -179,7 +215,7 @@ func (p *Pipeline) Generate(ctx context.Context, lic *rights.License, req Genera
 
 	// ---- 3. Synthesize. ----
 	out, err := p.Provider.Synthesize(ctx, SynthesisRequest{
-		ProviderVoiceID: lic.ProviderVoiceID,
+		ProviderVoiceID: req.ProviderVoiceID,
 		Text:            req.Text,
 		Language:        req.Language,
 	})

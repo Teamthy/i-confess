@@ -1,0 +1,73 @@
+# CosyVoice engine dependencies (audit VE-014).
+#
+# The worker image deliberately contains no engine and no weights, so
+# requirements.txt cannot describe how speech is produced: it declares numpy and
+# scipy, which is enough to master and encode audio but not to synthesise it.
+# Until VE-014 was fixed every deployment reconstructed this environment by hand,
+# and a hand-built environment is one nobody can review, reproduce or audit.
+#
+# This is the engine repository's own requirements (upstream:
+# github.com/FunAudioLLM/CosyVoice), MINUS its demo and training stack. That
+# subtraction is the important part. Taken verbatim, upstream's list produced 116
+# known advisories, 60+ of them in `gradio` - the model's public web demo, which
+# this worker never serves: it drives the model in-process, behind its own
+# authenticated API. Shipping a demo UI's web stack inside a production voice
+# worker would add the vulnerability surface without adding a capability.
+#
+# Dropped, and why:
+#   gradio, fastapi, fastapi-cli, uvicorn   upstream's demo UI and its web server
+#   gdown, wget                            upstream's checkpoint downloaders; the
+#                                          deployment mounts checkpoints instead
+#   matplotlib, tensorboard, rich          upstream's plotting/logging extras
+#   deepspeed, lightning*                  training and distributed launchers
+#   grpcio, grpcio-tools, pyarrow          upstream's gRPC and storage extras
+#   openai-whisper                         upstream's transcription demo
+#   tensorrt-cu12*                         optional TensorRT acceleration; add it
+#                                          deliberately if the fleet wants it
+#   (*lightning is kept below: the model code imports it on the inference path.)
+#
+# What this file is NOT:
+#   - Not installed by the Dockerfile, and it must not be: the image stays free
+#     of engine code so an uncleared engine cannot ship inside it
+#     (docs/model_licenses.json is the gate).
+#   - Not verified on a GPU by CI. No runner has one and no checkpoint is
+#     licence-cleared yet (P0-1/P0-2). The first deployment that synthesises
+#     speech must confirm the subset is sufficient — that is a missing-import
+#     check, not a leap of faith — and then freeze the resolved set.
+#   - Not vulnerability-free. The pins are upstream's, and several carry known
+#     advisories with fixes in later versions. Bumping them without a GPU cannot
+#     be verified against the engine's own API, so they are enumerated in
+#     engine-audit-baseline.json and the CI audit fails on anything NEW
+#     (scripts/check_engine_audit.py). That is a decision on the record rather
+#     than an unbounded pin nobody looked at.
+#   - Not a lock: the transitive set is whatever pip resolves on the day.
+#
+# Install, on a GPU host, in the environment that has the engine repository:
+#
+#   pip install -r requirements.txt && pip install -r requirements-cosyvoice.txt
+#   export ICF_COSYVOICE_MODEL_DIR=/models/cosyvoice/<checkpoint>
+
+--extra-index-url https://download.pytorch.org/whl/cu121
+--extra-index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/pypi/simple/
+conformer==0.3.2
+diffusers==0.29.0
+hydra-core==1.3.2
+HyperPyYAML==1.2.3
+inflect==7.3.1
+librosa==0.10.2
+lightning==2.2.4
+modelscope==1.20.0
+networkx==3.1
+numpy==1.26.4
+omegaconf==2.3.0
+onnx==1.16.0
+onnxruntime-gpu==1.18.0; sys_platform == 'linux'
+protobuf==4.25
+pydantic==2.7.0
+pyworld==0.3.4
+soundfile==0.12.1
+torch==2.3.1
+torchaudio==2.3.1
+transformers==4.51.3
+x-transformers==2.11.24
+wetext==0.0.4

@@ -80,15 +80,7 @@ func NewS3Storage(cfg *StorageConfig) (ObjectStorage, error) {
 		return nil, fmt.Errorf("load aws config: %w", err)
 	}
 
-	var clientOpts []func(*s3.Options)
-	if cfg.S3Endpoint != "" {
-		// An explicit endpoint means an S3-compatible service (MinIO, R2,
-		// Ceph), which generally requires path-style addressing.
-		clientOpts = append(clientOpts, func(o *s3.Options) {
-			o.BaseEndpoint = aws.String(cfg.S3Endpoint)
-			o.UsePathStyle = true
-		})
-	}
+	clientOpts := s3ClientOptions(cfg)
 
 	cloudFront, err := newCloudFrontSigner(cfg.CDNDomain, cfg.CloudFrontKeyPairID, cfg.CloudFrontPrivateKeyPath)
 	if err != nil {
@@ -99,6 +91,25 @@ func NewS3Storage(cfg *StorageConfig) (ObjectStorage, error) {
 		client: client, presigner: s3.NewPresignClient(client), bucket: cfg.S3Bucket,
 		region: cfg.S3Region, cdnDomain: cfg.CDNDomain, cloudFront: cloudFront,
 	}, nil
+}
+
+// s3ClientOptions translates a storage config into S3 client options. It is
+// separate from the constructor because an option is otherwise untestable: a
+// request to a non-AWS host reaches the same place whether or not path-style
+// addressing was requested (the SDK falls back to it when the endpoint cannot
+// be virtual-hosted), so only the option itself can be pinned.
+//
+// An explicit endpoint means an S3-compatible service - MinIO, Cloudflare R2,
+// Ceph - and those generally require the bucket as the first path segment
+// rather than a subdomain.
+func s3ClientOptions(cfg *StorageConfig) []func(*s3.Options) {
+	if cfg.S3Endpoint == "" {
+		return nil
+	}
+	return []func(*s3.Options){func(o *s3.Options) {
+		o.BaseEndpoint = aws.String(cfg.S3Endpoint)
+		o.UsePathStyle = true
+	}}
 }
 
 // newS3WithClients builds a provider around injected clients. Tests use this.

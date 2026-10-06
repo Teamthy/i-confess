@@ -13,10 +13,6 @@ jobs:
   test:
     name: Build, vet & test
     runs-on: ubuntu-latest
-    # TEMPORARY: needed only by the diagnostics step below. Remove with it.
-    permissions:
-      contents: read
-      pull-requests: write
     strategy:
       matrix:
         go-version: ["1.25.x"]
@@ -149,33 +145,20 @@ jobs:
             exit 1
           fi
 
-      # TEMPORARY diagnostics step. Sandbox cannot read Actions logs, so the
-      # failure is posted as a PR comment where it can actually be read.
-      # Remove this step and the job-level permissions block before merge.
-      - name: Report failure diagnostics
-        if: failure()
+      # VE-018: reachable-vulnerability scanning for the Go module graph.
+      #
+      # Advisory, not blocking, and that is deliberate: govulncheck's first run
+      # against a dependency set this size will report something, and a red main
+      # on an unreviewed report teaches people to ignore it. Triage the first
+      # report, then remove continue-on-error so this becomes the gate the
+      # production checklist asks for. It reports only vulnerabilities reachable
+      # from this code, so the list should be short.
+      - name: Vulnerability scan (govulncheck, advisory)
+        continue-on-error: true
         run: |
-          go test -race ./... > /tmp/gotest.log 2>&1 || true
-          {
-            echo "### gofmt -l ."
-            echo '```'
-            gofmt -l . 2>&1 || true
-            echo '```'
-            echo
-            echo "### go test: FAIL lines"
-            echo '```'
-            grep -E "^(--- FAIL|FAIL|ok)" /tmp/gotest.log | grep -vE "^ok" || echo "(no FAIL lines)"
-            echo '```'
-            echo
-            echo "### go test: surrounding output"
-            echo '```'
-            grep -B 5 -A 25 -m 3 -- "--- FAIL" /tmp/gotest.log || tail -60 /tmp/gotest.log
-            echo '```'
-          } > /tmp/diag.md 2>&1
-          gh pr comment "$PR_NUM" --body-file /tmp/diag.md || echo "could not post comment"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUM: ${{ github.event.pull_request.number }}
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          "$(go env GOPATH)/bin/govulncheck" ./...
+
 
   # The Dart and Flutter clients have no job here before this change, and their
   # fifteen test files had never been executed by anything - not CI, not a
@@ -256,6 +239,33 @@ jobs:
           ICF_ENV: development
         run: ../scripts/ci-check.sh python -m pytest -q tests
 
+      # VE-018: nothing in this repository watched the worker's dependencies.
+      # numpy and scipy ship into the GPU image and are not covered by any
+      # Dependabot configuration, so a known-vulnerable pin would only be found
+      # by whoever happened to read an advisory. --strict fails the job on any
+      # known vulnerability rather than printing a report nobody acts on.
+      # Verified against the shipped requirements: no known vulnerabilities.
+      - name: Dependency vulnerability scan (pip-audit)
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        run: |
+          pip install pip-audit
+          # The worker's own dependencies: fully resolved, blocking.
+          pip-audit -r requirements.txt --strict
+          # The engine manifests (VE-014) are not installed here — the image stays
+          # engine-free — so only their declared pins can be audited: --no-deps,
+          # and --disable-pip so the result does not depend on whatever happens to
+          # be installed in the runner's environment.
+          #
+          # They mirror an upstream project whose pins carry known advisories
+          # (most of them in the demo stack the manifest excludes), so --strict
+          # would be red forever and useless. Instead the known set is enumerated
+          # in voice-engine/engine-audit-baseline.json and this fails on anything
+          # NEW — a decision on the record, not an unbounded pin nobody looked at.
+          for manifest in requirements-cosyvoice.txt requirements-voxcpm.txt; do
+            pip-audit --no-deps --disable-pip --format=json -r "$manifest" -o "/tmp/audit-${manifest}.json" || true
+            python ../scripts/check_engine_audit.py "/tmp/audit-${manifest}.json"
+          done
+
       # The licence register is what stops an uncleared model reaching
       # production, so a malformed or silently-weakened register is a release
       # blocker rather than a warning. This checks structure, that every
@@ -293,6 +303,7 @@ jobs:
           scan-ref: .
           severity: CRITICAL,HIGH
           exit-code: '1'
+
 
   web:
     name: Typecheck & build (web)

@@ -1,0 +1,26 @@
+-- Drop the orphaned voice_licenses table (audit VE-002, Quick Win 5).
+--
+-- It was created in the baseline schema and then superseded twice: first by
+-- voice_rights (the coarse four-boolean record that internal/rights evaluates)
+-- and then by voice_rights_grants + voice_usage_permissions (the granular
+-- capability model that now decides every generation). It has had zero
+-- references from Go code, tests, scripts or clients since before this
+-- repository's voice platform existed - which is exactly what made it
+-- dangerous: a table named "voice_licenses" in the schema reads like the
+-- authority on voice licensing, and the audit that produced VE-001 spent time
+-- working out that it was not.
+--
+-- The two tables that remain are the two that mean something:
+--   voice_rights                          coarse record, read by the legacy
+--                                         playback/publication gates and
+--                                         projected into a grant for
+--                                         pre-migration voices
+--   voice_rights_grants                   granular grant, the authority for
+--   voice_usage_permissions               generation, training and streaming
+--
+-- Dropping is destructive for any environment that happened to hold rows here.
+-- Nothing in this repository can read them either way, and the platform has
+-- never produced a sample of speech, so the alternative - a tombstone table
+-- nobody can explain - is the more expensive kind of safety.
+
+DROP TABLE IF EXISTS voice_licenses;

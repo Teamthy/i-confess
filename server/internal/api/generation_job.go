@@ -10,8 +10,8 @@ import (
 	"github.com/Teamthy/i-confess/internal/audio"
 	"github.com/Teamthy/i-confess/internal/jobs"
 	"github.com/Teamthy/i-confess/internal/models"
-	"github.com/Teamthy/i-confess/internal/rights"
 	"github.com/Teamthy/i-confess/internal/voice"
+	"github.com/Teamthy/i-confess/internal/voicegov"
 	"github.com/Teamthy/i-confess/internal/workers"
 )
 
@@ -57,6 +57,15 @@ func (h *Handler) Generate(ctx context.Context, req workers.GenerationRequest) e
 	if err != nil {
 		return jobs.Permanent(fmt.Errorf("voice %s: %w", req.VoiceID, err))
 	}
+	// The queue path resolves the same authority the synchronous admin endpoint
+	// does, so a capability revoked after the job was enqueued is honoured when
+	// the job actually runs and the two paths cannot drift apart (VE-001).
+	grant, providerVoiceID, err := h.voiceAuthority(ctx, req.VoiceID, lic)
+	if err != nil {
+		// Transient: a failed read must not park a job that retrying could
+		// still run.
+		return fmt.Errorf("voice %s rights: %w", req.VoiceID, err)
+	}
 
 	// Snapshot the exact text before synthesizing, so a QA reviewer approves the
 	// render against the words that were spoken.
@@ -100,9 +109,10 @@ func (h *Handler) Generate(ctx context.Context, req workers.GenerationRequest) e
 		return fmt.Errorf("start generation job: %w", err)
 	}
 
-	res, err := h.pipeline.Generate(ctx, lic, voice.GenerateRequest{
+	res, err := h.pipeline.Generate(ctx, grant, voice.GenerateRequest{
 		ConfessionID: req.ConfessionID, VariantID: req.VariantID, VoiceID: req.VoiceID,
-		Language: req.Language, Text: text, Use: rights.UseSynthesis,
+		ProviderVoiceID: providerVoiceID,
+		Language:        req.Language, Text: text, Purpose: voicegov.PurposeConfession,
 		RequestedBy: req.Actor,
 	})
 

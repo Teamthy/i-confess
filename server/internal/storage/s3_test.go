@@ -4,7 +4,11 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -320,5 +324,184 @@ func TestValidateProviderIsCaseInsensitive(t *testing.T) {
 	// letter defeats.
 	if err := ValidateProvider(&StorageConfig{Provider: "LOCAL", LocalRootPath: "/d"}, true); err == nil {
 		t.Error("STORAGE_PROVIDER=LOCAL bypassed the production guard")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// R2-shaped endpoint, over real HTTP (VE-007)
+// ---------------------------------------------------------------------------
+
+// The tests above inject a stub S3API, so they assert what the provider asked a
+// client to do - never what goes on the wire. Cloudflare R2, MinIO and Ceph are
+// reached through the same branch: an explicit endpoint, path-style addressing
+// and SigV4. This test builds the real client against a local origin that speaks
+// S3 and checks the requests, which is the part that no stub can cover.
+//
+// What this does NOT establish: that Cloudflare R2 itself behaves the same. That
+// needs an account, a bucket and credentials, and until somebody runs it the
+// claim "R2 integration is tested" would be false. What is established is that
+// the code path R2 uses is exercised end to end rather than assumed.
+//
+// Nor does it pin UsePathStyle: the SDK falls back to path-style for an endpoint
+// it cannot virtual-host, so this request would look identical either way.
+// TestExplicitEndpointRequestsPathStyle covers the option itself.
+// The option that the wire test cannot see, asserted directly.
+func TestExplicitEndpointRequestsPathStyle(t *testing.T) {
+	opts := s3ClientOptions(&StorageConfig{S3Endpoint: "https://acct.r2.cloudflarestorage.com"})
+	if len(opts) == 0 {
+		t.Fatal("an explicit endpoint produced no client options")
+	}
+	co := &s3.Options{}
+	for _, o := range opts {
+		o(co)
+	}
+	if !co.UsePathStyle {
+		t.Error("R2/MinIO style endpoint did not request path-style addressing")
+	}
+	if got := aws.ToString(co.BaseEndpoint); got != "https://acct.r2.cloudflarestorage.com" {
+		t.Errorf("BaseEndpoint = %q", got)
+	}
+	// No endpoint (real AWS) must stay untouched: forcing path style there
+	// changes the URL shape of every upload in production.
+	if opts := s3ClientOptions(&StorageConfig{S3Bucket: "b", S3Region: "eu-west-1"}); len(opts) != 0 {
+		t.Errorf("AWS endpoint override invented options: %d", len(opts))
+	}
+}
+
+func TestR2StyleEndpointIsExercisedOverHTTP(t *testing.T) {
+	var (
+		mu       sync.Mutex
+		requests []*http.Request
+		bodies   = map[string]string{}
+	)
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		if len(body) > 0 {
+			bodies[r.URL.Path] = string(body)
+		}
+		mu.Lock()
+		requests = append(requests, r.Clone(context.Background()))
+		mu.Unlock()
+
+		switch {
+		case r.Method == http.MethodPut:
+			w.WriteHeader(http.StatusOK)
+		case strings.Contains(r.URL.Path, "missing"):
+			w.Header().Set("Content-Type", "application/xml")
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?><Error><Code>NoSuchKey</Code><Message>not found</Message></Error>`))
+		case strings.Contains(r.URL.Path, "broken"):
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte("internal error"))
+		default:
+			w.Header().Set("Content-Type", "audio/mp4")
+			_, _ = w.Write([]byte("audio-bytes"))
+		}
+	}))
+	defer origin.Close()
+
+	store, err := NewS3Storage(&StorageConfig{
+		Provider: "s3", S3Bucket: "iconfess-media", S3Region: "auto",
+		S3AccessKey: "r2-access-key-id", S3SecretKey: "r2-secret",
+		// Exactly how an R2 deployment is configured: an account endpoint, no
+		// CloudFront, region "auto".
+		S3Endpoint: origin.URL, CDNDomain: "", SigningSecret: "",
+	})
+	if err != nil {
+		t.Fatalf("build R2-shaped storage: %v", err)
+	}
+	if _, ok := store.(*S3Storage); !ok {
+		t.Fatalf("expected the S3 path for an explicit endpoint, got %T", store)
+	}
+	ctx := context.Background()
+	key := "audio/conf-1/var-1/voice-1/en/v1.m4a"
+
+	if err := store.Upload(ctx, key, []byte("payload-bytes"), nil); err != nil {
+		t.Fatalf("upload: %v", err)
+	}
+	got, err := store.Download(ctx, key)
+	if err != nil || string(got) != "audio-bytes" {
+		t.Fatalf("download: %q %v", got, err)
+	}
+
+	mu.Lock()
+	seen := append([]*http.Request(nil), requests...)
+	mu.Unlock()
+
+	var put *http.Request
+	for _, r := range seen {
+		if r.Method == http.MethodPut {
+			put = r
+		}
+	}
+	if put == nil {
+		t.Fatal("no PUT reached the origin")
+	}
+	// Path-style addressing is what an S3-compatible endpoint requires: the
+	// bucket is the first path segment, not a subdomain.
+	if want := "/iconfess-media/" + key; put.URL.Path != want {
+		t.Errorf("PUT path = %q, want %q (path-style addressing)", put.URL.Path, want)
+	}
+	// SigV4 against the injected credentials, scoped to the R2 region.
+	auth := put.Header.Get("Authorization")
+	if !strings.HasPrefix(auth, "AWS4-HMAC-SHA256 Credential=r2-access-key-id/") {
+		t.Errorf("PUT is not SigV4-signed with the configured key: %q", auth)
+	}
+	if !strings.Contains(auth, "/auto/s3/aws4_request") {
+		t.Errorf("PUT credential is not scoped to the configured region: %q", auth)
+	}
+	if put.Header.Get("X-Amz-Content-Sha256") == "" {
+		t.Error("PUT carries no payload hash")
+	}
+	if ct := put.Header.Get("Content-Type"); ct != "audio/mp4" {
+		t.Errorf("PUT Content-Type = %q, want audio/mp4", ct)
+	}
+	if cc := put.Header.Get("Cache-Control"); !strings.Contains(cc, "immutable") {
+		t.Errorf("PUT Cache-Control = %q", cc)
+	}
+	if bodies[put.URL.Path] != "payload-bytes" {
+		t.Errorf("origin received %q", bodies[put.URL.Path])
+	}
+
+	// A presigned URL is the playback path when there is no CloudFront. It has
+	// to point at the same origin, carry an expiry, and leak nothing else.
+	signed, err := store.GenerateSignedURL(ctx, key, 15*time.Minute)
+	if err != nil {
+		t.Fatalf("presign: %v", err)
+	}
+	u, err := url.Parse(signed)
+	if err != nil {
+		t.Fatalf("presigned URL is not a URL: %v", err)
+	}
+	if u.Host != strings.TrimPrefix(origin.URL, "http://") {
+		t.Errorf("presigned URL host = %q, want the configured endpoint", u.Host)
+	}
+	if u.Query().Get("X-Amz-Signature") == "" || u.Query().Get("X-Amz-Expires") == "" {
+		t.Errorf("presigned URL is missing its signature or expiry: %s", signed)
+	}
+	if strings.Contains(signed, "r2-secret") {
+		t.Error("presigned URL leaked the secret key")
+	}
+	// Fetching it must work against the origin, with the signature on the query.
+	resp, err := http.Get(signed)
+	if err != nil {
+		t.Fatalf("fetch presigned URL: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("presigned fetch status = %d", resp.StatusCode)
+	}
+
+	// Error classification over a real socket: a missing key is an answer, a
+	// 500 is a fault to retry.
+	if _, err := store.Download(ctx, "audio/missing/v1.m4a"); err == nil {
+		t.Error("missing object did not error")
+	} else if IsRetryable(err) {
+		t.Errorf("404 classified as retryable: %v", err)
+	}
+	if _, err := store.Download(ctx, "audio/broken/v1.m4a"); err == nil {
+		t.Error("500 did not error")
+	} else if !IsRetryable(err) {
+		t.Errorf("500 not classified as retryable: %v", err)
 	}
 }

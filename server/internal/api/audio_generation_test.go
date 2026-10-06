@@ -17,9 +17,17 @@ import (
 // stubSynth is a provider that returns real, inspectable audio. The pipeline
 // measures what a provider hands back, so a stub returning arbitrary bytes
 // would no longer represent a provider that worked.
-type stubSynth struct{ calls int }
+//
+// It is hosted by default, like every adapter the platform ships: that is the
+// configuration in which can_use_third_party_infrastructure is required, and a
+// stub that answered "self-hosted" would let that requirement go untested here.
+type stubSynth struct {
+	calls      int
+	selfHosted bool
+}
 
-func (s *stubSynth) Name() string { return "stub" }
+func (s *stubSynth) Name() string     { return "stub" }
+func (s *stubSynth) SelfHosted() bool { return s.selfHosted }
 
 func (s *stubSynth) Synthesize(context.Context, voice.SynthesisRequest) (*voice.SynthesisResult, error) {
 	s.calls++

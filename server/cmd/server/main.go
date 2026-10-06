@@ -242,20 +242,10 @@ func main() {
 			cfg.TTSProvider)
 	}
 
-	// Audio Platform Phase 1: configure signed playback URL resolution.
-
-	// Create URL generator for signed URLs
-	urlGenerator, err := audio.NewURLGenerator(objStore, &audio.URLGeneratorConfig{
-		CDNDomain:     cfg.MediaBaseURL,
-		StreamTTL:     4 * time.Hour,
-		DownloadTTL:   24 * time.Hour,
-		SigningSecret: cfg.AudioSignSecret,
-	})
-	if err != nil {
-		log.Fatalf("audio: failed to create URL generator: %v", err)
-	}
-	h.SetURLGenerator(urlGenerator)
-	log.Printf("audio: URL generator enabled (CDN: %s)", cfg.MediaBaseURL)
+	// Signed playback URLs come from the object store (h.signer, installed
+	// below), which is the only signing authority. audio.URLGenerator used to
+	// sit here with a second, parallel HMAC scheme whose validator had no
+	// callers and whose secret was random per process: removed in VE-008.
 
 	audioStore := store.NewAudioStore(conn)
 	playbackResolver := audio.NewPlaybackResolver(

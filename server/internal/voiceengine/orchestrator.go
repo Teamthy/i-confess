@@ -186,20 +186,26 @@ const AudioPipelineVersion = "m1"
 
 // HashInput is every field that changes the rendered audio.
 type HashInput struct {
-	VoiceID       string  `json:"voice_id"`
-	ModelID       string  `json:"model_id"`
-	ModelVersion  string  `json:"model_version"`
-	Engine        Engine  `json:"engine"`
-	EngineVersion string  `json:"engine_version"`
-	Text          string  `json:"text"` // canonical markup source
-	Language      string  `json:"language"`
-	Locale        string  `json:"locale"`
-	Style         string  `json:"style"`
-	Speed         float64 `json:"speed"`
-	Pitch         float64 `json:"pitch"`
-	ReferenceID   string  `json:"reference_id"`
-	DictVersion   string  `json:"dict_version"`
-	AudioVersion  string  `json:"audio_version"`
+	VoiceID       string `json:"voice_id"`
+	ModelID       string `json:"model_id"`
+	ModelVersion  string `json:"model_version"`
+	Engine        Engine `json:"engine"`
+	EngineVersion string `json:"engine_version"`
+	Text          string `json:"text"` // canonical markup source
+	// TextNormalised is what the normaliser made of the source, and
+	// NormaliseVersion names the rule set that produced it. Both are hashed so
+	// a change in the reading rules re-renders affected text instead of
+	// serving audio that says something else (§VE-004).
+	TextNormalised   string  `json:"text_normalised"`
+	NormaliseVersion string  `json:"normalise_version"`
+	Language         string  `json:"language"`
+	Locale           string  `json:"locale"`
+	Style            string  `json:"style"`
+	Speed            float64 `json:"speed"`
+	Pitch            float64 `json:"pitch"`
+	ReferenceID      string  `json:"reference_id"`
+	DictVersion      string  `json:"dict_version"`
+	AudioVersion     string  `json:"audio_version"`
 }
 
 // ContentHash is SHA-256 over the canonical JSON of in. Text is
@@ -393,6 +399,12 @@ func (o *Orchestrator) parse(req *Request) ([]Segment, error) {
 	if err != nil {
 		return nil, &Error{Class: ClassContent, Msg: err.Error()}
 	}
+	// Normalisation runs here, once per request, so every path that parses -
+	// resolve, generate and stream - reads a reference, a date, a price or a
+	// year identically, and no engine's own frontend gets to decide (§VE-004).
+	// It runs before the dictionary: a respelling is about one word and must
+	// still win for the term it names.
+	segs = NormaliseSegments(segs, req.Language, req.Locale)
 	if PlainText(segs) == "" {
 		return nil, &Error{Class: ClassContent, Msg: "no speakable text"}
 	}
@@ -442,6 +454,7 @@ func (o *Orchestrator) plan(ctx context.Context, grant *voicegov.Grant, m Model,
 			VoiceID: req.VoiceID, ModelID: m.ID, ModelVersion: m.ModelVersion, Engine: m.Engine,
 			EngineVersion: m.EngineVersion, Text: req.Markup, Language: req.Language, Locale: req.Locale,
 			Style: req.Style, Speed: prosody.Speed, Pitch: req.Pitch, ReferenceID: refID, DictVersion: o.DictVer,
+			TextNormalised: PlainText(segs), NormaliseVersion: NormaliseVersion,
 		}),
 		Request: GenerateRequest{
 			GenerationID: req.GenerationID, VoiceID: req.VoiceID, ModelID: m.ID, ModelVersion: m.ModelVersion,

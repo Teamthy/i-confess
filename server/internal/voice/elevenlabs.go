@@ -36,6 +36,11 @@ func NewElevenLabs(apiKey string) *ElevenLabs {
 // Name implements Provider.
 func (e *ElevenLabs) Name() string { return "elevenlabs" }
 
+// SelfHosted implements Provider. ElevenLabs is a hosted third-party API - and
+// the provider most likely to receive a cloned voice - so synthesis needs
+// can_use_third_party_infrastructure on the grant.
+func (e *ElevenLabs) SelfHosted() bool { return false }
+
 // maxAudioBytes caps a single render at roughly an hour of 128 kbps audio.
 const maxAudioBytes = 64 << 20
 
