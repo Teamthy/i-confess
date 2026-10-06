@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -463,5 +464,95 @@ func TestSessionNeverLeaksRawStorageKeys(t *testing.T) {
 	// A bare key would appear as "audio/..." with no signature attached.
 	if strings.Contains(payload, `"audio_url":"audio/`) {
 		t.Fatalf("raw storage key leaked into the session payload: %s", payload)
+	}
+}
+
+// TestAnotherUserCannotReachSessionAudio closes VE-009: cross-user isolation was
+// correct by construction (every session route resolves the row and compares
+// UserID), but no test had ever observed a second user being refused the first
+// user's audio, so "correct by construction" was an argument rather than a
+// result.
+//
+// The property is not that a response is empty - it is that the intruder cannot
+// obtain a usable URL, cannot read or mutate the owner's session, and cannot
+// destroy it. A 403 whose body still carried a signed URL would pass a naive
+// status-only assertion, so the body is checked too. Both 403 and 404 are
+// accepted for the refusal: which one is a disclosure trade-off (403 confirms
+// the id exists), not a security property, and pinning it would freeze that
+// choice instead of the guarantee.
+func TestAnotherUserCannotReachSessionAudio(t *testing.T) {
+	f := newAudioFixture(t)
+
+	code, owned := f.createSession(t, f.freeTok, f.voiceStd, 120)
+	if code != http.StatusCreated || len(owned.Items) == 0 {
+		t.Fatalf("owner session: status=%d items=%+v", code, owned.Items)
+	}
+	if owned.Items[0].AudioURL == "" {
+		t.Fatal("owner session has no playable audio, so there is nothing to protect")
+	}
+	protected := []string{owned.ID, owned.Items[0].AudioAssetID, owned.Items[0].AudioURL}
+
+	// A third account: not the premium user, so the refusal cannot be explained
+	// by plan or entitlement.
+	intruder := f.register(t, "intruder@test.com")
+
+	attempts := []struct{ method, path, body string }{
+		{"GET", "/sessions/" + owned.ID, ""},
+		{"GET", "/sessions/" + owned.ID + "/queue", ""},
+		{"POST", "/sessions/" + owned.ID + "/progress", `{"position_ms":1000}`},
+		{"POST", "/sessions/" + owned.ID + "/skip", `{"item_id":"nope"}`},
+		{"POST", "/sessions/" + owned.ID + "/pause", ""},
+		{"POST", "/sessions/" + owned.ID + "/resume", ""},
+		{"PATCH", "/sessions/" + owned.ID, `{"status":"COMPLETED"}`},
+		{"DELETE", "/sessions/" + owned.ID, ""},
+	}
+	for _, a := range attempts {
+		var reader io.Reader
+		if a.body != "" {
+			reader = strings.NewReader(a.body)
+		}
+		req := httptest.NewRequest(a.method, a.path, reader)
+		req.Header.Set("Authorization", "Bearer "+intruder)
+		rec := httptest.NewRecorder()
+		f.router.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusForbidden && rec.Code != http.StatusNotFound {
+			t.Errorf("%s %s as another user: status=%d body=%s, want 403 or 404",
+				a.method, a.path, rec.Code, rec.Body.String())
+			continue
+		}
+		got := rec.Body.String()
+		for _, secret := range protected {
+			if secret != "" && strings.Contains(got, secret) {
+				t.Errorf("%s %s refusal leaked %q in the body: %s", a.method, a.path, secret, got)
+			}
+		}
+		// A signed URL is identifiable even if the exact one differs (a re-sign
+		// would change the signature but not the shape).
+		if strings.Contains(got, "signature=") || strings.Contains(got, "/media/") {
+			t.Errorf("%s %s refusal carried a signed URL: %s", a.method, a.path, got)
+		}
+	}
+
+	// The owner's session survived every attempt, unchanged and still playable.
+	req := httptest.NewRequest("GET", "/sessions/"+owned.ID, nil)
+	req.Header.Set("Authorization", "Bearer "+f.freeTok)
+	rec := httptest.NewRecorder()
+	f.router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("owner read after intrusion attempts: status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	var after sessionResp
+	if err := json.Unmarshal(rec.Body.Bytes(), &after); err != nil {
+		t.Fatal(err)
+	}
+	if after.Status != owned.Status {
+		t.Errorf("session status changed by an intruder: %q -> %q", owned.Status, after.Status)
+	}
+	if len(after.Items) != len(owned.Items) || after.Items[0].AudioAssetID != owned.Items[0].AudioAssetID {
+		t.Errorf("session items changed by an intruder: %+v", after.Items)
+	}
+	if after.Items[0].AudioURL == "" {
+		t.Error("owner's audio is no longer playable after the intrusion attempts")
 	}
 }

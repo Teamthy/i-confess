@@ -10,9 +10,12 @@ import pytest
 
 from icf_worker import mastering, wav
 from icf_worker.engines import (
+    CosyVoiceEngine,
     DevToneEngine,
     EngineError,
     GPTSoVITSEngine,
+    VoxCPMEngine,
+    checkpoint_revision,
     reference_transcript,
     resolve_checkpoint,
 )
@@ -92,6 +95,58 @@ def test_gpt_sovits_refuses_an_untranscribed_reference_before_any_network_call(m
             chunk={},
         )
     assert e.value.cls == "content"
+
+
+def test_engine_version_names_the_checkpoint(tmp_path, monkeypatch):
+    # VE-012: engine_version was the hardcoded string "0" (CosyVoice) or "1"
+    # (VoxCPM), so two different checkpoints produced indistinguishable asset
+    # records - and the content hash, which includes engine_version, would have
+    # treated a render from the old checkpoint and the new one as the same audio.
+    def make(directory, weight_bytes):
+        directory.mkdir()
+        (directory / "config.yaml").write_text("model: x\n")
+        (directory / "weights.pt").write_bytes(b"0" * weight_bytes)
+        return directory
+
+    a = make(tmp_path / "ckpt-A", 2048)
+    b = make(tmp_path / "ckpt-B", 4096)
+
+    monkeypatch.setenv("ICF_COSYVOICE_MODEL_DIR", str(a))
+    monkeypatch.delenv("ICF_CHECKPOINT_REVISION", raising=False)
+    first = CosyVoiceEngine().version
+    same = CosyVoiceEngine().version
+    assert first == same, "the same checkpoint must produce the same version"
+    assert first.startswith("0+") and len(first) == len("0+") + 12
+
+    monkeypatch.setenv("ICF_COSYVOICE_MODEL_DIR", str(b))
+    assert CosyVoiceEngine().version != first, "a different checkpoint must change the version"
+
+    # A swapped file of a different size changes it too - that is the point.
+    (a / "weights.pt").write_bytes(b"0" * 8192)
+    monkeypatch.setenv("ICF_COSYVOICE_MODEL_DIR", str(a))
+    assert CosyVoiceEngine().version != first
+
+    # With no checkpoint configured the version stays the plain generation
+    # rather than gaining a meaningless suffix.
+    monkeypatch.delenv("ICF_COSYVOICE_MODEL_DIR", raising=False)
+    assert CosyVoiceEngine().version == "0"
+
+    # An explicit revision wins: operators who know what is deployed should not
+    # have their answer second-guessed by a directory listing.
+    monkeypatch.setenv("ICF_CHECKPOINT_REVISION", "cosyvoice2-2026-09")
+    assert CosyVoiceEngine().version == "0+cosyvoice2-2026-09"
+    assert checkpoint_revision(str(a)) == "cosyvoice2-2026-09"
+
+
+def test_every_backend_derives_its_own_version(tmp_path, monkeypatch):
+    monkeypatch.delenv("ICF_CHECKPOINT_REVISION", raising=False)
+    monkeypatch.setenv("ICF_VOXCPM_MODEL", str(tmp_path / "voxcpm"))
+    monkeypatch.delenv("ICF_COSYVOICE_MODEL_DIR", raising=False)
+    assert VoxCPMEngine().version.startswith("1+")
+    # The dev backend is not a model and must not pretend to have a checkpoint.
+    assert DevToneEngine().version == "dev"
+    # GPT-SoVITS names the upstream generation until a fine-tune is pushed.
+    assert GPTSoVITSEngine().version == "v2"
 
 
 @pytest.fixture

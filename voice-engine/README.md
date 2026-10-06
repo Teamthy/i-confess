@@ -19,10 +19,21 @@ pip install -r requirements.txt
 export ICF_WORKER_TOKEN=...            # shared with the API's VOICE_ENGINE_TOKEN
 export ICF_CHECKPOINT_ROOT=/models     # synced from the private bucket
 export ICF_COSYVOICE_MODEL_DIR=/models/cosyvoice/<checkpoint>
+export ICF_CHECKPOINT_REVISION=cosyvoice2-2026-09   # optional; see below
 python -m icf_worker.server --engine cosyvoice --port 8601
 ```
 
 Then point the API at it: `VOICE_ENGINE_COSYVOICE_URL=http://gpu-1:8601`.
+
+`engine_version` is reported per request (`X-Engine-Version`) and stored on every
+generation, and it is part of the content hash — so it has to name the weights,
+not just the code. Each backend derives it from its checkpoint (the directory
+listing of `ICF_COSYVOICE_MODEL_DIR`, `ICF_VOXCPM_MODEL`, or the fine-tuned
+GPT-SoVITS checkpoint once one is pushed), giving `0+<12 hex>`. That fingerprint
+is cheap, not cryptographic: if two checkpoints ever had identical file names
+and sizes it would not notice. Set `ICF_CHECKPOINT_REVISION` to the identifier
+you actually track (a model registry tag, a release name) and it takes
+precedence — which is what a deployment that cares about provenance should do.
 
 For local plumbing without a GPU, `ICF_WORKER_DEV=1 python -m
 icf_worker.server --engine dev-tone` emits a tone, never speech. It refuses to

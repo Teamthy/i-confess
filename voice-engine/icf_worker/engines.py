@@ -13,6 +13,7 @@ benchmarking tool (see docs/VOICESTUDIO_LICENSE.md), never linked in here.
 
 from __future__ import annotations
 
+import hashlib
 import os
 from pathlib import Path
 
@@ -29,9 +30,20 @@ class EngineError(Exception):
 
 class Engine:
     name = "base"
-    version = "0"
+    # base_version is the upstream generation ("0", "1", "v2"); `version` adds a
+    # fingerprint of the checkpoint actually in use. See checkpoint_revision.
+    base_version = "0"
     sample_rate = 24000
     capabilities: dict = {}
+
+    def checkpoint_paths(self) -> tuple[str, ...]:
+        """Where this backend's weights live, for version fingerprinting."""
+        return ()
+
+    @property
+    def version(self) -> str:
+        rev = checkpoint_revision(*self.checkpoint_paths())
+        return f"{self.base_version}+{rev}" if rev else self.base_version
 
     def synthesize_chunk(self, text: str, *, reference: dict | None, checkpoint: Path | None,
                          params: dict, chunk: dict) -> np.ndarray:
@@ -39,6 +51,52 @@ class Engine:
 
     def healthy(self) -> bool:
         return True
+
+
+def checkpoint_revision(*paths: str) -> str:
+    """A short fingerprint of the checkpoint a backend will load.
+
+    ``engine_version`` used to be a hardcoded string per backend ("0" for
+    CosyVoice, "1" for VoxCPM). Two different checkpoints published under the
+    same version were therefore indistinguishable in the asset record, and the
+    content hash - which includes engine_version - would treat a render from the
+    old checkpoint and a render from the new one as the same audio (audit
+    VE-012).
+
+    This fingerprints the deployment's *layout*, not the weights: the path plus
+    the name and size of each file in the checkpoint directory. It is not a
+    checksum - two checkpoints with identical file names and sizes collide - but
+    it costs a directory listing instead of reading gigabytes, and it changes
+    whenever a deployment swaps in a different build. Operators who need
+    certainty set ICF_CHECKPOINT_REVISION, which wins over the derived value.
+
+    An empty result means "no checkpoint configured", and the version stays the
+    plain upstream generation rather than gaining a meaningless suffix.
+    """
+    explicit = os.environ.get("ICF_CHECKPOINT_REVISION", "").strip()
+    if explicit:
+        return explicit
+    h = hashlib.sha256()
+    found = False
+    for raw in paths:
+        if not raw:
+            continue
+        found = True
+        p = Path(raw)
+        h.update(str(p).encode())
+        try:
+            entries = sorted(p.iterdir()) if p.is_dir() else [p]
+        except OSError:
+            continue
+        for e in entries[:200]:  # a checkpoint directory is not a corpus
+            try:
+                st = e.stat()
+            except OSError:
+                continue
+            h.update(f"{e.name}:{st.st_size}".encode())
+    if not found:
+        return ""
+    return h.hexdigest()[:12]
 
 
 def resolve_checkpoint(key: str) -> Path | None:
@@ -64,11 +122,15 @@ class CosyVoiceEngine(Engine):
     """
 
     name = "cosyvoice"
+    base_version = "0"
     capabilities = {"zero_shot": True, "fine_tune": True, "streaming": True, "languages": ["en", "zh"],
                     "max_chunk_chars": 300, "self_hosted": True, "license": "see MODEL_LICENSES.md"}
 
     def __init__(self):
         self._model = None
+
+    def checkpoint_paths(self) -> tuple[str, ...]:
+        return (os.environ.get("ICF_COSYVOICE_MODEL_DIR") or "",)
 
     def _load(self):
         if self._model is None:
@@ -152,7 +214,9 @@ class GPTSoVITSEngine(Engine):
     """
 
     name = "gpt_sovits"
-    version = "v2"
+    # The upstream service owns the base weights; once a fine-tuned checkpoint
+    # is pushed to it, the version names that checkpoint too.
+    base_version = "v2"
     sample_rate = 32000
     capabilities = {"zero_shot": True, "fine_tune": True, "streaming": True, "languages": ["en", "zh", "ja", "ko"],
                     "max_chunk_chars": 200, "self_hosted": True, "license": "see MODEL_LICENSES.md"}
@@ -160,6 +224,9 @@ class GPTSoVITSEngine(Engine):
     def __init__(self):
         self.base = os.environ.get("ICF_GPTSOVITS_API", "http://127.0.0.1:9880").rstrip("/")
         self._loaded_ckpt: str | None = None
+
+    def checkpoint_paths(self) -> tuple[str, ...]:
+        return (self._loaded_ckpt or "",)
 
     def _get(self, path: str, params: dict) -> bytes:
         import urllib.parse
@@ -220,13 +287,16 @@ class VoxCPMEngine(Engine):
     """
 
     name = "voxcpm"
-    version = "1"
+    base_version = "1"
     sample_rate = 16000
     capabilities = {"zero_shot": True, "fine_tune": False, "streaming": False, "languages": ["en", "zh"],
                     "max_chunk_chars": 300, "self_hosted": True, "license": "see MODEL_LICENSES.md"}
 
     def __init__(self):
         self._model = None
+
+    def checkpoint_paths(self) -> tuple[str, ...]:
+        return (os.environ.get("ICF_VOXCPM_MODEL") or "",)
 
     def _load(self):
         if self._model is None:
