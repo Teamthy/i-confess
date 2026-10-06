@@ -1734,6 +1734,30 @@ the same term survives beside the test's universal one.
 | Dependency vulnerabilities | `pip-audit -r requirements.txt --strict` | no known vulnerabilities |
 | Workflow | `yaml.safe_load` | parses; 6 jobs; no `pull-requests` permission remains |
 | Formatting | `gofmt -l .` | only pre-existing `internal/voice/google_test.go` (untouched; gofmt version delta) |
+| Engine manifests | `check_engine_audit.py` over both manifests | 92 findings, all baselined; the gate exits 1 on an invented finding |
+| Style instructions | worker suite with a stub model | instruction reaches inference_instruct2; missing/TypeError both fall back and report `style_instruction: false` |
+
+## Increment 3 — VE-006, VE-007, VE-009, VE-012, VE-014
+
+| Finding | What changed |
+|---|---|
+| **VE-006** `inference_instruct2` unused | The Go adapter already put the style *name* on the wire as `instruct_style` and the worker ignored it, so "prayer" and "preaching" differed only in speed and pause scaling. `params.instruct` now carries the natural-language instruction (voiceengine.InstructionFor, keyed to the prosody profiles), and the worker renders it through inference_instruct2. A build whose API is missing or differs falls back to zero-shot, warns once, and reports `style_instruction: false` in `/v1/capabilities` — dropping the style silently is what VE-006 was about. Tests drive a stub model through both call shapes; writing them caught a real gap in the first implementation (a missing method took a different branch from a TypeError and dropped the style without saying so). |
+| **VE-009** cross-user isolation unobserved | Now observed: eight session routes driven as a third account, asserting the refusal carries no signed URL, asset id or storage key, and that the owner's session survives unchanged and playable. The mutation check is the argument: with the ownership comparison in `ownSession` disabled, the intruder reads the owner's queue with live signed URLs, writes progress, resumes the session, and deletes it (204) after which the owner gets 404. |
+| **VE-012** hardcoded `engine_version` | Version is now the upstream generation plus a 12-hex fingerprint of the checkpoint the backend loads (`ICF_COSYVOICE_MODEL_DIR`, `ICF_VOXCPM_MODEL`, or the fine-tuned GPT-SoVITS checkpoint once pushed). The docstring is explicit that it fingerprints the deployment's *layout* (names and sizes), not the weights; `ICF_CHECKPOINT_REVISION` wins for deployments that track a real identifier. |
+| **VE-014** `requirements.txt` cannot produce speech | Two engine manifests now exist in the repository, per backend, with GPT-SoVITS needing none (it is proxied). The CosyVoice manifest is upstream's list **minus its demo and training stack** — taken verbatim it produced 116 known advisories, 60+ in `gradio`, the model's public web demo, which this worker never serves. The remaining 91 inherited advisories are enumerated in `engine-audit-baseline.json` with reasons, and `scripts/check_engine_audit.py` fails CI on anything new. |
+| **VE-007** R2 + cache metrics | Half of this finding was stale, and the honest fix is to say so: voice metrics already carry `cacheHits`/`cacheMisses`/`cacheHitRate` in JSON and `icf_voice_cache_hits_total` / `_misses_total` in the Prometheus exposition, and `/metrics` reports the content cache's hits, misses, stale and invalidation counts. Verified by reading the exporter. The R2 half was reachable: a new test builds the real SigV4 client against a local S3 origin configured exactly as R2 is and checks request shape, signing scope, payload hash, content type, cache-control, the presigned playback URL and error classification over a socket (404 is an answer, 500 retryable). A live R2 bucket still needs credentials — the test comment says so rather than implying otherwise. |
+
+Two things this increment established that are worth keeping:
+
+1. **The verbatim upstream dependency list is not a safe default.** "Sync with
+   upstream" would have imported a demo UI's web stack into a production voice
+   worker. The subtraction is now documented, asserted by a test, and gated by a
+   baseline so a future sync cannot undo it silently.
+2. **A wire test cannot pin a client option.** The R2 test looked like it proved
+   `UsePathStyle`, and a mutation check showed it did not: the SDK falls back to
+   path-style for an endpoint it cannot virtual-host, so the request is identical
+   either way. The option was extracted into `s3ClientOptions` and asserted
+   directly — including that a config with no endpoint override invents none.
 
 ## Gate repairs found by running the pipeline, not by reading it
 
@@ -1775,8 +1799,8 @@ After those three, the pipeline is green end to end: `Build, vet & test`,
 - **VE-018 is half-gated:** pip-audit blocks, govulncheck advises. The production
   checklist's gate needs the first govulncheck report triaged and
   `continue-on-error` removed.
-- Still open, in the order they should be taken: VE-006 (`inference_instruct2`
-  unused), VE-007 (R2 untested, no cache metrics), VE-009 (cross-user audio
-  isolation untested), VE-012 (hardcoded `engine_version`), VE-014 (numpy+scipy
-  only), VE-017 (no cost telemetry), VE-019 (no word timestamps), VE-020 (no
-  golden-audio set).
+- Still open after increment 3: **VE-017** (no cost telemetry or batch ceiling —
+  a 10,000-item batch remains an unbounded GPU spend), **VE-019** (no word
+  timestamps), **VE-020** (no golden-audio regression set), and **VE-007's last
+  inch** (a live R2 bucket, which needs credentials nobody has put in this
+  environment). VE-006/007/009/012/014 are closed as described above.
