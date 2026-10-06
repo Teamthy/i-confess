@@ -217,6 +217,59 @@ jobs:
         if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
         run: ../../scripts/ci-check.sh flutter test --reporter expanded
 
+  # The GPU worker is the component that actually synthesises minister speech,
+  # and until this job existed nothing in CI executed a line of it: a regression
+  # in the DSP chain, the licence gate or the wire protocol would have shipped
+  # silently. These tests need no GPU, no model and no database - the dev-tone
+  # engine and a temporary storage root are enough - so there is no reason for
+  # them to be optional.
+  voice-engine:
+    name: Voice engine worker (voice-engine)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: voice-engine
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: voice-engine/requirements*.txt
+
+      - name: Resolve dependencies
+        id: dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      # ICF_WORKER_DEV=1 lets the dev-tone engine load; ICF_ENV is deliberately
+      # NOT production, so the licence gate logs rather than exits. The
+      # production behaviour of that gate is asserted separately below.
+      - name: Test
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        env:
+          ICF_WORKER_DEV: "1"
+          ICF_ENV: development
+        run: ../scripts/ci-check.sh python -m pytest -q tests
+
+      # The licence register is what stops an uncleared model reaching
+      # production, so a malformed or silently-weakened register is a release
+      # blocker rather than a warning. This checks structure, that every
+      # production_allowed=true entry carries the checkpoint evidence the
+      # register's own header demands, and that the runtime gate still refuses
+      # an uncleared engine when ICF_ENV=production.
+      - name: Licence register integrity
+        run: python ../scripts/check_model_licenses.py --strict
+
+      - name: Licence gate refuses uncleared engines in production
+        env:
+          ICF_ENV: production
+        run: python ../scripts/check_model_licenses.py --gate
+
   deployment:
     name: Container and deployment checks
     runs-on: ubuntu-latest

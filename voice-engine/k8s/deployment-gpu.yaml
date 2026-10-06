@@ -1,0 +1,220 @@
+# iCONFESS voice engine — GPU inference worker.
+#
+# Separate from server/k8s/deployment-prod.yaml on purpose: the API scales on CPU
+# and memory, this scales on GPUs, and coupling them means every API rollout
+# disturbs a process holding a multi-gigabyte model in VRAM.
+#
+# What this adds that did not exist before:
+#
+#   * A Deployment for the worker at all. Until now it was a script run by hand,
+#     so it had no rollout, no probe, no resource bound and no restart policy.
+#   * A NetworkPolicy whose only ingress source is the API. The worker
+#     authenticates with a single shared bearer token and its own docstring said
+#     it "must not be exposed publicly" - a comment is not a boundary. This is.
+#   * exec probes, because /v1/health authenticates like every other endpoint.
+#     An httpGet probe would receive 401 and mark a healthy worker unready.
+#
+# Model weights are NOT in the image (see voice-engine/Dockerfile). They are
+# mounted read-only from a volume the deployment pipeline syncs from the private
+# bucket, which is what makes a licence withdrawal an unmount rather than a
+# rebuild.
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: iconfess-voice-secrets
+  namespace: iconfess-prod
+type: Opaque
+stringData:
+  # Must match the API's VOICE_ENGINE_TOKEN. Rotating it means updating both.
+  worker-token: "CHANGE_ME_VOICE_ENGINE_TOKEN"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: iconfess-voice-config
+  namespace: iconfess-prod
+data:
+  ICF_ENV: "production"
+  ICF_ENGINE: "cosyvoice"
+  ICF_WORKER_PORT: "8601"
+  ICF_CHECKPOINT_ROOT: "/models"
+  # Mastering targets. Overridable here rather than baked into the image.
+  ICF_MASTER_TARGET_LUFS: "-16"
+  ICF_MASTER_CEILING_DBTP: "-1"
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: iconfess-voice-engine
+  namespace: iconfess-prod
+  labels:
+    app: iconfess-voice-engine
+spec:
+  # One replica: a GPU is the scarce resource and a single worker holds one model
+  # in VRAM. Scale by raising this, not by raising per-pod GPU count - the worker
+  # is single-engine per process, so N replicas is the only axis that adds
+  # throughput. Queue depth (jobs table, status='queued') is the signal to watch.
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # Never take the only GPU worker down before the new one has loaded its
+      # model: a cold start is minutes, not seconds.
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: iconfess-voice-engine
+  template:
+    metadata:
+      labels:
+        app: iconfess-voice-engine
+    spec:
+      # Uncomment if the cluster runs GPU nodes under a dedicated runtime.
+      # Left out by default because naming a runtimeClass that does not exist
+      # makes the pod unschedulable, which is a worse failure than a comment.
+      # runtimeClassName: nvidia
+      containers:
+        - name: worker
+          image: ghcr.io/teamthy/i-confess-voice-engine:IMAGE_DIGEST_REQUIRED
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8601
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: iconfess-voice-config
+          env:
+            - name: ICF_WORKER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: iconfess-voice-secrets
+                  key: worker-token
+            # The engine repository (CosyVoice et al.) is supplied at deploy time
+            # and needs its third_party/Matcha-TTS on the path; upstream imports
+            # fail without it and the failure looks like a missing model.
+            - name: PYTHONPATH
+              value: "/engine:/engine/third_party/Matcha-TTS"
+
+          # Loading a model into VRAM is slow and must not be counted as a crash.
+          # startupProbe absorbs it; liveness only runs once startup succeeds.
+          startupProbe:
+            exec:
+              command: ["python", "-m", "icf_worker.healthcheck"]
+            periodSeconds: 10
+            timeoutSeconds: 10
+            failureThreshold: 90   # 15 minutes to load, then give up
+          livenessProbe:
+            exec:
+              command: ["python", "-m", "icf_worker.healthcheck"]
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command: ["python", "-m", "icf_worker.healthcheck"]
+            periodSeconds: 15
+            timeoutSeconds: 10
+            failureThreshold: 2
+
+          resources:
+            requests:
+              cpu: "2"
+              memory: "8Gi"
+              nvidia.com/gpu: "1"
+            limits:
+              cpu: "4"
+              memory: "16Gi"
+              nvidia.com/gpu: "1"
+
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            seccompProfile:
+              type: RuntimeDefault
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            # Checkpoints: read-only. The worker resolves private object keys to
+            # paths under ICF_CHECKPOINT_ROOT and never returns them to callers.
+            - name: models
+              mountPath: /models
+              readOnly: true
+            - name: engine
+              mountPath: /engine
+              readOnly: true
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        # Populated by the deployment pipeline from the private bucket. Both are
+        # hostPath/PVC placeholders - replace with the cluster's real mechanism.
+        - name: models
+          emptyDir: {}
+        - name: engine
+          emptyDir: {}
+
+---
+# The boundary that was previously only a docstring.
+#
+# Ingress: the API worker only. Nothing else - not the ingress controller, not
+# another namespace - can reach the synthesis endpoint, so a leaked bearer token
+# is only usable from inside the cluster by the one workload already trusted to
+# hold it.
+#
+# Egress: DNS only. The worker must not fetch weights at runtime (they come from
+# the mounted volume) and has no business initiating outbound connections, which
+# also removes it as a pivot for exfiltrating reference audio.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: iconfess-voice-engine-policy
+  namespace: iconfess-prod
+spec:
+  podSelector:
+    matchLabels:
+      app: iconfess-voice-engine
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: iconfess-backend
+      ports:
+        - protocol: TCP
+          port: 8601
+  egress:
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 53
+        - protocol: UDP
+          port: 53
+
+---
+# A GPU worker is expensive to restart and holds no user state, so losing one
+# should not be treated as routine - but a rollout must still be allowed to
+# replace it.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: iconfess-voice-engine-pdb
+  namespace: iconfess-prod
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: iconfess-voice-engine
