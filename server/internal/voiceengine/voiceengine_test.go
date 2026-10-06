@@ -431,6 +431,17 @@ func TestHTTPProviderContract(t *testing.T) {
 	if got.Params["speed"] != 0.9 || got.Params["instruct_style"] != "prayer" {
 		t.Fatalf("engine params not mapped: %v", got.Params)
 	}
+	// VE-006: the style has to reach the engine as words, not only as numbers -
+	// inference_instruct2 is CosyVoice's expressive control and instruct_style
+	// alone was a label nothing consumed.
+	instruct, _ := got.Params["instruct"].(string)
+	if !strings.Contains(instruct, "prayer") || !strings.Contains(instruct, "reverent") {
+		t.Fatalf("style instruction not sent for a known style: %q", instruct)
+	}
+	// An unknown style is described by nothing rather than by a guess.
+	if m := p.mapper(ProsodyProfile{Speed: 1}, "not-a-style"); m["instruct"] != nil {
+		t.Fatalf("unknown style invented an instruction: %v", m)
+	}
 	_, err = p.Generate(context.Background(), GenerateRequest{Chunks: []Chunk{{Text: "oom"}}})
 	if Classify(err) != ClassGPU || !Classify(err).Retryable() {
 		t.Fatalf("%v", err)

@@ -14,10 +14,13 @@ benchmarking tool (see docs/VOICESTUDIO_LICENSE.md), never linked in here.
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 from pathlib import Path
 
 import numpy as np
+
+log = logging.getLogger("icf_worker.engines")
 
 
 class EngineError(Exception):
@@ -51,6 +54,10 @@ class Engine:
 
     def healthy(self) -> bool:
         return True
+
+    def runtime_capabilities(self) -> dict:
+        """Capabilities that are only known once the engine is in use."""
+        return {}
 
 
 def checkpoint_revision(*paths: str) -> str:
@@ -128,9 +135,19 @@ class CosyVoiceEngine(Engine):
 
     def __init__(self):
         self._model = None
+        # VE-006: the Go adapter sends `instruct`, a natural-language style
+        # instruction, alongside the numeric prosody. Inference uses
+        # inference_instruct2 when this build has it and zero-shot when it does
+        # not - the render must not fail because a build lacks the richer API,
+        # but the fact that the instruction was dropped has to be visible, so
+        # the flag is reported in /v1/capabilities as style_instruction.
+        self._instruct_supported = True
 
     def checkpoint_paths(self) -> tuple[str, ...]:
         return (os.environ.get("ICF_COSYVOICE_MODEL_DIR") or "",)
+
+    def runtime_capabilities(self) -> dict:
+        return {"style_instruction": self._instruct_supported}
 
     def _load(self):
         if self._model is None:
@@ -159,11 +176,41 @@ class CosyVoiceEngine(Engine):
         transcript = reference_transcript(reference)
         ref_path = resolve_checkpoint(reference["uri"])
         speed = float(params.get("speed") or 1.0)
+        instruction = str(params.get("instruct") or "").strip()
+
         out = []
+        if instruction and self._instruct_supported:
+            pieces = None
+            if hasattr(model, "inference_instruct2"):
+                try:
+                    pieces = model.inference_instruct2(text, instruction, str(ref_path),
+                                                       stream=False, speed=speed)
+                except TypeError as e:
+                    self._drop_instruct(f"signature mismatch: {e}")
+            else:
+                self._drop_instruct("this CosyVoice build has no inference_instruct2")
+            if pieces is not None:
+                for piece in pieces:
+                    out.append(piece["tts_speech"].squeeze().cpu().numpy())
+                return np.concatenate(out) if out else np.zeros(0)
+
         for piece in model.inference_zero_shot(text, transcript, str(ref_path),
                                                stream=False, speed=speed):
             out.append(piece["tts_speech"].squeeze().cpu().numpy())
         return np.concatenate(out) if out else np.zeros(0)
+
+    def _drop_instruct(self, reason: str) -> None:
+        """Stop asking for style instructions, once, and say why.
+
+        The render continues zero-shot - a build without the richer API is still
+        usable - but the loss is recorded rather than hidden: one warning per
+        process, and style_instruction=false in /v1/capabilities for anyone who
+        asks instead of watching logs.
+        """
+        if self._instruct_supported:
+            self._instruct_supported = False
+            log.warning("cosyvoice: style instructions cannot be used (%s); "
+                        "rendering zero-shot from here on", reason)
 
 
 def reference_transcript(reference: dict) -> str:

@@ -39,6 +39,20 @@ For local plumbing without a GPU, `ICF_WORKER_DEV=1 python -m
 icf_worker.server --engine dev-tone` emits a tone, never speech. It refuses to
 start when `ICF_ENV=production`.
 
+### Style is sent as words, not only as numbers
+
+The Go adapter puts a natural-language instruction on every CosyVoice request
+(`params.instruct`, alongside `params.instruct_style` naming the style that
+produced it). CosyVoice renders it through `inference_instruct2`, which is the
+only expressive control the model has — speed and pause scaling alone cannot
+make "prayer" and "preaching" sound different.
+
+A CosyVoice build whose `inference_instruct2` is missing or has a different
+signature does not fail the request: the worker falls back to zero-shot, logs
+one warning, and reports `style_instruction: false` in `/v1/capabilities`
+thereafter. Check that flag when judging output quality — an engine quietly
+ignoring the style is exactly the failure this reporting exists to prevent.
+
 ## Deploy
 
 `Dockerfile` builds the worker; `k8s/deployment-gpu.yaml` runs it.

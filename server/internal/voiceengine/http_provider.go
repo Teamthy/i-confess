@@ -225,13 +225,25 @@ func (p *HTTPProvider) decodeError(resp *http.Response) error {
 // ---------------------------------------------------------------------------
 
 // NewCosyVoiceProvider returns the CosyVoice adapter.
+//
+// `instruct` is the natural-language style instruction that CosyVoice's
+// inference_instruct2 consumes; `instruct_style` stays as the provenance name of
+// the style that produced it, so a render can be explained after the fact even
+// if the instruction texts change. A worker whose CosyVoice build has no
+// instruct2 renders zero-shot from the same parameters and reports
+// style_instruction=false in /v1/capabilities, so the difference is visible
+// rather than silent (VE-006).
 func NewCosyVoiceProvider(baseURL, token string) *HTTPProvider {
 	return NewHTTPProvider(HTTPProviderConfig{
 		Engine: EngineCosyVoice, BaseURL: baseURL, Token: token,
 		Caps: ProviderCapabilities{EngineVersion: "3", ZeroShot: true, FineTune: true, Streaming: true,
 			Languages: []string{"en", "zh"}, MaxChunkChars: 300, SelfHosted: true, License: "see MODEL_LICENSES.md"},
 		Mapper: func(p ProsodyProfile, style string) map[string]any {
-			return map[string]any{"speed": p.Speed, "instruct_style": style}
+			params := map[string]any{"speed": p.Speed, "instruct_style": style}
+			if instruction := InstructionFor(style, p); instruction != "" {
+				params["instruct"] = instruction
+			}
+			return params
 		},
 	})
 }

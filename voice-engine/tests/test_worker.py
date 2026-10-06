@@ -149,6 +149,136 @@ def test_every_backend_derives_its_own_version(tmp_path, monkeypatch):
     assert GPTSoVITSEngine().version == "v2"
 
 
+def _FakeCosyVoiceModel(instruct2="ok"):
+    """Records which inference path the engine chose, without a GPU.
+
+    instruct2="ok" is a build with the documented API; "missing" is one that
+    never had it; "raises" is one whose signature differs, which only shows up
+    when you call it.
+    """
+
+    class _Model:
+        sample_rate = 24000
+
+        def __init__(self):
+            self.calls: list[tuple] = []
+
+        def _record(self, kind, *rest):
+            self.calls.append((kind, *rest))
+            return [{"tts_speech": _fake_tensor()}]
+
+        def inference_zero_shot(self, text, transcript, prompt, **kw):
+            return self._record("zero_shot", text, transcript, prompt, kw)
+
+    if instruct2 == "ok":
+
+        def inference_instruct2(self, text, instruction, prompt, **kw):
+            return self._record("instruct2", text, instruction, prompt, kw)
+
+        _Model.inference_instruct2 = inference_instruct2
+    elif instruct2 == "raises":
+
+        def inference_instruct2(self, text, *args, **kw):
+            raise TypeError("inference_instruct2() got an unexpected keyword argument 'stream'")
+
+        _Model.inference_instruct2 = inference_instruct2
+
+    return _Model()
+
+
+def _fake_tensor():
+    import numpy as _np
+
+    class _T:
+        def squeeze(self):
+            return self
+
+        def cpu(self):
+            return self
+
+        def numpy(self):
+            return _np.zeros(64)
+
+    return _T()
+
+
+def _cosyvoice_with(model):
+    e = CosyVoiceEngine()
+    e._model = model  # bypass _load: this test is about which path is chosen
+    e.sample_rate = 24000
+    return e
+
+
+REF = {"uri": "voice-private/ref.wav", "transcript": "Let us pray."}
+
+
+def test_style_instruction_reaches_the_engine(tmp_path, monkeypatch):
+    # VE-006: inference_instruct2 is CosyVoice's expressive control and the
+    # adapter never called it. The Go side already sent the style name on the
+    # wire; the instruction is what the model actually reads.
+    model = _FakeCosyVoiceModel()
+    engine = _cosyvoice_with(model)
+    monkeypatch.setenv("ICF_STORAGE_ROOT", str(tmp_path))
+    from icf_worker import storage as _storage
+
+    _storage.reset_store()
+    (tmp_path / "voice-private").mkdir()
+    (tmp_path / "voice-private" / "ref.wav").write_bytes(b"x")
+
+    engine.synthesize_chunk("Our Father, who art in heaven", reference=REF, checkpoint=None,
+                            params={"speed": 0.95, "instruct": "Speak as a prayer: slow, quiet and reverent.",
+                                    "instruct_style": "prayer"}, chunk={})
+
+    assert len(model.calls) == 1, model.calls
+    kind, text, instruction, prompt, kw = model.calls[0]
+    assert kind == "instruct2", "the style instruction was not used"
+    assert instruction == "Speak as a prayer: slow, quiet and reverent."
+    assert text == "Our Father, who art in heaven"
+    assert kw.get("speed") == 0.95
+    assert prompt.endswith("ref.wav")
+    assert engine.runtime_capabilities()["style_instruction"] is True
+
+
+def test_no_instruction_renders_zero_shot(tmp_path, monkeypatch):
+    model = _FakeCosyVoiceModel()
+    engine = _cosyvoice_with(model)
+    monkeypatch.setenv("ICF_STORAGE_ROOT", str(tmp_path))
+    from icf_worker import storage as _storage
+
+    _storage.reset_store()
+    (tmp_path / "voice-private").mkdir()
+    (tmp_path / "voice-private" / "ref.wav").write_bytes(b"x")
+
+    engine.synthesize_chunk("plain", reference=REF, checkpoint=None, params={"speed": 1.0}, chunk={})
+    assert model.calls[0][0] == "zero_shot"
+    assert model.calls[0][2] == "Let us pray."
+
+
+@pytest.mark.parametrize("shape", ["missing", "raises"])
+def test_a_build_without_instruct2_still_renders_and_says_so(tmp_path, monkeypatch, caplog, shape):
+    # A CosyVoice build that lacks the API, or has a different signature for it,
+    # must not fail the request - but the dropped instruction must be visible
+    # rather than silent, which is the whole reason VE-006 existed.
+    model = _FakeCosyVoiceModel(instruct2=shape)
+    engine = _cosyvoice_with(model)
+    monkeypatch.setenv("ICF_STORAGE_ROOT", str(tmp_path))
+    from icf_worker import storage as _storage
+
+    _storage.reset_store()
+    (tmp_path / "voice-private").mkdir()
+    (tmp_path / "voice-private" / "ref.wav").write_bytes(b"x")
+
+    with caplog.at_level("WARNING"):
+        engine.synthesize_chunk("first", reference=REF, checkpoint=None,
+                                params={"instruct": "Speak as a prayer."}, chunk={})
+        engine.synthesize_chunk("second", reference=REF, checkpoint=None,
+                                params={"instruct": "Speak as a prayer."}, chunk={})
+
+    assert [c[0] for c in model.calls] == ["zero_shot", "zero_shot"]
+    assert engine.runtime_capabilities()["style_instruction"] is False
+    assert caplog.text.count("style instructions cannot be used") == 1, "warned more than once"
+
+
 @pytest.fixture
 def worker():
     srv = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(DevToneEngine(), "s3cret"))
@@ -194,3 +324,24 @@ def test_capabilities_advertise_the_stream_endpoint(worker):
     caps = json.loads(call(worker + "/v1/capabilities").read())
     assert caps["streaming"] is True
     assert caps["streaming_granularity"] == "chunk"
+
+
+def test_capabilities_report_runtime_flags_live():
+    # VE-006: whether style instructions are honoured is only knowable once an
+    # engine has tried, so it is reported as a runtime capability rather than a
+    # static claim in the engine's table. The value has to change when the engine
+    # learns otherwise, or it is decoration.
+    engine = _cosyvoice_with(_FakeCosyVoiceModel())
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(engine, "s3cret"))
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        base = f"http://127.0.0.1:{srv.server_port}"
+        caps = json.loads(call(base + "/v1/capabilities").read())
+        assert caps["style_instruction"] is True
+        assert caps["engine_version"].startswith("0")
+
+        engine._drop_instruct("test: pretend this build lacks instruct2")
+        caps = json.loads(call(base + "/v1/capabilities").read())
+        assert caps["style_instruction"] is False
+    finally:
+        srv.shutdown()
