@@ -176,11 +176,11 @@ func TestGoogleTreatsAnEmptyEnvelopeAsAFault(t *testing.T) {
 func TestGoogleLanguageResolution(t *testing.T) {
 	cases := []struct{ lang, voice, want string }{
 		{"en", "en-US-Standard-A", "en-US"},
-		{"en-GB", "en-US-Standard-A", "en-GB"},   // explicit tag wins over the voice
-		{"", "en-GB-Standard-B", "en-GB"},        // voice's own locale
-		{"yo", "some-voice", "yo-NG"},            // Nigerian languages map to NG
-		{"", "some-voice", "en-US"},              // falls back
-		{"xx", "some-voice", "en-US"},            // unknown code falls back
+		{"en-GB", "en-US-Standard-A", "en-GB"}, // explicit tag wins over the voice
+		{"", "en-GB-Standard-B", "en-GB"},      // voice's own locale
+		{"yo", "some-voice", "yo-NG"},          // Nigerian languages map to NG
+		{"", "some-voice", "en-US"},            // falls back
+		{"xx", "some-voice", "en-US"},          // unknown code falls back
 	}
 	for _, c := range cases {
 		if got := googleLanguage(c.lang, c.voice, "en-US"); got != c.want {

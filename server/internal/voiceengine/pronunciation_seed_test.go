@@ -29,8 +29,9 @@ func loadSeed(t *testing.T) []seedRow {
 	if err != nil {
 		t.Fatalf("the pronunciation seed is not where the deployment expects it: %v", err)
 	}
-	var rows []seedRow
-	for _, m := range seedRowRe.FindAllStringSubmatch(string(b), -1) {
+	matches := seedRowRe.FindAllStringSubmatch(string(b), -1)
+	rows := make([]seedRow, 0, len(matches))
+	for _, m := range matches {
 		rows = append(rows, seedRow{term: m[2], locale: m[3], respelling: m[4]})
 	}
 	if len(rows) == 0 {

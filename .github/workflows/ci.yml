@@ -268,6 +268,10 @@ jobs:
   deployment:
     name: Container and deployment checks
     runs-on: ubuntu-latest
+    # TEMPORARY: needed only by the trivy reporting step below. Remove with it.
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - uses: actions/checkout@v7
       - name: Build production image
@@ -288,6 +292,26 @@ jobs:
           scan-ref: .
           severity: CRITICAL,HIGH
           exit-code: '1'
+
+      # TEMPORARY diagnostics step. The Actions log cannot be read from the
+      # development sandbox, so the findings are posted where they can be:
+      # a PR comment. Remove this step and the job-level permissions block
+      # above once the scan is green.
+      - name: Report trivy findings (temporary)
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUM: ${{ github.event.pull_request.number }}
+        run: |
+          docker run --rm -v "$PWD:/work" aquasecurity/trivy:latest fs --no-progress --format table \
+            --severity CRITICAL,HIGH /work > /tmp/trivy.txt 2>&1 || true
+          {
+            echo '### trivy fs — CRITICAL,HIGH'
+            echo '```'
+            head -c 5500 /tmp/trivy.txt
+            echo '```'
+          } > /tmp/trivy.md
+          gh pr comment "$PR_NUM" --body-file /tmp/trivy.md || echo "could not post comment"
 
   web:
     name: Typecheck & build (web)
