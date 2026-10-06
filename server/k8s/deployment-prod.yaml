@@ -222,6 +222,17 @@ spec:
       ports:
         - protocol: TCP
           port: 6379
+    # The GPU voice worker. Without this the API cannot reach synthesis at all:
+    # the worker's own NetworkPolicy admits the API on 8601, but egress is
+    # denied here by default, so both sides of the pair have to agree. A
+    # podSelector with no namespaceSelector matches this namespace only.
+    - to:
+        - podSelector:
+            matchLabels:
+              app: iconfess-voice-engine
+      ports:
+        - protocol: TCP
+          port: 8601
     - to:
         - namespaceSelector: {}
       ports:

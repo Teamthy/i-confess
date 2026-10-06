@@ -278,7 +278,8 @@ func main() {
 	// work still pending when the process stops survives, and a stop is a deploy
 	// rather than an accident. Claiming is a single statement with FOR UPDATE
 	// SKIP LOCKED, so several workers over one table never share a job.
-	h.SetQueue(store.NewJobQueue(conn))
+	jobQueue := store.NewJobQueue(conn)
+	h.SetQueue(jobQueue)
 	queue := h.GetQueue()
 
 	var voiceJobs []string
@@ -464,6 +465,44 @@ func main() {
 			}
 		}
 	}()
+
+	// Reclaim jobs a worker claimed and never finished. A worker killed mid-job
+	// - a GPU OOM is the common case for synthesis - leaves its row in 'running'
+	// forever: not due, not failed, not finished, and invisible to the
+	// dead-letter view operations is told to watch. store.JobQueue.ReclaimStale
+	// and its index (idx_jobs_running) have existed since 0007_job_queue.sql;
+	// nothing called them.
+	//
+	// The threshold must exceed the longest legitimate job or a slow render is
+	// reclaimed while it is still running and rendered twice. 15 minutes is
+	// well past a 6000-character script on a cold model; raise it if a job type
+	// grows longer. Set to 0 to disable.
+	if staleAfterM := envFloat("JOB_STALE_AFTER_MINUTES", 15); staleAfterM > 0 {
+		staleAfter := time.Duration(staleAfterM * float64(time.Minute))
+		staleEveryM := envFloat("JOB_STALE_SWEEP_MINUTES", 5)
+		if staleEveryM <= 0 {
+			staleEveryM = 5
+		}
+		staleCtx, stopStale := context.WithCancel(context.Background())
+		defer stopStale()
+		go func() {
+			t := time.NewTicker(time.Duration(staleEveryM * float64(time.Minute)))
+			defer t.Stop()
+			for {
+				select {
+				case <-staleCtx.Done():
+					return
+				case <-t.C:
+					if n, err := jobQueue.ReclaimStale(staleCtx, staleAfter); err != nil {
+						log.Printf("jobs: stale reclaim failed: %v", err)
+					} else if n > 0 {
+						log.Printf("jobs: reclaimed %d job(s) from dead workers", n)
+					}
+				}
+			}
+		}()
+		log.Printf("jobs: stale-claim reclaim every %.0fm (threshold %.0fm)", staleEveryM, staleAfterM)
+	}
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,

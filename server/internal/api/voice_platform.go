@@ -893,6 +893,16 @@ func (h *Handler) adminRollbackVoiceModel(w http.ResponseWriter, r *http.Request
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to load models")
 		return
 	}
+	// A rollback makes a different model the production model, so it is a
+	// promotion by another name and carries the same rights gate. Without it a
+	// voice_manager could put a model live for a voice whose rights lapsed
+	// since that model was last in production - which is exactly when an
+	// operator rolls back and exactly when nobody is thinking about rights.
+	g, _ := h.vplat.Grant(r.Context(), id)
+	if d := voicegov.Authorize(g, voicegov.Request{Action: voicegov.ActionGenerate}); !d.Allowed {
+		httpx.WriteJSON(w, http.StatusForbidden, map[string]any{"error": "rights verification failed", "reason": d.Reason})
+		return
+	}
 	changes, err := voiceengine.Rollback(models, id)
 	if err != nil {
 		httpx.WriteError(w, http.StatusConflict, err.Error())

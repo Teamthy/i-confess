@@ -28,6 +28,45 @@ For local plumbing without a GPU, `ICF_WORKER_DEV=1 python -m
 icf_worker.server --engine dev-tone` emits a tone, never speech. It refuses to
 start when `ICF_ENV=production`.
 
+## Deploy
+
+`Dockerfile` builds the worker; `k8s/deployment-gpu.yaml` runs it.
+
+```bash
+docker build -t iconfess-voice-engine voice-engine          # CPU base, for tests
+docker build -t iconfess-voice-engine:cuda \
+  --build-arg BASE_IMAGE=nvidia/cuda:12.4.1-runtime-ubuntu22.04 voice-engine
+```
+
+The image contains **no model and no engine repository**, deliberately:
+`docs/model_licenses.json` blocks every engine until counsel has verified the
+code *and* the exact checkpoint, and baking weights into a published image would
+put them somewhere they cannot be withdrawn from. Both are supplied by the
+deployment — weights mounted read-only at `ICF_CHECKPOINT_ROOT`, engine code on
+`PYTHONPATH` (which must include `third_party/Matcha-TTS`, or upstream imports
+fail in a way that looks like a missing model).
+
+Two things the manifest gets right that are easy to miss:
+
+- **Probes are `exec`, not `httpGet`.** `/v1/health` authenticates like every
+  other endpoint, so an HTTP probe receives 401 and marks a healthy worker
+  unready. `python -m icf_worker.healthcheck` sends the bearer token and treats
+  a non-200 as a failure instead of an exception.
+- **Both sides of the NetworkPolicy pair must agree.** The worker admits only
+  `iconfess-backend` on 8601, and `server/k8s/deployment-prod.yaml` carries the
+  matching egress rule. Adding one without the other yields a worker nothing can
+  reach.
+
+Egress is DNS-only: weights come from the volume, and a worker that cannot open
+outbound connections cannot be used to exfiltrate reference audio.
+
+## Health probe
+
+`python -m icf_worker.healthcheck` exits 0 when the worker reports healthy and 1
+otherwise, distinguishing three cases: 200 healthy, 503 engine cannot load its
+model, 401 the probe's token does not match the worker's (an operator problem,
+not a model problem).
+
 ## Configuration
 
 | Variable | Default | Meaning |
@@ -99,6 +138,24 @@ pip install -r requirements.txt -r requirements-dev.txt
 python -m pytest -q tests
 ```
 
+CI runs this in the `voice-engine` job (`.github/workflows/ci.yml`) with
+`ICF_WORKER_DEV=1 ICF_ENV=development`; it needs no GPU, no model and no
+database. The same job checks the licence register:
+
+```bash
+python scripts/check_model_licenses.py            # report
+python scripts/check_model_licenses.py --strict   # fail on incomplete evidence
+python scripts/check_model_licenses.py --gate     # runtime gate still refuses
+```
+
+`--strict` is what makes flipping `production_allowed: true` a reviewed act
+rather than a one-line edit: an engine marked cleared must record the verified
+commit and a checkpoint with a name, source, `weights_sha256`, weights licence,
+`commercial_use_verified: true`, `verified_by` and `verified_at`. `--gate`
+asserts that `icf_worker.licenses.check` still refuses an uncleared engine under
+`ICF_ENV=production`, so a future edit that makes the gate permissive fails the
+build instead of quietly shipping an uncleared model.
+
 ### Go ↔ worker interop
 
 This test drives the real worker from the Go client (`server/internal/voiceengine/interop_test.go`).
@@ -119,6 +176,52 @@ VOICE_WORKER_INTEROP_TRAIN=1 go test ./internal/voiceengine/ -run Interop -v
 
 The trainer only has to print `ICF_PROGRESS` lines and write a checkpoint into
 `{out}`, so any stub will do.
+
+## First real run on a GPU
+
+No engine has produced a sample of speech in this repository yet, and nothing
+below can be done from a laptop: it needs a GPU, a checkpoint, and a licence
+decision. This is the shortest path from "plumbing works" to "we have heard it".
+
+1. **Pick one engine.** CosyVoice is the primary candidate; GPT-SoVITS and
+   VoxCPM have never been exercised against their real servers, so treat their
+   first run as an integration test rather than a benchmark.
+2. **Verify the licence before the weights move.** Read the code licence at the
+   commit you pin *and* the model card of the exact checkpoint. Record both in
+   `docs/model_licenses.json` with `verified_by`, `verified_at` and
+   `weights_sha256`. Only then set `production_allowed: true`.
+   `python scripts/check_model_licenses.py --strict` will refuse an incomplete
+   entry, and `--gate` will fail CI if the runtime gate is ever weakened.
+   **Do not set the flag to run a benchmark** — `ICF_ENV` unset or `development`
+   already allows it, and the gate only bites in production.
+3. **Build the GPU image and start the worker.**
+   ```bash
+   docker build -t iconfess-voice-engine:cuda \
+     --build-arg BASE_IMAGE=nvidia/cuda:12.4.1-runtime-ubuntu22.04 voice-engine
+   docker run --gpus all --rm -p 8601:8601 \
+     -e ICF_WORKER_TOKEN=... -e ICF_ENV=development \
+     -e ICF_COSYVOICE_MODEL_DIR=/models/cosyvoice/<checkpoint> \
+     -e PYTHONPATH=/engine:/engine/third_party/Matcha-TTS \
+     -v /models:/models:ro -v /engine:/engine:ro \
+     iconfess-voice-engine:cuda
+   ```
+4. **Confirm it is actually serving before benchmarking.**
+   `python -m icf_worker.healthcheck` with `ICF_WORKER_TOKEN` set — a 503 here
+   means the model did not load, which is a different problem from a slow one.
+5. **Run the golden set through the real adapter.**
+   ```bash
+   cd server && VOICE_ENGINE_TOKEN=... go run ./cmd/voice-bench \
+     -engine cosyvoice=http://gpu-1:8601 -runs 3 -stream -out /tmp/bench
+   ```
+   Keep `blind_key.json` away from the raters. Without a `-scorer`, quality is
+   reported as **not measured** — that is the correct answer until someone
+   listens.
+6. **Record the result against the commit and the checkpoint hash**, so a later
+   "the voice sounds worse" can be traced to a specific change.
+
+Until step 5 has run, every statement about voice quality — naturalness,
+similarity, accent, long-form stability — is speculation, including any number
+that looks like a score.
 
 ## Status and limits
 
