@@ -196,10 +196,6 @@ jobs:
       - name: Analyze
         run: ../../scripts/ci-check.sh flutter analyze --no-fatal-infos
 
-      - name: Minister voice navigation
-        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
-        run: ../../scripts/ci-check.sh flutter test --reporter expanded test/features/settings/minister_voice_navigation_test.dart
-
       - name: Test
         if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
         run: ../../scripts/ci-check.sh flutter test --reporter expanded

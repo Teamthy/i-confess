@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:iconfess/src/core/routing/routes.dart';
+import 'package:iconfess/src/core/theme/theme.dart';
 import 'package:iconfess/src/features/minister_voices/minister_voice_repository.dart';
 import 'package:iconfess/src/features/minister_voices/minister_voice_screen.dart';
 import 'package:iconfess/src/features/settings/settings_screen.dart';
@@ -23,7 +24,10 @@ void main() {
           (ref) async => const MinisterVoiceLibrary([], 'Synthetic voice disclosure'),
         ),
       ],
-      child: MaterialApp.router(routerConfig: router),
+      child: MaterialApp.router(
+        routerConfig: router,
+        theme: AppTheme.discovery(Brightness.light),
+      ),
     ));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Minister voices'));
