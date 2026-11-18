@@ -22,8 +22,8 @@
 #   pip install -r requirements-voxcpm.txt # the model package
 #   export ICF_VOXCPM_MODEL=/models/voxcpm/<checkpoint>
 #
-# ONE HOST, ONE ENGINE ENVIRONMENT. CosyVoice's own requirements pin torch 2.3.1
-# and voxcpm requires >= 2.5.0, so the two backends cannot share a virtualenv.
+# ONE HOST, ONE ENGINE ENVIRONMENT. Our CosyVoice candidate pins torch 2.10.0
+# while this manifest pins 2.11.0, so they cannot share a virtualenv.
 # That is a real deployment constraint worth knowing before it is discovered by a
 # resolver error on a GPU host: give each engine its own environment, or accept
 # the newer torch for both and take CosyVoice out of its tested pin (a decision

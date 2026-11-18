@@ -87,7 +87,7 @@ def test_torch_and_torchaudio_are_a_matched_pair():
 
 
 def test_the_two_engines_declare_their_incompatibility():
-    # CosyVoice pins torch 2.3.1; voxcpm requires >= 2.5.0. A deployment that puts
+    # The two manifests pin different torch versions. A deployment that puts
     # both in one environment cannot resolve, so the constraint is written down
     # where the installer will read it.
     cosy = dict(entries(ROOT / "requirements-cosyvoice.txt"))
