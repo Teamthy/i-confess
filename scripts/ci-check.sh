@@ -34,7 +34,7 @@ elif ' test' in command:
         if re.search(r'\[E\]$|^Failing tests:|Test failed\.', line):
             # A little before for the test's own name, and enough after to
             # carry the matcher output.
-            for j in range(max(0, i - 2), min(len(lines), i + 26)):
+            for j in range(max(0, i - 80), min(len(lines), i + 26)):
                 keep.add(j)
     for i, line in enumerate(lines):
         if re.match(r'\s*(Expected|Actual|Which|Failing tests):', line):
