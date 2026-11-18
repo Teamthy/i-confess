@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { Icon } from "./ui";
 import { SoundControls } from "./sound-settings";
 import { DeviceVoicePicker } from "./voice-preferences";
+import { TranscriptText } from "./transcript-text";
 import { useAudio, useToast } from "@/lib/ui";
 import { mutate, useApp } from "@/lib/store";
 import { useAuth } from "@/lib/auth-context";
@@ -55,8 +56,6 @@ export function SessionPlayer() {
   </div>;
 
   const category = item ? catBySlug(item.category)?.slug || "" : "";
-  const sentences = item?.text.match(/[^.!?]+[.!?]?/g) || (item?.text ? [item.text] : []);
-  const activeLine = Math.min(sentences.length - 1, Math.floor(audio.progress * sentences.length));
   const deviceVoice = selectDeviceVoice(audio.deviceVoices, settings.deviceVoice);
   const namedVoice = requested.data?.voice_id ? voices.data?.find((v) => v.id === requested.data?.voice_id)?.name : null;
   const canReplay = audio.status === "completed" && !isApiSession;
@@ -65,7 +64,7 @@ export function SessionPlayer() {
     <div className="ps-voice"><span className="ps-voice-icon"><Icon n="wave" s={15} /></span><span>{audio.source === "file" ? namedVoice ? `${namedVoice} · published audio` : item?.disclosure || "Published audio" : `${deviceVoice?.name || "Browser default"} · device speech`}</span></div>
     <Link className="btn btn-ghost on-dark btn-sm ps-exit" href="/app"><Icon n="exit" s={14} /> Back</Link>
     <span className="ps-cat">{item?.category || "Your listening space"}</span><h1>{item?.title || "A few words, whenever you're ready."}</h1>
-    {item && settings.accessibility.captions && sentences.length ? <p className="ps-text tr-sync">{sentences.map((sentence, i) => <span key={i} className={`tr-line${i === activeLine && active ? " on" : ""}`}>{sentence} </span>)}</p> : <p className="ps-text">{item ? audio.source === "file" ? "Listen to the published recording. Your voice, pace and sound preferences stay with this player." : "Device speech is reading your selected words. Captions are off." : "Choose a confession, build a session, or start one of your saved routines. Sound is never forced, and nothing starts without you."}</p>}
+    {item ? <TranscriptText text={item.text} enabled={settings.accessibility.captions} /> : <p className="ps-text">Choose a confession, build a session, or start one of your saved routines. Sound is never forced, and nothing starts without you.</p>}
     {!item && <div className="player-empty-actions"><Link className="btn btn-light" href="/app/session-builder">Build a session</Link><Link className="btn btn-ghost on-dark" href="/app/schedule">Your routines</Link></div>}
     {item && <>
       <div className="player-controls">
@@ -77,7 +76,7 @@ export function SessionPlayer() {
         <button className="pc-btn" type="button" aria-label="Toggle background sound" title="Background sound" aria-pressed={settings.ambient} onClick={() => { mutate((s) => { s.settings.ambient = !s.settings.ambient; }); audio.unlockSound(); }}><Icon n="spark" s={16} /></button>
         <button className="pc-btn" type="button" aria-label="30 seconds of stillness" title="Pause for stillness" onClick={() => { audio.pause(); setStill(30); }}><Icon n="ast" s={16} /></button>
         <button className="pc-btn" type="button" style={{ fontSize: 12, fontWeight: 700 }} aria-label="Cycle confession repetitions" title="Applied to the next confession; samples always play once" onClick={() => { const options = [1, 3, 7]; const next = options[(options.indexOf(settings.repeat) + 1) % options.length]; mutate((s) => { s.settings.repeat = next; }); toast(next === 1 ? "Next confession plays once" : `Next confession repeats ${next} times`); }}>{settings.repeat}×</button>
-        <button className="pc-btn" type="button" aria-label="Toggle captions" title="Captions" aria-pressed={settings.accessibility.captions} onClick={() => mutate((s) => { s.settings.accessibility.captions = !s.settings.accessibility.captions; })}><Icon n="book" s={16} /></button>
+        <button className="pc-btn" type="button" aria-label="Toggle item text" title="Show or hide item text" aria-pressed={settings.accessibility.captions} onClick={() => mutate((s) => { s.settings.accessibility.captions = !s.settings.accessibility.captions; })}><Icon n="book" s={16} /></button>
         <button className="pc-btn" type="button" aria-label="Stop session" title="Stop playback and background sound" onClick={audio.stop}><Icon n="x" s={18} /></button>
       </div>
       <div className="player-volume"><label htmlFor="player-volume">Volume · {Math.round(settings.volume * 100)}%</label><input id="player-volume" type="range" min={0} max={1} step={0.05} value={settings.volume} onChange={(e) => audio.setVolume(Number(e.target.value))} /></div>

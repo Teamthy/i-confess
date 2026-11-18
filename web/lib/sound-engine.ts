@@ -5,6 +5,7 @@ import { bounded } from "./audio-playback";
 type Band = { type: BiquadFilterType; freq: number; gain: number; q?: number };
 export const EQ_PRESETS: Record<string, { label: string; bands: Band[] }> = {
   flat: { label: "As mastered", bands: [] },
+  custom: { label: "Custom bass, mid & treble", bands: [] },
   warm: { label: "Warm", bands: [{ type: "lowshelf", freq: 200, gain: 3 }, { type: "highshelf", freq: 6000, gain: -2 }] },
   clear: { label: "Clear speech", bands: [{ type: "highpass", freq: 120, gain: 0, q: 0.7 }, { type: "peaking", freq: 3000, gain: 4, q: 1 }] },
   night: { label: "Soft night", bands: [{ type: "lowshelf", freq: 150, gain: -4 }, { type: "highshelf", freq: 5000, gain: -5 }] },
@@ -15,6 +16,10 @@ export const SOUNDS = {
   ocean: { label: "Ocean hush", description: "Slow waves of low, soft noise." },
   brown: { label: "Deep calm", description: "A warm, steady brown-noise bed." },
 };
+/** Conservative attenuation for combined boosts; not a true-peak limiter. */
+export function headroomFor(gains: number[]): number {
+  return Math.pow(10, -gains.reduce((total, gain) => total + Math.max(0, gain), 0) / 20);
+}
 export type SoundName = keyof typeof SOUNDS;
 export type SoundSettings = {
   ambient: boolean;
@@ -22,6 +27,9 @@ export type SoundSettings = {
   ambientVolume: number;
   volume: number;
   eq: string;
+  eqBass: number;
+  eqMid: number;
+  eqTreble: number;
   normalize: boolean;
   chime: boolean;
 };
@@ -31,6 +39,8 @@ export class SoundEngine {
   private ctx: AudioContext | null = null;
   private input: MediaElementAudioSourceNode | null = null;
   private filters: AudioNode[] = [];
+  private headroom: GainNode | null = null;
+  private customBands: BiquadFilterNode[] = [];
   private ambient: Ambient | null = null;
   private playing = false;
   private unlocked = false;
@@ -39,7 +49,7 @@ export class SoundEngine {
   private graphKey = "";
   private settings: SoundSettings = {
     ambient: false, ambientSound: "rain", ambientVolume: 0.2, volume: 1,
-    eq: "flat", normalize: true, chime: false,
+    eq: "flat", eqBass: 0, eqMid: 0, eqTreble: 0, normalize: true, chime: false,
   };
 
   constructor(private readonly makeContext: () => AudioContext, private readonly onError: (message: string) => void = () => {}) {}
@@ -72,9 +82,12 @@ export class SoundEngine {
       ambientSound: settings.ambientSound in SOUNDS ? settings.ambientSound : "rain",
       ambientVolume: bounded(settings.ambientVolume, 0, 0.6, 0.2),
       volume: bounded(settings.volume, 0, 1, 1),
-      eq: settings.eq in EQ_PRESETS ? settings.eq : "flat",
+      eq: Object.prototype.hasOwnProperty.call(EQ_PRESETS, settings.eq) ? settings.eq : "flat",
+      eqBass: bounded(settings.eqBass, -12, 12, 0),
+      eqMid: bounded(settings.eqMid, -12, 12, 0),
+      eqTreble: bounded(settings.eqTreble, -12, 12, 0),
     };
-    if (this.input) this.rebuild();
+    if (this.input) { this.rebuild(); this.updateCustomBands(); }
     this.syncAmbient();
   }
   setPlaying(playing: boolean) {
@@ -96,17 +109,25 @@ export class SoundEngine {
     this.graphKey = key;
     this.input.disconnect();
     for (const node of this.filters) node.disconnect();
-    const bands = EQ_PRESETS[this.settings.eq]?.bands || [];
+    this.customBands = [];
+    const bands: Band[] = this.settings.eq === "custom" ? [
+      { type: "lowshelf", freq: 200, gain: this.settings.eqBass },
+      { type: "peaking", freq: 1000, gain: this.settings.eqMid, q: 1 },
+      { type: "highshelf", freq: 6000, gain: this.settings.eqTreble },
+    ] : EQ_PRESETS[this.settings.eq]?.bands || [];
     this.filters = bands.map((b) => {
       const n = this.ctx!.createBiquadFilter();
       n.type = b.type; n.frequency.value = b.freq; n.gain.value = b.gain;
       if (b.q) n.Q.value = b.q;
+      if (this.settings.eq === "custom") this.customBands.push(n);
       return n;
     });
-    // Headroom before any boost prevents EQ from clipping. Gentle compression
-    // is a listening option, not a claim to measure integrated LUFS.
+    // Conservatively attenuate for combined positive boosts. This gives
+    // headroom, not a measured true-peak guarantee. Compression is a listening
+    // option, not integrated LUFS normalization.
     const headroom = this.ctx.createGain();
-    headroom.gain.value = Math.pow(10, -Math.max(0, ...bands.map((b) => b.gain)) / 20);
+    headroom.gain.value = headroomFor(bands.map((b) => b.gain));
+    this.headroom = headroom;
     this.filters.unshift(headroom);
     if (this.settings.normalize) {
       const c = this.ctx.createDynamicsCompressor();
@@ -117,6 +138,20 @@ export class SoundEngine {
     let last: AudioNode = this.input;
     for (const n of this.filters) { last.connect(n); last = n; }
     last.connect(this.ctx.destination);
+  }
+  private updateCustomBands() {
+    if (!this.ctx || this.settings.eq !== "custom" || this.customBands.length !== 3 || !this.headroom) return;
+    const gains = [this.settings.eqBass, this.settings.eqMid, this.settings.eqTreble];
+    const at = this.ctx.currentTime;
+    const update = (param: AudioParam, value: number) => {
+      // Preserve the in-flight value when a slider moves again mid-ramp.
+      const current = param.value;
+      param.cancelScheduledValues(at);
+      param.setValueAtTime(current, at);
+      param.setTargetAtTime(value, at, 0.02);
+    };
+    update(this.headroom.gain, headroomFor(gains));
+    this.customBands.forEach((band, i) => update(band.gain, gains[i]));
   }
   private syncAmbient() {
     if (!this.playing || !this.settings.ambient || this.settings.volume === 0 || this.settings.ambientVolume === 0) {

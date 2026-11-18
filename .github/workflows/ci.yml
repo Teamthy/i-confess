@@ -334,6 +334,14 @@ jobs:
         if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
         run: ../scripts/ci-check.sh npm run typecheck
 
+      - name: Transcript tests
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        run: ../scripts/ci-check.sh npm run test:transcript
+
+      - name: Sound engine tests
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        run: ../scripts/ci-check.sh npm run test:sound
+
       - name: Build
         if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
         run: ../scripts/ci-check.sh npm run build

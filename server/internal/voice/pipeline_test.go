@@ -236,10 +236,11 @@ func TestGenerateRefusesForEveryRightsFailure(t *testing.T) {
 			func(r *GenerateRequest) { r.Purpose = voicegov.PurposeMarketing }, voicegov.ReasonMissingCapability},
 		{"user content without grant", func(g *voicegov.Grant) { g.Capabilities[voicegov.CanUseUserSubmittedText] = false },
 			func(r *GenerateRequest) { r.UserSubmittedText = true }, voicegov.ReasonMissingCapability},
+		{"restricted without carve-outs", func(g *voicegov.Grant) { g.Status = voicegov.StatusRestricted }, nil, voicegov.ReasonNotApproved},
 		{"restricted purpose", func(g *voicegov.Grant) {
 			g.Status = voicegov.StatusRestricted
 			g.Restrictions = []voicegov.ContentPurpose{voicegov.PurposeConfession}
-		}, nil, voicegov.ReasonRestricted},
+		}, nil, voicegov.ReasonNotApproved},
 		{"territory excluded", func(g *voicegov.Grant) { g.Territories = []string{"NG"} },
 			func(r *GenerateRequest) { r.Territory = "US" }, voicegov.ReasonTerritory},
 		{"language excluded", func(g *voicegov.Grant) { g.Languages = []string{"de"} }, nil, voicegov.ReasonLanguage},

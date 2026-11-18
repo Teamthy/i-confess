@@ -16,6 +16,9 @@ export type AppSettings = {
   normalize: boolean;
   repeat: number;
   eq: string;
+  eqBass: number;
+  eqMid: number;
+  eqTreble: number;
   chime: boolean;
   dataSaver: boolean;
   notifications: { daily: boolean; reminders: boolean; community: boolean; digest: boolean; quietStart: string; quietEnd: string; autoExport: boolean; autoExportEmail: string };
@@ -26,7 +29,7 @@ export function defaultSettings(): AppSettings {
   return {
     voice: "", deviceVoice: "", rate: 1, volume: 1, preset: "steady", dlQuality: "std",
     ambient: false, ambientSound: "rain", ambientVolume: 0.2, pitch: 1,
-    normalize: true, repeat: 1, eq: "flat", chime: false, dataSaver: false,
+    normalize: true, repeat: 1, eq: "flat", eqBass: 0, eqMid: 0, eqTreble: 0, chime: false, dataSaver: false,
     notifications: { daily: true, reminders: false, community: true, digest: false, quietStart: "21:00", quietEnd: "07:00", autoExport: false, autoExportEmail: "" },
     privacy: { privateByDefault: true, showStreak: true, pauseHistory: false },
     accessibility: { captions: true, largeText: false },
@@ -48,8 +51,9 @@ export function hydrateSettings(value: unknown): AppSettings {
   out.volume = bounded(Number(out.volume), 0, 1, 1);
   out.ambientVolume = bounded(Number(out.ambientVolume), 0, 0.6, 0.2);
   out.repeat = Math.round(bounded(Number(out.repeat), 1, 7, 1));
+  for (const key of ["eqBass", "eqMid", "eqTreble"] as const) out[key] = bounded(Number(out[key]), -12, 12, 0);
   out.eq = out.eq === "bright" ? "clear" : out.eq === "calm" ? "night" : out.eq;
-  if (!(out.eq in EQ_PRESETS)) out.eq = "flat";
+  if (!Object.prototype.hasOwnProperty.call(EQ_PRESETS, out.eq)) out.eq = "flat";
   if (!(out.ambientSound in SOUNDS)) out.ambientSound = "rain";
   for (const key of ["voice", "deviceVoice", "preset", "dlQuality"] as const) if (typeof out[key] !== "string") out[key] = d[key];
   for (const key of ["ambient", "normalize", "chime", "dataSaver"] as const) if (typeof out[key] !== "boolean") out[key] = d[key];
