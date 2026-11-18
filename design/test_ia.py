@@ -129,8 +129,26 @@ non_ui = [u for u in unused
                      ("/health", "/healthz", "/admin/", "/auth/logout",
                       "/auth/refresh", "/me/history", "/v1/", "/metrics", "/openapi.json",
                       "/webhooks/"))]
-check("every user-facing endpoint has a screen", not non_ui,
-      f"{len(non_ui)} unreferenced: {non_ui}")
+# Named exceptions are deliberately narrow: API-only operations remain open
+# product gaps, while web-admin calls are outside this mobile graph. Never
+# suppress a whole path prefix or claim that an endpoint has a mobile screen.
+exceptions = IA.get("coverage_exceptions", [])
+exception_endpoints = [entry.get("endpoint", "") for entry in exceptions]
+valid_exceptions = all(
+    entry.get("endpoint") in all_live
+    and entry.get("endpoint") in non_ui
+    and entry.get("category") in {"api-only", "web-admin"}
+    and isinstance(entry.get("reason"), str)
+    and bool(entry["reason"].strip())
+    for entry in exceptions
+)
+check("coverage exceptions are unique, live, unused and explained",
+      valid_exceptions and len(exception_endpoints) == len(set(exception_endpoints)),
+      json.dumps(exceptions, indent=2))
+uncovered = [endpoint for endpoint in non_ui if endpoint not in exception_endpoints]
+check("every user-facing endpoint has a screen or a named exception", not uncovered,
+      f"{len(uncovered)} unreferenced: {uncovered}")
+print(f"  INFO  {len(exception_endpoints)} explicit non-mobile/API-only operations remain documented")
 
 print("\nCore loop")
 def depth_from(start):

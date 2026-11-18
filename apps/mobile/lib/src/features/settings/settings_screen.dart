@@ -30,6 +30,13 @@ class SettingsScreen extends ConsumerWidget {
             onTap: () => context.go('/settings/preferences'),
           ),
           ListTile(
+            leading: const Icon(Icons.record_voice_over_rounded),
+            title: const Text('Minister voices'),
+            subtitle: const Text('Explore authorized AI voices'),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: () => context.push(AppRoutes.ministerVoices),
+          ),
+          ListTile(
             leading: const Icon(Icons.interests_rounded),
             title: const Text('Interests'),
             trailing: const Icon(Icons.chevron_right_rounded),

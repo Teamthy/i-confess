@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/Teamthy/i-confess/internal/db/dbtest"
@@ -61,4 +62,27 @@ func TestExportRouteTable(t *testing.T) {
 		t.Fatalf("write: %v", err)
 	}
 	t.Logf("wrote %d routes to %s", len(out), dest)
+}
+
+// TestRouteExportIsCurrent prevents the IA check from going green against an
+// old route snapshot. Compare every recorded field, not just route counts.
+func TestRouteExportIsCurrent(t *testing.T) {
+	h := NewHandler(Config{JWTSecret: "test-secret-value", TokenTTL: "24h"}, dbtest.New(t))
+	h.Routes()
+	live := h.RouteTable()
+	if len(live) == 0 {
+		t.Fatal("live route table is empty")
+	}
+	path := filepath.Join("..", "..", "..", "design", "routes.json")
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read route export: %v", err)
+	}
+	var exported []Route
+	if err := json.Unmarshal(contents, &exported); err != nil {
+		t.Fatalf("parse route export: %v", err)
+	}
+	if !reflect.DeepEqual(live, exported) {
+		t.Fatalf("design/routes.json differs from the registered route table (live=%d, exported=%d); run make routes and resolve IA coverage", len(live), len(exported))
+	}
 }
