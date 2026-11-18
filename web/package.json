@@ -13,7 +13,7 @@
     "test:sound": "tsc --module commonjs --target es2020 --skipLibCheck --outDir node_modules/.cache/sound-test lib/sound-engine.ts lib/preferences.ts && node --test tests/sound-engine.test.cjs"
   },
   "dependencies": {
-    "next": "15.5.26",
+    "next": "15.5.29",
     "react": "19.0.0",
     "react-dom": "19.0.0"
   },
@@ -28,5 +28,5 @@
     "sharp": "0.35.5",
     "source-map-js": "1.2.2"
   },
-  "description": "iCONFESS web \u2014 the public site, the authenticated app and the admin console in one Next.js application. Consumes the Go API through the same-origin /api proxy."
+  "description": "iCONFESS web — the public site, the authenticated app and the admin console in one Next.js application. Consumes the Go API through the same-origin /api proxy."
 }
