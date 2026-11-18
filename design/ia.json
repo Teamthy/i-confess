@@ -572,6 +572,22 @@
       "notes": "Blocking lives here rather than on a moderation screen on purpose. It is a listener controlling their own view, not a moderator acting on someone else, and putting it beside the moderation vocabulary would make it read as a penalty against the blocked account - which is the confusion that turns a block feature into a harassment tool. The list is the blocker's own and is never shown to the blocked account. Block and appeal controls live on the Safety child screen."
     },
     {
+      "id": "settings/minister-voices",
+      "title": "Minister voices",
+      "depth": 2,
+      "parents": [
+        "settings"
+      ],
+      "endpoints": [
+        "GET /v1/minister-voices",
+        "GET /v1/voices/{id}/styles",
+        "POST /v1/voices/generate",
+        "GET /v1/audio/jobs/{id}",
+        "POST /v1/audio/jobs/{id}/cancel"
+      ],
+      "notes": "Settings opens the existing signed-in minister-voice screen. It lists voices, loads styles, queues generation, polls and cancels on exit. Synthetic disclosure and server rights checks remain required; an engine may be unavailable."
+    },
+    {
       "id": "settings/safety",
       "title": "Safety",
       "depth": 2,
@@ -658,6 +674,28 @@
         "DELETE /me/deletion"
       ],
       "notes": "Destructive and irreversible. Requires an explicit typed confirmation and must not be reachable by accident. internal/deletion covers every user table."
+    }
+  ],
+  "coverage_exceptions": [
+    {
+      "endpoint": "POST /voices/stream",
+      "category": "web-admin",
+      "reason": "The live preview is called by web/components/voice-studio.tsx, not the mobile information architecture."
+    },
+    {
+      "endpoint": "GET /voices/{id}",
+      "category": "api-only",
+      "reason": "No current first-party UI calls the single minister-voice detail route; retain for API clients, and decide its product home before claiming a listener journey."
+    },
+    {
+      "endpoint": "POST /voice-sessions",
+      "category": "api-only",
+      "reason": "The multi-section minister voice session API has no first-party screen; it is covered by backend tests and awaits session-builder integration."
+    },
+    {
+      "endpoint": "GET /voice-sessions/{id}",
+      "category": "api-only",
+      "reason": "The multi-section minister voice session API has no first-party screen; it is covered by backend tests and awaits session-builder integration."
     }
   ]
 }

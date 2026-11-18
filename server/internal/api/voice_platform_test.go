@@ -206,6 +206,30 @@ func TestMinisterVoiceGenerationEndToEnd(t *testing.T) {
 	}
 }
 
+// A restriction must stop both new requests and already-queued renders, even
+// when the restricted grant did not list the request's purpose as a carve-out.
+func TestRestrictedVoiceStopsNewAndQueuedGeneration(t *testing.T) {
+	h := newVoicePlatformHarness(t)
+	id := h.onboard(t)
+	cached := map[string]any{"voiceId": id, "text": "Rendered before restriction.", "style": "reflection", "purpose": "reflection"}
+	h.must(t, 202, "POST", "/v1/voices/generate", cached, h.freeTok)
+	if err := h.queue.ProcessNext(context.Background()); err != nil {
+		t.Fatalf("initial worker: %v", err)
+	}
+	if h.worker.calls.Load() != 1 {
+		t.Fatalf("initial provider calls: %d", h.worker.calls.Load())
+	}
+	request := map[string]any{"voiceId": id, "text": "Queued before restriction.", "style": "reflection", "purpose": "reflection"}
+	h.must(t, 202, "POST", "/v1/voices/generate", request, h.freeTok)
+	h.must(t, 200, "POST", "/v1/admin/voices/"+id+"/restrict", map[string]any{"reason": "licence under review"}, h.admin)
+	h.must(t, 403, "POST", "/v1/voices/generate", request, h.freeTok)
+	h.must(t, 403, "POST", "/v1/voices/generate", cached, h.freeTok)
+	_ = h.queue.ProcessNext(context.Background())
+	if h.worker.calls.Load() != 1 {
+		t.Fatal("a job queued before restriction reached inference")
+	}
+}
+
 func TestVoiceGenerationRequiresRoleForAdminRoutes(t *testing.T) {
 	h := newVoicePlatformHarness(t)
 	if rec := h.do(t, "POST", "/v1/admin/minister-voices",

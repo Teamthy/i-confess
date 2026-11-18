@@ -33,6 +33,24 @@ import (
 )
 
 func main() {
+	if len(os.Args) > 1 {
+		if len(os.Args) != 2 || os.Args[1] != "--migrate" {
+			log.Fatal("usage: iconfess-server [--migrate]")
+		}
+		dsn := strings.TrimSpace(os.Getenv("MIGRATION_DATABASE_URL"))
+		if dsn == "" {
+			log.Fatal("MIGRATION_DATABASE_URL is required for --migrate")
+		}
+		conn, err := db.OpenWithSchemaMode(dsn, "migrate")
+		if err != nil {
+			log.Fatalf("migration: %v", err)
+		}
+		if err := conn.Close(); err != nil {
+			log.Fatalf("migration close: %v", err)
+		}
+		log.Print("migration: complete")
+		return
+	}
 	cfg := config.Load()
 
 	// Refuse to start production with development secrets.
@@ -51,7 +69,11 @@ func main() {
 		log.Fatalf("billing: %v", err)
 	}
 
-	conn, err := db.Open(cfg.DatabaseURL)
+	schemaMode := os.Getenv("DB_SCHEMA_MODE")
+	if schemaMode == "" {
+		schemaMode = "migrate" // backwards compatible until deployment is migrated
+	}
+	conn, err := db.OpenWithSchemaMode(cfg.DatabaseURL, schemaMode)
 	if err != nil {
 		log.Fatalf("db: %v", err)
 	}

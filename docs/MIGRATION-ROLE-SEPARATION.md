@@ -1,0 +1,17 @@
+# Separate migration and runtime database credentials
+
+This is an **opt-in foundation**, not a completed production rollout of G-24. By default the server still runs migrations at startup for compatibility with existing installations. No production roles, secrets or deployment settings have been changed.
+
+## How to use
+
+1. Back up the database and check that the migration is compatible with both old and new server versions. Migrations are forward-only; rolling the application back does not undo database changes.
+2. Using the **same image digest as the new server**, run `iconfess-server --migrate` as a controlled deployment job with `MIGRATION_DATABASE_URL` set to the migration-role connection string. Use a direct PostgreSQL connection or a session-mode pooler: transaction-mode pooling does not preserve the session-level migration lock. The command exits nonzero if migrations fail. Supply this secret only to that job, not to application pods. New runners serialize with a PostgreSQL advisory lock (30-second acquisition timeout), but older server versions do not take it. Serialize deployment jobs externally and prevent old servers from migrating concurrently, particularly during the initial transition.
+3. Grant the runtime role only the privileges needed for application operations, plus `SELECT` on `schema_migrations`. It must not own the schema or its objects or inherit the migration role. Revoke schema CREATE and ledger writes; configure default privileges for future objects. Verify application startup, content bootstrap, normal operations, and every required grant in staging before rollout; this document does not claim a universal grant script for every installation.
+4. Start the server with runtime `DATABASE_URL` and `DB_SCHEMA_MODE=verify`. It only reads the ledger: missing migrations, inaccessible ledger, and checksum mismatches fail startup. It accepts newer ledger entries for rolling deploys, but that is not proof that the newer schema is compatible with the older server.
+5. Monitor rollout; if it fails, stop and investigate. Restore or apply a forward fix as appropriate. Do not automatically roll back a database or delete ledger entries.
+
+`DB_SCHEMA_MODE=migrate` (or unset) keeps the legacy behavior. Unknown values fail rather than silently applying migrations. The migration command requires `MIGRATION_DATABASE_URL` explicitly and does not fall back to the runtime URL. Avoid printing connection strings or placing them in shell history.
+
+## Remaining rollout work
+
+The deployment workflow does not yet run a migration job or set verify mode; it must be updated only after its secret management, role grants, serialization and rollback plan are established and tested. Existing pre-lock instances in migrate mode must not race the new job. PostgreSQL integration tests check that a held advisory lock blocks a runner, failure releases it, and two runners can migrate a fresh database concurrently. `server/cmd/server/migration_integration_test.go` runs the actual migration command and server against a fresh PostgreSQL database, verifies that a non-owner runtime role cannot create tables or modify the ledger, and checks that startup and the live health endpoint succeed in verify mode. The test grants broad table DML for this exercise; it does not establish a minimal permission set, exercise every feature, validate external services, or prove production deployment. G-24 remains open until deployment and end-to-end verification are complete.

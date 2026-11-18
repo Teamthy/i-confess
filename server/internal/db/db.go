@@ -156,6 +156,15 @@ func splitSQLStatements(schema string) ([]string, error) {
 // The returned *DB rebinds '?' placeholders to PostgreSQL's '$N' form, which is
 // what lets the store layer keep the SQL it was written with.
 func Open(dsn string) (*DB, error) {
+	return OpenWithSchemaMode(dsn, "migrate")
+}
+
+// OpenWithSchemaMode connects using either the legacy migration-on-startup
+// behavior or a read-only migration ledger check for a separately migrated DB.
+func OpenWithSchemaMode(dsn, mode string) (*DB, error) {
+	if mode != "migrate" && mode != "verify" {
+		return nil, fmt.Errorf("invalid DB_SCHEMA_MODE %q: expected migrate or verify", mode)
+	}
 	if strings.TrimSpace(dsn) == "" {
 		return nil, fmt.Errorf("open db: empty connection string")
 	}
@@ -180,9 +189,15 @@ func Open(dsn string) (*DB, error) {
 		return nil, fmt.Errorf("ping db: %w", err)
 	}
 
-	if err := Migrate(conn); err != nil {
+	var schemaErr error
+	if mode == "verify" {
+		schemaErr = VerifyMigrations(conn)
+	} else {
+		schemaErr = Migrate(conn)
+	}
+	if schemaErr != nil {
 		_ = conn.Close()
-		return nil, err
+		return nil, schemaErr
 	}
 	return NewDB(conn), nil
 }

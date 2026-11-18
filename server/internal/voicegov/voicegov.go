@@ -13,8 +13,8 @@
 //
 //   - Zero values authorize nothing. A Grant with no capabilities set permits no
 //     action, and an unknown status is treated as not approved.
-//   - Only APPROVED and RESTRICTED grants authorize anything. RESTRICTED differs
-//     from APPROVED in that the Restrictions list may carve out purposes.
+//   - Generation requires APPROVED. RESTRICTED may authorize other actions
+//     subject to its purpose restrictions and independently granted rights.
 //   - Expiry is evaluated at call time, not trusted from the stored status, so a
 //     grant that lapsed overnight stops generation even if nobody updated it.
 //   - Every Action maps to the full set of Capabilities it needs. Callers ask
@@ -342,6 +342,12 @@ func Authorize(g *Grant, req Request) Decision {
 		return withVersion(deny(ReasonExpired, "voice rights expired"))
 	default:
 		return withVersion(deny(ReasonNotApproved, "voice rights status is %q; APPROVED or RESTRICTED is required", g.Status))
+	}
+	// A restricted grant may still permit separately licensed non-generation
+	// actions, but it must never authorize a new production render. Apply this
+	// before purpose restrictions so even an unrestricted purpose is denied.
+	if req.Action == ActionGenerate && g.Status != StatusApproved {
+		return withVersion(deny(ReasonNotApproved, "voice rights status is %q; generation requires APPROVED", g.Status))
 	}
 	if g.EffectiveFrom != nil && at.Before(*g.EffectiveFrom) {
 		return withVersion(deny(ReasonNotYetEffective, "voice rights begin %s", g.EffectiveFrom.UTC().Format(time.RFC3339)))

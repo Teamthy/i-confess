@@ -17,7 +17,7 @@
     "method": "POST",
     "path": "/admin/audio/generate/batch",
     "auth": "audio_producer,voice_manager",
-    "summary": "Trigger batch generation for multiple confessions",
+    "summary": "Queue generation for each confession; already-rendered items are reused; 422 when the batch would exceed the GPU budget; 503 when no durable queue is configured",
     "tag": "admin-audio"
   },
   {
@@ -124,6 +124,13 @@
     "auth": "admin",
     "summary": "Export audit logs",
     "tag": "admin-ops"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/batches/{id}",
+    "auth": "audio_producer,voice_manager,content_admin",
+    "summary": "One batch with per-item status",
+    "tag": "admin-voice"
   },
   {
     "method": "GET",
@@ -260,6 +267,34 @@
   },
   {
     "method": "GET",
+    "path": "/admin/blind-tests/{id}",
+    "auth": "audio_producer,voice_manager,ml_engineer,auditor,content_admin",
+    "summary": "Blind test clips for an evaluator",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/blind-tests/{id}/close",
+    "auth": "audio_producer,voice_manager",
+    "summary": "Close a blind test and reveal results",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/blind-tests/{id}/ratings",
+    "auth": "audio_producer,voice_manager,ml_engineer,auditor,content_admin",
+    "summary": "Submit blind ratings (1-5 per dimension)",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/blind-tests/{id}/results",
+    "auth": "audio_producer,voice_manager,ml_engineer,auditor",
+    "summary": "Unblinded results of a closed test",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "GET",
     "path": "/admin/categories",
     "auth": "content_admin,bible_admin,theological_reviewer",
     "summary": "List all categories including drafts",
@@ -315,6 +350,20 @@
     "tag": "admin-ops"
   },
   {
+    "method": "GET",
+    "path": "/admin/minister-voices",
+    "auth": "audio_producer,voice_manager,ml_engineer,auditor",
+    "summary": "All minister voices with effective rights status",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/minister-voices",
+    "auth": "voice_manager",
+    "summary": "Register a minister voice (PENDING, authorizes nothing)",
+    "tag": "admin-voice"
+  },
+  {
     "method": "POST",
     "path": "/admin/moderation/appeals/{id}/decision",
     "auth": "support_admin,moderator",
@@ -355,6 +404,13 @@
     "auth": "admin",
     "summary": "Create or update a pricing plan",
     "tag": "admin-content"
+  },
+  {
+    "method": "PUT",
+    "path": "/admin/pronunciations",
+    "auth": "audio_producer,voice_manager",
+    "summary": "Create or update a pronunciation entry",
+    "tag": "admin-voice"
   },
   {
     "method": "GET",
@@ -414,10 +470,31 @@
   },
   {
     "method": "GET",
+    "path": "/admin/recordings/{id}",
+    "auth": "audio_producer,voice_manager",
+    "summary": "Recording with ingestion report",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/recordings/{id}/ingest",
+    "auth": "audio_producer,voice_manager",
+    "summary": "Re-run ingestion",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "GET",
     "path": "/admin/security/overview",
     "auth": "admin",
     "summary": "Security overview and recent events",
     "tag": "admin-ops"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/segments/{id}/review",
+    "auth": "audio_producer,voice_manager",
+    "summary": "Approve (with verified transcript) or reject a segment",
+    "tag": "admin-voice"
   },
   {
     "method": "GET",
@@ -432,6 +509,20 @@
     "auth": "admin",
     "summary": "System health and inventory",
     "tag": "admin-ops"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/training-runs/{id}",
+    "auth": "audio_producer,voice_manager,ml_engineer,auditor",
+    "summary": "One training run",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/training-runs/{id}/cancel",
+    "auth": "ml_engineer,voice_manager",
+    "summary": "Cancel a training run",
+    "tag": "admin-voice"
   },
   {
     "method": "GET",
@@ -533,6 +624,20 @@
   },
   {
     "method": "GET",
+    "path": "/admin/voice-metrics",
+    "auth": "audio_producer,voice_manager,ml_engineer,auditor",
+    "summary": "Voice generation metrics (JSON or Prometheus)",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/voice-rights/sweep",
+    "auth": "voice_manager",
+    "summary": "Expire lapsed grants and apply post-termination policy now",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "GET",
     "path": "/admin/voices",
     "auth": "audio_producer,voice_manager",
     "summary": "List voices",
@@ -543,6 +648,146 @@
     "path": "/admin/voices",
     "auth": "audio_producer,voice_manager",
     "summary": "Create a voice",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/voices/{id}/approve",
+    "auth": "voice_manager",
+    "summary": "Approve voice rights",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/voices/{id}/audit",
+    "auth": "auditor,voice_manager",
+    "summary": "Voice rights audit log",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/voices/{id}/batches",
+    "auth": "audio_producer,voice_manager,content_admin",
+    "summary": "List batches with progress",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/voices/{id}/batches",
+    "auth": "audio_producer,voice_manager,content_admin",
+    "summary": "Queue a batch or pregeneration run (up to 10,000 items)",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/voices/{id}/blind-tests",
+    "auth": "audio_producer,voice_manager,ml_engineer,auditor,content_admin",
+    "summary": "List blind tests",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/voices/{id}/blind-tests",
+    "auth": "audio_producer,voice_manager",
+    "summary": "Create a blind listening test (sources hidden)",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/voices/{id}/datasets",
+    "auth": "audio_producer,voice_manager,ml_engineer,auditor",
+    "summary": "List dataset versions",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/voices/{id}/datasets",
+    "auth": "ml_engineer,voice_manager",
+    "summary": "Freeze approved segments into an immutable dataset version",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/voices/{id}/evaluate",
+    "auth": "audio_producer,voice_manager",
+    "summary": "Record metrics, compute ICF_VOICE_SCORE, run the gate",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/voices/{id}/grant",
+    "auth": "voice_manager",
+    "summary": "Granular rights grant with live evaluation",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "PUT",
+    "path": "/admin/voices/{id}/grant",
+    "auth": "voice_manager",
+    "summary": "Replace granular rights terms (attested)",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/voices/{id}/models",
+    "auth": "audio_producer,voice_manager,ml_engineer,auditor",
+    "summary": "List model versions",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/voices/{id}/models",
+    "auth": "audio_producer,voice_manager",
+    "summary": "Register an immutable model version",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/voices/{id}/models/{modelId}/promote",
+    "auth": "voice_manager",
+    "summary": "Promote an approved model to production",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/voices/{id}/recordings",
+    "auth": "audio_producer,voice_manager",
+    "summary": "List source recordings",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/voices/{id}/recordings",
+    "auth": "audio_producer,voice_manager",
+    "summary": "Upload a licensed source recording",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/voices/{id}/references",
+    "auth": "audio_producer,voice_manager",
+    "summary": "Add a reference clip",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/voices/{id}/restrict",
+    "auth": "voice_manager",
+    "summary": "Restrict voice rights",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/voices/{id}/review",
+    "auth": "voice_manager",
+    "summary": "Move rights to UNDER_REVIEW",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/voices/{id}/revoke",
+    "auth": "voice_manager",
+    "summary": "Revoke voice rights (terminal)",
     "tag": "admin-voice"
   },
   {
@@ -561,9 +806,51 @@
   },
   {
     "method": "POST",
+    "path": "/admin/voices/{id}/rights-documents",
+    "auth": "voice_manager",
+    "summary": "File a signed rights document",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "POST",
     "path": "/admin/voices/{id}/rights/revoke",
     "auth": "voice_manager",
     "summary": "Revoke every use of a voice",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/voices/{id}/rollback",
+    "auth": "voice_manager",
+    "summary": "Roll back to the previous production model",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/voices/{id}/segments",
+    "auth": "audio_producer,voice_manager",
+    "summary": "Intake segments for review",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/voices/{id}/suspend",
+    "auth": "voice_manager",
+    "summary": "Suspend voice rights",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/voices/{id}/training-runs",
+    "auth": "audio_producer,voice_manager,ml_engineer,auditor",
+    "summary": "List training runs",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/voices/{id}/training-runs",
+    "auth": "ml_engineer,voice_manager",
+    "summary": "Request a fine-tuning run (zero-shot first)",
     "tag": "admin-voice"
   },
   {
@@ -579,6 +866,20 @@
     "auth": "user",
     "summary": "Batch analytics events (no PII)",
     "tag": "analytics"
+  },
+  {
+    "method": "GET",
+    "path": "/audio/jobs/{id}",
+    "auth": "user",
+    "summary": "Generation job status and signed audio",
+    "tag": "voice"
+  },
+  {
+    "method": "POST",
+    "path": "/audio/jobs/{id}/cancel",
+    "auth": "user",
+    "summary": "Cancel a generation job",
+    "tag": "voice"
   },
   {
     "method": "POST",
@@ -1492,6 +1793,13 @@
   },
   {
     "method": "GET",
+    "path": "/minister-voices",
+    "auth": "public",
+    "summary": "Licensed minister voice library",
+    "tag": "voice"
+  },
+  {
+    "method": "GET",
     "path": "/openapi.json",
     "auth": "public",
     "summary": "OpenAPI JSON specification",
@@ -1788,7 +2096,7 @@
     "method": "POST",
     "path": "/v1/admin/audio/generate/batch",
     "auth": "audio_producer,voice_manager",
-    "summary": "Trigger batch generation for multiple confessions",
+    "summary": "Queue generation for each confession; already-rendered items are reused; 422 when the batch would exceed the GPU budget; 503 when no durable queue is configured",
     "tag": "admin-audio"
   },
   {
@@ -1895,6 +2203,13 @@
     "auth": "admin",
     "summary": "Export audit logs",
     "tag": "admin-ops"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/admin/batches/{id}",
+    "auth": "audio_producer,voice_manager,content_admin",
+    "summary": "One batch with per-item status",
+    "tag": "admin-voice"
   },
   {
     "method": "GET",
@@ -2031,6 +2346,34 @@
   },
   {
     "method": "GET",
+    "path": "/v1/admin/blind-tests/{id}",
+    "auth": "audio_producer,voice_manager,ml_engineer,auditor,content_admin",
+    "summary": "Blind test clips for an evaluator",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/admin/blind-tests/{id}/close",
+    "auth": "audio_producer,voice_manager",
+    "summary": "Close a blind test and reveal results",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/admin/blind-tests/{id}/ratings",
+    "auth": "audio_producer,voice_manager,ml_engineer,auditor,content_admin",
+    "summary": "Submit blind ratings (1-5 per dimension)",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/admin/blind-tests/{id}/results",
+    "auth": "audio_producer,voice_manager,ml_engineer,auditor",
+    "summary": "Unblinded results of a closed test",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "GET",
     "path": "/v1/admin/categories",
     "auth": "content_admin,bible_admin,theological_reviewer",
     "summary": "List all categories including drafts",
@@ -2086,6 +2429,20 @@
     "tag": "admin-ops"
   },
   {
+    "method": "GET",
+    "path": "/v1/admin/minister-voices",
+    "auth": "audio_producer,voice_manager,ml_engineer,auditor",
+    "summary": "All minister voices with effective rights status",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/admin/minister-voices",
+    "auth": "voice_manager",
+    "summary": "Register a minister voice (PENDING, authorizes nothing)",
+    "tag": "admin-voice"
+  },
+  {
     "method": "POST",
     "path": "/v1/admin/moderation/appeals/{id}/decision",
     "auth": "support_admin,moderator",
@@ -2126,6 +2483,13 @@
     "auth": "admin",
     "summary": "Create or update a pricing plan",
     "tag": "admin-content"
+  },
+  {
+    "method": "PUT",
+    "path": "/v1/admin/pronunciations",
+    "auth": "audio_producer,voice_manager",
+    "summary": "Create or update a pronunciation entry",
+    "tag": "admin-voice"
   },
   {
     "method": "GET",
@@ -2185,10 +2549,31 @@
   },
   {
     "method": "GET",
+    "path": "/v1/admin/recordings/{id}",
+    "auth": "audio_producer,voice_manager",
+    "summary": "Recording with ingestion report",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/admin/recordings/{id}/ingest",
+    "auth": "audio_producer,voice_manager",
+    "summary": "Re-run ingestion",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "GET",
     "path": "/v1/admin/security/overview",
     "auth": "admin",
     "summary": "Security overview and recent events",
     "tag": "admin-ops"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/admin/segments/{id}/review",
+    "auth": "audio_producer,voice_manager",
+    "summary": "Approve (with verified transcript) or reject a segment",
+    "tag": "admin-voice"
   },
   {
     "method": "GET",
@@ -2203,6 +2588,20 @@
     "auth": "admin",
     "summary": "System health and inventory",
     "tag": "admin-ops"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/admin/training-runs/{id}",
+    "auth": "audio_producer,voice_manager,ml_engineer,auditor",
+    "summary": "One training run",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/admin/training-runs/{id}/cancel",
+    "auth": "ml_engineer,voice_manager",
+    "summary": "Cancel a training run",
+    "tag": "admin-voice"
   },
   {
     "method": "GET",
@@ -2304,6 +2703,20 @@
   },
   {
     "method": "GET",
+    "path": "/v1/admin/voice-metrics",
+    "auth": "audio_producer,voice_manager,ml_engineer,auditor",
+    "summary": "Voice generation metrics (JSON or Prometheus)",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/admin/voice-rights/sweep",
+    "auth": "voice_manager",
+    "summary": "Expire lapsed grants and apply post-termination policy now",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "GET",
     "path": "/v1/admin/voices",
     "auth": "audio_producer,voice_manager",
     "summary": "List voices",
@@ -2314,6 +2727,146 @@
     "path": "/v1/admin/voices",
     "auth": "audio_producer,voice_manager",
     "summary": "Create a voice",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/admin/voices/{id}/approve",
+    "auth": "voice_manager",
+    "summary": "Approve voice rights",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/admin/voices/{id}/audit",
+    "auth": "auditor,voice_manager",
+    "summary": "Voice rights audit log",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/admin/voices/{id}/batches",
+    "auth": "audio_producer,voice_manager,content_admin",
+    "summary": "List batches with progress",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/admin/voices/{id}/batches",
+    "auth": "audio_producer,voice_manager,content_admin",
+    "summary": "Queue a batch or pregeneration run (up to 10,000 items)",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/admin/voices/{id}/blind-tests",
+    "auth": "audio_producer,voice_manager,ml_engineer,auditor,content_admin",
+    "summary": "List blind tests",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/admin/voices/{id}/blind-tests",
+    "auth": "audio_producer,voice_manager",
+    "summary": "Create a blind listening test (sources hidden)",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/admin/voices/{id}/datasets",
+    "auth": "audio_producer,voice_manager,ml_engineer,auditor",
+    "summary": "List dataset versions",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/admin/voices/{id}/datasets",
+    "auth": "ml_engineer,voice_manager",
+    "summary": "Freeze approved segments into an immutable dataset version",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/admin/voices/{id}/evaluate",
+    "auth": "audio_producer,voice_manager",
+    "summary": "Record metrics, compute ICF_VOICE_SCORE, run the gate",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/admin/voices/{id}/grant",
+    "auth": "voice_manager",
+    "summary": "Granular rights grant with live evaluation",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "PUT",
+    "path": "/v1/admin/voices/{id}/grant",
+    "auth": "voice_manager",
+    "summary": "Replace granular rights terms (attested)",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/admin/voices/{id}/models",
+    "auth": "audio_producer,voice_manager,ml_engineer,auditor",
+    "summary": "List model versions",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/admin/voices/{id}/models",
+    "auth": "audio_producer,voice_manager",
+    "summary": "Register an immutable model version",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/admin/voices/{id}/models/{modelId}/promote",
+    "auth": "voice_manager",
+    "summary": "Promote an approved model to production",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/admin/voices/{id}/recordings",
+    "auth": "audio_producer,voice_manager",
+    "summary": "List source recordings",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/admin/voices/{id}/recordings",
+    "auth": "audio_producer,voice_manager",
+    "summary": "Upload a licensed source recording",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/admin/voices/{id}/references",
+    "auth": "audio_producer,voice_manager",
+    "summary": "Add a reference clip",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/admin/voices/{id}/restrict",
+    "auth": "voice_manager",
+    "summary": "Restrict voice rights",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/admin/voices/{id}/review",
+    "auth": "voice_manager",
+    "summary": "Move rights to UNDER_REVIEW",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/admin/voices/{id}/revoke",
+    "auth": "voice_manager",
+    "summary": "Revoke voice rights (terminal)",
     "tag": "admin-voice"
   },
   {
@@ -2332,9 +2885,51 @@
   },
   {
     "method": "POST",
+    "path": "/v1/admin/voices/{id}/rights-documents",
+    "auth": "voice_manager",
+    "summary": "File a signed rights document",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "POST",
     "path": "/v1/admin/voices/{id}/rights/revoke",
     "auth": "voice_manager",
     "summary": "Revoke every use of a voice",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/admin/voices/{id}/rollback",
+    "auth": "voice_manager",
+    "summary": "Roll back to the previous production model",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/admin/voices/{id}/segments",
+    "auth": "audio_producer,voice_manager",
+    "summary": "Intake segments for review",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/admin/voices/{id}/suspend",
+    "auth": "voice_manager",
+    "summary": "Suspend voice rights",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/admin/voices/{id}/training-runs",
+    "auth": "audio_producer,voice_manager,ml_engineer,auditor",
+    "summary": "List training runs",
+    "tag": "admin-voice"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/admin/voices/{id}/training-runs",
+    "auth": "ml_engineer,voice_manager",
+    "summary": "Request a fine-tuning run (zero-shot first)",
     "tag": "admin-voice"
   },
   {
@@ -2350,6 +2945,20 @@
     "auth": "user",
     "summary": "Batch analytics events (no PII)",
     "tag": "analytics"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/audio/jobs/{id}",
+    "auth": "user",
+    "summary": "Generation job status and signed audio",
+    "tag": "voice"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/audio/jobs/{id}/cancel",
+    "auth": "user",
+    "summary": "Cancel a generation job",
+    "tag": "voice"
   },
   {
     "method": "POST",
@@ -3263,6 +3872,13 @@
   },
   {
     "method": "GET",
+    "path": "/v1/minister-voices",
+    "auth": "public",
+    "summary": "Licensed minister voice library",
+    "tag": "voice"
+  },
+  {
+    "method": "GET",
     "path": "/v1/openapi.json",
     "auth": "public",
     "summary": "OpenAPI JSON specification",
@@ -3542,6 +4158,20 @@
     "tag": "templates"
   },
   {
+    "method": "POST",
+    "path": "/v1/voice-sessions",
+    "auth": "user",
+    "summary": "Create a multi-section audio session (each section rights-checked)",
+    "tag": "voice"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/voice-sessions/{id}",
+    "auth": "user",
+    "summary": "Audio session playlist with signed audio",
+    "tag": "voice"
+  },
+  {
     "method": "GET",
     "path": "/v1/voices",
     "auth": "public",
@@ -3549,10 +4179,80 @@
     "tag": "content"
   },
   {
+    "method": "POST",
+    "path": "/v1/voices/generate",
+    "auth": "user",
+    "summary": "Queue or fetch cached synthetic minister speech",
+    "tag": "voice"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/voices/stream",
+    "auth": "user",
+    "summary": "Stream a live synthetic preview (not cached)",
+    "tag": "voice"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/voices/{id}",
+    "auth": "public",
+    "summary": "One minister voice (no legal detail)",
+    "tag": "voice"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/voices/{id}/styles",
+    "auth": "public",
+    "summary": "Styles with a rights-cleared reference",
+    "tag": "voice"
+  },
+  {
+    "method": "POST",
+    "path": "/voice-sessions",
+    "auth": "user",
+    "summary": "Create a multi-section audio session (each section rights-checked)",
+    "tag": "voice"
+  },
+  {
+    "method": "GET",
+    "path": "/voice-sessions/{id}",
+    "auth": "user",
+    "summary": "Audio session playlist with signed audio",
+    "tag": "voice"
+  },
+  {
     "method": "GET",
     "path": "/voices",
     "auth": "public",
     "summary": "Available voices (cached SWR 5m)",
     "tag": "content"
+  },
+  {
+    "method": "POST",
+    "path": "/voices/generate",
+    "auth": "user",
+    "summary": "Queue or fetch cached synthetic minister speech",
+    "tag": "voice"
+  },
+  {
+    "method": "POST",
+    "path": "/voices/stream",
+    "auth": "user",
+    "summary": "Stream a live synthetic preview (not cached)",
+    "tag": "voice"
+  },
+  {
+    "method": "GET",
+    "path": "/voices/{id}",
+    "auth": "public",
+    "summary": "One minister voice (no legal detail)",
+    "tag": "voice"
+  },
+  {
+    "method": "GET",
+    "path": "/voices/{id}/styles",
+    "auth": "public",
+    "summary": "Styles with a rights-cleared reference",
+    "tag": "voice"
   }
 ]

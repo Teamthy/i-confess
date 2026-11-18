@@ -1,0 +1,36 @@
+# Open work reconciliation
+
+**Reviewed:** 2026-11-17 against repository commit `c8be4725d0a1328baddc27eb7778f740a91f8948`. This is a source and historical-record review, not a production certification, a fresh test run, or an exhaustive audit. Priorities below are proposed, not a committed release plan. `docs/PROJECT-STATUS.md` and `.arena/state.json` predate voice PRs #84–#91; their branch and PR status are historical. The original ledger 57 is missing, so the seven older gap descriptions are reconstructed from the cited reports and checked against the current tree where possible.
+
+## Suggested order
+
+### P0 — prerequisites before releasing the minister voice
+
+- [ ] **Voice licensing and real-speech evaluation (P0-1/P0-2).** Identify the exact engine and checkpoint, verify commercial licensing and applicable voice rights, and document approvals before enabling production. Obtain an authorized real-speech sample and assess output, including speaker similarity and human listening; signal-level golden tests do not establish voice quality. Evidence: `docs/model_licenses.json` has `production_allowed: false` and unverified checkpoint fields; `AUDIT-VOICE-ENGINE-2026-10-06.md`, Appendix C, records both blockers. Requires legal/rights and content decisions, not only code.
+
+### P1 — security and correctness
+
+- [ ] **G-24: migration role separation — partially implemented, rollout open.** The server now supports a separate `--migrate` command and opt-in `DB_SCHEMA_MODE=verify`; the default remains migration on startup for compatibility. PostgreSQL tests cover the ledger check, migration, and real server startup with a restricted non-owner role using broad test DML grants; they do not establish minimal production grants or exercise every feature. Deployment ordering, migration serialization, least-privilege roles and real deployment verification remain. See `docs/MIGRATION-ROLE-SEPARATION.md`.
+- [ ] **G-33: compromised-password coverage — open.** `server/internal/auth/password_policy.go` checks a 24-entry local list and explicitly says it is not a breach corpus. Choose a privacy-preserving corpus approach and outage policy; test registration, reset and password-change paths, timeouts and privacy. Do not send plaintext passwords to a remote service.
+- [ ] **Route/IA drift — open per latest voice handoff.** Appendix C of the voice audit says `design/routes.json` is 100 routes behind and a fresh export exposes nine user-facing voice endpoints without screen ownership. `design/test_ia.py` reads that file; a passing test alone does not prove current route coverage. Re-export and independently verify the current counts; decide whether each endpoint belongs to an existing or new screen, or is intentionally non-user-facing. Make route freshness a CI check without weakening coverage or inventing screens.
+- [ ] **VE-018: Go vulnerability gate — partial.** `.github/workflows/ci.yml` runs `govulncheck` with `continue-on-error: true`; the worker's base requirements have a blocking `pip-audit` step. Review an actual Go scan, fix or explicitly disposition findings, then make the Go gate blocking. A green CI run alone does not prove the advisory scan passed.
+
+### P2 — product experience and deployment validation
+
+- [ ] **G-48: trial journey execution — still unproven/open.** `server/internal/billing/trial.go` declares `SessionCount`, `PremiumVoice` and `Custom`; `server/internal/api/billing.go` returns today's journey. The original handoff (`docs/41-TRIAL-ENGAGEMENT.md`) says the flags do not build the day-specific sessions, select the premium voice, open the builder, or create Day 2's second session. Current searches confirm the declarations, not end-to-end fulfillment. Trace client and server flows, agree whether the journey is guided or automatic, implement the agreed behavior, and test Days 2, 5 and 6 end to end, including entitlements and retries.
+- [ ] **VE-007: live object-storage validation — open.** The voice audit records a local S3-compatible signing test, not a live R2 bucket test. With an appropriately configured non-production bucket and authorized access, verify upload, signed playback, expiry and failure behavior without exposing secrets. Do not claim live storage works from the local test.
+- [ ] **G-15: motion review — partially progressed, not closed.** Motion tokens are used in mobile onboarding and auth (`apps/mobile/lib/src/features/onboarding/onboarding_screen.dart`, `apps/mobile/lib/src/features/auth/widgets/auth_form.dart`), contrary to the old claim that they are entirely unexercised; the web has reduced-motion rules in `web/app/globals.css`. Review breathing and session transitions on actual devices, including reduced-motion behavior and the 700 ms deliberate duration, before closing the design-review gap.
+- [ ] **G-14: iconography — partially progressed, design approval unverified.** Mobile uses Material icons (for example `apps/mobile/lib/src/core/widgets/states.dart`); web has an `Icon` component (`web/components/ui.tsx`). Inventory the actual sets, their licenses and consistency; get an approved cross-platform icon system and verify accessible labels. Their existence alone does not prove the original design requirement is met.
+- [ ] **VE-019: word-level timestamps — open per Appendix C.** Choose a forced-alignment approach only if synchronized transcripts are a product requirement; validate timing against real audio and specify storage, API, accessibility and fallback behavior. No alignment was attempted in the recorded wave.
+
+### P3 — architecture documentation
+
+- [ ] **G-19: web/admin information architecture — open.** `design/ia.json` explicitly describes mobile. Web and admin exist under `web/`, but this does not itself supply their screen graphs. Define and validate separate web/admin graphs, their routes, journeys and endpoint ownership. Coordinate with route/IA drift above.
+- [ ] **G-28: architectural model mismatch — needs decision.** `docs/08-GO-BACKEND.md` records that the prescribed four-layer model does not accurately describe the code and recommends amending the directive. Review the actual dependency boundaries and existing tests; update the authoritative architecture description or document a deliberate refactor. Do not mark closed merely because other architecture documentation exists.
+
+## Verification and next action
+
+- Latest merged PR in the reviewed GitHub history: **#91**, voice remediation wave 3, merged 2026-10-06. GitHub reports a successful CI run on the base commit; this is historical CI evidence, not a fresh local run or proof of deployed behavior.
+- No open GitHub issues were listed at review time; absence of issues is not evidence that work is complete.
+- No Supabase, Vercel, R2, production database permissions, real devices, or deployment configuration were inspected in this review.
+- Recommended first engineering slice: scope **G-24** against the actual deployment and migration workflow, with a rollback-safe design and PostgreSQL integration tests. In parallel, request the human decisions for voice licensing, trial behavior and endpoint ownership. Reassess priorities with the product owner before implementation.

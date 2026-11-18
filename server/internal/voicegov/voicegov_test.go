@@ -30,6 +30,7 @@ func TestZeroGrantAuthorizesNothing(t *testing.T) {
 func TestNonAuthorizingStatusesDeny(t *testing.T) {
 	cases := map[Status]Reason{
 		StatusPending:     ReasonNotApproved,
+		StatusRestricted:  ReasonNotApproved,
 		StatusUnderReview: ReasonNotApproved,
 		StatusSuspended:   ReasonSuspended,
 		StatusRevoked:     ReasonRevoked,
@@ -129,15 +130,21 @@ func TestNotYetEffective(t *testing.T) {
 	}
 }
 
-func TestRestrictedCarvesOutPurposes(t *testing.T) {
+func TestRestrictedGenerationDeniedAndOtherActionsRemainScoped(t *testing.T) {
 	g := fullGrant()
 	g.Status = StatusRestricted
 	g.Restrictions = []ContentPurpose{PurposeMarketing}
-	if d := Authorize(g, Request{Action: ActionGenerate, Purpose: PurposeMarketing, At: now}); d.Reason != ReasonRestricted {
-		t.Fatalf("marketing under restriction: %+v", d)
+	for _, purpose := range []ContentPurpose{"", PurposeMarketing, PurposePrayer} {
+		d := Authorize(g, Request{Action: ActionGenerate, Purpose: purpose, At: now})
+		if d.Allowed || d.Reason != ReasonNotApproved {
+			t.Errorf("restricted generation for %q: %+v", purpose, d)
+		}
 	}
-	if d := Authorize(g, Request{Action: ActionGenerate, Purpose: PurposePrayer, At: now}); !d.Allowed {
-		t.Fatalf("prayer under restriction: %+v", d)
+	if d := Authorize(g, Request{Action: ActionStream, Purpose: PurposeMarketing, At: now}); d.Reason != ReasonRestricted {
+		t.Fatalf("restricted distribution purpose: %+v", d)
+	}
+	if d := Authorize(g, Request{Action: ActionStream, Purpose: PurposePrayer, At: now}); !d.Allowed {
+		t.Fatalf("separately permitted distribution: %+v", d)
 	}
 }
 
