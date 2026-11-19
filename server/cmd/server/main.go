@@ -71,7 +71,10 @@ func main() {
 
 	schemaMode := os.Getenv("DB_SCHEMA_MODE")
 	if schemaMode == "" {
-		schemaMode = "migrate" // backwards compatible until deployment is migrated
+		schemaMode = "migrate" // legacy installations; the release manifest requires verify
+	}
+	if schemaMode == "verify" && os.Getenv("MIGRATION_DATABASE_URL") != "" {
+		log.Fatal("MIGRATION_DATABASE_URL belongs only in the migration job, not in a verify-mode server")
 	}
 	conn, err := db.OpenWithSchemaMode(cfg.DatabaseURL, schemaMode)
 	if err != nil {

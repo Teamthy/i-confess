@@ -2,6 +2,8 @@
 
 **Reviewed:** 2026-11-17 against repository commit `c8be4725d0a1328baddc27eb7778f740a91f8948`. This is a source and historical-record review, not a production certification, a fresh test run, or an exhaustive audit. Priorities below are proposed, not a committed release plan. `docs/PROJECT-STATUS.md` and `.arena/state.json` predate voice PRs #84–#91; their branch and PR status are historical. The original ledger 57 is missing, so the seven older gap descriptions are reconstructed from the cited reports and checked against the current tree where possible.
 
+**2026-11-18 update:** the migration/verify foundation from merged PR #92 (`f0e975e`) is now wired into the release workflow on this branch. The update below is based on local tests and manifest checks, not a deployment. Other entries retain their original review scope.
+
 ## Suggested order
 
 ### P0 — prerequisites before releasing the minister voice
@@ -10,7 +12,7 @@
 
 ### P1 — security and correctness
 
-- [ ] **G-24: migration role separation — partially implemented, rollout open.** The server now supports a separate `--migrate` command and opt-in `DB_SCHEMA_MODE=verify`; the default remains migration on startup for compatibility. PostgreSQL tests cover the ledger check, migration, and real server startup with a restricted non-owner role using broad test DML grants; they do not establish minimal production grants or exercise every feature. Deployment ordering, migration serialization, least-privilege roles and real deployment verification remain. See `docs/MIGRATION-ROLE-SEPARATION.md`.
+- [ ] **G-24: migration role separation — release path implemented; production cutover open.** Protected releases run a new migration Job from the approved API digest, wait for success, then roll out verify-only replicas using a separate Secret. A migration-only operation allows reviewed grants before app rollout. Real PostgreSQL tests cover unprivileged migrator/runtime logins, rejection of elevated runtime permissions, readiness, signup and authenticated account read with named grants rather than blanket DML. Release-driver tests cover failure/timeout and legacy-pod ordering without a cluster. The starter grants are **not** a full product ACL. Environment-specific feature grants, restore/upgrade rehearsal and a real staging/production rollout remain gates. See [database cutover runbook](MIGRATION-ROLE-SEPARATION.md).
 - [ ] **G-33: compromised-password coverage — open.** `server/internal/auth/password_policy.go` checks a 24-entry local list and explicitly says it is not a breach corpus. Choose a privacy-preserving corpus approach and outage policy; test registration, reset and password-change paths, timeouts and privacy. Do not send plaintext passwords to a remote service.
 - [ ] **Route/IA drift — open per latest voice handoff.** Appendix C of the voice audit says `design/routes.json` is 100 routes behind and a fresh export exposes nine user-facing voice endpoints without screen ownership. `design/test_ia.py` reads that file; a passing test alone does not prove current route coverage. Re-export and independently verify the current counts; decide whether each endpoint belongs to an existing or new screen, or is intentionally non-user-facing. Make route freshness a CI check without weakening coverage or inventing screens.
 - [ ] **VE-018: Go vulnerability gate — partial.** `.github/workflows/ci.yml` runs `govulncheck` with `continue-on-error: true`; the worker's base requirements have a blocking `pip-audit` step. Review an actual Go scan, fix or explicitly disposition findings, then make the Go gate blocking. A green CI run alone does not prove the advisory scan passed.
@@ -30,7 +32,9 @@
 
 ## Verification and next action
 
-- Latest merged PR in the reviewed GitHub history: **#91**, voice remediation wave 3, merged 2026-10-06. GitHub reports a successful CI run on the base commit; this is historical CI evidence, not a fresh local run or proof of deployed behavior.
+**Local checks, 2026-11-18 (this G-24 change):** Go build, vet and the full race suite passed with disposable PostgreSQL 17 and Redis 7; the affected database, server and config race tests were repeated after tightening the role check. All 10 release-driver tests passed and all eight backend Kubernetes resources passed strict schema validation. The web typecheck, seven sound/transcript tests and Next.js production build passed. The voice worker passed 79 CPU tests and the licence register/gate checks; **no engine is cleared for production**. Design/Dart symbol checks ran, not Flutter device tests. No image was published, no cluster was contacted and no live provider was validated.
+
+- Latest merged PR at the original 2026-11-17 review: **#91**, voice remediation wave 3, merged 2026-10-06. GitHub reports a successful CI run on the base commit; this is historical CI evidence, not a fresh local run or proof of deployed behavior.
 - No open GitHub issues were listed at review time; absence of issues is not evidence that work is complete.
 - No Supabase, Vercel, R2, production database permissions, real devices, or deployment configuration were inspected in this review.
-- Recommended first engineering slice: scope **G-24** against the actual deployment and migration workflow, with a rollback-safe design and PostgreSQL integration tests. In parallel, request the human decisions for voice licensing, trial behavior and endpoint ownership. Reassess priorities with the product owner before implementation.
+- Next operational step: rehearse **G-24** in an approved staging environment. Next independent engineering priority: **G-33**. Voice licensing and quality evaluation remain release blockers for the minister voice, independent of the database work.

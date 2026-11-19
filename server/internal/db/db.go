@@ -4,13 +4,14 @@ import (
 	"context"
 	"database/sql"
 	_ "embed"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
 	"strings"
 	"time"
 
-	_ "github.com/lib/pq"
+	"github.com/lib/pq"
 )
 
 // SchemaPostgresSQL is the full schema as one string: every migration,
@@ -160,7 +161,7 @@ func Open(dsn string) (*DB, error) {
 }
 
 // OpenWithSchemaMode connects using either the legacy migration-on-startup
-// behavior or a read-only migration ledger check for a separately migrated DB.
+// behavior or read-only ledger and runtime-role checks for a separately migrated DB.
 func OpenWithSchemaMode(dsn, mode string) (*DB, error) {
 	if mode != "migrate" && mode != "verify" {
 		return nil, fmt.Errorf("invalid DB_SCHEMA_MODE %q: expected migrate or verify", mode)
@@ -169,10 +170,13 @@ func OpenWithSchemaMode(dsn, mode string) (*DB, error) {
 		return nil, fmt.Errorf("open db: empty connection string")
 	}
 
-	conn, err := sql.Open("postgres", dsn)
+	// Parse separately: driver/URL parse errors can include the entire DSN,
+	// including the password. Neither migration Job nor API logs may contain it.
+	connector, err := pq.NewConnector(dsn)
 	if err != nil {
-		return nil, fmt.Errorf("open db: %w", err)
+		return nil, errors.New("open db: invalid PostgreSQL connection configuration; check the DSN and driver settings")
 	}
+	conn := sql.OpenDB(connector)
 
 	// PostgreSQL handles concurrent connections; capping the pool at one, as the
 	// SQLite build had to, would serialise the entire service behind a single
@@ -192,6 +196,9 @@ func OpenWithSchemaMode(dsn, mode string) (*DB, error) {
 	var schemaErr error
 	if mode == "verify" {
 		schemaErr = VerifyMigrations(conn)
+		if schemaErr == nil {
+			schemaErr = checkRuntimeRole(ctx, conn)
+		}
 	} else {
 		schemaErr = Migrate(conn)
 	}

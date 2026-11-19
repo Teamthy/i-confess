@@ -9,7 +9,14 @@ the only image publishing trigger. Deployments are manual, require a full
 GitHub `staging` or `production` environment whose required reviewers provide
 the approval gate. Never replace the digest with `latest`.
 
-Production media uses `infrastructure/media-cloudfront.yaml`: S3 is private and
+The Deploy workflow targets `iconfess-staging` or `iconfess-prod` and runs a
+one-off migration Job before the backend rollout. Read the [database cutover
+runbook](MIGRATION-ROLE-SEPARATION.md) before enabling `DB_ROLE_SPLIT_READY`:
+it covers Secret references, grants, first install, migration-only operation,
+legacy replicas, failure handling and safe rollback. Do not directly apply the
+backend manifest as a substitute for the migration gate.
+
+For AWS media, the stack in `infrastructure/media-cloudfront.yaml` keeps S3 private and
 CloudFront alone reads it through OAC. Keep the matching private RSA key in the
 runtime secret store (never CloudFormation or Git); mount it read-only and set:
 
@@ -26,10 +33,9 @@ Validate direct S3 denial and signed URL valid/expired/tampered behavior in an
 approved staging account before production. The workflows do not create or
 update the CloudFront stack automatically.
 
-**Env:** `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_SITE_URL`, `BILLING_VERIFIER=apple|google|chained` (default `noop`), `AI_PROVIDER=keyword|openai|anthropic` (default `keyword`), `MEDIA_BASE_URL` (signed CDN 1h), `BILLING_VERIFIER` prod wires App Store Server API + Play Developer API (stubs in `server/internal/billing/verify_prod.go` with TODO).
-**DB:** SQLite `gendb` dev → Postgres `migrations/postgres/0001..0010` (0010 community, 0009 plans, 0008 templates, 0007 search). Seed `scripts/seed.sh` 39 categories (Healing..Future+Love) never hard-coded in mobile.
-**Cache:** in-memory SWR 5m/10m for `ListCategories/CategoryConfessions/ListVoices` (`server/internal/cache`) — swap to Redis adapter same interface; hit-rate `GET /metrics` >85% dashboard.
-**Observability:** `X-Request-Id`+`traceparent`/`X-Trace-Id` on every response (`tracing.Middleware` + `RequestIDMiddleware`), `GET /metrics` (Prom `Accept:text/plain` or JSON `{counters, cache, trace_id}`), `logRequests` req_id, `GET /healthz|/health/live|/health/ready`, `GET /v1/admin/metrics` counters, `POST /v1/analytics/batch` allowlist no PII.
-**Web:** `apps/web` Next.js 15 — `sitemap.ts` (39 + static) + `robots.ts`, `next.config.mjs` avif/webp + security headers, `pricing`/`categories` live from API (no literal).
-**Mobile:** Flutter `apps/mobile` `Home·Discover·Create·Activity·Profile`, `onboarding` 90s, `paywall_screen` live pricing, `player_ui` Mini+Full, `offline_license_store` AES-GCM, `BillingService`+`TrialService`+`Analytics` no hard-code.
-**Budget:** workspace 3.2M source only; `node_modules`/go cache/LLM SDK/Redis/in_app_purchase in `/tmp`.
+## Other release checks
+
+- PostgreSQL is the only backend database. The migrations shipped with the Go binary live in `server/internal/db/migrations/`; `DATABASE_URL` belongs to the runtime, `MIGRATION_DATABASE_URL` to the Job only.
+- Stage the required API provider configuration (see `server/.env.example` and `server/internal/config/config.go`). Do not use a development billing verifier, local media storage or a log email sender in production. Test the installed providers; database readiness alone does not exercise them.
+- The web application lives in [`web/`](../web/README.md) and proxies `/api/*` to the Go server via `IC_API_URL`. The Kubernetes backend workflow does not deploy the web or mobile clients.
+- For product-specific release blockers, including voice rights, real audio and live storage verification, see [open work](OPEN-WORK-RECONCILIATION.md).
