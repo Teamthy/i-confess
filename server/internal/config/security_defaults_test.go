@@ -111,6 +111,7 @@ func TestTokenTTLDefaultIsShort(t *testing.T) {
 // correct deployment fail to boot gets reverted within a week.
 func TestValidProductionConfigPasses(t *testing.T) {
 	t.Setenv("ENV", "production")
+	t.Setenv("DATABASE_URL", "host=db user=app dbname=test sslmode=require")
 	t.Setenv("JWT_SECRET", "a-genuinely-random-secret-value")
 	t.Setenv("AUDIO_SIGN_SECRET", "another-genuinely-random-value")
 	t.Setenv("EMAIL_PROVIDER", "postmark")
@@ -184,6 +185,7 @@ func TestDevelopmentDefaultIsThePublishedSecret(t *testing.T) {
 func productionBase(t *testing.T) {
 	t.Helper()
 	t.Setenv("ENV", "production")
+	t.Setenv("DATABASE_URL", "host=db user=app dbname=test sslmode=require")
 	t.Setenv("JWT_SECRET", "a-genuinely-random-secret-value")
 	t.Setenv("AUDIO_SIGN_SECRET", "another-genuinely-random-value")
 	t.Setenv("EMAIL_PROVIDER", "postmark")
@@ -260,5 +262,21 @@ func TestDevelopmentMayUseLocalStorage(t *testing.T) {
 
 	if err := Load().Validate(); err != nil {
 		t.Errorf("development rejected local storage: %v", err)
+	}
+}
+
+// A missing or empty runtime secret must not silently connect to a local DB
+// with development credentials. POSTGRES_DSN was never read by the server.
+func TestExplicitDatabaseURLRequiredOutsideDevelopment(t *testing.T) {
+	for _, env := range []string{"staging", "production"} {
+		t.Run(env, func(t *testing.T) {
+			t.Setenv("ENV", env)
+			t.Setenv("DATABASE_URL", "")
+			t.Setenv("POSTGRES_DSN", "host=unused")
+			c := Load()
+			if err := c.Validate(); err == nil || !strings.Contains(err.Error(), "DATABASE_URL") {
+				t.Fatalf("missing runtime DSN accepted or misreported: %v", err)
+			}
+		})
 	}
 }

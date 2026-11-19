@@ -22,7 +22,6 @@ type Config struct {
 	TokenTTL     string
 	Env          string
 	MediaDir     string
-	PostgresDSN  string
 	RedisAddr    string
 	QueueWorkers int
 
@@ -101,9 +100,9 @@ type Config struct {
 }
 
 func Load() Config {
-	return Config{
+	cfg := Config{
 		Port:        getenv("PORT", "8080"),
-		DatabaseURL: getenv("DATABASE_URL", "host=127.0.0.1 port=5432 user=iconfess password=iconfess dbname=iconfess sslmode=disable"),
+		DatabaseURL: os.Getenv("DATABASE_URL"),
 		JWTSecret:   getenv("JWT_SECRET", "dev-only-change-me"),
 		// An access token, not a session. 720h (30 days) was the previous default:
 		// a stolen token stayed valid for a month, and nothing in the client needs
@@ -113,7 +112,6 @@ func Load() Config {
 		// safety check that a capital letter defeats.
 		Env:          strings.ToLower(getenv("ENV", "development")),
 		MediaDir:     getenv("MEDIA_DIR", "data/media"),
-		PostgresDSN:  getenv("POSTGRES_DSN", ""),
 		RedisAddr:    getenv("REDIS_ADDR", ""),
 		QueueWorkers: intEnv("QUEUE_WORKERS", 4),
 
@@ -154,6 +152,10 @@ func Load() Config {
 		APNsProduction:        os.Getenv("APNS_PRODUCTION") == "true",
 		FCMServiceAccountPath: os.Getenv("FCM_SERVICE_ACCOUNT"),
 	}
+	if cfg.DatabaseURL == "" && cfg.unsafeDefaultsAllowed() {
+		cfg.DatabaseURL = "host=127.0.0.1 port=5432 user=iconfess password=iconfess dbname=iconfess sslmode=disable"
+	}
+	return cfg
 }
 
 // IsProduction reports whether unsafe defaults must be rejected at boot.
@@ -196,6 +198,9 @@ func (c Config) Validate() error {
 	}
 	if c.unsafeDefaultsAllowed() {
 		return nil
+	}
+	if strings.TrimSpace(c.DatabaseURL) == "" {
+		return errors.New("DATABASE_URL is required outside development and test")
 	}
 	if c.JWTSecret == "" || c.JWTSecret == "dev-only-change-me" {
 		return errors.New("JWT_SECRET must be set to a non-default value in production")

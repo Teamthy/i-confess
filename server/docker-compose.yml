@@ -41,7 +41,7 @@ services:
     environment:
       PORT: "8080"
       ENV: development
-      POSTGRES_DSN: postgres://iconfess:iconfess-dev-password@postgres:5432/iconfess
+      DATABASE_URL: postgres://iconfess:iconfess-dev-password@postgres:5432/iconfess?sslmode=disable
       REDIS_ADDR: redis:6379
       JWT_SECRET: dev-only-change-me-for-production
       TOKEN_TTL: 720h
@@ -54,7 +54,6 @@ services:
         condition: service_healthy
     volumes:
       - ./data:/app/data
-    command: /app/iconfess-server
 
 volumes:
   postgres_data:

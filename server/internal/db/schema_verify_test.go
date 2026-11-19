@@ -15,6 +15,15 @@ func TestOpenWithSchemaModeRejectsInvalidMode(t *testing.T) {
 	}
 }
 
+func TestInvalidConnectionURLDoesNotExposePassword(t *testing.T) {
+	for _, mode := range []string{"migrate", "verify"} {
+		_, err := OpenWithSchemaMode("postgres://user:sentinel-password@localhost:badport/db", mode)
+		if err == nil || strings.Contains(err.Error(), "sentinel-password") {
+			t.Fatal("malformed DSN should be rejected without echoing its credentials")
+		}
+	}
+}
+
 // Exercises the read-only startup check with a role that cannot create objects
 // or change the ledger. TEST_DATABASE_URL must have CREATE ROLE privileges.
 func TestVerifyMigrationsWithRestrictedRole(t *testing.T) {
@@ -127,12 +136,15 @@ func TestSeparateMigrationAndVerifyStartup(t *testing.T) {
 	if err := migration.Close(); err != nil {
 		t.Fatal(err)
 	}
+	// A matching ledger is not sufficient if an operator accidentally puts
+	// the owner's URL in the runtime Secret.
 	runtime, err := OpenWithSchemaMode(databaseURL, "verify")
-	if err != nil {
-		t.Fatal(err)
+	if err == nil {
+		_ = runtime.Close()
+		t.Fatal("verify accepted the migration owner as the runtime role")
 	}
-	if err := runtime.Close(); err != nil {
-		t.Fatal(err)
+	if !strings.Contains(err.Error(), "restricted runtime role") {
+		t.Fatalf("owner should be refused by the runtime privilege check: %v", err)
 	}
 }
 

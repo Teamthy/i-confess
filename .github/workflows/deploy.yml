@@ -6,32 +6,49 @@ on:
         type: choice
         options: [staging, production]
         required: true
+      operation:
+        description: Use migrate-only to prepare a new schema before granting runtime access.
+        type: choice
+        options: [migrate-and-deploy, migrate-only]
+        default: migrate-and-deploy
+        required: true
       image_digest:
         description: Immutable ghcr.io image digest (sha256:...)
         required: true
 permissions:
   contents: read
   id-token: write
+# Serialize the entire migration + rollout, not only the PostgreSQL DDL.
+concurrency:
+  group: iconfess-release-${{ inputs.environment }}
+  cancel-in-progress: false
 jobs:
   deploy:
-    name: Deploy approved immutable image
+    name: Migrate and deploy approved immutable image
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     environment: ${{ inputs.environment }}
     steps:
       - uses: actions/checkout@v7
-      - name: Require digest
-        env: { IMAGE_DIGEST: '${{ inputs.image_digest }}' }
-        run: '[[ "$IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]'
+      - name: Require digest and prepared database roles
+        env:
+          IMAGE_DIGEST: ${{ inputs.image_digest }}
+          DB_ROLE_SPLIT_READY: ${{ vars.DB_ROLE_SPLIT_READY }}
+        run: |
+          [[ "$IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+          [[ "$DB_ROLE_SPLIT_READY" == true ]] || { echo 'Complete docs/MIGRATION-ROLE-SEPARATION.md for this environment first.'; exit 1; }
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v5
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
       - name: Configure cluster
-        run: aws eks update-kubeconfig --name '${{ vars.EKS_CLUSTER }}'
-      - name: Apply and verify rollout
-        env: { IMAGE_DIGEST: '${{ inputs.image_digest }}' }
-        run: |
-          sed "s|ghcr.io/teamthy/i-confess:IMAGE_DIGEST_REQUIRED|ghcr.io/teamthy/i-confess@${IMAGE_DIGEST}|" server/k8s/deployment-prod.yaml | kubectl apply -f -
-          kubectl -n iconfess-prod rollout status deployment/iconfess-backend --timeout=5m
-          kubectl -n iconfess-prod get deployment/iconfess-backend -o jsonpath='{.spec.template.spec.containers[0].image}' | grep -F "@${IMAGE_DIGEST}"
+        env:
+          EKS_CLUSTER: ${{ vars.EKS_CLUSTER }}
+        run: aws eks update-kubeconfig --name "$EKS_CLUSTER"
+      - name: Run migration before backend rollout
+        env:
+          OPERATION: ${{ inputs.operation }}
+          TARGET_ENV: ${{ inputs.environment }}
+          IMAGE_DIGEST: ${{ inputs.image_digest }}
+        run: python3 scripts/deploy_backend.py "$TARGET_ENV" "$IMAGE_DIGEST" --operation "$OPERATION"
