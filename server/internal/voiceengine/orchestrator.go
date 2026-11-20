@@ -597,7 +597,7 @@ func (o *Orchestrator) Stream(ctx context.Context, grant *voicegov.Grant, models
 	}
 	if err := rp.Request.ExpectedWorker.verify(actual); err != nil {
 		if st != nil && st.Body != nil {
-			st.Body.Close()
+			defer st.Body.Close() // preserve the identity error on rejection
 		}
 		return nil, nil, err
 	}

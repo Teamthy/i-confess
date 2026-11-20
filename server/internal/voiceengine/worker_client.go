@@ -192,7 +192,7 @@ func (p *HTTPProvider) GenerateStream(ctx context.Context, req GenerateRequest) 
 	}
 	id := responseIdentity(resp.Header)
 	if err := req.ExpectedWorker.verify(id); err != nil {
-		resp.Body.Close() // no bytes, including the WAV header, may reach the listener
+		defer resp.Body.Close() // reject without reading or handing off any bytes
 		return nil, err
 	}
 	sr, _ := strconv.Atoi(resp.Header.Get("X-Sample-Rate"))
