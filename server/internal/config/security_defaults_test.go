@@ -132,6 +132,25 @@ func TestValidProductionConfigPasses(t *testing.T) {
 	}
 }
 
+func TestProductionCloudFrontRequiresRootMediaOrigin(t *testing.T) {
+	productionBase(t)
+	t.Setenv("STORAGE_PROVIDER", "s3")
+	t.Setenv("S3_BUCKET", "test-bucket")
+	t.Setenv("S3_REGION", "eu-west-1")
+	for _, base := range []string{"https://media.example.test/", "https://media.example.test"} {
+		t.Setenv("MEDIA_BASE_URL", base)
+		if err := Load().Validate(); err != nil {
+			t.Fatalf("valid distribution origin: %v", err)
+		}
+	}
+	for _, base := range []string{"https://media.example.test/prefix", "https://user@media.example.test", "https://media.example.test?", "https://media.example.test/#fragment"} {
+		t.Setenv("MEDIA_BASE_URL", base)
+		if err := Load().Validate(); err == nil {
+			t.Errorf("accepted a base that doesn't name a bare HTTPS origin: %s", base)
+		}
+	}
+}
+
 func TestProductionSupportsPrivateR2WithoutCloudFrontKeys(t *testing.T) {
 	productionBase(t)
 	t.Setenv("STORAGE_PROVIDER", "s3")

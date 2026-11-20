@@ -150,6 +150,9 @@ func TestSignedURLCarriesTheRequestedExpiry(t *testing.T) {
 	if aws.ToString(pre.got.Key) != testKey {
 		t.Errorf("presigned key = %q, want %q", aws.ToString(pre.got.Key), testKey)
 	}
+	if pre.got.ResponseCacheControl != nil {
+		t.Fatal("ordinary catalog GET should retain the object's cache metadata")
+	}
 
 	// A zero TTL must not produce an already-expired URL.
 	if _, err := s.GenerateSignedURL(context.Background(), testKey, 0); err != nil {

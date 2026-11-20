@@ -39,6 +39,16 @@ Resources:
       KeyGroupConfig:
         Items: [!Ref SigningPublicKey]
         Name: !Sub '${AWS::StackName}-media-keys'
+  PrivateMediaHeaders:
+    Type: AWS::CloudFront::ResponseHeadersPolicy
+    Properties:
+      ResponseHeadersPolicyConfig:
+        Name: !Sub '${AWS::StackName}-private-media'
+        CustomHeadersConfig:
+          Items:
+            - Header: Cache-Control
+              Value: 'private, no-store'
+              Override: true  # Also replace public/immutable headers on legacy objects.
   Distribution:
     Type: AWS::CloudFront::Distribution
     Properties:
@@ -50,6 +60,31 @@ Resources:
             DomainName: !GetAtt MediaBucket.RegionalDomainName
             OriginAccessControlId: !Ref OriginAccessControl
             S3OriginConfig: { OriginAccessIdentity: '' }
+        # First match wins. These paths match storage.noStoreMedia. Keep both
+        # controls: Managed-CachingDisabled (edge TTLs all zero) and the
+        # response policy for browsers/downstream caches. Neither grants access.
+        CacheBehaviors:
+          - PathPattern: 'audio/voices/*'
+            TargetOriginId: private-media
+            ViewerProtocolPolicy: https-only
+            TrustedKeyGroups: [!Ref SigningKeyGroup]
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+            ResponseHeadersPolicyId: !Ref PrivateMediaHeaders
+            AllowedMethods: [GET, HEAD, OPTIONS]
+          - PathPattern: 'voice-private/*'
+            TargetOriginId: private-media
+            ViewerProtocolPolicy: https-only
+            TrustedKeyGroups: [!Ref SigningKeyGroup]
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+            ResponseHeadersPolicyId: !Ref PrivateMediaHeaders
+            AllowedMethods: [GET, HEAD, OPTIONS]
+          - PathPattern: 'bible/*'
+            TargetOriginId: private-media
+            ViewerProtocolPolicy: https-only
+            TrustedKeyGroups: [!Ref SigningKeyGroup]
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+            ResponseHeadersPolicyId: !Ref PrivateMediaHeaders
+            AllowedMethods: [GET, HEAD, OPTIONS]
         DefaultCacheBehavior:
           TargetOriginId: private-media
           ViewerProtocolPolicy: redirect-to-https
@@ -73,5 +108,7 @@ Resources:
                 AWS:SourceArn: !Sub 'arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${Distribution}'
 Outputs:
   BucketName: { Value: !Ref MediaBucket }
+  BucketRegionalDomain: { Value: !GetAtt MediaBucket.RegionalDomainName }
+  DistributionId: { Value: !Ref Distribution }
   DistributionDomain: { Value: !GetAtt Distribution.DomainName }
   KeyPairId: { Value: !Ref SigningPublicKey }

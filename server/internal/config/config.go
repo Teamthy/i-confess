@@ -25,8 +25,8 @@ type Config struct {
 	RedisAddr    string
 	QueueWorkers int
 
-	// MediaBaseURL is the URL prefix signed audio links point at. Set this to
-	// the CDN hostname in production.
+	// MediaBaseURL is the local handler prefix in development. With CloudFront
+	// it must be the distribution's bare HTTPS origin so paths match cache rules.
 	MediaBaseURL             string
 	CloudFrontKeyPairID      string
 	CloudFrontPrivateKeyPath string
@@ -266,8 +266,10 @@ func (c Config) Validate() error {
 			endpoint.Port() == "" && c.StorageProvider == "s3"
 	}
 	if c.CloudFrontKeyPairID != "" || c.CloudFrontPrivateKeyPath != "" {
-		if !strings.HasPrefix(c.MediaBaseURL, "https://") ||
-			c.CloudFrontKeyPairID == "" || c.CloudFrontPrivateKeyPath == "" {
+		if _, err := storage.CloudFrontOrigin(c.MediaBaseURL); err != nil {
+			return err
+		}
+		if c.CloudFrontKeyPairID == "" || c.CloudFrontPrivateKeyPath == "" {
 			return errors.New("CloudFront signing requires an HTTPS MEDIA_BASE_URL and both CLOUDFRONT signing settings")
 		}
 	} else if directR2 {
