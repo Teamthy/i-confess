@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 
 from icf_worker import ingest, licenses, storage, wav
-from icf_worker.engines import DevToneEngine, EngineError, resolve_checkpoint
+from icf_worker.engines import DevToneEngine, EngineError, GPTSoVITSEngine, resolve_checkpoint
 from icf_worker.server import make_handler
 from icf_worker.train import TrainingError, TrainingManager
 
@@ -82,6 +82,26 @@ def test_disallowed_keys_are_permanent_errors(store):
     assert e.value.cls == "model"
 
 
+def test_rendered_audio_is_not_worker_input(store):
+    # Put fixture bytes in the shared volume, not through the scoped worker.
+    key = "audio/voices/v/prayer/m/take.wav"
+    p = store.root / key
+    p.parent.mkdir(parents=True)
+    p.write_bytes(b"render")
+    for k in (key, "audio/./voices/v/prayer/m/take.wav", "audio/%76oices/v/take.wav"):
+        assert not storage.valid_key(k)
+        with pytest.raises(storage.StorageError):
+            store.local_path(k)
+        with pytest.raises(EngineError) as e:
+            resolve_checkpoint(k)
+        assert e.value.cls == "permanent"
+        with pytest.raises(storage.StorageError):
+            store.put(k, b"not a source")
+    assert p.read_bytes() == b"render"
+    assert storage.valid_key("voice-private/voices/v/recordings/source.wav")
+    assert storage.valid_key("audio/source/reading.wav")
+
+
 FAKE_TRAINER = textwrap.dedent("""
     import json, sys, pathlib
     args = dict(zip(sys.argv[1::2], sys.argv[2::2]))
@@ -124,7 +144,14 @@ def test_training_runs_wrapped_command_and_uploads_hashed_checkpoint(store, tmp_
     assert run.loss == pytest.approx(0.4)
     assert run.checkpoint_key.endswith("/model.pth") and len(run.checkpoint_sha256) == 64
     # Test-split audio is withheld from the trainer: 5 entries, 3 train.
-    assert store.local_path(run.checkpoint_key).read_bytes() == b"weights:3"
+    deployed_file = store.local_path(run.checkpoint_key)
+    assert deployed_file.read_bytes() == b"weights:3"
+    # Mounting the output bundle on a new worker gives exactly the candidate pin;
+    # neither the mount point nor the user-supplied base_model names the result.
+    monkeypatch.setenv("ICF_GPTSOVITS_MODEL_DIR", str(deployed_file.parent))
+    engine = GPTSoVITSEngine()
+    assert run.view()["checkpoint_identity"] == {"engine": "gptsovits", "revision": engine.version}
+    assert engine.version.endswith("+sha256." + run.checkpoint_sha256)
 
 
 def test_training_not_configured_and_failures_are_reported(store, tmp_path, monkeypatch):
@@ -174,8 +201,10 @@ def post(url, body):
 
 
 def test_stream_endpoint_yields_playable_wav(worker):
-    resp = post(worker + "/v1/synthesize/stream", {"chunks": [{"text": "Grace and peace.", "silence_after_ms": 200},
-                                                             {"text": "Be still."}]})
+    resp = post(worker + "/v1/synthesize/stream", {
+        "expected_worker": {"engine": "dev-tone", "revision": "dev"},
+        "chunks": [{"text": "Grace and peace.", "silence_after_ms": 200}, {"text": "Be still."}],
+    })
     body = resp.read()
     assert resp.headers["X-Synthetic"] == "true"
     assert body[:4] == b"RIFF" and body[8:12] == b"WAVE"

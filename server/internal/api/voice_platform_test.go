@@ -15,31 +15,59 @@ import (
 	"github.com/Teamthy/i-confess/internal/voiceeval"
 )
 
+const testVoiceRevision = "3+sha256.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
 // fakeGPUWorker speaks the voice-engine worker wire protocol. It records every
 // synthesize call so tests can prove what did (and did not) reach inference.
 type fakeGPUWorker struct {
-	calls   atomic.Int32
-	lastReq atomic.Value // string
+	engine       voiceengine.Engine // defaults to CosyVoice
+	capsRevision atomic.Value       // optional live revision change
+	calls        atomic.Int32
+	busyThrough  atomic.Int32 // reject the first N synthesis calls with the worker's busy response
+	lastReq      atomic.Value // string
 	// reportCosts mirrors a real worker's X-Inference-Seconds / X-Worker-Seconds
 	// headers. Cleared in one test to cover the other half of the contract: a
 	// worker that measures nothing must leave the cost columns NULL, not 0.
-	reportCosts bool
+	reportCosts      bool
+	reportedRevision atomic.Value // optional independent reply from a differently deployed replica
+	beforeAudio      func()       // optional barrier before returning inference results
 }
 
 func (f *fakeGPUWorker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	family := f.engine
+	if family == "" {
+		family = voiceengine.EngineCosyVoice
+	}
+	version, _ := f.capsRevision.Load().(string)
+	if version == "" {
+		version = testVoiceRevision
+	}
 	switch r.URL.Path {
 	case "/v1/health":
 		w.Write([]byte(`{"status":"ok"}`))
 	case "/v1/capabilities":
-		w.WriteHeader(http.StatusNotFound) // adapter falls back to its defaults
-	case "/v1/synthesize":
+		json.NewEncoder(w).Encode(voiceengine.ProviderCapabilities{Engine: family, EngineVersion: version,
+			Streaming: true, ZeroShot: true, Languages: []string{"en"}, MaxChunkChars: 300, SelfHosted: true})
+	case "/v1/synthesize", "/v1/synthesize/stream":
 		b, _ := io.ReadAll(r.Body)
 		f.lastReq.Store(string(b))
-		f.calls.Add(1)
+		if f.calls.Add(1) <= f.busyThrough.Load() {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			io.WriteString(w, `{"error":{"class":"transient","message":"synthesis worker busy"}}`)
+			return
+		}
+		if f.beforeAudio != nil {
+			f.beforeAudio()
+		}
 		w.Header().Set("Content-Type", "audio/wav")
 		w.Header().Set("X-Sample-Rate", "8000")
 		w.Header().Set("X-Duration-Ms", "3000")
-		w.Header().Set("X-Engine-Version", "3.0-test")
+		revision, _ := f.reportedRevision.Load().(string)
+		if revision == "" {
+			revision = version
+		}
+		w.Header().Set("X-Engine", string(family))
+		w.Header().Set("X-Engine-Version", revision)
 		if f.reportCosts {
 			w.Header().Set("X-Inference-Seconds", "2.5")
 			w.Header().Set("X-Worker-Seconds", "3.25")
@@ -116,10 +144,10 @@ func (h *voicePlatformHarness) onboard(t *testing.T, extraCaps ...string) string
 	h.must(t, 200, "POST", "/v1/admin/voices/"+id+"/approve", nil, h.admin)
 
 	h.must(t, 201, "POST", "/v1/admin/voices/"+id+"/references", map[string]any{
-		"style": "reflection", "audioKey": "refs/a/reflection.wav", "transcript": "Be still and know.",
+		"style": "reflection", "audioKey": "voice-private/refs/a/reflection.wav", "transcript": "Be still and know.",
 		"durationMs": 8000, "quality": 0.9, "rightsOk": true}, h.admin)
 	m := h.must(t, 201, "POST", "/v1/admin/voices/"+id+"/models", map[string]any{
-		"engine": "cosyvoice", "engineVersion": "3", "modelVersion": "zs-1", "mode": "zero_shot",
+		"engine": "cosyvoice", "engineVersion": testVoiceRevision, "modelVersion": "zs-1", "mode": "zero_shot",
 		"licenseReviewed": true, "checkpointKey": "private/ckpt/zs-1"}, h.admin)
 	modelID := m["model"].(map[string]any)["id"].(string)
 

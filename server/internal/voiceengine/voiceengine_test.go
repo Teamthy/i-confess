@@ -158,6 +158,7 @@ func TestContentHashStableAndSensitive(t *testing.T) {
 	}
 	for _, mut := range []func(*HashInput){
 		func(h *HashInput) { h.ModelID = "m2" },
+		func(h *HashInput) { h.EngineVersion = testRevision },
 		func(h *HashInput) { h.Style = "reflection" },
 		func(h *HashInput) { h.Speed = 1 },
 		func(h *HashInput) { h.ReferenceID = "r2" },
@@ -177,8 +178,8 @@ func TestContentHashStableAndSensitive(t *testing.T) {
 func TestPromoteRetiresPreviousAndRollbackRestores(t *testing.T) {
 	t0 := time.Now()
 	models := []Model{
-		{ID: "v1", VoiceID: "x", Status: ModelProduction, LicenseReviewed: true, PromotedAt: t0},
-		{ID: "v2", VoiceID: "x", Status: ModelApproved, LicenseReviewed: true},
+		{ID: "v1", VoiceID: "x", Engine: EngineCosyVoice, EngineVersion: testRevision, Status: ModelProduction, LicenseReviewed: true, PromotedAt: t0},
+		{ID: "v2", VoiceID: "x", Engine: EngineCosyVoice, EngineVersion: testRevision, Status: ModelApproved, LicenseReviewed: true},
 		{ID: "other", VoiceID: "y", Status: ModelProduction, LicenseReviewed: true},
 	}
 	ch, err := Promote(models, "v2")
@@ -197,11 +198,12 @@ func TestPromoteRetiresPreviousAndRollbackRestores(t *testing.T) {
 
 func TestPromoteGuards(t *testing.T) {
 	models := []Model{
-		{ID: "cand", VoiceID: "x", Status: ModelCandidate, LicenseReviewed: true},
-		{ID: "nolic", VoiceID: "x", Status: ModelApproved},
-		{ID: "ft", VoiceID: "x", Status: ModelApproved, LicenseReviewed: true, Mode: "fine_tuned"},
+		{ID: "cand", VoiceID: "x", Engine: EngineCosyVoice, EngineVersion: testRevision, Status: ModelCandidate, LicenseReviewed: true},
+		{ID: "legacy", VoiceID: "x", Engine: EngineCosyVoice, EngineVersion: "3", Status: ModelApproved, LicenseReviewed: true},
+		{ID: "nolic", VoiceID: "x", Engine: EngineCosyVoice, EngineVersion: testRevision, Status: ModelApproved},
+		{ID: "ft", VoiceID: "x", Engine: EngineCosyVoice, EngineVersion: testRevision, Status: ModelApproved, LicenseReviewed: true, Mode: "fine_tuned"},
 	}
-	for _, id := range []string{"cand", "nolic", "ft", "missing"} {
+	for _, id := range []string{"cand", "legacy", "nolic", "ft", "missing"} {
 		if _, err := Promote(models, id); err == nil {
 			t.Errorf("promoted %s", id)
 		}
@@ -267,6 +269,8 @@ func TestSelectReference(t *testing.T) {
 	}
 }
 
+const testRevision = "v1+sha256.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
 // ---------------------------------------------------------------- orchestrator
 
 type fakeProvider struct {
@@ -282,13 +286,15 @@ func (f *fakeProvider) Generate(_ context.Context, r GenerateRequest) (*Generate
 	if f.err != nil {
 		return nil, f.err
 	}
-	return &GenerateResult{Audio: []byte("RIFF"), ModelID: r.ModelID, Engine: f.caps.Engine}, nil
+	return &GenerateResult{Audio: []byte("RIFF"), ModelID: r.ModelID, Engine: f.caps.Engine, EngineVersion: f.caps.EngineVersion}, nil
 }
 func (f *fakeProvider) Clone(context.Context, CloneRequest) (*CloneResult, error) {
 	return &CloneResult{SpeakerHandle: "h"}, nil
 }
-func (f *fakeProvider) Health(context.Context) error                      { return f.err }
-func (f *fakeProvider) Capabilities(context.Context) ProviderCapabilities { return f.caps }
+func (f *fakeProvider) Health(context.Context) error { return f.err }
+func (f *fakeProvider) Capabilities(context.Context) (ProviderCapabilities, error) {
+	return f.caps, nil
+}
 
 func approvedGrant() *voicegov.Grant {
 	caps := map[voicegov.Capability]bool{}
@@ -299,14 +305,14 @@ func approvedGrant() *voicegov.Grant {
 }
 
 func setup() (*Orchestrator, *fakeProvider, *fakeProvider, []Model, []Reference) {
-	cosy := &fakeProvider{caps: ProviderCapabilities{Engine: EngineCosyVoice, Languages: []string{"en"}, SelfHosted: true}}
-	sovits := &fakeProvider{caps: ProviderCapabilities{Engine: EngineGPTSoVITS, Languages: []string{"en"}, SelfHosted: true}}
+	cosy := &fakeProvider{caps: ProviderCapabilities{Engine: EngineCosyVoice, EngineVersion: testRevision, Languages: []string{"en"}, SelfHosted: true}}
+	sovits := &fakeProvider{caps: ProviderCapabilities{Engine: EngineGPTSoVITS, EngineVersion: testRevision, Languages: []string{"en"}, SelfHosted: true}}
 	reg := NewRegistry(false)
 	_ = reg.Register(EngineCosyVoice, cosy)
 	_ = reg.Register(EngineGPTSoVITS, sovits)
 	models := []Model{
-		{ID: "m1", VoiceID: "x", Engine: EngineCosyVoice, Status: ModelProduction, ICFVoiceScore: 0.9, LicenseReviewed: true},
-		{ID: "m2", VoiceID: "x", Engine: EngineGPTSoVITS, Status: ModelApproved, FallbackApproved: true, LicenseReviewed: true, ICFVoiceScore: 0.88},
+		{ID: "m1", VoiceID: "x", Engine: EngineCosyVoice, EngineVersion: testRevision, Status: ModelProduction, ICFVoiceScore: 0.9, LicenseReviewed: true},
+		{ID: "m2", VoiceID: "x", Engine: EngineGPTSoVITS, EngineVersion: testRevision, Status: ModelApproved, FallbackApproved: true, LicenseReviewed: true, ICFVoiceScore: 0.88},
 	}
 	refs := []Reference{{ID: "r", VoiceID: "x", Style: "reflection", RightsOK: true, Quality: 0.9}}
 	o := &Orchestrator{Registry: reg, Dict: testDict(), Fallback: FallbackPolicy{Enabled: true, MinScore: 0.8}}
@@ -355,6 +361,16 @@ func TestOrchestratorFallsBackOnGPUFailureAndSaysSo(t *testing.T) {
 	}
 	if !plan.FellBack || plan.Model.ID != "m2" || !strings.Contains(plan.FallbackReason, "gpu") || sovits.calls != 1 {
 		t.Fatalf("%+v", plan)
+	}
+}
+
+func TestOrchestratorBusyPrimaryWithUnusableFallbackIsRetryable(t *testing.T) {
+	o, primary, fallback, models, refs := setup()
+	primary.err = &Error{Class: ClassTransient, Msg: "synthesis worker busy"}
+	fallback.caps.Languages = []string{"zh"}
+	_, _, err := o.Generate(context.Background(), approvedGrant(), models, refs, req())
+	if !errors.Is(err, primary.err) || Classify(err) != ClassTransient || fallback.calls != 0 {
+		t.Fatalf("unusable fallback hid a recoverable primary: err=%v, fallback calls=%d", err, fallback.calls)
 	}
 }
 
@@ -410,10 +426,11 @@ func TestHTTPProviderContract(t *testing.T) {
 			w.Header().Set("Content-Type", "audio/wav")
 			w.Header().Set("X-Sample-Rate", "24000")
 			w.Header().Set("X-Duration-Ms", "1500")
-			w.Header().Set("X-Engine-Version", "3.0.1")
+			w.Header().Set("X-Engine", "cosyvoice")
+			w.Header().Set("X-Engine-Version", testRevision)
 			_, _ = w.Write([]byte("RIFFdata"))
 		case "/v1/capabilities":
-			_ = json.NewEncoder(w).Encode(ProviderCapabilities{Engine: "impostor", Languages: []string{"en"}, SelfHosted: true})
+			_ = json.NewEncoder(w).Encode(ProviderCapabilities{Engine: "impostor", EngineVersion: testRevision, Languages: []string{"en"}, SelfHosted: true})
 		case "/v1/health":
 			w.WriteHeader(503)
 		}
@@ -421,11 +438,11 @@ func TestHTTPProviderContract(t *testing.T) {
 	defer srv.Close()
 
 	p := NewCosyVoiceProvider(srv.URL, "tok")
-	res, err := p.Generate(context.Background(), GenerateRequest{ModelID: "m", Chunks: []Chunk{{Text: "hi"}}, Prosody: ProsodyProfile{Speed: 0.9}, Style: "prayer"})
+	res, err := p.Generate(context.Background(), GenerateRequest{ExpectedWorker: WorkerIdentity{EngineCosyVoice, testRevision}, ModelID: "m", Chunks: []Chunk{{Text: "hi"}}, Prosody: ProsodyProfile{Speed: 0.9}, Style: "prayer"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.SampleRate != 24000 || res.DurationMS != 1500 || res.EngineVersion != "3.0.1" || string(res.Audio) != "RIFFdata" {
+	if res.SampleRate != 24000 || res.DurationMS != 1500 || res.EngineVersion != testRevision || string(res.Audio) != "RIFFdata" {
 		t.Fatalf("%+v", res)
 	}
 	if got.Params["speed"] != 0.9 || got.Params["instruct_style"] != "prayer" {
@@ -442,29 +459,29 @@ func TestHTTPProviderContract(t *testing.T) {
 	if m := p.mapper(ProsodyProfile{Speed: 1}, "not-a-style"); m["instruct"] != nil {
 		t.Fatalf("unknown style invented an instruction: %v", m)
 	}
-	_, err = p.Generate(context.Background(), GenerateRequest{Chunks: []Chunk{{Text: "oom"}}})
+	_, err = p.Generate(context.Background(), GenerateRequest{ExpectedWorker: WorkerIdentity{EngineCosyVoice, testRevision}, Chunks: []Chunk{{Text: "oom"}}})
 	if Classify(err) != ClassGPU || !Classify(err).Retryable() {
 		t.Fatalf("%v", err)
 	}
-	if c := p.Capabilities(context.Background()); c.Engine != EngineCosyVoice {
-		t.Fatalf("worker renamed engine: %s", c.Engine)
+	if _, err := p.Capabilities(context.Background()); Classify(err) != ClassIdentity {
+		t.Fatalf("worker with wrong identity was not rejected: %v", err)
 	}
 	if p.Health(context.Background()) == nil {
 		t.Fatal("unhealthy worker reported healthy")
 	}
 	bad := NewCosyVoiceProvider(srv.URL, "wrong")
-	if _, err := bad.Generate(context.Background(), GenerateRequest{Chunks: []Chunk{{Text: "x"}}}); Classify(err) != ClassPermanent {
+	if _, err := bad.Generate(context.Background(), GenerateRequest{ExpectedWorker: WorkerIdentity{EngineCosyVoice, testRevision}, Chunks: []Chunk{{Text: "x"}}}); Classify(err) != ClassPermanent {
 		t.Fatalf("401 should be permanent: %v", err)
 	}
 	down := NewCosyVoiceProvider("http://127.0.0.1:1", "")
-	if c := down.Capabilities(context.Background()); c.Engine != EngineCosyVoice || !c.ZeroShot {
-		t.Fatalf("fallback caps: %+v", c)
+	if c, err := down.Capabilities(context.Background()); err == nil || c.EngineVersion != "" {
+		t.Fatalf("fabricated capabilities while worker down: %+v (%v)", c, err)
 	}
 }
 
 func TestErrorClassRetryable(t *testing.T) {
 	for c, want := range map[ErrorClass]bool{ClassTransient: true, ClassGPU: true, ClassStorage: true,
-		ClassRights: false, ClassContent: false, ClassModel: false, ClassPermanent: false} {
+		ClassRights: false, ClassContent: false, ClassModel: false, ClassIdentity: false, ClassPermanent: false} {
 		if c.Retryable() != want {
 			t.Errorf("%s retryable=%v", c, !want)
 		}

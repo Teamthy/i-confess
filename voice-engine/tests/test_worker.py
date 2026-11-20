@@ -2,8 +2,11 @@ import json
 import math
 import threading
 import urllib.error
+import urllib.parse
 import urllib.request
-from http.server import ThreadingHTTPServer
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import numpy as np
 import pytest
@@ -15,7 +18,6 @@ from icf_worker.engines import (
     EngineError,
     GPTSoVITSEngine,
     VoxCPMEngine,
-    checkpoint_revision,
     reference_transcript,
     resolve_checkpoint,
 )
@@ -60,7 +62,6 @@ def test_checkpoint_traversal_refused(tmp_path, monkeypatch):
     from icf_worker import storage
     monkeypatch.setenv("ICF_STORAGE_ROOT", str(tmp_path))
     storage.reset_store()
-    monkeypatch.setenv("ICF_CHECKPOINT_ROOT", str(tmp_path))
     with pytest.raises(EngineError) as e:
         resolve_checkpoint("../../etc/passwd")
     assert e.value.cls == "permanent"
@@ -76,14 +77,11 @@ def test_missing_reference_transcript_is_a_classified_content_error():
         assert e.value.cls == "content"
 
 
-def test_gpt_sovits_refuses_an_untranscribed_reference_before_any_network_call(monkeypatch):
-    # The guard runs before the reference path is resolved and before the
-    # upstream api_v2 server is contacted, so the failure is classified rather
-    # than a storage or connection error.
+def test_gpt_sovits_refuses_an_untranscribed_chunk_before_tts(monkeypatch):
+    # Even on a prepared worker, a missing transcript must never reach /tts.
     def no_network(*_args, **_kwargs):
         raise AssertionError("the guard must run before any provider call")
 
-    monkeypatch.setattr(GPTSoVITSEngine, "_ensure_weights", lambda self, checkpoint: None)
     monkeypatch.setattr(GPTSoVITSEngine, "_get", no_network)
 
     with pytest.raises(EngineError) as e:
@@ -97,56 +95,104 @@ def test_gpt_sovits_refuses_an_untranscribed_reference_before_any_network_call(m
     assert e.value.cls == "content"
 
 
-def test_engine_version_names_the_checkpoint(tmp_path, monkeypatch):
-    # VE-012: engine_version was the hardcoded string "0" (CosyVoice) or "1"
-    # (VoxCPM), so two different checkpoints produced indistinguishable asset
-    # records - and the content hash, which includes engine_version, would have
-    # treated a render from the old checkpoint and the new one as the same audio.
-    def make(directory, weight_bytes):
-        directory.mkdir()
-        (directory / "config.yaml").write_text("model: x\n")
-        (directory / "weights.pt").write_bytes(b"0" * weight_bytes)
-        return directory
-
-    a = make(tmp_path / "ckpt-A", 2048)
-    b = make(tmp_path / "ckpt-B", 4096)
-
+def test_revision_measures_actual_bundle_once_per_instance(tmp_path, monkeypatch):
+    # Same bytes on different mounts match; same-sized edits to nested weights
+    # do not. The operator's release label can never mask a byte change.
+    monkeypatch.setenv("ICF_CHECKPOINT_REVISION", "reviewed-build")
+    for name in ("replica-a", "replica-b"):
+        directory = tmp_path / name / "nested"
+        directory.mkdir(parents=True)
+        (directory / "weights.pt").write_bytes(b"ABCD")
+    a, b = tmp_path / "replica-a", tmp_path / "replica-b"
     monkeypatch.setenv("ICF_COSYVOICE_MODEL_DIR", str(a))
-    monkeypatch.delenv("ICF_CHECKPOINT_REVISION", raising=False)
-    first = CosyVoiceEngine().version
-    same = CosyVoiceEngine().version
-    assert first == same, "the same checkpoint must produce the same version"
-    assert first.startswith("0+") and len(first) == len("0+") + 12
-
+    old = CosyVoiceEngine()
+    first = old.version
+    assert first.startswith("0.reviewed-build+sha256.") and len(first.split("+sha256.")[1]) == 64
     monkeypatch.setenv("ICF_COSYVOICE_MODEL_DIR", str(b))
-    assert CosyVoiceEngine().version != first, "a different checkpoint must change the version"
-
-    # A swapped file of a different size changes it too - that is the point.
-    (a / "weights.pt").write_bytes(b"0" * 8192)
-    monkeypatch.setenv("ICF_COSYVOICE_MODEL_DIR", str(a))
+    assert CosyVoiceEngine().version == first
+    (b / "nested/weights.pt").write_bytes(b"ABCE")
     assert CosyVoiceEngine().version != first
-
-    # With no checkpoint configured the version stays the plain generation
-    # rather than gaining a meaningless suffix.
-    monkeypatch.delenv("ICF_COSYVOICE_MODEL_DIR", raising=False)
-    assert CosyVoiceEngine().version == "0"
-
-    # An explicit revision wins: operators who know what is deployed should not
-    # have their answer second-guessed by a directory listing.
-    monkeypatch.setenv("ICF_CHECKPOINT_REVISION", "cosyvoice2-2026-09")
-    assert CosyVoiceEngine().version == "0+cosyvoice2-2026-09"
-    assert checkpoint_revision(str(a)) == "cosyvoice2-2026-09"
-
-
-def test_every_backend_derives_its_own_version(tmp_path, monkeypatch):
-    monkeypatch.delenv("ICF_CHECKPOINT_REVISION", raising=False)
-    monkeypatch.setenv("ICF_VOXCPM_MODEL", str(tmp_path / "voxcpm"))
-    monkeypatch.delenv("ICF_COSYVOICE_MODEL_DIR", raising=False)
-    assert VoxCPMEngine().version.startswith("1+")
-    # The dev backend is not a model and must not pretend to have a checkpoint.
+    (a / "nested/weights.pt").write_bytes(b"ABCF")
+    assert old.version == first, "a long-lived instance must not relabel already-loaded weights"
+    monkeypatch.delenv("ICF_COSYVOICE_MODEL_DIR")
+    with pytest.raises(EngineError, match="checkpoint bundle"):
+        _ = CosyVoiceEngine().version
+    monkeypatch.setenv("ICF_VOXCPM_MODEL", str(b))
+    assert VoxCPMEngine().version.startswith("1.reviewed-build+sha256.")
     assert DevToneEngine().version == "dev"
-    # GPT-SoVITS names the upstream generation until a fine-tune is pushed.
-    assert GPTSoVITSEngine().version == "v2"
+
+
+def test_gpt_sovits_binds_both_weights_on_every_render(tmp_path, monkeypatch):
+    monkeypatch.setenv("ICF_GPTSOVITS_MODEL_DIR", str(tmp_path))
+    gpt, sov = tmp_path / "model.ckpt", tmp_path / "model.pth"
+    gpt.write_bytes(b"gpt")
+    sov.write_bytes(b"sov")
+    e = GPTSoVITSEngine()
+    calls = []
+    monkeypatch.setattr(e, "_get", lambda path, args: calls.append((path, args["weights_path"])))
+    for ckpt in (sov, None):
+        e.prepare_render(ckpt)
+    assert calls == [("/set_gpt_weights", str(gpt)), ("/set_sovits_weights", str(sov))] * 2
+    with pytest.raises(EngineError, match="outside"):
+        e.prepare_render(tmp_path.parent / "other.pth")
+    (tmp_path / "other.pth").write_bytes(b"other")
+    with pytest.raises(EngineError, match="exactly one"):
+        e.prepare_render(None)
+    assert len(calls) == 4
+
+
+def test_gpt_sovits_verifies_the_upstream_that_returns_audio(tmp_path, monkeypatch):
+    # The worker is a proxy, not the process holding the weights. A plain
+    # api_v2 setter success isn't proof, nor is a receipt from the wrong replica.
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    (bundle / "model.ckpt").write_bytes(b"fixture-a")
+    (bundle / "model.pth").write_bytes(b"fixture-b")
+    monkeypatch.setenv("ICF_GPTSOVITS_MODEL_DIR", str(bundle))
+    monkeypatch.setattr("icf_worker.engines.resolve_checkpoint", lambda _: tmp_path / "ref.wav")
+    audio = wav.encode(tone(0.1, secs=0.5), RATE)
+    paths = []
+    fault = "missing setter proof"
+
+    class Upstream(BaseHTTPRequestHandler):
+        def do_GET(self):
+            path = urllib.parse.urlsplit(self.path).path
+            paths.append(path)
+            self.send_response(200)
+            if path == "/tts" or (path == "/set_sovits_weights" and fault != "missing setter proof"):
+                self.send_header("X-Engine", "gptsovits")
+                wrong = path == "/tts" and fault == "different renderer"
+                self.send_header("X-Engine-Version", "wrong" if wrong else engine.version)
+            self.end_headers()
+            if path == "/tts":
+                self.wfile.write(audio)
+
+        def log_message(self, *_args):
+            pass  # the TTS query includes text
+
+    with ThreadingHTTPServer(("127.0.0.1", 0), Upstream) as upstream:
+        monkeypatch.setenv("ICF_GPTSOVITS_API", f"http://127.0.0.1:{upstream.server_port}")
+        engine = GPTSoVITSEngine()
+        thread = threading.Thread(target=upstream.serve_forever, daemon=True)
+        thread.start()
+        try:
+            with serve(engine) as worker:
+                req = {"expected_worker": {"engine": "gptsovits", "revision": engine.version},
+                       "chunks": [{"text": "Test."}], "reference": REF}
+                stream = worker + "/v1/synthesize/stream"
+                for fault in ("missing setter proof", "different renderer"):
+                    paths.clear()
+                    with pytest.raises(urllib.error.HTTPError) as exc:
+                        call(stream, req)
+                    assert exc.value.code == 409 and json.loads(exc.value.read())["error"]["class"] == "identity"
+                    assert ("/tts" in paths) == (fault == "different renderer")
+                fault = ""
+                with call(stream, req) as resp:
+                    assert resp.headers["X-Engine"] == "gptsovits" and resp.headers["X-Engine-Version"] == engine.version
+                    assert resp.read().startswith(b"RIFF")
+        finally:
+            upstream.shutdown()
+            thread.join()
 
 
 def _FakeCosyVoiceModel(instruct2="ok"):
@@ -279,18 +325,107 @@ def test_a_build_without_instruct2_still_renders_and_says_so(tmp_path, monkeypat
     assert caplog.text.count("style instructions cannot be used") == 1, "warned more than once"
 
 
+@contextmanager
+def serve(engine):
+    with ThreadingHTTPServer(("127.0.0.1", 0), make_handler(engine, "s3cret")) as srv:
+        thread = threading.Thread(target=srv.serve_forever, daemon=True)
+        thread.start()
+        try:
+            yield f"http://127.0.0.1:{srv.server_port}"
+        finally:
+            srv.shutdown()
+            thread.join()
+
+
 @pytest.fixture
 def worker():
-    srv = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(DevToneEngine(), "s3cret"))
-    threading.Thread(target=srv.serve_forever, daemon=True).start()
-    yield f"http://127.0.0.1:{srv.server_port}"
-    srv.shutdown()
+    with serve(DevToneEngine()) as url:
+        yield url
 
 
-def call(url, body=None, token="s3cret"):
+def call(url, body=None, token="s3cret", *, pin=True):
+    if pin and body is not None and "/v1/synthesize" in url:
+        body = {"expected_worker": {"engine": "dev-tone", "revision": "dev"}, **body}
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(url, data=data, headers={"Authorization": f"Bearer {token}"})
     return urllib.request.urlopen(req)
+
+
+@pytest.mark.parametrize("active", ["/v1/synthesize", "/v1/synthesize/stream"])
+def test_busy_worker_refuses_overlap_without_entering_engine(active):
+    entered, release = threading.Event(), threading.Event()
+    calls = []
+
+    class BlockingTone(DevToneEngine):
+        def synthesize_chunk(self, text, **kwargs):
+            calls.append(text)
+            if text == "Second chunk.":
+                entered.set()
+                assert release.wait(5), "test did not release engine"
+            return super().synthesize_chunk(text, **kwargs)
+
+    with serve(BlockingTone()) as base:
+        single = {"chunks": [{"text": "Next render."}]}
+
+        def original():
+            with call(base + active, {"chunks": [{"text": "First chunk."}, {"text": "Second chunk."}]}) as resp:
+                return resp.read()
+
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            first = pool.submit(original)
+            try:
+                assert entered.wait(5), "original request did not enter inference"
+                # Health is still reachable and neither endpoint waits on inference.
+                assert json.loads(call(base + "/v1/health").read())["status"] == "ok"
+                for path in ("/v1/synthesize", "/v1/synthesize/stream"):
+                    with pytest.raises(urllib.error.HTTPError) as exc:
+                        call(base + path, single)
+                    assert exc.value.code == 503
+                    assert json.loads(exc.value.read())["error"]["class"] == "transient"
+                assert calls == ["First chunk.", "Second chunk."]
+            finally:
+                release.set()
+            assert first.result(timeout=5).startswith(b"RIFF")
+        assert call(base + "/v1/synthesize", single).read().startswith(b"RIFF")
+        assert calls[-1] == "Next render."
+
+
+def test_stream_fault_after_headers_releases_slot_without_appending_json():
+    class FailingTone(DevToneEngine):
+        def synthesize_chunk(self, text, **kwargs):
+            if text == "Fail here.":
+                raise EngineError("gpu", "inference failed")
+            return super().synthesize_chunk(text, **kwargs)
+
+    with serve(FailingTone()) as base:
+        first = {"text": "First chunk."}
+        stream = base + "/v1/synthesize/stream"
+        expected = call(stream, {"chunks": [first]}).read()
+        assert call(stream, {"chunks": [first, {"text": "Fail here."}]}).read() == expected
+        assert call(base + "/v1/synthesize", {"chunks": [first]}).read().startswith(b"RIFF")
+
+
+@pytest.mark.parametrize("path", ["/v1/synthesize", "/v1/synthesize/stream"])
+def test_missing_or_mismatched_pin_never_enters_engine(path):
+    class CountingTone(DevToneEngine):
+        calls = 0
+
+        def synthesize_chunk(self, text, **kwargs):
+            self.calls += 1
+            return super().synthesize_chunk(text, **kwargs)
+
+    engine = CountingTone()
+    with serve(engine) as base:
+        req = {"chunks": [{"text": "Amen."}]}
+        for fields in ({}, {"expected_worker": {"engine": "cosyvoice", "revision": "dev"}},
+                       {"expected_worker": {"engine": "dev-tone", "revision": "other"}}):
+            with pytest.raises(urllib.error.HTTPError) as exc:
+                call(base + path, {**req, **fields}, pin=False)
+            assert exc.value.code == 409 and json.loads(exc.value.read())["error"]["class"] == "identity"
+        assert engine.calls == 0
+        resp = call(base + path, req)
+        assert (resp.headers["X-Engine"], resp.headers["X-Engine-Version"]) == ("dev-tone", "dev")
+        assert resp.read().startswith(b"RIFF") and engine.calls == 1
 
 
 def test_requires_token(worker):
@@ -340,20 +475,19 @@ def test_stream_carries_no_cost_header(worker):
     rather than stored, so the stream path deliberately has no cost header. If
     someone adds one, this test is where the contract gets re-read.
     """
-    req = urllib.request.Request(worker + "/v1/synthesize/stream",
-                                 data=json.dumps({"chunks": [{"text": "Grace and peace."}]}).encode(),
-                                 headers={"Authorization": "Bearer s3cret"})
-    resp = urllib.request.urlopen(req)
+    resp = call(worker + "/v1/synthesize/stream", {"chunks": [{"text": "Grace and peace."}]})
     resp.read()
     assert "X-Inference-Seconds" not in resp.headers
     assert "X-Worker-Seconds" not in resp.headers
 
 
-def test_errors_are_classified(worker):
+@pytest.mark.parametrize("path", ["/v1/synthesize", "/v1/synthesize/stream"])
+def test_errors_are_classified_and_release_slot(worker, path):
     with pytest.raises(urllib.error.HTTPError) as e:
-        call(worker + "/v1/synthesize", {"chunks": []})
+        call(worker + path, {"chunks": []})
     assert e.value.code == 422
     assert json.loads(e.value.read())["error"]["class"] == "content"
+    assert call(worker + path, {"chunks": [{"text": "Next render."}]}).read().startswith(b"RIFF")
 
 
 def test_capabilities_advertise_the_stream_endpoint(worker):
@@ -365,11 +499,13 @@ def test_capabilities_advertise_the_stream_endpoint(worker):
     assert caps["streaming_granularity"] == "chunk"
 
 
-def test_capabilities_report_runtime_flags_live():
+def test_capabilities_report_runtime_flags_live(tmp_path, monkeypatch):
     # VE-006: whether style instructions are honoured is only knowable once an
     # engine has tried, so it is reported as a runtime capability rather than a
     # static claim in the engine's table. The value has to change when the engine
     # learns otherwise, or it is decoration.
+    monkeypatch.setenv("ICF_COSYVOICE_MODEL_DIR", str(tmp_path))
+    (tmp_path / "weights.pt").write_bytes(b"fixture")
     engine = _cosyvoice_with(_FakeCosyVoiceModel())
     srv = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(engine, "s3cret"))
     threading.Thread(target=srv.serve_forever, daemon=True).start()

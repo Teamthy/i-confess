@@ -25,11 +25,15 @@ class StorageError(Exception):
 
 
 def valid_key(key: str) -> bool:
-    if not key or len(key) > 512 or ".." in key or key.startswith("/") or "//" in key:
+    if not isinstance(key, str) or not key or len(key.encode("utf-8")) > 512:
         return False
-    if any(c in key for c in "\\?#\x00"):
+    if ".." in key or "." in key.split("/") or key.endswith("/") or "//" in key:
         return False
-    return key.startswith(ALLOWED_PREFIXES)
+    if any(c in "\\?#%*" or ord(c) < 32 or 0x7f <= ord(c) <= 0x9f for c in key):
+        return False
+    # Workers receive master bytes for encoding; they never need to read a
+    # listener's stored output as reference, evaluation or training input.
+    return key.startswith(ALLOWED_PREFIXES) and not key.startswith("audio/voices/")
 
 
 class LocalStore:

@@ -13,7 +13,7 @@ import (
 func TestEnqueueAndProcessCompletesJob(t *testing.T) {
 	q := NewMemoryQueue()
 	var calls atomic.Int32
-	q.Register("demo", func(ctx context.Context, payload map[string]any) error {
+	q.Register("demo", func(ctx context.Context, job *Job) error {
 		calls.Add(1)
 		return nil
 	})
@@ -50,7 +50,7 @@ func TestRetriesAndDeadLetter(t *testing.T) {
 	q := NewMemoryQueue().
 		WithClock(func() time.Time { return now }).
 		WithPolicy(backoff.New(time.Minute, time.Hour))
-	q.Register("always-fail", func(ctx context.Context, payload map[string]any) error {
+	q.Register("always-fail", func(ctx context.Context, job *Job) error {
 		return errors.New("boom")
 	})
 
@@ -103,7 +103,7 @@ func TestRetriesAndDeadLetter(t *testing.T) {
 
 func TestDuplicateIdempotencyKeyIsRejected(t *testing.T) {
 	q := NewMemoryQueue()
-	q.Register("demo", func(ctx context.Context, payload map[string]any) error { return nil })
+	q.Register("demo", func(ctx context.Context, job *Job) error { return nil })
 
 	if _, err := q.Enqueue(context.Background(), Job{Type: "demo", IdempotencyKey: "dup"}); err != nil {
 		t.Fatalf("first enqueue error: %v", err)
@@ -116,7 +116,7 @@ func TestDuplicateIdempotencyKeyIsRejected(t *testing.T) {
 func TestWorkerProcessesQueuedJobs(t *testing.T) {
 	q := NewMemoryQueue()
 	var calls atomic.Int32
-	q.Register("demo", func(ctx context.Context, payload map[string]any) error {
+	q.Register("demo", func(ctx context.Context, job *Job) error {
 		calls.Add(1)
 		return nil
 	})

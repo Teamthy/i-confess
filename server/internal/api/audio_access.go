@@ -25,7 +25,10 @@ import (
 // request. The plan is loaded from the database for the authenticated user.
 
 // SetSigner installs the object store used to mint audio URLs.
-func (h *Handler) SetSigner(s storage.ObjectStorage) { h.signer = s }
+func (h *Handler) SetSigner(s storage.ObjectStorage) {
+	h.signer = storage.GeneralMedia(s)
+	h.renderStore = storage.VoiceRenders(s)
+}
 
 // SetMediaHandler installs the development audio origin. Production leaves this
 // nil and serves audio from the CDN instead.

@@ -8,8 +8,8 @@
 #      Baking an uncleared model into a published image would defeat that gate
 #      and put the weights somewhere they cannot be withdrawn from.
 #   2. Size and reproducibility. Checkpoints are multi-gigabyte and change
-#      independently of this code; they belong in the private bucket, mounted at
-#      ICF_CHECKPOINT_ROOT, not in a layer.
+#      independently of this code; they belong in the private bucket, mounted
+#      read-only at the engine-specific model directory, not in a layer.
 #
 # The engine repository (CosyVoice, etc.) and the checkpoints are supplied by
 # the deployment: PYTHONPATH for the code, a volume for the weights.

@@ -9,8 +9,8 @@ package api
 //	     → cache lookup by content hash → HIT: signed URL
 //	                                    → MISS: durable job on tts.{high,normal,low}
 //
-// The worker (runVoiceGeneration) re-reads the grant and re-authorizes before
-// it touches a GPU, so a revocation between enqueue and execution is honoured.
+// The worker re-authorizes before each provider receives text, before a
+// private upload, and in the transaction that publishes its result.
 
 import (
 	"context"
@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"path"
 	"strings"
 	"time"
 
@@ -27,10 +28,12 @@ import (
 	"github.com/Teamthy/i-confess/internal/httpx"
 	"github.com/Teamthy/i-confess/internal/jobs"
 	"github.com/Teamthy/i-confess/internal/ratelimit"
+	"github.com/Teamthy/i-confess/internal/storage"
 	"github.com/Teamthy/i-confess/internal/store"
 	"github.com/Teamthy/i-confess/internal/voiceengine"
 	"github.com/Teamthy/i-confess/internal/voiceeval"
 	"github.com/Teamthy/i-confess/internal/voicegov"
+	"github.com/google/uuid"
 )
 
 // JobVoiceGenerate is the queue job type for synthetic minister renders.
@@ -155,6 +158,7 @@ type generateVoiceRequest struct {
 
 // generateMinisterVoice queues (or returns cached) synthetic speech.
 func (h *Handler) generateMinisterVoice(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "private, no-store")
 	if h.vorch == nil {
 		httpx.WriteError(w, http.StatusServiceUnavailable, "voice engine is not configured on this server")
 		return
@@ -166,12 +170,17 @@ func (h *Handler) generateMinisterVoice(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 	}
-	req, purpose, userText, ok := h.decodeVoiceRequest(w, r, email)
+	req, purpose, ok := h.decodeVoiceRequest(w, r, email)
 	if !ok {
 		return
 	}
+	// Scheduling privileges are independent of ownership.
+	var priority voiceengine.Priority
+	if isVoiceAdmin(r) {
+		priority = voiceengine.Priority(req.Priority)
+	}
 	gen, plan, err := h.queueVoiceGeneration(r.Context(), voiceQueueInput{
-		Req: req, Purpose: purpose, UserText: userText, UserID: userID, Actor: email, Remote: clientIP(r), Admin: isVoiceAdmin(r),
+		Req: req, Purpose: purpose, UserID: userID, Actor: email, Remote: clientIP(r), Priority: priority,
 	})
 	if err != nil {
 		if plan == nil {
@@ -192,14 +201,13 @@ func (h *Handler) generateMinisterVoice(w http.ResponseWriter, r *http.Request) 
 // shared by single generation, audio sessions and admin batches, so every
 // path runs the same rights check, cache and dedup.
 type voiceQueueInput struct {
-	Req      generateVoiceRequest
-	Purpose  voicegov.ContentPurpose
-	UserText bool
-	UserID   string
-	Actor    string
-	Remote   string
-	Admin    bool
-	// Priority overrides the request priority (batches force batch).
+	Req       generateVoiceRequest
+	Purpose   voicegov.ContentPurpose
+	UserID    string
+	Actor     string
+	Remote    string
+	Editorial bool // set only by the role-gated admin batch route; personal is the default
+	// Only staff may override interactive priority; batches force batch.
 	Priority voiceengine.Priority
 }
 
@@ -208,31 +216,30 @@ type voiceQueueInput struct {
 // A nil plan with an error means planning failed (use writeVoicePlanError).
 func (h *Handler) queueVoiceGeneration(ctx context.Context, in voiceQueueInput) (*store.Generation, *voiceengine.Plan, error) {
 	req := in.Req
+	// Scope before hashing, both at submission and when a worker verifies the
+	// queued plan. A private submission without an owner is never a catalog hit.
+	visibility, owner := "catalog", ""
+	userText := !in.Editorial
+	if userText || in.Purpose == voicegov.PurposeConfession {
+		visibility, owner = "private", in.UserID
+		if owner == "" {
+			return nil, nil, errors.New("private voice generation requires an owner")
+		}
+	}
 	plan, err := h.resolveVoicePlan(ctx, voiceengine.Request{
 		VoiceID: req.VoiceID, Markup: req.Text, Language: req.Language, Locale: req.Locale, Style: req.Style,
-		Purpose: in.Purpose, UserText: in.UserText, Territory: req.Territory, Speed: req.Speed, Pitch: req.Pitch,
+		Purpose: in.Purpose, UserText: userText, Territory: req.Territory, Speed: req.Speed, Pitch: req.Pitch, CacheOwnerID: owner,
 	})
 	if err != nil {
 		return nil, nil, err
 	}
-	// Private purposes (a personal confession) are cached per owner so two
-	// users never share - or discover - each other's renders.
-	visibility, owner, hash := "catalog", "", plan.ContentHash
-	if in.UserText || in.Purpose == voicegov.PurposeConfession {
-		visibility, owner = "private", in.UserID
-		sum := sha256.Sum256([]byte(plan.ContentHash + "|" + in.UserID))
-		hash = hex.EncodeToString(sum[:])
-	}
 	prio := in.Priority
 	if prio == "" {
-		prio = voiceengine.Priority(in.Req.Priority)
-		if !in.Admin || prio == "" {
-			prio = voiceengine.PriorityInteractive
-		}
+		prio = voiceengine.PriorityInteractive
 	}
 	textSum := sha256.Sum256([]byte(voiceengine.PlainText(mustParse(req.Text))))
 	gen, created, err := h.vplat.CreateOrGetGeneration(ctx, &store.Generation{
-		ContentHash: hash, VoiceID: req.VoiceID, ModelID: plan.Model.ID, Engine: string(plan.Model.Engine),
+		ContentHash: plan.ContentHash, VoiceID: req.VoiceID, ModelID: plan.Model.ID, Engine: string(plan.Model.Engine),
 		EngineVersion: plan.Model.EngineVersion, Purpose: string(in.Purpose), Style: req.Style, Language: req.Language,
 		Locale: req.Locale, TextSHA256: hex.EncodeToString(textSum[:]), GrantVersion: plan.Decision.GrantVersion,
 		Queue: voiceengine.QueueFor(prio), OwnerUserID: owner, Visibility: visibility, RequestedBy: in.Actor,
@@ -242,20 +249,18 @@ func (h *Handler) queueVoiceGeneration(ctx context.Context, in voiceQueueInput) 
 	}
 	voiceMetrics.cache(created)
 	if created {
-		jobID, err := h.queue.Enqueue(ctx, jobs.Job{
-			Type: JobVoiceGenerate, IdempotencyKey: gen.ID + ":" + gen.UpdatedAt, MaxAttempts: 4,
+		_, err := h.queue.Enqueue(ctx, jobs.Job{
+			ID: gen.JobID, Type: JobVoiceGenerate, IdempotencyKey: JobVoiceGenerate + ":" + gen.JobID, MaxAttempts: 4,
 			Payload: map[string]any{
 				"generation_id": gen.ID, "voice_id": req.VoiceID, "text": req.Text, "language": req.Language,
-				"locale": req.Locale, "style": req.Style, "purpose": string(in.Purpose), "user_text": in.UserText,
+				"locale": req.Locale, "style": req.Style, "purpose": string(in.Purpose), "user_text": userText,
 				"territory": req.Territory, "speed": req.Speed, "pitch": req.Pitch, "queue": gen.Queue,
 			},
 		})
 		if err != nil && !errors.Is(err, jobs.ErrDuplicateJob) {
-			_ = h.vplat.FailGeneration(ctx, gen.ID, string(voiceengine.ClassTransient), "enqueue failed")
-			return nil, plan, err
+			stateErr := h.vplat.FailGeneration(ctx, gen.ID, gen.JobID, string(voiceengine.ClassTransient), "enqueue failed")
+			return nil, plan, errors.Join(err, stateErr)
 		}
-		_ = h.vplat.SetGenerationJob(ctx, gen.ID, jobID)
-		gen.JobID = jobID
 		_ = h.vplat.AppendRightsAudit(ctx, store.RightsAuditEntry{VoiceID: req.VoiceID, Actor: in.Actor, Action: "VOICE_GENERATION_QUEUED",
 			ModelID: plan.Model.ID, GenerationID: gen.ID, GrantVersion: plan.Decision.GrantVersion, Decision: "allowed", RemoteAddr: in.Remote})
 	}
@@ -264,11 +269,11 @@ func (h *Handler) queueVoiceGeneration(ctx context.Context, in voiceQueueInput) 
 
 // decodeVoiceRequest parses and validates a generate/stream body, including
 // the script safety floor. It writes the error response itself.
-func (h *Handler) decodeVoiceRequest(w http.ResponseWriter, r *http.Request, email string) (generateVoiceRequest, voicegov.ContentPurpose, bool, bool) {
+func (h *Handler) decodeVoiceRequest(w http.ResponseWriter, r *http.Request, email string) (generateVoiceRequest, voicegov.ContentPurpose, bool) {
 	var req generateVoiceRequest
 	if err := httpx.DecodeJSON(r, &req); err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid request body")
-		return req, "", false, false
+		return req, "", false
 	}
 	if req.Language == "" {
 		req.Language = "en"
@@ -279,35 +284,34 @@ func (h *Handler) decodeVoiceRequest(w http.ResponseWriter, r *http.Request, ema
 	purpose := voicegov.ContentPurpose(req.Purpose)
 	if !voicegov.ValidPurpose(purpose) || purpose == voicegov.PurposeMarketing || purpose == voicegov.PurposeResearch {
 		httpx.WriteError(w, http.StatusBadRequest, "purpose must be one of confession, prayer, reflection, devotional, bible")
-		return req, "", false, false
+		return req, "", false
 	}
 	if !voiceengine.ValidStyle(req.Style) {
 		httpx.WriteError(w, http.StatusBadRequest, "unknown style")
-		return req, "", false, false
+		return req, "", false
 	}
 	if req.Speed != 0 && (req.Speed < 0.5 || req.Speed > 1.5) {
 		httpx.WriteError(w, http.StatusBadRequest, "speed must be between 0.5 and 1.5")
-		return req, "", false, false
+		return req, "", false
 	}
 	if req.Pitch < -6 || req.Pitch > 6 {
 		httpx.WriteError(w, http.StatusBadRequest, "pitch must be between -6 and 6 semitones")
-		return req, "", false, false
+		return req, "", false
 	}
-	// Anyone who is not a voice/content admin is supplying their own words.
-	// That needs its own licence capability and the stricter safety floor.
-	userText := !isVoiceAdmin(r)
-	if err := voiceengine.ValidateScript(req.Text, userText); err != nil {
+	// Text typed on a listener route is user-submitted, including when that
+	// listener also works on the editorial team. Roles are not content provenance.
+	if err := voiceengine.ValidateScript(req.Text, true); err != nil {
 		var v *voiceengine.SafetyViolation
 		if errors.As(err, &v) {
 			voiceMetrics.refusedContent()
 			_ = h.vplat.AppendRightsAudit(r.Context(), store.RightsAuditEntry{VoiceID: req.VoiceID, Actor: email,
 				Action: "GENERATION_REFUSED_CONTENT", Decision: "denied", Reason: v.Code, RemoteAddr: clientIP(r)})
 			httpx.WriteJSON(w, http.StatusUnprocessableEntity, map[string]any{"error": v.Detail, "code": v.Code})
-			return req, "", false, false
+			return req, "", false
 		}
 	}
 
-	return req, purpose, userText, true
+	return req, purpose, true
 }
 
 func mustParse(text string) []voiceengine.Segment {
@@ -331,29 +335,29 @@ func (h *Handler) resolveVoicePlan(ctx context.Context, req voiceengine.Request)
 	if err != nil {
 		return nil, err
 	}
-	orch, err := h.orchestratorWithDictionary(ctx)
+	orch, err := h.requestOrchestrator(ctx)
 	if err != nil {
 		return nil, err
 	}
 	return orch.Resolve(ctx, grant, models, refs, req)
 }
 
-// orchestratorWithDictionary returns a per-call copy of the orchestrator with
-// the current pronunciation dictionary. The shared orchestrator is never
-// mutated, so concurrent requests and workers cannot race on it, and a
-// dictionary edit takes effect on the very next render.
-func (h *Handler) orchestratorWithDictionary(ctx context.Context) (*voiceengine.Orchestrator, error) {
+// requestOrchestrator installs the live grant check and dictionary on a copy.
+// Concurrent requests never mutate the shared orchestrator.
+func (h *Handler) requestOrchestrator(ctx context.Context) (*voiceengine.Orchestrator, error) {
 	entries, ver, err := h.vplat.Pronunciations(ctx)
 	if err != nil {
 		return nil, err
 	}
 	o := *h.vorch
+	o.ConfirmGrant = h.vplat.CheckRenderGrant
 	o.Dict, o.DictVer = voiceengine.NewDictionary(entries), ver
 	return &o, nil
 }
 
 func (h *Handler) writeVoicePlanError(w http.ResponseWriter, r *http.Request, voiceID, actor string, err error) {
 	var rd *voiceengine.ErrRightsDenied
+	var workerErr *voiceengine.Error
 	switch {
 	case errors.Is(err, store.ErrVoiceNotFound):
 		httpx.WriteError(w, http.StatusNotFound, "voice not found")
@@ -369,14 +373,24 @@ func (h *Handler) writeVoicePlanError(w http.ResponseWriter, r *http.Request, vo
 		httpx.WriteJSON(w, http.StatusForbidden, body)
 	case voiceengine.Classify(err) == voiceengine.ClassContent:
 		httpx.WriteJSON(w, http.StatusUnprocessableEntity, map[string]any{"error": err.Error(), "code": "invalid_script"})
-	case voiceengine.Classify(err) == voiceengine.ClassModel:
+	case voiceengine.Classify(err) == voiceengine.ClassModel || voiceengine.Classify(err) == voiceengine.ClassIdentity:
 		httpx.WriteJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "this voice is not ready for generation", "code": "voice_not_ready"})
+	case errors.As(err, &workerErr) && workerErr.Class.Retryable():
+		// A live preview has no queue to wait in. Report worker unavailability
+		// without exposing its private endpoint or internal error message.
+		httpx.WriteJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "voice synthesis is temporarily unavailable", "code": "voice_temporarily_unavailable"})
 	default:
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to plan generation")
 	}
 }
 
 func (h *Handler) writeGeneration(w http.ResponseWriter, r *http.Request, g *store.Generation, status int) {
+	w.Header().Set("Cache-Control", "private, no-store") // response may contain signed URLs
+	uid, _ := actorOf(r)
+	if !g.ReadableBy(uid) {
+		httpx.WriteError(w, http.StatusNotFound, "job not found")
+		return
+	}
 	body := map[string]any{"generation": g, "synthetic": true,
 		"disclosure": "AI-generated using an authorized synthetic voice."}
 	servable := true
@@ -387,14 +401,16 @@ func (h *Handler) writeGeneration(w http.ResponseWriter, r *http.Request, g *sto
 			// suspended). Never hand out a URL, and say so rather than
 			// pretending the render is still processing.
 			body["available"], body["unavailableReason"] = false, "voice_rights_ended"
+		} else if !publishedMaster(g) {
+			body["available"], body["unavailableReason"] = false, "audio_unavailable"
 		}
 	}
-	if servable && g.Status == string(voiceengine.GenCompleted) && g.StorageKey != "" && h.signer != nil {
+	if servable && publishedMaster(g) && h.renderStore != nil {
 		ttl := 4 * time.Hour
 		if g.Visibility == "private" {
 			ttl = 15 * time.Minute
 		}
-		if url, err := h.signer.GenerateSignedURL(r.Context(), g.StorageKey, ttl); err == nil {
+		if url, err := h.renderStore.GenerateSignedURL(r.Context(), g.StorageKey, ttl); err == nil {
 			body["audioUrl"], body["expiresAt"] = url, time.Now().Add(ttl).UTC().Format(time.RFC3339)
 		}
 		if vs := h.signVariants(r.Context(), g, ttl); len(vs) > 0 {
@@ -404,151 +420,202 @@ func (h *Handler) writeGeneration(w http.ResponseWriter, r *http.Request, g *sto
 	httpx.WriteJSON(w, status, body)
 }
 
-// canSeeGeneration enforces private-by-default (§35): private renders are
-// visible only to their owner and voice admins.
-func canSeeGeneration(r *http.Request, g *store.Generation) bool {
-	if g.Visibility != "private" {
-		return true
-	}
-	uid, _ := actorOf(r)
-	return (uid != "" && uid == g.OwnerUserID) || isVoiceAdmin(r)
-}
-
 func (h *Handler) getAudioJob(w http.ResponseWriter, r *http.Request) {
-	g, err := h.vplat.GenerationByID(r.Context(), r.PathValue("id"))
+	uid, _ := actorOf(r)
+	g, err := h.vplat.GenerationForActor(r.Context(), r.PathValue("id"), uid, true)
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to load job")
-		return
-	}
-	// Not-found and not-yours are indistinguishable so ids cannot be probed.
-	if g == nil || !canSeeGeneration(r, g) {
-		httpx.WriteError(w, http.StatusNotFound, "job not found")
 		return
 	}
 	h.writeGeneration(w, r, g, http.StatusOK)
 }
 
 func (h *Handler) cancelAudioJob(w http.ResponseWriter, r *http.Request) {
-	g, err := h.vplat.GenerationByID(r.Context(), r.PathValue("id"))
-	if err != nil || g == nil || !canSeeGeneration(r, g) {
-		httpx.WriteError(w, http.StatusNotFound, "job not found")
-		return
-	}
-	ok, err := h.vplat.CancelGeneration(r.Context(), g.ID)
+	w.Header().Set("Cache-Control", "private, no-store")
+	id := r.PathValue("id")
+	uid, _ := actorOf(r)
+	manageCatalog := isVoiceAdmin(r)
+	ok, err := h.vplat.CancelGeneration(r.Context(), id, uid, manageCatalog)
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to cancel")
 		return
 	}
 	if !ok {
+		g, err := h.vplat.GenerationForActor(r.Context(), id, uid, manageCatalog)
+		if err != nil {
+			httpx.WriteError(w, http.StatusInternalServerError, "failed to load job")
+			return
+		}
+		if g == nil {
+			httpx.WriteError(w, http.StatusNotFound, "job not found")
+			return
+		}
 		httpx.WriteJSON(w, http.StatusConflict, map[string]any{"error": "job can no longer be cancelled", "status": g.Status})
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, map[string]any{"generationId": g.ID, "status": voiceengine.GenCancelled})
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"generationId": id, "status": voiceengine.GenCancelled})
 }
 
 // ---------------------------------------------------------------- worker
 
 // runVoiceGeneration executes one queued render. Errors are classified so the
 // queue retries infrastructure faults and parks everything else (§71).
-func (h *Handler) runVoiceGeneration(ctx context.Context, p map[string]any) error {
+func (h *Handler) runVoiceGeneration(ctx context.Context, job *jobs.Job) error {
+	p := job.Payload
 	str := func(k string) string { s, _ := p[k].(string); return s }
 	num := func(k string) float64 { f, _ := p[k].(float64); return f }
 	genID := str("generation_id")
+	if genID == "" {
+		return jobs.Permanent(errors.New("generation_id is required"))
+	}
+	fail := func(class voiceengine.ErrorClass, cause error) error {
+		if errors.Is(cause, store.ErrGenerationInactive) {
+			return nil // cancellation or a newer submission won the conditional update
+		}
+		voiceMetrics.failure(string(class))
+		var stateErr error
+		if class.Retryable() && job.Attempts < job.MaxAttempts {
+			// Fail on the queue will schedule backoff. The generation must
+			// remain claimable and cancellable until the last attempt.
+			stateErr = h.vplat.AdvanceGeneration(ctx, genID, job.ID, voiceengine.GenQueued)
+		} else {
+			// The generation is visible to the listener. Keep raw provider,
+			// database and storage diagnostics on the queue job, not on it.
+			msg := "voice generation could not be completed"
+			if class.Retryable() {
+				msg = fmt.Sprintf("voice generation could not be completed after %d attempts", job.Attempts)
+			}
+			var denied *voiceengine.ErrRightsDenied
+			if errors.As(cause, &denied) {
+				stateErr = h.vplat.RefuseGeneration(ctx, genID, job.ID, msg, denied.Decision)
+			} else {
+				stateErr = h.vplat.FailGeneration(ctx, genID, job.ID, string(class), msg)
+			}
+		}
+		if errors.Is(stateErr, store.ErrGenerationInactive) {
+			return nil
+		}
+		if stateErr != nil {
+			return errors.Join(cause, fmt.Errorf("record voice generation failure: %w", stateErr))
+		}
+		if !class.Retryable() {
+			return jobs.Permanent(cause)
+		}
+		return cause // the queue, not the worker, schedules retries or dead-letters exhaustion
+	}
 	g, err := h.vplat.GenerationByID(ctx, genID)
 	if err != nil {
-		return err
+		return fail(voiceengine.ClassTransient, err)
 	}
-	if g == nil || voiceengine.GenerationStatus(g.Status).Terminal() {
-		return nil // cancelled or already done; nothing to do
+	if g == nil {
+		return jobs.Permanent(errors.New("voice generation not found"))
+	}
+	if g.JobID != "" && g.JobID != job.ID {
+		return nil // a new submission owns this generation ID
+	}
+	if voiceengine.GenerationStatus(g.Status).Terminal() {
+		if g.Status == string(voiceengine.GenFailed) {
+			return jobs.Permanent(fmt.Errorf("voice generation already failed (%s)", g.ErrorClass))
+		}
+		return nil // cancelled or already completed
 	}
 	if h.vorch == nil {
-		return jobs.Permanent(errors.New("voice engine not configured"))
+		return fail(voiceengine.ClassModel, errors.New("voice engine not configured"))
 	}
 	started := time.Now()
 	if t, perr := time.Parse(time.RFC3339Nano, g.UpdatedAt); perr == nil {
 		voiceMetrics.queued(started.Sub(t))
 	}
-	fail := func(class voiceengine.ErrorClass, err error) error {
-		voiceMetrics.failure(string(class))
-		_ = h.vplat.FailGeneration(ctx, genID, string(class), err.Error())
-		if class.Retryable() {
-			return err
-		}
-		return jobs.Permanent(err)
+	if err := h.vplat.AdvanceGeneration(ctx, genID, job.ID, voiceengine.GenProcessing); err != nil {
+		return fail(voiceengine.ClassTransient, err)
 	}
-	if err := h.vplat.AdvanceGeneration(ctx, genID, voiceengine.GenProcessing); err != nil {
-		return nil // cancelled between claim and start
+	userText, ok := p["user_text"].(bool)
+	privateUse := userText || g.Purpose == string(voicegov.PurposeConfession)
+	if !ok || !g.ValidAudience() || privateUse != (g.Visibility == "private") || g.VoiceID != str("voice_id") || g.Purpose != str("purpose") {
+		return fail(voiceengine.ClassPermanent, errors.New("invalid queued render audience"))
 	}
-	userText, _ := p["user_text"].(bool)
-	req := voiceengine.Request{GenerationID: genID, VoiceID: str("voice_id"), Markup: str("text"), Language: str("language"),
+	req := voiceengine.Request{GenerationID: genID, CacheOwnerID: g.OwnerUserID, QueuedContentHash: g.ContentHash, VoiceID: str("voice_id"), Markup: str("text"), Language: str("language"),
 		Locale: str("locale"), Style: str("style"), Purpose: voicegov.ContentPurpose(str("purpose")), UserText: userText,
 		Territory: str("territory"), Speed: num("speed"), Pitch: num("pitch")}
 
 	// Fresh rights, models and references: never the enqueue-time snapshot.
 	grant, err := h.vplat.Grant(ctx, req.VoiceID)
 	if err != nil {
-		return err
+		return fail(voiceengine.ClassTransient, err)
 	}
 	models, err := h.vplat.Models(ctx, req.VoiceID)
 	if err != nil {
-		return err
+		return fail(voiceengine.ClassTransient, err)
 	}
 	refs, err := h.vplat.References(ctx, req.VoiceID)
 	if err != nil {
-		return err
+		return fail(voiceengine.ClassTransient, err)
 	}
-	orch, err := h.orchestratorWithDictionary(ctx)
+	orch, err := h.requestOrchestrator(ctx)
 	if err != nil {
-		return err
+		return fail(voiceengine.ClassTransient, err)
 	}
 	plan, res, err := orch.Generate(ctx, grant, models, refs, req)
 	if err != nil {
-		var rd *voiceengine.ErrRightsDenied
-		if errors.As(err, &rd) {
-			_ = h.vplat.AppendRightsAudit(ctx, store.RightsAuditEntry{VoiceID: req.VoiceID, Actor: "worker", Action: "GENERATION_REFUSED_RIGHTS",
-				GenerationID: genID, GrantVersion: rd.Decision.GrantVersion, Decision: "denied", Reason: string(rd.Decision.Reason)})
-			return fail(voiceengine.ClassRights, err)
-		}
 		return fail(voiceengine.Classify(err), err)
 	}
-	// Cancelled while the GPU was busy: discard the result rather than
-	// uploading an asset nobody wants.
-	if cur, _ := h.vplat.GenerationByID(ctx, genID); cur != nil && cur.Status == string(voiceengine.GenCancelled) {
-		return nil
-	}
-	_ = h.vplat.AdvanceGeneration(ctx, genID, voiceengine.GenUploading)
-	if h.signer == nil {
-		return fail(voiceengine.ClassStorage, errors.New("no object storage configured"))
-	}
+	// Use the decision for the actual renderer, not the enqueue-time grant.
+	completed := &store.Generation{ID: genID, JobID: job.ID,
+		ModelID: plan.Model.ID, Engine: string(res.Engine), EngineVersion: res.EngineVersion, DurationMS: res.DurationMS,
+		FellBack: plan.FellBack, FallbackReason: plan.FallbackReason}
 	sum := sha256.Sum256(res.Audio)
 	audioHash := hex.EncodeToString(sum[:])
-	key := fmt.Sprintf("audio/voices/%s/%s/%s/%s.wav", req.VoiceID, req.Purpose, plan.Model.ModelVersion, g.ContentHash)
+	renderHash := plan.ContentHash
+	if plan.FellBack {
+		// A substitution belongs to this job, not the primary cache. Isolate
+		// its row and object even if the same fallback is later promoted.
+		sum := sha256.Sum256([]byte("icf:substitution:v1\x00" + renderHash + "\x00" + genID))
+		renderHash = hex.EncodeToString(sum[:])
+	}
+	// The content hash deduplicates requests in PostgreSQL. Each physical
+	// attempt writes its own object so a losing/stale delivery can neither
+	// overwrite nor delete a winner's master at the same hash.
+	key := fmt.Sprintf(storage.VoiceRenderPrefix+"%s/%s/%s/%s/%s.wav", req.VoiceID, req.Purpose, plan.Model.ModelVersion, uuid.NewString(), renderHash)
 	meta := map[string]string{
 		"synthetic_audio": "true", "voice_id": req.VoiceID, "model_id": plan.Model.ID, "generation_id": genID,
 		"engine": string(res.Engine), "engine_version": res.EngineVersion, "audio_sha256": audioHash,
 		"style": req.Style, "language": req.Language, "fell_back": fmt.Sprint(plan.FellBack),
 	}
-	if err := h.signer.Upload(ctx, key, res.Audio, meta); err != nil {
+	if err := h.vplat.BeginGenerationUpload(ctx, genID, job.ID, plan.Use); err != nil {
+		return fail(voiceengine.Classify(err), err)
+	}
+	if h.renderStore == nil {
+		return fail(voiceengine.ClassStorage, errors.New("no object storage configured"))
+	}
+	if err := h.renderStore.Upload(ctx, key, res.Audio, meta); err != nil {
+		h.discardRenderObject(ctx, genID, key)
 		return fail(voiceengine.ClassStorage, err)
 	}
-	completed := &store.Generation{ID: genID, ModelID: plan.Model.ID, Engine: string(res.Engine),
-		EngineVersion: res.EngineVersion, AudioSHA256: audioHash, StorageKey: key, DurationMS: res.DurationMS,
-		FellBack: plan.FellBack, FallbackReason: plan.FallbackReason, GrantVersion: plan.Decision.GrantVersion}
-	// What the worker measured, stored alongside the asset it measured (VE-017).
+	completed.ContentHash, completed.AudioSHA256, completed.StorageKey = renderHash, audioHash, key
 	h.recordRenderCost(completed, res, voiceCostFromEnv())
-	if err := h.vplat.CompleteGeneration(ctx, completed); err != nil {
-		return err
+	if err := h.vplat.CompleteGeneration(ctx, completed, plan.Use); err != nil {
+		if errors.Is(err, store.ErrRenderCommitUnknown) {
+			log.Printf("voice: check publication for %s before cleaning up %s: %v", genID, key, err)
+		} else {
+			h.discardRenderObject(ctx, genID, key)
+		}
+		return fail(voiceengine.Classify(err), err)
 	}
 	voiceMetrics.generatedIn(string(res.Engine), time.Since(started), plan.FellBack)
-	// The master is servable now; delivery encodings are best effort and a
-	// failure leaves clients on the WAV rather than failing the render.
-	h.encodeVariants(ctx, genID, key, res.Audio, meta)
-	action := "VOICE_GENERATED"
-	if plan.FellBack {
-		action = "VOICE_GENERATED_FALLBACK"
+	// Encodings remain best effort; the committed master and its audit are
+	// not rolled back when a later encoding fails or its grant changes.
+	h.encodeVariants(ctx, completed, plan.Use, res.Audio, meta)
+	return nil
+}
+
+// Only for keys unique to this physical render and known not to be published.
+// Do not delete on an ambiguous commit; that requires private-store reconciliation.
+func (h *Handler) discardRenderObject(ctx context.Context, genID, key string) {
+	cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	if err := h.renderStore.Delete(cleanup, key); err != nil {
+		log.Printf("voice: cleanup of unpublished object for %s failed (%s): %v", genID, key, err)
 	}
-	return h.vplat.AppendRightsAudit(ctx, store.RightsAuditEntry{VoiceID: req.VoiceID, Actor: "worker", Action: action,
-		ModelID: plan.Model.ID, GenerationID: genID, GrantVersion: plan.Decision.GrantVersion, Decision: "allowed", Detail: plan.FallbackReason})
 }
 
 // ---------------------------------------------------------------- admin
@@ -774,6 +841,11 @@ func (h *Handler) adminRegisterVoiceModel(w http.ResponseWriter, r *http.Request
 		return
 	}
 	id := r.PathValue("id")
+	pin := voiceengine.WorkerIdentity{Engine: voiceengine.Engine(req.Engine).Canonical(), Revision: req.EngineVersion}
+	if !pin.Valid() {
+		httpx.WriteError(w, http.StatusBadRequest, "engineVersion must pin the reviewed worker checkpoint")
+		return
+	}
 	g, _ := h.vplat.Grant(r.Context(), id)
 	action := voicegov.ActionZeroShotClone
 	if req.Mode == "fine_tuned" {
@@ -787,7 +859,7 @@ func (h *Handler) adminRegisterVoiceModel(w http.ResponseWriter, r *http.Request
 		req.Language = "en"
 	}
 	_, actor := actorOf(r)
-	m := &voiceengine.Model{VoiceID: id, Engine: voiceengine.Engine(req.Engine), EngineVersion: req.EngineVersion,
+	m := &voiceengine.Model{VoiceID: id, Engine: pin.Engine, EngineVersion: pin.Revision,
 		ModelVersion: req.ModelVersion, Mode: req.Mode, CheckpointURI: req.CheckpointKey, DatasetVersion: req.DatasetVersion,
 		TrainingRunID: req.TrainingRunID, LicenseReviewed: req.LicenseReviewed}
 	if err := h.vplat.CreateModel(r.Context(), m, req.ModelName, req.Language, actor); err != nil {
@@ -950,10 +1022,10 @@ func (h *Handler) registerVoicePlatformRoutes(mux *http.ServeMux, authed, voiceM
 		h.route(mux, "GET "+pfx+"/minister-voices", "public", "voice", "Licensed minister voice library", nil, h.listMinisterVoices)
 		h.route(mux, "GET "+pfx+"/voices/{id}", "public", "voice", "One minister voice (no legal detail)", nil, h.getMinisterVoice)
 		h.route(mux, "GET "+pfx+"/voices/{id}/styles", "public", "voice", "Styles with a rights-cleared reference", nil, h.getMinisterVoiceStyles)
-		h.route(mux, "POST "+pfx+"/voices/generate", "user", "voice", "Queue or fetch cached synthetic minister speech", authed,
-			func(w http.ResponseWriter, r *http.Request) {
-				h.idempotencyMiddleware(http.HandlerFunc(h.generateMinisterVoice)).ServeHTTP(w, r)
-			})
+		// Dedup in CreateOrGetGeneration *after* live rights and checkpoint
+		// checks. Replaying a saved HTTP body here could bypass both checks
+		// and return a signed URL from a previous model or grant.
+		h.route(mux, "POST "+pfx+"/voices/generate", "user", "voice", "Queue or fetch cached synthetic minister speech", authed, h.generateMinisterVoice)
 		h.route(mux, "GET "+pfx+"/audio/jobs/{id}", "user", "voice", "Generation job status and signed audio", authed, h.getAudioJob)
 		h.route(mux, "POST "+pfx+"/audio/jobs/{id}/cancel", "user", "voice", "Cancel a generation job", authed, h.cancelAudioJob)
 
@@ -981,35 +1053,67 @@ func (h *Handler) registerVoicePlatformRoutes(mux *http.ServeMux, authed, voiceM
 var deliveryFormats = []string{"aac", "opus", "mp3"}
 
 // encodeVariants derives and stores delivery encodings for a completed
-// render. Variant keys share the master's content-hash path, so identical
-// renders never encode twice.
-func (h *Handler) encodeVariants(ctx context.Context, genID, masterKey string, master []byte, meta map[string]string) {
-	if h.vworker == nil || h.signer == nil {
+// render. Only the winning master starts encoding. Its siblings are private
+// until the variant map commits under the same grant.
+func (h *Handler) encodeVariants(ctx context.Context, g *store.Generation, use voicegov.RenderUse, master []byte, meta map[string]string) {
+	if h.vworker == nil || h.renderStore == nil {
+		return
+	}
+	current := func() bool {
+		if err := h.vplat.CheckRenderGrant(ctx, use); err != nil {
+			log.Printf("voice: not encoding or uploading more variants for %s: %v", g.ID, err)
+			return false
+		}
+		return true
+	}
+	if !current() {
 		return
 	}
 	enc, err := h.vworker.Encode(ctx, master, deliveryFormats)
 	if err != nil {
-		log.Printf("voice: encode %s failed (serving WAV only): %v", genID, err)
+		log.Printf("voice: encode %s failed (serving WAV only): %v", g.ID, err)
 		return
 	}
-	base := strings.TrimSuffix(masterKey, ".wav")
 	out := make(map[string]store.AudioVariant, len(enc))
-	for f, v := range enc {
-		k := base + v.Ext
+	discard := func() {
+		for _, v := range out {
+			h.discardRenderObject(ctx, g.ID, v.Key)
+		}
+	}
+	for _, f := range deliveryFormats {
+		v, ok := enc[f]
+		if !ok {
+			continue
+		}
+		// Only these sibling keys belong to this attempt. Never let a worker's
+		// extension point a compensating delete at the master or another object.
+		k, allowed := variantKey(g.StorageKey, f)
+		if !allowed || v.Ext != path.Ext(k) {
+			log.Printf("voice: unexpected %s variant extension for %s", f, g.ID)
+			continue
+		}
+		if !current() {
+			discard()
+			return
+		}
 		vm := make(map[string]string, len(meta)+2)
 		for mk, mv := range meta {
 			vm[mk] = mv
 		}
 		vm["audio_sha256"], vm["master_sha256"] = v.SHA256, meta["audio_sha256"]
-		if err := h.signer.Upload(ctx, k, v.Data, vm); err != nil {
-			log.Printf("voice: upload %s variant %s failed: %v", genID, f, err)
+		if err := h.renderStore.Upload(ctx, k, v.Data, vm); err != nil {
+			log.Printf("voice: upload %s variant %s failed: %v", g.ID, f, err)
+			h.discardRenderObject(ctx, g.ID, k)
 			continue
 		}
 		out[f] = store.AudioVariant{Key: k, SHA256: v.SHA256, Bytes: len(v.Data), ContentType: v.ContentType}
 	}
 	if len(out) > 0 {
-		if err := h.vplat.SetGenerationVariants(ctx, genID, out); err != nil {
-			log.Printf("voice: record variants for %s: %v", genID, err)
+		if err := h.vplat.SetGenerationVariants(ctx, g, use, out); err != nil {
+			if !errors.Is(err, store.ErrRenderCommitUnknown) {
+				discard()
+			}
+			log.Printf("voice: record variants for %s: %v", g.ID, err)
 		}
 	}
 }
@@ -1017,12 +1121,15 @@ func (h *Handler) encodeVariants(ctx context.Context, genID, masterKey string, m
 // signVariants returns {format: {url, contentType}} for a servable render.
 // Callers must already have checked that the licence still permits delivery.
 func (h *Handler) signVariants(ctx context.Context, g *store.Generation, ttl time.Duration) map[string]any {
-	if h.signer == nil || len(g.Variants) == 0 {
+	if h.renderStore == nil || len(g.Variants) == 0 {
 		return nil
 	}
 	out := make(map[string]any, len(g.Variants))
 	for f, v := range g.Variants {
-		if u, err := h.signer.GenerateSignedURL(ctx, v.Key, ttl); err == nil {
+		if !publishedVariant(g, f, v.Key) {
+			continue
+		}
+		if u, err := h.renderStore.GenerateSignedURL(ctx, v.Key, ttl); err == nil {
 			out[f] = map[string]any{"url": u, "contentType": v.ContentType, "bytes": v.Bytes}
 		}
 	}

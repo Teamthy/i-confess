@@ -89,6 +89,11 @@ jobs:
       - name: Vet
         run: go vet ./...
 
+      # Build and discover the manual release check, never run it in CI. The
+      # normal race suite below exercises the checker against loopback TLS.
+      - name: Compile the opt-in R2 staging check (no bucket access)
+        run: go test -tags=r2staging -list '^TestPrivateR2StagingDelivery$' ./internal/storage | grep -Fx TestPrivateR2StagingDelivery
+
       # -race is deliberate: the session engine and the idempotency middleware
       # are concurrent by nature, and a data race there corrupts playback state
       # in ways no unit test will reproduce on demand.
@@ -292,10 +297,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Check release ordering and credential isolation (no cluster credentials)
+      - name: Check release ordering, credential isolation and media edge policy (offline)
         run: |
           python -m pip install PyYAML==6.0.3
           python -m unittest discover -s scripts -p 'test_deploy_backend.py'
+          python -m unittest discover -s scripts -p 'test_media_edge.py'
       - name: Validate Kubernetes manifests
         run: |
           docker run --rm -v "$PWD:/work" ghcr.io/yannh/kubeconform:latest -strict -summary /work/server/k8s/

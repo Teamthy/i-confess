@@ -126,7 +126,7 @@ func (w *Worker) execute(ctx context.Context, job *Job) {
 		return
 	}
 
-	err := h(ctx, job.Payload)
+	err := h(ctx, job)
 	if err == nil {
 		if cerr := w.q.Complete(ctx, job.ID); cerr != nil {
 			log.Printf("queue: job %s completed but could not be marked done: %v", job.ID, cerr)

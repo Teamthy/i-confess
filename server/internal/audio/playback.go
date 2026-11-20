@@ -44,7 +44,7 @@ type PlaybackResolverConfig struct {
 
 // NewPlaybackResolver creates a new playback resolver.
 func NewPlaybackResolver(
-	storage storage.ObjectStorage,
+	objects storage.ObjectStorage,
 	assetStore AssetStorer,
 	voiceStore VoiceStorer,
 	cfg *PlaybackResolverConfig,
@@ -59,7 +59,7 @@ func NewPlaybackResolver(
 	}
 
 	return &PlaybackResolver{
-		storage:               storage,
+		storage:               storage.GeneralMedia(objects),
 		assetStore:            assetStore,
 		voiceStore:            voiceStore,
 		cdnDomain:             cfg.CDNDomain,

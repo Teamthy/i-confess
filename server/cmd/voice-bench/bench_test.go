@@ -302,6 +302,8 @@ func fakeWorker(t *testing.T, truncate bool, floorSeconds float64, sentText *str
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
+		case "/v1/capabilities":
+			json.NewEncoder(w).Encode(voiceengine.ProviderCapabilities{Engine: voiceengine.EngineCosyVoice, EngineVersion: "bench+sha256." + strings.Repeat("a", 64), MaxChunkChars: 300, Languages: []string{"en"}, SelfHosted: true})
 		case "/v1/health":
 			_, _ = w.Write([]byte(`{"status":"ok"}`))
 		case "/v1/synthesize":
@@ -336,7 +338,8 @@ func fakeWorker(t *testing.T, truncate bool, floorSeconds float64, sentText *str
 			w.Header().Set("Content-Type", "audio/wav")
 			w.Header().Set("X-Sample-Rate", "22050")
 			w.Header().Set("X-Duration-Ms", fmt.Sprintf("%d", int(seconds*1000)))
-			w.Header().Set("X-Engine-Version", "fake-1")
+			w.Header().Set("X-Engine", "cosyvoice")
+			w.Header().Set("X-Engine-Version", "bench+sha256."+strings.Repeat("a", 64))
 			w.Header().Set("X-Inference-Seconds", "1.5")
 			_, _ = w.Write(buf)
 		default:

@@ -29,9 +29,15 @@ S3_REGION=<region>
 STORAGE_PROVIDER=s3
 ```
 
-Validate direct S3 denial and signed URL valid/expired/tampered behavior in an
-approved staging account before production. The workflows do not create or
-update the CloudFront stack automatically.
+`MEDIA_BASE_URL` for CloudFront is a bare HTTPS origin (an optional trailing
+`/` is fine), not an application path such as `/media`. A path prefix can route
+an otherwise valid signature through the wrong cache behavior and is rejected.
+The workflows do not create or update the CloudFront stack automatically.
+Follow the [private media staging check](MEDIA-EDGE-VERIFICATION.md) to verify
+the **deployed** policies, private legacy objects, range reads, warm-cache
+signature enforcement, expiry and direct S3 denial before enabling delivery.
+For the separate direct-R2 mode, follow the [private R2 playback check](R2-STAGING-PLAYBACK.md).
+Neither check is a production deployment step.
 
 ## Other release checks
 

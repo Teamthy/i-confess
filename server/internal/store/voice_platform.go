@@ -6,10 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path"
 	"strings"
 	"time"
 
 	"github.com/Teamthy/i-confess/internal/db"
+	"github.com/Teamthy/i-confess/internal/storage"
 	"github.com/Teamthy/i-confess/internal/voiceengine"
 	"github.com/Teamthy/i-confess/internal/voicegov"
 	"github.com/google/uuid"
@@ -28,6 +30,11 @@ func NewVoicePlatformStore(d *db.DB) *VoicePlatformStore { return &VoicePlatform
 
 // ErrVoiceNotFound is returned for unknown voices.
 var ErrVoiceNotFound = errors.New("voice not found")
+
+// ErrGenerationInactive means a conditional job update lost ownership (the
+// generation was cancelled, completed, removed, or resubmitted). It is not
+// a database outage and the worker must not proceed to the next side effect.
+var ErrGenerationInactive = errors.New("generation is no longer active for this job")
 
 // ErrIllegalTransition is returned for a lifecycle change voicegov forbids.
 var ErrIllegalTransition = errors.New("illegal rights status transition")
@@ -153,14 +160,26 @@ func (s *VoicePlatformStore) MinisterVoiceByID(ctx context.Context, id string) (
 
 // ---------------------------------------------------------------- grants
 
-// Grant loads the live grant with its capability rows.
+// Grant reads the terms and capabilities in one PostgreSQL snapshot. A grant
+// version must never describe permission rows read from a different revision.
 func (s *VoicePlatformStore) Grant(ctx context.Context, voiceID string) (*voicegov.Grant, error) {
+	return readGrant(ctx, s.db, voiceID)
+}
+
+type rowQuerier interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
+func readGrant(ctx context.Context, q rowQuerier, voiceID string) (*voicegov.Grant, error) {
 	var g voicegov.Grant
 	var status, from, exp, restr, terr, langs, post string
-	err := s.db.QueryRowContext(ctx, `SELECT voice_id, rights_holder, status, COALESCE(effective_from,''), COALESCE(expires_at,''),
-		restrictions, territories, languages, post_termination, grant_version
-		FROM voice_rights_grants WHERE voice_id = ? AND deleted_at IS NULL`, voiceID).
-		Scan(&g.VoiceID, &g.RightsHolder, &status, &from, &exp, &restr, &terr, &langs, &post, &g.Version)
+	var caps []byte
+	err := q.QueryRowContext(ctx, `SELECT voice_id, rights_holder, status, COALESCE(effective_from,''), COALESCE(expires_at,''),
+		restrictions, territories, languages, post_termination, grant_version,
+		COALESCE((SELECT json_object_agg(p.capability, p.granted = 1) FROM voice_usage_permissions p
+		          WHERE p.voice_id = g.voice_id AND p.deleted_at IS NULL), '{}')
+		FROM voice_rights_grants g WHERE voice_id = ? AND deleted_at IS NULL`, voiceID).
+		Scan(&g.VoiceID, &g.RightsHolder, &status, &from, &exp, &restr, &terr, &langs, &post, &g.Version, &caps)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -179,25 +198,15 @@ func (s *VoicePlatformStore) Grant(ctx context.Context, voiceID string) (*voiceg
 	}
 	g.Territories, g.Languages = splitCSV(terr), splitCSV(langs)
 
-	rows, err := s.db.QueryContext(ctx, `SELECT capability, granted FROM voice_usage_permissions WHERE voice_id = ? AND deleted_at IS NULL`, voiceID)
-	if err != nil {
+	if err := json.Unmarshal(caps, &g.Capabilities); err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	g.Capabilities = map[voicegov.Capability]bool{}
-	for rows.Next() {
-		var c string
-		var granted int
-		if err := rows.Scan(&c, &granted); err != nil {
-			return nil, err
-		}
-		// Unknown capability strings in the database are ignored rather than
-		// honoured: only capabilities the code understands can authorize.
-		if voicegov.ValidCapability(voicegov.Capability(c)) {
-			g.Capabilities[voicegov.Capability(c)] = granted == 1
+	for c := range g.Capabilities {
+		if !voicegov.ValidCapability(c) {
+			delete(g.Capabilities, c)
 		}
 	}
-	return &g, rows.Err()
+	return &g, nil
 }
 
 // GrantTerms is the editable part of a grant. Status changes go through
@@ -572,6 +581,9 @@ func (s *VoicePlatformStore) AddReference(ctx context.Context, r voiceengine.Ref
 	if !voiceengine.ValidStyle(r.Style) {
 		return "", fmt.Errorf("unknown style %q", r.Style)
 	}
+	if !storage.VoiceSourceKey(r.URI) {
+		return "", errors.New("reference must be a source recording, not a render")
+	}
 	if r.ID == "" {
 		r.ID = uuid.NewString()
 	}
@@ -600,6 +612,9 @@ func (s *VoicePlatformStore) References(ctx context.Context, voiceID string) ([]
 		if err := rows.Scan(&r.ID, &r.VoiceID, &r.Style, &r.URI, &r.Transcript, &r.DurationMS, &r.Quality, &ok); err != nil {
 			return nil, err
 		}
+		if !storage.VoiceSourceKey(r.URI) {
+			continue
+		} // never send a legacy render pointer to inference or intake
 		r.RightsOK = ok == 1
 		out = append(out, r)
 	}
@@ -696,7 +711,21 @@ type Generation struct {
 	// metrics endpoint reports as "unpriced" rather than as free.
 	CostUSDMicros *int64 `json:"costUsdMicros,omitempty"`
 	// Variants are derived delivery encodings of the WAV master.
-	Variants map[string]AudioVariant `json:"-"`
+	Variants        map[string]AudioVariant `json:"-"`
+	catalogVerified bool                    // set only by a scoped query that checks the editorial batch link
+}
+
+// ValidAudience requires an owner for private renders and no owner for catalog.
+// Inconsistent or unknown visibility fails closed.
+func (g *Generation) ValidAudience() bool {
+	return g != nil && ((g.Visibility == "private" && strings.TrimSpace(g.OwnerUserID) != "") ||
+		(g.Visibility == "catalog" && g.OwnerUserID == ""))
+}
+
+// ReadableBy is the listener-facing rule for a job, cached response or a
+// section embedded in a playlist. Operational roles are not read grants.
+func (g *Generation) ReadableBy(uid string) bool {
+	return uid != "" && g.ValidAudience() && (g.OwnerUserID == uid || (g.Visibility == "catalog" && g.catalogVerified))
 }
 
 // AudioVariant is one stored delivery encoding (AAC, Opus, MP3).
@@ -734,19 +763,29 @@ func scanGen(sc interface{ Scan(...any) error }) (*Generation, error) {
 // CreateOrGetGeneration inserts a generation keyed by content hash. If one
 // already exists (and is not failed/cancelled) it is returned with
 // created=false - the dedup that keeps identical renders from being paid for
-// twice (§29, §60). Failed rows are reset to QUEUED for another attempt.
+// twice (§29, §60). A new submission after failure/cancellation keeps the
+// generation ID but gets a fresh job ID before anything can claim it.
 func (s *VoicePlatformStore) CreateOrGetGeneration(ctx context.Context, g *Generation) (*Generation, bool, error) {
+	if !g.ValidAudience() {
+		return nil, false, errors.New("invalid render audience")
+	}
 	if g.ID == "" {
 		g.ID = "gen_" + uuid.NewString()
 	}
 	now := tsNow()
 	row := s.db.QueryRowContext(ctx, `INSERT INTO voice_generations (id, content_hash, voice_id, model_id, engine, engine_version, purpose, style,
-		language, locale, text_sha256, grant_version, queue, owner_user_id, visibility, status, requested_by, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'QUEUED', ?, ?, ?)
-		ON CONFLICT (content_hash) DO NOTHING RETURNING `+genCols,
+		language, locale, text_sha256, grant_version, queue, owner_user_id, visibility, status, job_id, requested_by, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'QUEUED', ?, ?, ?, ?)
+		ON CONFLICT (content_hash) DO UPDATE SET status = 'QUEUED', job_id = EXCLUDED.job_id, error_class = NULL, error_message = NULL,
+			grant_version = EXCLUDED.grant_version, updated_at = EXCLUDED.updated_at, row_version = voice_generations.row_version + 1
+			WHERE voice_generations.status IN ('FAILED','CANCELLED') AND voice_generations.deleted_at IS NULL
+			AND voice_generations.voice_id = EXCLUDED.voice_id AND voice_generations.purpose = EXCLUDED.purpose
+			AND voice_generations.visibility = EXCLUDED.visibility
+			AND (voice_generations.owner_user_id = EXCLUDED.owner_user_id OR
+				(voice_generations.owner_user_id IS NULL AND EXCLUDED.owner_user_id IS NULL)) RETURNING `+genCols,
 		g.ID, g.ContentHash, g.VoiceID, nullIfEmpty(g.ModelID), nullIfEmpty(g.Engine), nullIfEmpty(g.EngineVersion), g.Purpose, g.Style,
 		g.Language, nullIfEmpty(g.Locale), g.TextSHA256, g.GrantVersion, g.Queue, nullIfEmpty(g.OwnerUserID), g.Visibility,
-		nullIfEmpty(g.RequestedBy), now, now)
+		uuid.NewString(), nullIfEmpty(g.RequestedBy), now, now)
 	created, err := scanGen(row)
 	if err == nil {
 		return created, true, nil
@@ -754,31 +793,55 @@ func (s *VoicePlatformStore) CreateOrGetGeneration(ctx context.Context, g *Gener
 	if !errors.Is(err, sql.ErrNoRows) {
 		return nil, false, err
 	}
-	existing, err := scanGen(s.db.QueryRowContext(ctx, `SELECT `+genCols+` FROM voice_generations WHERE content_hash = ?`, g.ContentHash))
-	if err != nil {
-		return nil, false, err
-	}
-	if existing.Status == string(voiceengine.GenFailed) || existing.Status == string(voiceengine.GenCancelled) {
-		reset, err := scanGen(s.db.QueryRowContext(ctx, `UPDATE voice_generations SET status = 'QUEUED', error_class = NULL, error_message = NULL,
-			grant_version = ?, updated_at = ?, row_version = row_version + 1 WHERE id = ? AND status IN ('FAILED','CANCELLED') RETURNING `+genCols,
-			g.GrantVersion, now, existing.ID))
-		if err == nil {
-			return reset, true, nil
-		}
-		if !errors.Is(err, sql.ErrNoRows) {
-			return nil, false, err
-		}
-	}
-	return existing, false, nil
+	existing, err := scanGen(s.db.QueryRowContext(ctx, `SELECT `+genCols+` FROM voice_generations WHERE content_hash = ? AND voice_id = ? AND purpose = ?
+		AND visibility = ? AND owner_user_id IS NOT DISTINCT FROM ? AND deleted_at IS NULL`, g.ContentHash, g.VoiceID, g.Purpose, g.Visibility, nullIfEmpty(g.OwnerUserID)))
+	return existing, false, err
 }
 
-// SetGenerationJob links a queued job.
-func (s *VoicePlatformStore) SetGenerationJob(ctx context.Context, id, jobID string) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE voice_generations SET job_id = ?, updated_at = ? WHERE id = ?`, jobID, tsNow(), id)
-	return err
+// Before personal surfaces were separated, staff input could be labelled
+// catalog with no owner. A role or that old label isn't proof of publication.
+// Batches (including pregeneration) are the explicit editorial producer.
+const editorialCatalog = `(visibility = 'catalog' AND owner_user_id IS NULL AND EXISTS (
+	SELECT 1 FROM voice_batch_items i JOIN voice_batches b ON b.id = i.batch_id
+	WHERE i.generation_id = voice_generations.id AND b.voice_id = voice_generations.voice_id
+	AND i.deleted_at IS NULL AND b.deleted_at IS NULL))`
+
+const generationForActor = `((visibility = 'private' AND owner_user_id = ?) OR (? AND ` + editorialCatalog + `))`
+
+// GenerationForActor loads only a permitted row, before deserializing any
+// metadata. includeCatalog means read access on GET; on cancel it is the
+// caller's narrower editorial management permission.
+func (s *VoicePlatformStore) GenerationForActor(ctx context.Context, id, uid string, includeCatalog bool) (*Generation, error) {
+	if uid == "" {
+		return nil, nil
+	}
+	g, err := scanGen(s.db.QueryRowContext(ctx, `SELECT `+genCols+` FROM voice_generations WHERE id = ? AND deleted_at IS NULL AND `+generationForActor, id, uid, includeCatalog))
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err == nil {
+		g.catalogVerified = g.Visibility == "catalog"
+	}
+	return g, err
 }
 
-// GenerationByID returns one generation.
+// CatalogRenderForReview resolves a governed listening-test clip to its
+// published catalog master, for this voice and model. The caller must still
+// verify variant membership and current playback rights before signing.
+func (s *VoicePlatformStore) CatalogRenderForReview(ctx context.Context, voiceID, modelID, master string) (*Generation, error) {
+	// Use the unique hash index even for a large review. The full key still
+	// has to match: a sibling name or a losing attempt is not the master.
+	hash := strings.TrimSuffix(path.Base(master), ".wav")
+	g, err := scanGen(s.db.QueryRowContext(ctx, `SELECT `+genCols+` FROM voice_generations
+	WHERE content_hash = ? AND voice_id = ? AND model_id = ? AND storage_key = ? AND status = 'COMPLETED'
+	AND deleted_at IS NULL AND `+editorialCatalog, hash, voiceID, modelID, master))
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	return g, err
+}
+
+// GenerationByID is an unscoped internal worker lookup, not a listener read.
 func (s *VoicePlatformStore) GenerationByID(ctx context.Context, id string) (*Generation, error) {
 	g, err := scanGen(s.db.QueryRowContext(ctx, `SELECT `+genCols+` FROM voice_generations WHERE id = ? AND deleted_at IS NULL`, id))
 	if errors.Is(err, sql.ErrNoRows) {
@@ -787,49 +850,63 @@ func (s *VoicePlatformStore) GenerationByID(ctx context.Context, id string) (*Ge
 	return g, err
 }
 
-// AdvanceGeneration moves a generation to status, refusing to leave a
-// terminal state.
-func (s *VoicePlatformStore) AdvanceGeneration(ctx context.Context, id string, st voiceengine.GenerationStatus) error {
-	res, err := s.db.ExecContext(ctx, `UPDATE voice_generations SET status = ?, updated_at = ?, row_version = row_version + 1
-		WHERE id = ? AND status NOT IN ('COMPLETED','FAILED','CANCELLED')`, string(st), tsNow(), id)
+// Rows created before job IDs were allocated at submission can have a NULL
+// job_id. The first active transition adopts them; a non-NULL owner is never
+// replaced here, including when a cancelled generation ID has been reused.
+const activeGenerationJob = `id = ? AND (job_id = ? OR job_id IS NULL) AND deleted_at IS NULL AND status NOT IN ('COMPLETED','FAILED','CANCELLED')`
+
+func generationUpdated(res sql.Result, err error) error {
 	if err != nil {
 		return err
 	}
-	if n, _ := res.RowsAffected(); n == 0 {
-		return fmt.Errorf("generation %s is terminal or missing", id)
+	n, err := res.RowsAffected()
+	if err == nil && n == 0 {
+		return ErrGenerationInactive
 	}
-	return nil
-}
-
-// CompleteGeneration records the produced asset.
-func (s *VoicePlatformStore) CompleteGeneration(ctx context.Context, g *Generation) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE voice_generations SET status = 'COMPLETED', model_id = ?, engine = ?, engine_version = ?,
-		audio_sha256 = ?, storage_key = ?, duration_ms = ?, fell_back = ?, fallback_reason = ?, grant_version = ?, updated_at = ?,
-		inference_seconds = ?, worker_seconds = ?, cost_usd_micros = ?,
-		row_version = row_version + 1 WHERE id = ? AND status NOT IN ('COMPLETED','CANCELLED')`,
-		g.ModelID, g.Engine, g.EngineVersion, g.AudioSHA256, g.StorageKey, g.DurationMS, boolInt(g.FellBack),
-		nullIfEmpty(g.FallbackReason), g.GrantVersion, tsNow(),
-		g.InferenceSeconds, g.WorkerSeconds, g.CostUSDMicros, g.ID)
 	return err
 }
 
-// FailGeneration records a classified failure.
-func (s *VoicePlatformStore) FailGeneration(ctx context.Context, id, class, msg string) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE voice_generations SET status = 'FAILED', error_class = ?, error_message = ?, updated_at = ?,
-		row_version = row_version + 1 WHERE id = ? AND status NOT IN ('COMPLETED','CANCELLED')`, class, msg, tsNow(), id)
+// AdvanceGeneration changes the phase of an active job (including QUEUED
+// while waiting for retry). A cancelled or superseded job cannot advance.
+func (s *VoicePlatformStore) AdvanceGeneration(ctx context.Context, id, jobID string, st voiceengine.GenerationStatus) error {
+	if st != voiceengine.GenProcessing && st != voiceengine.GenQueued {
+		return errors.New("publication phases require an authorized render")
+	}
+	return generationUpdated(s.db.ExecContext(ctx, `UPDATE voice_generations SET status = ?, job_id = ?, updated_at = ?, row_version = row_version + 1
+		WHERE `+activeGenerationJob, string(st), jobID, tsNow(), id, jobID))
+}
+
+// FailGeneration records a terminal classified failure for this job only.
+func (s *VoicePlatformStore) FailGeneration(ctx context.Context, id, jobID, class, msg string) error {
+	_, err := failGenerationRow(ctx, s.db, id, jobID, class, msg)
 	return err
 }
 
-// CancelGeneration cancels if still cancellable. It returns false if the job
-// had progressed too far.
-func (s *VoicePlatformStore) CancelGeneration(ctx context.Context, id string) (bool, error) {
+func failGenerationRow(ctx context.Context, q rowQuerier, id, jobID, class, msg string) (string, error) {
+	var voiceID string
+	err := q.QueryRowContext(ctx, `UPDATE voice_generations SET status = 'FAILED', job_id = ?, error_class = ?, error_message = ?, updated_at = ?,
+		row_version = row_version + 1 WHERE `+activeGenerationJob+` RETURNING voice_id`, jobID, class, msg, tsNow(), id, jobID).Scan(&voiceID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrGenerationInactive
+	}
+	return voiceID, err
+}
+
+// CancelGeneration checks authority in the write itself. Catalog readability
+// is not permission to cancel editorial work. No role can cancel a different
+// listener's private generation. The handler separately resolves 404 vs 409.
+func (s *VoicePlatformStore) CancelGeneration(ctx context.Context, id, uid string, manageCatalog bool) (bool, error) {
+	if uid == "" {
+		return false, nil
+	}
 	res, err := s.db.ExecContext(ctx, `UPDATE voice_generations SET status = 'CANCELLED', updated_at = ?, row_version = row_version + 1
-		WHERE id = ? AND status IN ('QUEUED','PROCESSING','GENERATED','POST_PROCESSING')`, tsNow(), id)
+		WHERE id = ? AND deleted_at IS NULL AND status IN ('QUEUED','PROCESSING','GENERATED','POST_PROCESSING')
+		AND `+generationForActor, tsNow(), id, uid, manageCatalog)
 	if err != nil {
 		return false, err
 	}
-	n, _ := res.RowsAffected()
-	return n == 1, nil
+	n, err := res.RowsAffected()
+	return n == 1, err
 }
 
 // ---------------------------------------------------------------- helpers
@@ -868,15 +945,4 @@ func fmtOptTime(t *time.Time) any {
 		return nil
 	}
 	return t.UTC().Format(tsLayout)
-}
-
-// SetGenerationVariants records the delivery encodings of a completed render.
-func (s *VoicePlatformStore) SetGenerationVariants(ctx context.Context, id string, v map[string]AudioVariant) error {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-	_, err = s.db.ExecContext(ctx, `UPDATE voice_generations SET variants = ?, updated_at = ? WHERE id = ? AND status = 'COMPLETED'`,
-		string(b), tsNow(), id)
-	return err
 }

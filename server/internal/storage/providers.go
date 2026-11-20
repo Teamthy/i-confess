@@ -40,6 +40,13 @@ type S3Presigner interface {
 	PresignGetObject(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.PresignOptions)) (*v4.PresignedHTTPRequest, error)
 }
 
+// An immutable object name is not permission for a shared cache to retain a
+// personal render, a source recording, or rights-controlled Bible content.
+// Keep infrastructure/media-cloudfront.yaml's ordered behaviors in sync.
+func noStoreMedia(key string) bool {
+	return strings.HasPrefix(key, VoiceRenderPrefix) || strings.HasPrefix(key, "voice-private/") || strings.HasPrefix(key, "bible/")
+}
+
 // S3Storage implements ObjectStorage for Amazon S3 using the AWS SDK v2.
 type S3Storage struct {
 	client     S3API
@@ -122,9 +129,7 @@ func (s *S3Storage) Upload(ctx context.Context, key string, data []byte, metadat
 		return &StorageError{Op: "upload", Key: key, Err: fmt.Errorf("invalid storage key")}
 	}
 	cacheControl := "public, max-age=31536000, immutable"
-	if strings.HasPrefix(key, "bible/") {
-		// Bible rights/voice licenses can be withdrawn. A signed R2/S3 URL
-		// must not make a reader's offline book cacheable by a shared proxy.
+	if noStoreMedia(key) {
 		cacheControl = "private, no-store"
 	}
 	input := &s3.PutObjectInput{
@@ -186,10 +191,12 @@ func (s *S3Storage) GenerateSignedURL(ctx context.Context, key string, ttl time.
 	if s.cloudFront != nil {
 		return s.cloudFront.sign(key, time.Now().Add(ttl))
 	}
-	res, err := s.presigner.PresignGetObject(ctx, &s3.GetObjectInput{
-		Bucket: aws.String(s.bucket),
-		Key:    aws.String(key),
-	}, func(o *s3.PresignOptions) {
+	input := &s3.GetObjectInput{Bucket: aws.String(s.bucket), Key: aws.String(key)}
+	// Override legacy upload metadata on direct signed S3 reads as well.
+	if noStoreMedia(key) {
+		input.ResponseCacheControl = aws.String("private, no-store")
+	}
+	res, err := s.presigner.PresignGetObject(ctx, input, func(o *s3.PresignOptions) {
 		o.Expires = ttl
 	})
 	if err != nil {
@@ -598,7 +605,7 @@ func (l *LocalStorage) Handler(prefix string) http.Handler {
 		}
 		// Private only: a signed URL is a bearer credential for one listener,
 		// so shared caches must never retain it.
-		if strings.HasPrefix(key, "bible/") {
+		if noStoreMedia(key) {
 			w.Header().Set("Cache-Control", "private, no-store")
 		} else {
 			w.Header().Set("Cache-Control", "private, max-age=300")

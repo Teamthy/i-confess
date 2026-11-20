@@ -34,7 +34,8 @@ const (
 	EngineVoiceStudio Engine = "voicestudio"
 	// EngineFake is the deterministic in-process test engine. It is refused
 	// by NewRegistry unless explicitly allowed, so it cannot reach production.
-	EngineFake Engine = "fake"
+	EngineFake    Engine = "fake"
+	EngineDevTone Engine = "dev-tone"
 )
 
 // VoiceProvider is the contract every engine adapter implements (§7).
@@ -42,7 +43,7 @@ type VoiceProvider interface {
 	Generate(ctx context.Context, req GenerateRequest) (*GenerateResult, error)
 	Clone(ctx context.Context, req CloneRequest) (*CloneResult, error)
 	Health(ctx context.Context) error
-	Capabilities(ctx context.Context) ProviderCapabilities
+	Capabilities(ctx context.Context) (ProviderCapabilities, error)
 }
 
 // Reference is a server-side handle to reference audio. URIs are private
@@ -65,10 +66,11 @@ type Reference struct {
 // concrete model. Text is delivered as rendered chunks so pauses and
 // pronunciations survive engines with no markup support.
 type GenerateRequest struct {
-	GenerationID string `json:"generation_id"`
-	VoiceID      string `json:"voice_id"`
-	ModelID      string `json:"model_id"`
-	ModelVersion string `json:"model_version"`
+	ExpectedWorker WorkerIdentity `json:"expected_worker"`
+	GenerationID   string         `json:"generation_id"`
+	VoiceID        string         `json:"voice_id"`
+	ModelID        string         `json:"model_id"`
+	ModelVersion   string         `json:"model_version"`
 	// CheckpointURI is a private object-store key; only the worker resolves it.
 	CheckpointURI string         `json:"checkpoint_uri,omitempty"`
 	Chunks        []Chunk        `json:"chunks"`
@@ -155,6 +157,7 @@ const (
 	ClassRights    ErrorClass = "rights"
 	ClassContent   ErrorClass = "content"
 	ClassModel     ErrorClass = "model"
+	ClassIdentity  ErrorClass = "identity" // unverified or changed worker/plan: never retry or substitute
 	ClassGPU       ErrorClass = "gpu"
 	ClassStorage   ErrorClass = "storage"
 )
@@ -183,6 +186,10 @@ func (e *Error) Error() string { return fmt.Sprintf("%s %s error: %s", e.Engine,
 // transient so a flaky network is retried - bounded by the queue's attempt
 // cap, never indefinitely. Cancellation is permanent: the caller gave up.
 func Classify(err error) ErrorClass {
+	var denied *ErrRightsDenied
+	if errors.As(err, &denied) {
+		return ClassRights
+	}
 	var e *Error
 	if errors.As(err, &e) {
 		return e.Class

@@ -127,7 +127,7 @@ func TestBlindEvaluationGatesOnRealRatings(t *testing.T) {
 	h := newVoicePlatformHarness(t)
 	id := h.onboard(t)
 	m := h.must(t, 201, "POST", "/v1/admin/voices/"+id+"/models", map[string]any{
-		"engine": "cosyvoice", "engineVersion": "3", "modelVersion": "zs-2", "mode": "zero_shot", "licenseReviewed": true}, h.admin)
+		"engine": "cosyvoice", "engineVersion": testVoiceRevision, "modelVersion": "zs-2", "mode": "zero_shot", "licenseReviewed": true}, h.admin)
 	modelID := m["model"].(map[string]any)["id"].(string)
 
 	bt := h.must(t, 201, "POST", "/v1/admin/voices/"+id+"/blind-tests", map[string]any{"title": "zs-2 vs real",

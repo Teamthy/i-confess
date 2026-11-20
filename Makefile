@@ -23,7 +23,7 @@ LINT    := golangci-lint
 
 .PHONY: help build test race vet lint lint-fix fmt fmt-check tidy verify clean \
 	design design-check design-contrast routes mobile-check dart-symbols \
-	bible-structure bible-corpus
+	bible-structure bible-corpus r2-staging-check
 
 PY ?= python3
 DESIGN := design
@@ -31,7 +31,7 @@ MOBILE := apps/mobile
 FLUTTER ?= flutter
 
 help: ## Show this help
-	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
+	@grep -hE '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | \
 	  awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
 
 build: ## Compile every package
@@ -42,6 +42,10 @@ test: ## Run the suite against PostgreSQL
 
 race: ## Run the suite with the race detector
 	cd $(SERVER) && $(GO) test -race ./... -count=1
+
+# Never a dependency of verify/test or a deploy step. See docs/R2-STAGING-PLAYBACK.md.
+r2-staging-check: ## Check one synthetic object in an explicitly approved private R2 staging bucket
+	cd $(SERVER) && $(GO) test -tags=r2staging -count=1 -timeout=2m -v -run '^TestPrivateR2StagingDelivery$$' ./internal/storage
 
 vet: ## Run go vet
 	cd $(SERVER) && $(GO) vet ./...

@@ -25,6 +25,7 @@ import hmac
 import json
 import logging
 import os
+import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -49,10 +50,12 @@ ENCODE_MAX_BODY = int(os.environ.get("ICF_ENCODE_MAX_BODY", str(160 << 20)))
 
 
 def render(engine: Engine, req: dict) -> tuple[bytes, dict]:
+    t_all = time.perf_counter()  # checkpoint/weight preparation occupies the worker too
     chunks = req.get("chunks") or []
     if not chunks:
         raise EngineError("content", "no chunks to synthesize")
     checkpoint = resolve_checkpoint(req.get("checkpoint_uri", ""))
+    engine.prepare_render(checkpoint)
     params = dict(req.get("params") or {})
     rate = engine.sample_rate
     parts: list[np.ndarray] = []
@@ -64,7 +67,7 @@ def render(engine: Engine, req: dict) -> tuple[bytes, dict]:
     # the first would silently under-report a request that spent 40 s in a
     # limiter and 2 s in the model; reporting only the second would price CPU
     # mastering as if it were an A100.
-    infer_s, t_all = 0.0, time.perf_counter()
+    infer_s = 0.0
     for c in chunks:
         text = (c.get("text") or "").strip()
         if text:
@@ -88,7 +91,8 @@ def render(engine: Engine, req: dict) -> tuple[bytes, dict]:
         "Content-Type": "audio/wav",
         "X-Sample-Rate": str(rate),
         "X-Duration-Ms": str(int(1000 * y.size / rate)),
-        "X-Engine-Version": f"{engine.name}-{engine.version}",
+        "X-Engine": engine.wire_name,
+        "X-Engine-Version": engine.version,
         "X-Loudness-LUFS": f"{rep.output_lufs:.2f}",
         "X-True-Peak-dBTP": f"{rep.output_true_peak_dbtp:.2f}",
         "X-Peak-Limited": "1" if rep.peak_limited else "0",
@@ -131,6 +135,7 @@ def render_stream(engine: Engine, req: dict):
     if not chunks:
         raise EngineError("content", "no chunks to synthesize")
     checkpoint = resolve_checkpoint(req.get("checkpoint_uri", ""))
+    engine.prepare_render(checkpoint)
     params = dict(req.get("params") or {})
     target, ceiling = mastering.config_from_env()
     ceiling_lin = 10 ** (ceiling / 20)
@@ -166,6 +171,12 @@ TRAIN_PATH = re.compile(r"^/v1/train/([A-Za-z0-9_-]{1,80})(/cancel)?$")
 
 def make_handler(engine: Engine, token: str, trainer: TrainingManager | None = None):
     trainer = trainer or TrainingManager()
+    # Each worker process has one engine, with mutable weights/sample rate.
+    # Do not queue request threads on it: the Go job queue owns the backlog.
+    synthesis_slot = threading.Lock()
+    # Hash the mounted bundle once before listening, not per request or after
+    # a response has been sent. The engine loader uses this same immutable root.
+    identity = {"engine": engine.wire_name, "revision": engine.version}
 
     class Handler(BaseHTTPRequestHandler):
         server_version = "icf-voice-worker/1"
@@ -177,6 +188,7 @@ def make_handler(engine: Engine, token: str, trainer: TrainingManager | None = N
             b = json.dumps(obj).encode()
             self.send_response(code)
             self.send_header("Content-Type", "application/json")
+            self.send_header("Cache-Control", "no-store")
             self.send_header("Content-Length", str(len(b)))
             self.end_headers()
             self.wfile.write(b)
@@ -204,7 +216,7 @@ def make_handler(engine: Engine, token: str, trainer: TrainingManager | None = N
                 return self._json(200, run.view())
             if self.path == "/v1/capabilities":
                 caps = dict(engine.capabilities, **engine.runtime_capabilities(),
-                            engine=engine.name, engine_version=engine.version)
+                            engine=identity["engine"], engine_version=identity["revision"])
                 # /v1/synthesize/stream works for every engine: it emits audio
                 # chunk by chunk even when the engine itself can't stream inside
                 # a chunk. The granularity tells callers which of the two they get.
@@ -212,6 +224,54 @@ def make_handler(engine: Engine, token: str, trainer: TrainingManager | None = N
                 caps["streaming"] = True
                 return self._json(200, caps)
             self._err(404, "permanent", "not found")
+
+        def _synthesize(self, req):
+            if not isinstance(req, dict) or req.get("expected_worker") != identity:
+                return self._err(409, "identity", "worker engine or checkpoint does not match the request")
+            if not synthesis_slot.acquire(blocking=False):
+                return self._err(503, "transient", "synthesis worker busy")
+            try:
+                if self.path == "/v1/synthesize/stream":
+                    return self._stream(req)  # hold the slot across all chunks
+                body, headers = render(engine, req)
+            finally:
+                synthesis_slot.release()
+
+            # The master is already rendered. A slow download need not hold the GPU.
+            self.send_response(200)
+            for k, v in headers.items():
+                self.send_header(k, v)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def _stream(self, req):
+            gen = render_stream(engine, req)
+            first = next(gen, None)  # surface engine errors before headers
+            if first is None:
+                return self._err(422, "content", "nothing to synthesize")
+            self.close_connection = True
+            # Bound stalled socket writes, not inference time or total stream length.
+            self.connection.settimeout(30)
+            self.send_response(200)
+            self.send_header("Content-Type", "audio/wav")
+            self.send_header("X-Engine", engine.wire_name)
+            self.send_header("X-Engine-Version", engine.version)
+            self.send_header("X-Sample-Rate", str(engine.sample_rate))
+            self.send_header("X-Synthetic", "true")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            try:
+                self.wfile.write(first)
+                for b in gen:
+                    self.wfile.write(b)
+                    self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError, TimeoutError):
+                log.info("stream connection lost; stopping synthesis")
+            except Exception as exc:  # headers sent; never append a JSON error to the WAV
+                log.warning("stream aborted after audio started: %s", type(exc).__name__)
+            finally:
+                gen.close()
 
         def do_POST(self):
             if not self._authorized():
@@ -225,35 +285,8 @@ def make_handler(engine: Engine, token: str, trainer: TrainingManager | None = N
             except ValueError:
                 return self._err(400, "content", "invalid JSON")
             try:
-                if self.path == "/v1/synthesize":
-                    body, headers = render(engine, req)
-                    self.send_response(200)
-                    for k, v in headers.items():
-                        self.send_header(k, v)
-                    self.send_header("Content-Length", str(len(body)))
-                    self.end_headers()
-                    self.wfile.write(body)
-                    return
-                if self.path == "/v1/synthesize/stream":
-                    gen = render_stream(engine, req)
-                    first = next(gen, None)  # surface engine errors before headers
-                    if first is None:
-                        return self._err(422, "content", "nothing to synthesize")
-                    self.send_response(200)
-                    self.send_header("Content-Type", "audio/wav")
-                    self.send_header("X-Sample-Rate", str(engine.sample_rate))
-                    self.send_header("X-Synthetic", "true")
-                    self.send_header("Cache-Control", "no-store")
-                    self.end_headers()
-                    try:
-                        self.wfile.write(first)
-                        for b in gen:
-                            self.wfile.write(b)
-                            self.wfile.flush()
-                    except (BrokenPipeError, ConnectionResetError):
-                        log.info("stream client disconnected; stopping synthesis")
-                    self.close_connection = True
-                    return
+                if self.path in ("/v1/synthesize", "/v1/synthesize/stream"):
+                    return self._synthesize(req)
                 if self.path == "/v1/ingest":
                     for k in ("audio_key", "segment_prefix"):
                         if not req.get(k):
@@ -297,7 +330,7 @@ def make_handler(engine: Engine, token: str, trainer: TrainingManager | None = N
             except ValueError as e:
                 self._err(422, "content", str(e))
             except EngineError as e:
-                code = {"content": 422, "permanent": 400, "model": 503, "gpu": 503}.get(e.cls, 500)
+                code = {"content": 422, "permanent": 400, "model": 503, "gpu": 503, "identity": 409}.get(e.cls, 500)
                 self._err(code, e.cls, str(e))
             except MemoryError:
                 self._err(503, "gpu", "out of memory")

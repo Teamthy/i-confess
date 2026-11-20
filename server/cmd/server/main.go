@@ -111,7 +111,7 @@ func main() {
 	// Seed demo content (development and test only). This is what creates placeholder
 	// audio and the demo accounts, and neither of those belongs in production.
 	if (cfg.Env == "development" || cfg.Env == "test") && (cfg.Env == "development" || os.Getenv("SEED") == "1") {
-		if err := seed.Seed(conn, objStore); err != nil {
+		if err := seed.Seed(conn, storage.GeneralMedia(objStore)); err != nil {
 			log.Printf("seed: %v", err)
 		}
 	}
@@ -134,7 +134,7 @@ func main() {
 	} else if reviewed > 0 {
 		log.Printf("content: recorded %d canonical theological reviews", reviewed)
 	}
-	if created, err := seed.EnsureCanonicalAudio(context.Background(), conn, objStore); err != nil {
+	if created, err := seed.EnsureCanonicalAudio(context.Background(), conn, storage.GeneralMedia(objStore)); err != nil {
 		log.Fatalf("audio: failed to ensure canonical audio: %v", err)
 	} else if created > 0 {
 		log.Printf("audio: ensured %d canonical bootstrap assets", created)

@@ -73,6 +73,10 @@ func Promote(models []Model, targetID string) (map[string]ModelStatus, error) {
 	default:
 		return nil, fmt.Errorf("model %s is %s; only approved or retired (rollback) models can be promoted", targetID, target.Status)
 	}
+	pin := WorkerIdentity{target.Engine, target.EngineVersion}
+	if !pin.Valid() {
+		return nil, fmt.Errorf("model %s: missing or invalid checkpoint pin", targetID)
+	}
 	if !target.LicenseReviewed {
 		return nil, fmt.Errorf("model %s: engine licence has not been reviewed", targetID)
 	}
@@ -121,7 +125,8 @@ func NewRegistry(production bool) *Registry {
 
 // Register adds a provider.
 func (r *Registry) Register(e Engine, p VoiceProvider) error {
-	if r.production && (e == EngineFake || e == EngineVoiceStudio) {
+	e = e.Canonical()
+	if r.production && (e == EngineFake || e == EngineDevTone || e == EngineVoiceStudio) {
 		return fmt.Errorf("engine %s is not permitted in production", e)
 	}
 	r.providers[e] = p
@@ -130,7 +135,7 @@ func (r *Registry) Register(e Engine, p VoiceProvider) error {
 
 // Provider returns the provider for e.
 func (r *Registry) Provider(e Engine) (VoiceProvider, bool) {
-	p, ok := r.providers[e]
+	p, ok := r.providers[e.Canonical()]
 	return p, ok
 }
 
@@ -161,7 +166,7 @@ func Candidates(models []Model, voiceID string, policy FallbackPolicy) (primaryM
 	}
 	for _, m := range models {
 		if m.VoiceID != voiceID || m.ID == primaryModel.ID || m.Status != ModelApproved ||
-			!m.FallbackApproved || !m.LicenseReviewed || m.Engine == primaryModel.Engine {
+			!m.FallbackApproved || !m.LicenseReviewed || m.Engine.Canonical() == primaryModel.Engine.Canonical() {
 			continue
 		}
 		if m.ICFVoiceScore < policy.MinScore {
@@ -186,12 +191,17 @@ const AudioPipelineVersion = "m1"
 
 // HashInput is every field that changes the rendered audio.
 type HashInput struct {
-	VoiceID       string `json:"voice_id"`
-	ModelID       string `json:"model_id"`
-	ModelVersion  string `json:"model_version"`
-	Engine        Engine `json:"engine"`
-	EngineVersion string `json:"engine_version"`
-	Text          string `json:"text"` // canonical markup source
+	// The same words in the same voice are not the same submission across
+	// licensed uses. In particular, an editorial batch must never reuse a
+	// staff member's personal confession (even with the same cache owner).
+	Purpose       voicegov.ContentPurpose `json:"purpose"`
+	UserText      bool                    `json:"user_text"`
+	VoiceID       string                  `json:"voice_id"`
+	ModelID       string                  `json:"model_id"`
+	ModelVersion  string                  `json:"model_version"`
+	Engine        Engine                  `json:"engine"`
+	EngineVersion string                  `json:"engine_version"`
+	Text          string                  `json:"text"` // canonical markup source
 	// TextNormalised is what the normaliser made of the source, and
 	// NormaliseVersion names the rule set that produced it. Both are hashed so
 	// a change in the reading rules re-renders affected text instead of
@@ -217,7 +227,9 @@ func ContentHash(in HashInput) string {
 		in.AudioVersion = AudioPipelineVersion
 	}
 	b, _ := json.Marshal(in) // struct field order is fixed, so this is canonical
-	sum := sha256.Sum256(b)
+	// Pre-verification cache rows may contain bytes from an unknown worker.
+	// Never return one as a hit for a pinned request, even if its labels match.
+	sum := sha256.Sum256(append([]byte("icf:verified-render:v1\x00"), b...))
 	return hex.EncodeToString(sum[:])
 }
 
@@ -262,18 +274,23 @@ func QueueFor(p Priority) string {
 
 // Request is an engine-neutral generation request after content validation.
 type Request struct {
-	GenerationID string
-	VoiceID      string
-	Markup       string
-	Language     string
-	Locale       string
-	Style        string
-	Purpose      voicegov.ContentPurpose
-	UserText     bool
-	Territory    string
-	Speed        float64
-	Pitch        float64
-	At           time.Time
+	// CacheOwnerID isolates private render keys. QueuedContentHash is the
+	// persisted, owner-scoped primary plan; a delivery may not silently replan
+	// after a promotion, dictionary edit, or change to the reference.
+	CacheOwnerID      string
+	QueuedContentHash string
+	GenerationID      string
+	VoiceID           string
+	Markup            string
+	Language          string
+	Locale            string
+	Style             string
+	Purpose           voicegov.ContentPurpose
+	UserText          bool
+	Territory         string
+	Speed             float64
+	Pitch             float64
+	At                time.Time
 }
 
 // Plan is the resolved, rights-checked generation.
@@ -282,7 +299,8 @@ type Plan struct {
 	Model       Model
 	Reference   *Reference
 	Request     GenerateRequest
-	Decision    voicegov.Decision
+	Decision    voicegov.Decision // initial decision, not an authorization for later handoffs
+	Use         voicegov.RenderUse
 	FellBack    bool
 	// FallbackReason records why the production model was not used; it is
 	// written to the audit log and asset metadata so a substitution is never
@@ -301,10 +319,21 @@ func (e *ErrRightsDenied) Error() string {
 // its dependencies; the caller supplies the grant, models and references
 // fresh for every call so revocation takes effect immediately (§67).
 type Orchestrator struct {
-	Registry *Registry
-	Dict     *Dictionary
-	DictVer  string
-	Fallback FallbackPolicy
+	// ConfirmGrant, installed by the governed API, checks that the decision
+	// is still current immediately before a provider receives text. A fallback
+	// after a slow primary is a new handoff, not covered by an earlier check.
+	ConfirmGrant func(context.Context, voicegov.RenderUse) error
+	Registry     *Registry
+	Dict         *Dictionary
+	DictVer      string
+	Fallback     FallbackPolicy
+}
+
+func (o *Orchestrator) confirm(ctx context.Context, p *Plan) error {
+	if o.ConfirmGrant == nil {
+		return nil
+	}
+	return o.ConfirmGrant(ctx, p.Use)
 }
 
 // Resolve performs every check that does not need a GPU - markup parsing,
@@ -328,6 +357,9 @@ func (o *Orchestrator) Resolve(ctx context.Context, grant *voicegov.Grant, model
 	if err != nil {
 		return nil, err
 	}
+	if err := o.confirm(ctx, p.Plan); err != nil {
+		return nil, err
+	}
 	return p.Plan, nil
 }
 
@@ -348,7 +380,15 @@ func (o *Orchestrator) Generate(ctx context.Context, grant *voicegov.Grant, mode
 	}
 	candidates := append([]Model{*primaryModel}, fallbacks...)
 
-	var lastErr error
+	// A busy primary may recover even if the last fallback lacks the
+	// requested language or model. Preserve a retryable cause in that case;
+	// explicit rights/content refusals still short-circuit below.
+	var cause error
+	remember := func(err error) {
+		if cause == nil || !Classify(cause).Retryable() {
+			cause = err
+		}
+	}
 	var reasons []string
 	for i, m := range candidates {
 		rp, err := o.plan(ctx, grant, m, refs, req, segs)
@@ -363,11 +403,12 @@ func (o *Orchestrator) Generate(ctx context.Context, grant *voicegov.Grant, mode
 				reasons = append(reasons, fmt.Sprintf("%s: %s", m.Engine, rd.Decision.Reason))
 				continue
 			}
-			if Classify(err) == ClassContent {
+			class := Classify(err)
+			if class == ClassContent || class == ClassRights || class == ClassPermanent || class == ClassIdentity {
 				return nil, nil, err
 			}
-			reasons = append(reasons, fmt.Sprintf("%s: %v", m.Engine, err))
-			lastErr = err
+			reasons = append(reasons, fmt.Sprintf("%s: %s", m.Engine, class))
+			remember(err)
 			continue
 		}
 		plan := rp.Plan
@@ -375,23 +416,34 @@ func (o *Orchestrator) Generate(ctx context.Context, grant *voicegov.Grant, mode
 		if i > 0 {
 			plan.FallbackReason = strings.Join(reasons, "; ")
 		}
+		if err := o.confirm(ctx, plan); err != nil {
+			return nil, nil, err
+		}
 		res, err := rp.provider.Generate(ctx, plan.Request)
 		if err == nil {
+			var actual WorkerIdentity
+			if res != nil {
+				actual = WorkerIdentity{res.Engine, res.EngineVersion}
+			}
+			if err := plan.Request.ExpectedWorker.verify(actual); err != nil {
+				return nil, nil, err
+			}
+			res.Engine = actual.Engine.Canonical()
 			return plan, res, nil
 		}
-		lastErr = err
+		remember(err)
 		class := Classify(err)
 		reasons = append(reasons, fmt.Sprintf("%s: %s", m.Engine, class))
 		// Only infrastructure faults justify trying another engine. Content
 		// and rights faults would recur on every engine.
-		if class == ClassContent || class == ClassRights || class == ClassPermanent {
+		if class == ClassContent || class == ClassRights || class == ClassPermanent || class == ClassIdentity {
 			return plan, nil, err
 		}
 	}
-	if lastErr == nil {
-		lastErr = errors.New("no eligible engine")
+	if cause == nil {
+		cause = &Error{Class: ClassModel, Msg: "no eligible engine"}
 	}
-	return nil, nil, fmt.Errorf("all engines failed (%s): %w", strings.Join(reasons, "; "), lastErr)
+	return nil, nil, fmt.Errorf("all engines failed (%s): %w", strings.Join(reasons, "; "), cause)
 }
 
 func (o *Orchestrator) parse(req *Request) ([]Segment, error) {
@@ -416,48 +468,71 @@ func (o *Orchestrator) parse(req *Request) ([]Segment, error) {
 
 type resolvedPlan struct {
 	*Plan
-	provider VoiceProvider
+	provider  VoiceProvider
+	streaming bool
 }
 
 func (o *Orchestrator) plan(ctx context.Context, grant *voicegov.Grant, m Model, refs []Reference, req Request, segs []Segment) (*resolvedPlan, error) {
+	m.Engine = m.Engine.Canonical()
+	pin := WorkerIdentity{m.Engine, m.EngineVersion}
+	if !m.LicenseReviewed || !pin.Valid() {
+		return nil, &Error{Class: ClassIdentity, Engine: m.Engine, Msg: "model lacks a reviewed, pinned revision"}
+	}
+	var ref *Reference
+	var refID string
+	if m.Mode != "fine_tuned" {
+		var err error
+		if ref, err = SelectReference(refs, req.VoiceID, req.Style); err != nil {
+			if m.Status == ModelProduction && req.QueuedContentHash != "" {
+				return nil, &Error{Class: ClassIdentity, Engine: m.Engine, Msg: "queued reference is no longer available"}
+			}
+			return nil, err
+		}
+		refID = ref.ID
+	}
+	prosody := ProsodyFor(req.Style, req.Speed)
+	hash := ContentHash(HashInput{
+		Purpose: req.Purpose, UserText: req.UserText,
+		VoiceID: req.VoiceID, ModelID: m.ID, ModelVersion: m.ModelVersion, Engine: m.Engine,
+		EngineVersion: m.EngineVersion, Text: req.Markup, Language: req.Language, Locale: req.Locale,
+		Style: req.Style, Speed: prosody.Speed, Pitch: req.Pitch, ReferenceID: refID, DictVersion: o.DictVer,
+		TextNormalised: PlainText(segs), NormaliseVersion: NormaliseVersion,
+	})
+	if req.CacheOwnerID != "" {
+		sum := sha256.Sum256([]byte(hash + "|" + req.CacheOwnerID))
+		hash = hex.EncodeToString(sum[:])
+	}
+	if m.Status == ModelProduction && req.QueuedContentHash != "" && hash != req.QueuedContentHash {
+		return nil, &Error{Class: ClassIdentity, Engine: m.Engine, Msg: "queued primary render plan has changed; resubmit"}
+	}
 	p, ok := o.Registry.Provider(m.Engine)
 	if !ok {
 		return nil, &Error{Class: ClassModel, Engine: m.Engine, Msg: "no provider registered"}
 	}
-	caps := p.Capabilities(ctx)
+	caps, err := p.Capabilities(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := pin.verify(WorkerIdentity{caps.Engine, caps.EngineVersion}); err != nil {
+		return nil, err
+	}
 	if !caps.SupportsLanguage(req.Language) {
 		return nil, &Error{Class: ClassModel, Engine: m.Engine, Msg: "language " + req.Language + " unsupported"}
 	}
-	decision := voicegov.Authorize(grant, voicegov.Request{
+	scope := voicegov.Request{
 		Action: voicegov.ActionGenerate, Purpose: req.Purpose, ThirdParty: !caps.SelfHosted,
 		UserSubmittedText: req.UserText, Territory: req.Territory, Language: req.Language, At: req.At,
-	})
+	}
+	decision := voicegov.Authorize(grant, scope)
 	if !decision.Allowed {
 		return nil, &ErrRightsDenied{Decision: decision}
 	}
-	var ref *Reference
-	if m.Mode != "fine_tuned" {
-		var err error
-		if ref, err = SelectReference(refs, req.VoiceID, req.Style); err != nil {
-			return nil, err
-		}
-	}
-	prosody := ProsodyFor(req.Style, req.Speed)
 	chunks := Render(o.Dict.Apply(segs, req.Locale, m.Engine, caps), caps, prosody)
-	refID := ""
-	if ref != nil {
-		refID = ref.ID
-	}
-	return &resolvedPlan{provider: p, Plan: &Plan{
-		Model: m, Reference: ref, Decision: decision,
-		ContentHash: ContentHash(HashInput{
-			VoiceID: req.VoiceID, ModelID: m.ID, ModelVersion: m.ModelVersion, Engine: m.Engine,
-			EngineVersion: m.EngineVersion, Text: req.Markup, Language: req.Language, Locale: req.Locale,
-			Style: req.Style, Speed: prosody.Speed, Pitch: req.Pitch, ReferenceID: refID, DictVersion: o.DictVer,
-			TextNormalised: PlainText(segs), NormaliseVersion: NormaliseVersion,
-		}),
+	return &resolvedPlan{provider: p, streaming: caps.Streaming, Plan: &Plan{
+		Model: m, Reference: ref, ContentHash: hash, Decision: decision,
+		Use: voicegov.RenderUse{VoiceID: req.VoiceID, GrantVersion: decision.GrantVersion, Request: scope},
 		Request: GenerateRequest{
-			GenerationID: req.GenerationID, VoiceID: req.VoiceID, ModelID: m.ID, ModelVersion: m.ModelVersion,
+			ExpectedWorker: pin, GenerationID: req.GenerationID, VoiceID: req.VoiceID, ModelID: m.ID, ModelVersion: m.ModelVersion,
 			CheckpointURI: m.CheckpointURI, Chunks: chunks, Language: req.Language, Locale: req.Locale,
 			Style: req.Style, Reference: ref, Prosody: prosody, SampleRate: 24000,
 		},
@@ -505,13 +580,28 @@ func (o *Orchestrator) Stream(ctx context.Context, grant *voicegov.Grant, models
 		return nil, nil, err
 	}
 	sp, ok := rp.provider.(StreamingProvider)
-	if !ok || !rp.provider.Capabilities(ctx).Streaming {
+	if !ok || !rp.streaming {
 		return nil, nil, &Error{Class: ClassModel, Engine: primary.Engine, Msg: "engine does not support streaming"}
+	}
+	rp.Use.Request.Action = voicegov.ActionStream
+	if err := o.confirm(ctx, rp.Plan); err != nil {
+		return nil, nil, err
 	}
 	st, err := sp.GenerateStream(ctx, rp.Request)
 	if err != nil {
 		return nil, nil, err
 	}
-	st.Model = *primary
+	var actual WorkerIdentity
+	if st != nil {
+		actual = WorkerIdentity{st.Engine, st.EngineVersion}
+	}
+	if err := rp.Request.ExpectedWorker.verify(actual); err != nil {
+		if st != nil && st.Body != nil {
+			defer st.Body.Close() // preserve the identity error on rejection
+		}
+		return nil, nil, err
+	}
+	st.Engine = actual.Engine.Canonical()
+	st.Model = rp.Model
 	return rp.Plan, st, nil
 }
