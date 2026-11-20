@@ -779,7 +779,7 @@ function PreviewPanel({ voice }: { voice: MinisterVoice }) {
   return (
     <section className="adm-card">
       <div className="adm-card-head"><h3>Live preview</h3><span className="adm-pill blue">AI-generated · synthetic voice</span></div>
-      <p className="small">Streams from the GPU worker for a quick listen. Streams are not cached and are only roughly loudness-matched; the queued render is the mastered asset. Requires the can_stream right.</p>
+      <p className="small">Text entered here is personal, not a catalog submission. Both actions require permission to generate from user-submitted text. Stream also requires streaming rights and is not cached; Render mastered saves a job only your account can open.</p>
       <textarea className="adm-input" rows={3} style={{ width: "100%" }} value={text} onChange={(e) => setText(e.target.value)} aria-label="Preview text" />
       <div className="adm-row-actions">
         <select className="adm-input" value={style} onChange={(e) => setStyle(e.target.value)} aria-label="Style">

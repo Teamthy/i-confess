@@ -118,9 +118,10 @@ func IsTerminal(status string) bool {
 	return status == StatusCompleted || status == StatusDeadLetter
 }
 
-// Handler performs a job. Returning an error marks the attempt failed and
-// schedules a retry; returning ErrPermanent parks the job immediately.
-type Handler func(ctx context.Context, payload map[string]any) error
+// Handler receives the claimed job, including its ID and 1-based Attempts.
+// These come from Claim, never from caller-supplied payload fields. Returning
+// an error schedules a retry within MaxAttempts; Permanent parks immediately.
+type Handler func(ctx context.Context, job *Job) error
 
 // ErrPermanent wraps a cause that retrying cannot fix.
 type ErrPermanent struct{ Cause error }

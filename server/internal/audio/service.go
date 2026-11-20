@@ -68,9 +68,9 @@ type ServiceConfig struct {
 }
 
 // NewService creates a new audio service.
-func NewService(storage storage.ObjectStorage, assetStore AssetStorer, voiceStore VoiceStorer, jobStore JobStorer, cfg *ServiceConfig) *Service {
+func NewService(objects storage.ObjectStorage, assetStore AssetStorer, voiceStore VoiceStorer, jobStore JobStorer, cfg *ServiceConfig) *Service {
 	return &Service{
-		storage:    storage,
+		storage:    storage.GeneralMedia(objects),
 		assetStore: assetStore,
 		voiceStore: voiceStore,
 		jobStore:   jobStore,

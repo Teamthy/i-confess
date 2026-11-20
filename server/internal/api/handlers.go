@@ -62,7 +62,8 @@ type Handler struct {
 	queueDurable bool
 	// signer mints short-lived audio URLs. Audio bytes never pass through this
 	// API (PRD S11); the client is handed a signed CDN link instead.
-	signer storage.ObjectStorage
+	signer      storage.ObjectStorage // excludes governed render objects
+	renderStore storage.ObjectStorage // used only by the minister-voice path
 	// mediaHandler is the development-only signed audio origin.
 	mediaHandler http.Handler
 	// pipeline renders text to audio. Nil when synthesis is unconfigured, in

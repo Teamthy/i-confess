@@ -153,8 +153,8 @@ func TestGrantRejectsUnknownVocabulary(t *testing.T) {
 func TestModelPromotionAndRollbackPersist(t *testing.T) {
 	s, id := newVoiceFixture(t)
 	ctx := context.Background()
-	m1 := &voiceengine.Model{VoiceID: id, Engine: voiceengine.EngineCosyVoice, EngineVersion: "3", ModelVersion: "v1", LicenseReviewed: true}
-	m2 := &voiceengine.Model{VoiceID: id, Engine: voiceengine.EngineCosyVoice, EngineVersion: "3", ModelVersion: "v2", LicenseReviewed: true}
+	m1 := &voiceengine.Model{VoiceID: id, Engine: voiceengine.EngineCosyVoice, EngineVersion: "3+sha256.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", ModelVersion: "v1", LicenseReviewed: true}
+	m2 := &voiceengine.Model{VoiceID: id, Engine: voiceengine.EngineCosyVoice, EngineVersion: "3+sha256.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", ModelVersion: "v2", LicenseReviewed: true}
 	for _, m := range []*voiceengine.Model{m1, m2} {
 		if err := s.CreateModel(ctx, m, "minister_001_model", "en", "ml_1"); err != nil {
 			t.Fatal(err)
@@ -212,30 +212,30 @@ func TestModelPromotionAndRollbackPersist(t *testing.T) {
 func TestGenerationDedupAndLifecycle(t *testing.T) {
 	s, id := newVoiceFixture(t)
 	ctx := context.Background()
-	g := &Generation{ContentHash: "h1", VoiceID: id, Purpose: "reflection", Style: "reflection", Language: "en", TextSHA256: "t", Queue: "tts.high", Visibility: "private"}
+	g := &Generation{ContentHash: "h1", VoiceID: id, Purpose: "reflection", Style: "reflection", Language: "en", TextSHA256: "t", Queue: "tts.high", Visibility: "private", OwnerUserID: "listener"}
 	a, created, err := s.CreateOrGetGeneration(ctx, g)
 	if err != nil || !created {
 		t.Fatalf("%v %v", created, err)
 	}
-	b, created, err := s.CreateOrGetGeneration(ctx, &Generation{ContentHash: "h1", VoiceID: id, Purpose: "reflection", Style: "reflection", Language: "en", TextSHA256: "t", Queue: "tts.high", Visibility: "private"})
+	b, created, err := s.CreateOrGetGeneration(ctx, &Generation{ContentHash: "h1", VoiceID: id, Purpose: "reflection", Style: "reflection", Language: "en", TextSHA256: "t", Queue: "tts.high", Visibility: "private", OwnerUserID: "listener"})
 	if err != nil || created || b.ID != a.ID {
 		t.Fatalf("dedup failed: %v %v %v", b, created, err)
 	}
-	if err := s.AdvanceGeneration(ctx, a.ID, voiceengine.GenProcessing); err != nil {
+	if err := s.AdvanceGeneration(ctx, a.ID, a.JobID, voiceengine.GenProcessing); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.FailGeneration(ctx, a.ID, "gpu", "oom"); err != nil {
+	if err := s.FailGeneration(ctx, a.ID, a.JobID, "gpu", "oom"); err != nil {
 		t.Fatal(err)
 	}
 	// A failed render is retried by a new identical request.
-	c, created, err := s.CreateOrGetGeneration(ctx, &Generation{ContentHash: "h1", VoiceID: id, Purpose: "reflection", Style: "reflection", Language: "en", TextSHA256: "t", Queue: "tts.high", Visibility: "private"})
+	c, created, err := s.CreateOrGetGeneration(ctx, &Generation{ContentHash: "h1", VoiceID: id, Purpose: "reflection", Style: "reflection", Language: "en", TextSHA256: "t", Queue: "tts.high", Visibility: "private", OwnerUserID: "listener"})
 	if err != nil || !created || c.ID != a.ID || c.Status != "QUEUED" {
 		t.Fatalf("%+v %v %v", c, created, err)
 	}
-	if ok, _ := s.CancelGeneration(ctx, a.ID); !ok {
+	if ok, _ := s.CancelGeneration(ctx, a.ID, "listener", false); !ok {
 		t.Fatal("queued job not cancellable")
 	}
-	if err := s.AdvanceGeneration(ctx, a.ID, voiceengine.GenProcessing); err == nil {
+	if err := s.AdvanceGeneration(ctx, a.ID, c.JobID, voiceengine.GenProcessing); err == nil {
 		t.Fatal("cancelled job advanced")
 	}
 }
@@ -243,7 +243,7 @@ func TestGenerationDedupAndLifecycle(t *testing.T) {
 func TestReferencesAndPronunciations(t *testing.T) {
 	s, id := newVoiceFixture(t)
 	ctx := context.Background()
-	if _, err := s.AddReference(ctx, voiceengine.Reference{VoiceID: id, Style: "prayer", URI: "private/ref.wav", Transcript: "Let us pray.", DurationMS: 9000, Quality: 0.93, RightsOK: true}, "a"); err != nil {
+	if _, err := s.AddReference(ctx, voiceengine.Reference{VoiceID: id, Style: "prayer", URI: "voice-private/ref.wav", Transcript: "Let us pray.", DurationMS: 9000, Quality: 0.93, RightsOK: true}, "a"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.AddReference(ctx, voiceengine.Reference{VoiceID: id, Style: "dubstep"}, "a"); err == nil {

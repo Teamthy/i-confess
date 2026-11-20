@@ -166,6 +166,7 @@ def measure(body: bytes, headers: dict, rate_fallback: int = 16000) -> dict:
 
 def capture(engine, prompts: list[dict]) -> dict:
     """Reference measurements for every prompt, with provenance attached."""
+    family, revision = engine.wire_name, engine.version  # measure before the first render, like the server
     cases = []
     for p in prompts:
         chunks = split_prompt(p["text"])
@@ -179,8 +180,8 @@ def capture(engine, prompts: list[dict]) -> dict:
         "measure_version": 1,
         "tolerance": TOLERANCE,
         "provenance": {
-            "engine": engine.name,
-            "engine_version": engine.version,
+            "engine": family,
+            "engine_version": revision,
             "synthetic": engine.name == "dev-tone",
             "numpy": np.__version__,
             "scipy": scipy.__version__,

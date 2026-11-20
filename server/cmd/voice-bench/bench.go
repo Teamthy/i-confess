@@ -328,7 +328,7 @@ func Bench(ctx context.Context, gs *GoldenSet, targets []Target, cfg Config) (*R
 			"The golden set's expect blocks are signal-level checks (length, silence, clipping, normalisation), not perceptual quality.",
 		}}
 	for _, t := range targets {
-		caps := t.Provider.Capabilities(ctx)
+		caps, capsErr := t.Provider.Capabilities(ctx)
 		var runs []Run
 		for _, p := range gs.Prompts {
 			segs, _ := voiceengine.ParseMarkup(p.Text) // validated on load
@@ -339,7 +339,12 @@ func Bench(ctx context.Context, gs *GoldenSet, targets []Target, cfg Config) (*R
 			segs = voiceengine.NormaliseSegments(segs, p.Language, p.Locale)
 			chunks := voiceengine.Render(segs, caps, voiceengine.ProsodyProfile{})
 			for a := 1; a <= cfg.Runs; a++ {
-				r := benchOne(ctx, t, caps, p, spokenText(chunks), chunks, a, cfg)
+				var r Run
+				if capsErr != nil {
+					r = Run{Engine: t.Name, PromptID: p.ID, Category: p.Category, Attempt: a, ErrorClass: string(voiceengine.Classify(capsErr)), Error: capsErr.Error()}
+				} else {
+					r = benchOne(ctx, t, caps, p, spokenText(chunks), chunks, a, cfg)
+				}
 				runs = append(runs, r)
 				rep.Detail = append(rep.Detail, r)
 			}
@@ -359,8 +364,9 @@ func benchOne(ctx context.Context, t Target, caps voiceengine.ProviderCapabiliti
 	chunks []voiceengine.Chunk, attempt int, cfg Config) Run {
 	r := Run{Engine: t.Name, PromptID: p.ID, Category: p.Category, Attempt: attempt}
 	req := voiceengine.GenerateRequest{
-		GenerationID: fmt.Sprintf("bench-%s-%s-%d", t.Name, p.ID, attempt),
-		VoiceID:      cfg.VoiceID, ModelID: "bench", ModelVersion: "bench",
+		ExpectedWorker: voiceengine.WorkerIdentity{Engine: caps.Engine, Revision: caps.EngineVersion},
+		GenerationID:   fmt.Sprintf("bench-%s-%s-%d", t.Name, p.ID, attempt),
+		VoiceID:        cfg.VoiceID, ModelID: "bench", ModelVersion: "bench",
 		Chunks: chunks, Language: p.Language, Locale: p.Locale, Style: p.Style, Reference: cfg.Reference,
 	}
 	cctx, cancel := context.WithTimeout(ctx, cfg.Timeout)

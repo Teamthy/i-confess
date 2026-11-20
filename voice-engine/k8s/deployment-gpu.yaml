@@ -38,13 +38,12 @@ metadata:
 data:
   ICF_ENV: "production"
   ICF_ENGINE: "cosyvoice"
-  # Names the weights in engine_version, which is stored per generation and is
-  # part of the content hash. Without it the value is derived from the
-  # checkpoint directory listing (cheap, not cryptographic) - set this to the
-  # identifier you actually track.
+  # Replace with the exact immutable bundle reviewed for the registered model.
+  # The worker reads the bytes before listening. Never replace a live bundle.
+  ICF_COSYVOICE_MODEL_DIR: "/models/cosyvoice/reviewed-release"
+  # Optional human label in the revision; it cannot override the bundle digest.
   # ICF_CHECKPOINT_REVISION: "cosyvoice2-2026-09"
   ICF_WORKER_PORT: "8601"
-  ICF_CHECKPOINT_ROOT: "/models"
   # Mastering targets. Overridable here rather than baked into the image.
   ICF_MASTER_TARGET_LUFS: "-16"
   ICF_MASTER_CEILING_DBTP: "-1"
@@ -151,8 +150,8 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
-            # Checkpoints: read-only. The worker resolves private object keys to
-            # paths under ICF_CHECKPOINT_ROOT and never returns them to callers.
+            # Immutable checkpoint bundle. Mount reference/recording storage
+            # separately; do not include changing user data in the model tree.
             - name: models
               mountPath: /models
               readOnly: true

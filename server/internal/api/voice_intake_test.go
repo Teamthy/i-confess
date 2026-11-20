@@ -60,10 +60,13 @@ func (f *fakeIntakeWorker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		req := f.trained.Load().(voiceengine.TrainRequest)
 		json.NewEncoder(w).Encode(map[string]any{"status": "COMPLETED", "progress": 1.0, "loss": 0.31,
 			"checkpoint_key": req.CheckpointKey + "/model.pth", "checkpoint_sha256": strings.Repeat("c", 64),
-			"hardware": "1x test-gpu", "duration_seconds": 42})
+			"checkpoint_identity": voiceengine.WorkerIdentity{Engine: voiceengine.EngineGPTSoVITS, Revision: "v2.reviewed+sha256." + strings.Repeat("c", 64)},
+			"hardware":            "1x test-gpu", "duration_seconds": 42})
 	case r.URL.Path == "/v1/synthesize/stream":
 		w.Header().Set("Content-Type", "audio/wav")
 		w.Header().Set("X-Sample-Rate", "8000")
+		w.Header().Set("X-Engine", "cosyvoice")
+		w.Header().Set("X-Engine-Version", testVoiceRevision)
 		w.Write([]byte("RIFF-stream-chunk-1"))
 		w.(http.Flusher).Flush()
 		w.Write([]byte("chunk-2"))
@@ -77,13 +80,17 @@ func (f *fakeIntakeWorker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		for _, f := range req.Formats {
 			data := []byte("encoded-" + f)
 			sum := sha256.Sum256(data)
+			ext := "." + f
+			if f == "aac" {
+				ext = ".m4a"
+			}
 			out[f] = map[string]any{"b64": base64.StdEncoding.EncodeToString(data), "sha256": hex.EncodeToString(sum[:]),
-				"bytes": len(data), "content_type": "audio/" + f, "ext": "." + f}
+				"bytes": len(data), "content_type": "audio/" + f, "ext": ext}
 		}
 		json.NewEncoder(w).Encode(map[string]any{"variants": out})
 	case r.URL.Path == "/v1/capabilities":
 		// Declare streaming so the orchestrator allows it.
-		json.NewEncoder(w).Encode(voiceengine.ProviderCapabilities{Streaming: true, ZeroShot: true,
+		json.NewEncoder(w).Encode(voiceengine.ProviderCapabilities{Engine: voiceengine.EngineCosyVoice, EngineVersion: testVoiceRevision, Streaming: true, ZeroShot: true,
 			Languages: []string{"en"}, MaxChunkChars: 300, SelfHosted: true})
 	default:
 		f.next.ServeHTTP(w, r)
@@ -183,7 +190,7 @@ func TestIntakeToTrainedCandidateEndToEnd(t *testing.T) {
 	dsID := ds["id"].(string)
 
 	// Zero-shot already scored 0.85 in onboarding, above the 0.8 "sufficient" bar.
-	body := map[string]any{"datasetId": dsID, "engine": "gpt_sovits", "baseModel": "v2", "justification": "loses the accent on long passages"}
+	body := map[string]any{"datasetId": dsID, "engine": "gpt_sovits", "baseModel": "upstream/v2", "justification": "loses the accent on long passages"}
 	h.must(t, 409, "POST", "/v1/admin/voices/"+id+"/training-runs", body, h.admin)
 	body["override"] = true
 	run := h.must(t, 202, "POST", "/v1/admin/voices/"+id+"/training-runs", body, h.admin)["run"].(map[string]any)
@@ -205,8 +212,8 @@ func TestIntakeToTrainedCandidateEndToEnd(t *testing.T) {
 			ft = mm
 		}
 	}
-	if ft == nil {
-		t.Fatalf("fine-tuned candidate not registered: %v", models)
+	if ft == nil || ft["engine"] != "gptsovits" || ft["engine_version"] != "v2.reviewed+sha256."+strings.Repeat("c", 64) {
+		t.Fatalf("fine-tuned candidate not pinned to trainer output: %v", models)
 	}
 	if b, _ := json.Marshal(ft); strings.Contains(string(b), "production") {
 		t.Fatalf("fine-tuned model auto-promoted: %s", b)

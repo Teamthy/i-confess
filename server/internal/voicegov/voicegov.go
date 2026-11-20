@@ -227,6 +227,7 @@ type Reason string
 const (
 	ReasonOK                Reason = ""
 	ReasonNoGrant           Reason = "no_grant"
+	ReasonStaleGrant        Reason = "stale_render_grant"
 	ReasonNotApproved       Reason = "grant_not_approved"
 	ReasonSuspended         Reason = "grant_suspended"
 	ReasonRevoked           Reason = "grant_revoked"
@@ -383,6 +384,41 @@ func Authorize(g *Grant, req Request) Decision {
 		return d
 	}
 	return withVersion(Decision{Allowed: true})
+}
+
+// RenderUse identifies the terms and the particular use that authorized a
+// render. It contains no script or recording. Rechecking the same scope matters:
+// a third-party fallback or a user's own text needs more than can_generate.
+type RenderUse struct {
+	VoiceID      string
+	GrantVersion int
+	Request      Request // ActionGenerate, or ActionStream for a live preview
+}
+
+// Recheck applies the live terms at a handoff, never the planning timestamp.
+// Do not transfer in-flight audio to a replacement agreement, even if approved:
+// after a grant edit, a new submission can be authorized under the new version.
+func (u RenderUse) Recheck(g *Grant, at time.Time) Decision {
+	if g == nil || u.VoiceID == "" || g.VoiceID != u.VoiceID {
+		return deny(ReasonNoGrant, "no matching rights grant for this render")
+	}
+	r := u.Request
+	r.At = at
+	if r.Action != ActionGenerate && r.Action != ActionStream {
+		return deny(ReasonUnknownAction, "not a render: %q", r.Action)
+	}
+	if r.Action == ActionStream {
+		r.Action = ActionGenerate
+		if d := Authorize(g, r); !d.Allowed {
+			return d
+		}
+		r.Action = ActionStream
+	}
+	d := Authorize(g, r)
+	if d.Allowed && (u.GrantVersion <= 0 || g.Version != u.GrantVersion) {
+		d.Allowed, d.Reason, d.Detail = false, ReasonStaleGrant, "the grant changed after this render was authorized"
+	}
+	return d
 }
 
 // AssetPolicy is what happens to already-generated audio when a grant stops

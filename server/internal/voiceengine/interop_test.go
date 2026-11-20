@@ -26,11 +26,29 @@ func TestPythonWorkerInterop(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
-	p := NewCosyVoiceProvider(url, tok) // the dev-tone worker speaks the same protocol
+	p := NewHTTPProvider(HTTPProviderConfig{Engine: EngineDevTone, BaseURL: url, Token: tok}) // never impersonate a speech worker
 	if err := p.Health(ctx); err != nil {
 		t.Fatalf("health: %v", err)
 	}
-	req := GenerateRequest{GenerationID: "g1", VoiceID: "v", ModelID: "m", Chunks: []Chunk{{Text: "Grace and peace.", SilenceAfterMS: 200}, {Text: "Amen."}},
+	pin := WorkerIdentity{EngineDevTone, "dev"}
+	caps, err := p.Capabilities(ctx)
+	if err != nil || pin.verify(WorkerIdentity{caps.Engine, caps.EngineVersion}) != nil {
+		t.Fatalf("discovery: %v %+v", err, caps)
+	}
+	// A misrouted speech adapter can reach this healthy server but cannot
+	// use it as proof of speech synthesis.
+	cosy := NewCosyVoiceProvider(url, tok)
+	if _, err := cosy.Capabilities(ctx); Classify(err) != ClassIdentity {
+		t.Fatalf("mistook dev-tone for CosyVoice: %v", err)
+	}
+	bad := GenerateRequest{ExpectedWorker: WorkerIdentity{EngineCosyVoice, testRevision}, Chunks: []Chunk{{Text: "Tone test."}}}
+	if result, err := cosy.Generate(ctx, bad); Classify(err) != ClassIdentity || result != nil {
+		t.Fatalf("wrong family produced a master: %v", err)
+	}
+	if st, err := cosy.GenerateStream(ctx, bad); Classify(err) != ClassIdentity || st != nil {
+		t.Fatalf("wrong family produced a stream: %v", err)
+	}
+	req := GenerateRequest{ExpectedWorker: pin, GenerationID: "g1", VoiceID: "v", ModelID: "m", Chunks: []Chunk{{Text: "Grace and peace.", SilenceAfterMS: 200}, {Text: "Amen."}},
 		Language: "en", Style: "reflection", Prosody: ProsodyFor("reflection", 1)}
 	res, err := p.Generate(ctx, req)
 	if err != nil || len(res.Audio) < 1000 || res.SampleRate == 0 || res.DurationMS == 0 {
@@ -78,7 +96,7 @@ func TestPythonWorkerInterop(t *testing.T) {
 				t.Fatal(err)
 			}
 			if s.Status == "COMPLETED" {
-				if s.CheckpointSHA256 == "" || s.CheckpointKey == "" {
+				if !s.CheckpointIdentity.Valid() || s.CheckpointIdentity.Engine != EngineGPTSoVITS || s.CheckpointSHA256 == "" || s.CheckpointKey == "" {
 					t.Fatalf("completed without checkpoint: %+v", s)
 				}
 				break

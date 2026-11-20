@@ -7,9 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"path"
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // Signed-URL scheme shared by every provider that does not delegate signing to
@@ -88,10 +90,12 @@ func ValidKey(key string) bool {
 	if key == "" || len(key) > 512 {
 		return false
 	}
-	if strings.Contains(key, "..") || strings.HasPrefix(key, "/") || strings.Contains(key, "//") {
+	// Scope checks and the filesystem, URL parser and signing edge must all
+	// interpret the same literal key. Do not sign aliases or glob patterns.
+	if path.Clean(key) != key || strings.Contains(key, "..") || strings.HasPrefix(key, "/") {
 		return false
 	}
-	if strings.ContainsAny(key, "\\?#\x00") {
+	if strings.ContainsAny(key, "\\?#%*") || strings.IndexFunc(key, unicode.IsControl) >= 0 {
 		return false
 	}
 	for _, p := range allowedPrefixes {

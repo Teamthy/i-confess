@@ -123,12 +123,16 @@ func (s *VoicePlatformStore) CreateAudioSession(ctx context.Context, sess *Audio
 	return tx.Commit()
 }
 
-// AudioSessionByID loads a session with its items and their generations.
-func (s *VoicePlatformStore) AudioSessionByID(ctx context.Context, id string) (*AudioSession, error) {
+// AudioSessionForOwner filters by the authenticated owner before loading a
+// title, section or generation. There is no staff read-through for playlists.
+func (s *VoicePlatformStore) AudioSessionForOwner(ctx context.Context, id, uid string) (*AudioSession, error) {
+	if uid == "" {
+		return nil, nil
+	}
 	var sess AudioSession
 	var title sql.NullString
 	err := s.db.QueryRowContext(ctx, `SELECT id, owner_user_id, voice_id, title, purpose, visibility, created_at
-		FROM audio_sessions WHERE id = ? AND deleted_at IS NULL`, id).
+		FROM audio_sessions WHERE id = ? AND owner_user_id = ? AND deleted_at IS NULL`, id, uid).
 		Scan(&sess.ID, &sess.OwnerUserID, &sess.VoiceID, &title, &sess.Purpose, &sess.Visibility, &sess.CreatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
@@ -155,9 +159,13 @@ func (s *VoicePlatformStore) AudioSessionByID(ctx context.Context, id string) (*
 	}
 	for i := range sess.Items {
 		if gid := sess.Items[i].GenerationID; gid != "" {
-			g, err := s.GenerationByID(ctx, gid)
+			g, err := s.GenerationForActor(ctx, gid, uid, true)
 			if err != nil {
 				return nil, err
+			}
+			if g == nil || g.VoiceID != sess.VoiceID {
+				sess.Items[i].GenerationID = ""
+				continue
 			}
 			sess.Items[i].Generation = g
 		}
@@ -290,7 +298,7 @@ func (s *VoicePlatformStore) CreateBatch(ctx context.Context, b *Batch) error {
 }
 
 // Batches lists a voice's batches with per-status progress.
-func (s *VoicePlatformStore) Batches(ctx context.Context, voiceID string) ([]Batch, error) {
+func (s *VoicePlatformStore) Batches(ctx context.Context, voiceID, viewerID string) ([]Batch, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT id, voice_id, title, purpose, style, kind, total, refused, COALESCE(created_by,''), created_at,
 		est_inference_seconds, est_cost_usd_micros, COALESCE(estimate_basis,'')
 		FROM voice_batches WHERE voice_id = ? AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 100`, voiceID)
@@ -312,7 +320,7 @@ func (s *VoicePlatformStore) Batches(ctx context.Context, voiceID string) ([]Bat
 		return nil, err
 	}
 	for i := range out {
-		p, err := s.batchProgress(ctx, out[i].ID)
+		p, err := s.batchProgress(ctx, out[i].ID, viewerID)
 		if err != nil {
 			return nil, err
 		}
@@ -321,8 +329,18 @@ func (s *VoicePlatformStore) Batches(ctx context.Context, voiceID string) ([]Bat
 	return out, nil
 }
 
+// A batch may include a private confession render. Its editorial label is
+// part of the batch, but even a batch manager must not receive a different
+// account's generation ID, state or per-render spend via the nested link.
+const batchGenerationJoin = ` FROM voice_batch_items i JOIN voice_batches b ON b.id = i.batch_id
+	LEFT JOIN voice_generations g ON g.id = i.generation_id AND g.voice_id = b.voice_id AND g.deleted_at IS NULL AND
+	((g.visibility = 'private' AND g.owner_user_id <> '' AND g.owner_user_id = ?) OR (g.visibility = 'catalog' AND g.owner_user_id IS NULL))
+	WHERE i.batch_id = ? AND i.deleted_at IS NULL AND b.deleted_at IS NULL`
+
+const batchItemStatus = `COALESCE(g.status, CASE WHEN i.generation_id IS NULL THEN 'REFUSED' ELSE 'UNAVAILABLE' END)`
+
 // BatchByID returns one batch with items and live generation status.
-func (s *VoicePlatformStore) BatchByID(ctx context.Context, id string) (*Batch, error) {
+func (s *VoicePlatformStore) BatchByID(ctx context.Context, id, viewerID string) (*Batch, error) {
 	var b Batch
 	err := s.db.QueryRowContext(ctx, `SELECT id, voice_id, title, purpose, style, kind, total, refused, COALESCE(created_by,''), created_at,
 		est_inference_seconds, est_cost_usd_micros, COALESCE(estimate_basis,'')
@@ -335,9 +353,8 @@ func (s *VoicePlatformStore) BatchByID(ctx context.Context, id string) (*Batch, 
 	if err != nil {
 		return nil, err
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT i.position, COALESCE(i.label,''), COALESCE(i.generation_id,''), COALESCE(i.error,''),
-		COALESCE(g.status,'') FROM voice_batch_items i LEFT JOIN voice_generations g ON g.id = i.generation_id
-		WHERE i.batch_id = ? ORDER BY i.position`, id)
+	rows, err := s.db.QueryContext(ctx, `SELECT i.position, COALESCE(i.label,''), COALESCE(g.id,''), COALESCE(i.error,''), `+
+		batchItemStatus+batchGenerationJoin+` ORDER BY i.position`, viewerID, id)
 	if err != nil {
 		return nil, err
 	}
@@ -352,14 +369,14 @@ func (s *VoicePlatformStore) BatchByID(ctx context.Context, id string) (*Batch, 
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	b.Progress, err = s.batchProgress(ctx, id)
+	b.Progress, err = s.batchProgress(ctx, id, viewerID)
 	if err != nil {
 		return nil, err
 	}
 	// What the batch actually cost, next to what it was budgeted for. Reading
 	// only the estimate would leave the gate unfalsifiable: the number that
 	// matters in hindsight is the one measured off the renders.
-	spend, err := s.batchSpend(ctx, id)
+	spend, err := s.batchSpend(ctx, id, viewerID)
 	if err != nil {
 		return nil, err
 	}
@@ -368,22 +385,19 @@ func (s *VoicePlatformStore) BatchByID(ctx context.Context, id string) (*Batch, 
 }
 
 // batchSpend aggregates measured cost over the generations one batch queued.
-func (s *VoicePlatformStore) batchSpend(ctx context.Context, id string) (AudioSpend, error) {
+func (s *VoicePlatformStore) batchSpend(ctx context.Context, id, viewerID string) (AudioSpend, error) {
 	var out AudioSpend
 	err := s.db.QueryRowContext(ctx, `SELECT COUNT(g.id),
 	       COALESCE(SUM(g.inference_seconds), 0),
 	       COALESCE(SUM(CASE WHEN g.inference_seconds IS NOT NULL THEN COALESCE(g.duration_ms, 0) / 1000.0 ELSE 0 END), 0),
 	       COALESCE(SUM(g.cost_usd_micros), 0),
-	       COUNT(g.inference_seconds), COUNT(g.cost_usd_micros)
-	   FROM voice_batch_items i JOIN voice_generations g ON g.id = i.generation_id
-	  WHERE i.batch_id = ? AND g.status = 'COMPLETED' AND g.deleted_at IS NULL`, id).
+	       COUNT(g.inference_seconds), COUNT(g.cost_usd_micros)`+batchGenerationJoin+` AND g.status = 'COMPLETED'`, viewerID, id).
 		Scan(&out.Completed, &out.InferenceSeconds, &out.AudioSeconds, &out.CostMicros, &out.Metered, &out.Priced)
 	return out, err
 }
 
-func (s *VoicePlatformStore) batchProgress(ctx context.Context, id string) (map[string]int, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT COALESCE(g.status,'REFUSED'), COUNT(*) FROM voice_batch_items i
-		LEFT JOIN voice_generations g ON g.id = i.generation_id WHERE i.batch_id = ? GROUP BY 1`, id)
+func (s *VoicePlatformStore) batchProgress(ctx context.Context, id, viewerID string) (map[string]int, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT `+batchItemStatus+`, COUNT(*)`+batchGenerationJoin+` GROUP BY 1`, viewerID, id)
 	if err != nil {
 		return nil, err
 	}

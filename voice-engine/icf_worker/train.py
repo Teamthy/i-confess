@@ -22,7 +22,6 @@ entirely so the golden-set evaluation stays honest.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import re
@@ -34,6 +33,7 @@ import time
 from pathlib import Path
 
 from . import licenses
+from .checkpoint import bundle_sha256, revision_for, wire_engine
 from .storage import get_store
 
 PROGRESS_RE = re.compile(r"ICF_PROGRESS\s+([0-9.]+)(?:\s+loss=([0-9.eE+-]+))?")
@@ -54,6 +54,7 @@ class Run:
         self.error = ""
         self.checkpoint_key = ""
         self.checkpoint_sha256 = ""
+        self.checkpoint_identity: dict[str, str] = {}
         self.started = time.time()
         self.duration = 0
         self.proc: subprocess.Popen | None = None
@@ -62,6 +63,7 @@ class Run:
     def view(self) -> dict:
         return {"status": self.status, "progress": self.progress, "loss": self.loss, "error": self.error,
                 "checkpoint_key": self.checkpoint_key, "checkpoint_sha256": self.checkpoint_sha256,
+                "checkpoint_identity": self.checkpoint_identity,
                 "hardware": os.environ.get("ICF_HARDWARE", ""), "duration_seconds": self.duration}
 
 
@@ -117,10 +119,10 @@ class TrainingManager:
         run = Run(run_id)
         with self.lock:
             self.runs[run_id] = run
-        threading.Thread(target=self._execute, args=(run, argv, out, req.get("checkpoint_key", "")), daemon=True).start()
+        threading.Thread(target=self._execute, args=(run, argv, out, req.get("checkpoint_key", ""), engine), daemon=True).start()
         return run
 
-    def _execute(self, run: Run, argv: list[str], out: Path, ckpt_prefix: str):
+    def _execute(self, run: Run, argv: list[str], out: Path, ckpt_prefix: str, engine: str):
         try:
             run.proc = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
             tail: list[str] = []
@@ -143,15 +145,15 @@ class TrainingManager:
             if not files:
                 run.status, run.error = "FAILED", "trainer produced no checkpoint files"
                 return
-            h = hashlib.sha256()
+            digest = bundle_sha256(out)
+            identity = {"engine": wire_engine(engine), "revision": revision_for(engine, digest)}
             store = get_store()
             for p in files:
                 rel = p.relative_to(out).as_posix()
-                h.update(rel.encode())
-                h.update(p.read_bytes())
                 store.put_file(f"{ckpt_prefix.rstrip('/')}/{rel}", p)
             run.checkpoint_key = ckpt_prefix.rstrip("/") + "/" + files[0].relative_to(out).as_posix()
-            run.checkpoint_sha256 = h.hexdigest()
+            run.checkpoint_sha256 = digest
+            run.checkpoint_identity = identity
             run.progress, run.status = 1.0, "COMPLETED"
         except Exception as e:  # noqa: BLE001
             run.status, run.error = "FAILED", f"{type(e).__name__}: {e}"

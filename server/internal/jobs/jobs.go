@@ -247,7 +247,7 @@ func (q *MemoryQueue) ProcessNext(ctx context.Context) error {
 		_ = q.FailPermanent(ctx, job.ID, reason)
 		return fmt.Errorf("%s", reason)
 	}
-	if err := h(ctx, job.Payload); err != nil {
+	if err := h(ctx, job); err != nil {
 		if ferr := q.Fail(ctx, job.ID, err); ferr != nil {
 			return ferr
 		}

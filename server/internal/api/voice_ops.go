@@ -66,19 +66,29 @@ func (h *Handler) SweepVoiceRights(ctx context.Context) (expired, purged int, er
 	}
 	for _, v := range voices {
 		ok, policy := h.assetServable(ctx, v.ID)
-		if ok || policy != voicegov.AssetDelete || h.signer == nil {
+		if ok || policy != voicegov.AssetDelete || h.renderStore == nil {
 			continue
 		}
 		gens, gerr := h.vplat.StoredGenerations(ctx, v.ID, 0)
 		if gerr != nil {
 			return expired, purged, gerr
 		}
+		before := purged
 		for _, g := range gens {
 			// Variants first: if the master delete then fails, the row stays
 			// unpurged and the next sweep retries everything.
+			if !publishedMaster(&g) {
+				log.Printf("voice: invalid master pointer for %s; manual review required", g.ID)
+				continue
+			}
 			variantFailed := false
-			for _, v := range g.Variants {
-				if derr := h.signer.Delete(ctx, v.Key); derr != nil {
+			for format, v := range g.Variants {
+				if !publishedVariant(&g, format, v.Key) {
+					log.Printf("voice: invalid variant pointer for %s; manual review required", g.ID)
+					variantFailed = true
+					continue
+				}
+				if derr := h.renderStore.Delete(ctx, v.Key); derr != nil {
 					log.Printf("voice: purge %s variant failed: %v", g.ID, derr)
 					variantFailed = true
 				}
@@ -86,16 +96,18 @@ func (h *Handler) SweepVoiceRights(ctx context.Context) (expired, purged int, er
 			if variantFailed {
 				continue
 			}
-			if derr := h.signer.Delete(ctx, g.StorageKey); derr != nil {
+			if derr := h.renderStore.Delete(ctx, g.StorageKey); derr != nil {
 				log.Printf("voice: purge %s failed: %v", g.ID, derr)
 				continue
 			}
-			_ = h.vplat.MarkGenerationPurged(ctx, g.ID)
+			if err := h.vplat.MarkGenerationPurged(ctx, g.ID); err != nil {
+				return expired, purged, err
+			}
 			purged++
 		}
-		if len(gens) > 0 {
+		if removed := purged - before; removed > 0 {
 			_ = h.vplat.AppendRightsAudit(ctx, store.RightsAuditEntry{VoiceID: v.ID, Actor: "system", Action: "ASSETS_PURGED",
-				Decision: "applied", Reason: string(policy), Detail: strconv.Itoa(len(gens)) + " stored renders deleted under post-termination policy"})
+				Decision: "applied", Reason: string(policy), Detail: strconv.Itoa(removed) + " stored renders deleted under post-termination policy"})
 		}
 	}
 	return expired, purged, nil
@@ -192,11 +204,16 @@ type sessionRequest struct {
 }
 
 func (h *Handler) createAudioSession(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "private, no-store")
 	if h.vorch == nil {
 		httpx.WriteError(w, http.StatusServiceUnavailable, "voice engine is not configured on this server")
 		return
 	}
 	userID, email := actorOf(r)
+	if userID == "" {
+		httpx.WriteError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 	var req sessionRequest
 	if err := httpx.DecodeJSON(r, &req); err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid request body")
@@ -224,8 +241,6 @@ func (h *Handler) createAudioSession(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	admin := isVoiceAdmin(r)
-	userText := !admin
 	sess := &store.AudioSession{OwnerUserID: userID, VoiceID: req.VoiceID, Title: req.Title, Purpose: string(purpose), Visibility: "private"}
 	for i, sec := range req.Sections {
 		typ := strings.ToUpper(strings.TrimSpace(sec.Type))
@@ -249,7 +264,7 @@ func (h *Handler) createAudioSession(w http.ResponseWriter, r *http.Request) {
 			httpx.WriteError(w, http.StatusBadRequest, "section "+strconv.Itoa(i)+": unknown style")
 			return
 		}
-		if err := voiceengine.ValidateScript(sec.Text, userText); err != nil {
+		if err := voiceengine.ValidateScript(sec.Text, true); err != nil {
 			var v *voiceengine.SafetyViolation
 			if errors.As(err, &v) {
 				voiceMetrics.refusedContent()
@@ -262,8 +277,7 @@ func (h *Handler) createAudioSession(w http.ResponseWriter, r *http.Request) {
 		gen, plan, err := h.queueVoiceGeneration(r.Context(), voiceQueueInput{
 			Req: generateVoiceRequest{VoiceID: req.VoiceID, Text: sec.Text, Language: req.Language, Locale: req.Locale,
 				Style: style, Purpose: string(sessionSectionPurpose(typ, purpose)), Speed: req.Speed},
-			Purpose: sessionSectionPurpose(typ, purpose), UserText: userText, UserID: userID, Actor: email,
-			Remote: clientIP(r), Admin: admin,
+			Purpose: sessionSectionPurpose(typ, purpose), UserID: userID, Actor: email, Remote: clientIP(r),
 		})
 		if err != nil {
 			if plan == nil {
@@ -281,7 +295,7 @@ func (h *Handler) createAudioSession(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to save session")
 		return
 	}
-	full, err := h.vplat.AudioSessionByID(r.Context(), sess.ID)
+	full, err := h.vplat.AudioSessionForOwner(r.Context(), sess.ID, userID)
 	if err != nil || full == nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to load session")
 		return
@@ -298,15 +312,11 @@ func validSessionSection(t string) bool {
 }
 
 func (h *Handler) getAudioSession(w http.ResponseWriter, r *http.Request) {
-	sess, err := h.vplat.AudioSessionByID(r.Context(), r.PathValue("id"))
+	w.Header().Set("Cache-Control", "private, no-store")
+	uid, _ := actorOf(r)
+	sess, err := h.vplat.AudioSessionForOwner(r.Context(), r.PathValue("id"), uid)
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to load session")
-		return
-	}
-	uid, _ := actorOf(r)
-	// Not-found and not-yours look the same so session ids cannot be probed.
-	if sess == nil || (sess.OwnerUserID != uid && !isVoiceAdmin(r)) {
-		httpx.WriteError(w, http.StatusNotFound, "session not found")
 		return
 	}
 	h.writeSession(w, r, sess, http.StatusOK)
@@ -315,6 +325,12 @@ func (h *Handler) getAudioSession(w http.ResponseWriter, r *http.Request) {
 // writeSession renders a session as a playlist: each voiced item carries its
 // status and, once complete and still servable, a short-lived signed URL.
 func (h *Handler) writeSession(w http.ResponseWriter, r *http.Request, s *store.AudioSession, status int) {
+	w.Header().Set("Cache-Control", "private, no-store")
+	uid, _ := actorOf(r)
+	if uid == "" || s == nil || s.OwnerUserID != uid {
+		httpx.WriteError(w, http.StatusNotFound, "session not found")
+		return
+	}
 	servable, _ := h.assetServable(r.Context(), s.VoiceID)
 	type item struct {
 		Position int    `json:"position"`
@@ -328,8 +344,9 @@ func (h *Handler) writeSession(w http.ResponseWriter, r *http.Request, s *store.
 	}
 	items := make([]item, 0, len(s.Items))
 	done, total, totalMS := 0, 0, 0
+	missingSection := false
 	for _, it := range s.Items {
-		out := item{Position: it.Position, Type: it.SectionType, Style: it.Style, PauseMS: it.PauseMS, GenID: it.GenerationID}
+		out := item{Position: it.Position, Type: it.SectionType, Style: it.Style, PauseMS: it.PauseMS}
 		if it.SectionType == "PAUSE" {
 			out.Status, out.Duration = "READY", it.PauseMS
 			totalMS += it.PauseMS
@@ -337,15 +354,20 @@ func (h *Handler) writeSession(w http.ResponseWriter, r *http.Request, s *store.
 			continue
 		}
 		total++
-		if g := it.Generation; g != nil {
-			out.Status, out.Duration = g.Status, g.DurationMS
-			if g.Status == string(voiceengine.GenCompleted) {
-				done++
-				totalMS += g.DurationMS + it.PauseMS
-				if servable && g.StorageKey != "" && h.signer != nil {
-					if u, err := h.signer.GenerateSignedURL(r.Context(), g.StorageKey, 15*time.Minute); err == nil {
-						out.AudioURL = u
-					}
+		g := it.Generation
+		if !g.ReadableBy(uid) || g.VoiceID != s.VoiceID || (g.Status == string(voiceengine.GenCompleted) && !publishedMaster(g)) {
+			out.Status = "UNAVAILABLE"
+			missingSection = true
+			items = append(items, out)
+			continue
+		}
+		out.GenID, out.Status, out.Duration = g.ID, g.Status, g.DurationMS
+		if g.Status == string(voiceengine.GenCompleted) {
+			done++
+			totalMS += g.DurationMS + it.PauseMS
+			if servable && h.renderStore != nil {
+				if u, err := h.renderStore.GenerateSignedURL(r.Context(), g.StorageKey, 15*time.Minute); err == nil {
+					out.AudioURL = u
 				}
 			}
 		}
@@ -355,7 +377,7 @@ func (h *Handler) writeSession(w http.ResponseWriter, r *http.Request, s *store.
 	if done == total {
 		state = "READY"
 	}
-	if !servable {
+	if !servable || missingSection {
 		state = "UNAVAILABLE"
 	}
 	httpx.WriteJSON(w, status, map[string]any{
@@ -448,7 +470,7 @@ func (h *Handler) adminCreateBatch(w http.ResponseWriter, r *http.Request) {
 		gen, plan, err := h.queueVoiceGeneration(r.Context(), voiceQueueInput{
 			Req: generateVoiceRequest{VoiceID: voiceID, Text: it.Text, Language: req.Language, Locale: req.Locale,
 				Style: req.Style, Purpose: string(purpose)},
-			Purpose: purpose, UserID: userID, Actor: email, Remote: clientIP(r), Admin: true, Priority: voiceengine.PriorityBatch,
+			Purpose: purpose, UserID: userID, Actor: email, Remote: clientIP(r), Editorial: true, Priority: voiceengine.PriorityBatch,
 		})
 		if err != nil {
 			// A rights refusal applies to every item: stop instead of recording
@@ -483,12 +505,19 @@ func (h *Handler) adminCreateBatch(w http.ResponseWriter, r *http.Request) {
 		Decision: "allowed", Detail: b.ID + ": " + strconv.Itoa(b.Total-b.Refused) + " queued, " + strconv.Itoa(b.Refused) +
 			" refused; planned " + strconv.FormatFloat(est.InferenceSecs, 'f', 1, 64) + " GPU-seconds (" + est.Basis + ")",
 		RemoteAddr: clientIP(r)})
-	full, _ := h.vplat.BatchByID(r.Context(), b.ID)
+	w.Header().Set("Cache-Control", "private, no-store")
+	full, err := h.vplat.BatchByID(r.Context(), b.ID, userID)
+	if err != nil || full == nil {
+		httpx.WriteError(w, http.StatusInternalServerError, "failed to load batch")
+		return
+	}
 	httpx.WriteJSON(w, http.StatusAccepted, map[string]any{"batch": full})
 }
 
 func (h *Handler) adminListBatches(w http.ResponseWriter, r *http.Request) {
-	bs, err := h.vplat.Batches(r.Context(), r.PathValue("id"))
+	w.Header().Set("Cache-Control", "private, no-store")
+	uid, _ := actorOf(r)
+	bs, err := h.vplat.Batches(r.Context(), r.PathValue("id"), uid)
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to list batches")
 		return
@@ -500,7 +529,9 @@ func (h *Handler) adminListBatches(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) adminGetBatch(w http.ResponseWriter, r *http.Request) {
-	b, err := h.vplat.BatchByID(r.Context(), r.PathValue("id"))
+	w.Header().Set("Cache-Control", "private, no-store")
+	uid, _ := actorOf(r)
+	b, err := h.vplat.BatchByID(r.Context(), r.PathValue("id"), uid)
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to load batch")
 		return
@@ -559,8 +590,8 @@ func (h *Handler) adminCreateBlindTest(w http.ResponseWriter, r *http.Request) {
 			httpx.WriteError(w, http.StatusBadRequest, "clip "+strconv.Itoa(i)+": source must be REAL or one of this voice's model ids")
 			return
 		}
-		if !strings.HasPrefix(c.AudioKey, "voice-private/") && !strings.HasPrefix(c.AudioKey, "audio/") {
-			httpx.WriteError(w, http.StatusBadRequest, "clip "+strconv.Itoa(i)+": audioKey must be a voice-private/ or audio/ object")
+		if _, eligible := h.blindClipStore(r.Context(), voiceID, c.Source, c.AudioKey); !eligible {
+			httpx.WriteError(w, http.StatusBadRequest, "clip "+strconv.Itoa(i)+": not an eligible listening-test clip")
 			return
 		}
 		// Carry the key through the shuffle in the (never serialised) ID.
@@ -582,7 +613,11 @@ func (h *Handler) adminCreateBlindTest(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to create blind test")
 		return
 	}
-	full, _ := h.vplat.BlindTestByID(r.Context(), t.ID)
+	full, err := h.vplat.BlindTestByID(r.Context(), t.ID)
+	if err != nil || full == nil {
+		httpx.WriteError(w, http.StatusInternalServerError, "failed to load blind test")
+		return
+	}
 	h.writeBlindTest(w, r, full, http.StatusCreated)
 }
 
@@ -615,6 +650,7 @@ func (h *Handler) adminGetBlindTest(w http.ResponseWriter, r *http.Request) {
 // evaluator's own earlier ratings, are the only extras; sources appear once
 // the test is closed.
 func (h *Handler) writeBlindTest(w http.ResponseWriter, r *http.Request, t *store.BlindTest, status int) {
+	w.Header().Set("Cache-Control", "private, no-store")
 	uid, _ := actorOf(r)
 	mine := map[string]map[string]float64{}
 	if rs, err := h.vplat.BlindRatings(r.Context(), t.ID); err == nil {
@@ -630,8 +666,9 @@ func (h *Handler) writeBlindTest(w http.ResponseWriter, r *http.Request, t *stor
 	clips := make([]map[string]any, 0, len(t.Clips))
 	for _, c := range t.Clips {
 		m := map[string]any{"id": c.ID, "label": c.BlindLabel, "myRatings": mine[c.ID]}
-		if key := t.AudioKeys[c.ID]; key != "" && h.signer != nil {
-			if u, err := h.signer.GenerateSignedURL(r.Context(), key, 30*time.Minute); err == nil {
+		key := t.AudioKeys[c.ID]
+		if objects, eligible := h.blindClipStore(r.Context(), t.VoiceID, c.Source, key); eligible && objects != nil {
+			if u, err := objects.GenerateSignedURL(r.Context(), key, 30*time.Minute); err == nil {
 				m["audioUrl"] = u
 			}
 		}

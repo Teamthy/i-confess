@@ -74,11 +74,13 @@ func main() {
 			fatal("bad -engine " + e)
 		}
 		var p *voiceengine.HTTPProvider
-		switch strings.ToLower(name) {
+		key := strings.ToLower(name)
+		switch key {
 		case "cosyvoice":
 			p = voiceengine.NewCosyVoiceProvider(url, token)
-		case "gptsovits", "gpt-sovits":
+		case "gptsovits", "gpt-sovits", "gpt_sovits":
 			p = voiceengine.NewGPTSoVITSProvider(url, token)
+			key = "gpt_sovits" // licence register spelling
 		case "voxcpm":
 			p = voiceengine.NewVoxCPMProvider(url, token)
 		case "voicestudio":
@@ -87,7 +89,7 @@ func main() {
 		default:
 			fatal("unknown engine " + name)
 		}
-		lic := reg[strings.ReplaceAll(strings.ToLower(name), "-", "")]
+		lic := reg[key]
 		targets = append(targets, Target{Name: strings.ToLower(name), Provider: p, License: lic})
 	}
 	cfg := Config{Runs: *runs, Stream: *stream, Strict: *strict, VoiceID: *voiceID, OutDir: *out, Timeout: *timeout}

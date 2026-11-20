@@ -223,7 +223,8 @@ func (h *Handler) adminReingestRecording(w http.ResponseWriter, r *http.Request)
 	httpx.WriteJSON(w, http.StatusAccepted, map[string]any{"recording": rec})
 }
 
-func (h *Handler) runVoiceIngest(ctx context.Context, p map[string]any) error {
+func (h *Handler) runVoiceIngest(ctx context.Context, job *jobs.Job) error {
+	p := job.Payload
 	id, _ := p["recording_id"].(string)
 	rec, err := h.vplat.RecordingByID(ctx, id)
 	if err != nil {
@@ -469,7 +470,8 @@ func (h *Handler) failRun(ctx context.Context, run *store.TrainingRun, msg strin
 	return jobs.Permanent(errors.New(msg))
 }
 
-func (h *Handler) runTrainSubmit(ctx context.Context, p map[string]any) error {
+func (h *Handler) runTrainSubmit(ctx context.Context, job *jobs.Job) error {
+	p := job.Payload
 	id, _ := p["run_id"].(string)
 	run, err := h.vplat.TrainingRunByID(ctx, id)
 	if err != nil {
@@ -523,7 +525,8 @@ func (h *Handler) enqueuePoll(ctx context.Context, runID string, n int) error {
 	return err
 }
 
-func (h *Handler) runTrainPoll(ctx context.Context, p map[string]any) error {
+func (h *Handler) runTrainPoll(ctx context.Context, job *jobs.Job) error {
+	p := job.Payload
 	id, _ := p["run_id"].(string)
 	n, _ := p["n"].(float64)
 	run, err := h.vplat.TrainingRunByID(ctx, id)
@@ -546,12 +549,16 @@ func (h *Handler) runTrainPoll(ctx context.Context, p map[string]any) error {
 	}
 	switch st.Status {
 	case "COMPLETED":
-		if st.CheckpointKey == "" || st.CheckpointSHA256 == "" {
-			return h.failRun(ctx, run, "worker reported completion without a checkpoint and hash")
+		// base_model identifies the trainer input, not the deployed output.
+		pin := st.CheckpointIdentity
+		pin.Engine = pin.Engine.Canonical()
+		if st.CheckpointKey == "" || !pin.Valid() || pin.Engine != voiceengine.Engine(run.Engine).Canonical() ||
+			!strings.HasSuffix(pin.Revision, "+sha256."+st.CheckpointSHA256) {
+			return h.failRun(ctx, run, "trainer reported no matching checkpoint identity")
 		}
 		// Register an immutable candidate. It is NOT promoted: it must pass
 		// the golden-set evaluation gate and human approval like any model.
-		m := &voiceengine.Model{VoiceID: run.VoiceID, Engine: voiceengine.Engine(run.Engine), EngineVersion: run.BaseModel,
+		m := &voiceengine.Model{VoiceID: run.VoiceID, Engine: pin.Engine, EngineVersion: pin.Revision,
 			ModelVersion: "ft-" + run.DatasetVersion + "-" + run.ID[len(run.ID)-8:], Mode: "fine_tuned",
 			CheckpointURI: st.CheckpointKey, DatasetVersion: run.DatasetVersion, TrainingRunID: run.ID}
 		if err := h.vplat.CreateModel(ctx, m, "fine-tune "+run.DatasetVersion, "en", "worker"); err != nil {
@@ -581,6 +588,7 @@ func (h *Handler) runTrainPoll(ctx context.Context, p map[string]any) error {
 // fixed gain and peak safety per chunk); the queued render remains the
 // canonical, mastered asset.
 func (h *Handler) streamMinisterVoice(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "private, no-store")
 	t0 := time.Now()
 	if h.vorch == nil {
 		httpx.WriteError(w, http.StatusServiceUnavailable, "voice engine is not configured on this server")
@@ -593,7 +601,7 @@ func (h *Handler) streamMinisterVoice(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	req, purpose, userText, ok := h.decodeVoiceRequest(w, r, email)
+	req, purpose, ok := h.decodeVoiceRequest(w, r, email)
 	if !ok {
 		return
 	}
@@ -605,28 +613,37 @@ func (h *Handler) streamMinisterVoice(w http.ResponseWriter, r *http.Request) {
 	grant, err1 := h.vplat.Grant(ctx, req.VoiceID)
 	models, err2 := h.vplat.Models(ctx, req.VoiceID)
 	refs, err3 := h.vplat.References(ctx, req.VoiceID)
-	orch, err4 := h.orchestratorWithDictionary(ctx)
+	orch, err4 := h.requestOrchestrator(ctx)
 	if err := errors.Join(err1, err2, err3, err4); err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to plan stream")
 		return
 	}
 	plan, st, err := orch.Stream(ctx, grant, models, refs, voiceengine.Request{
 		VoiceID: req.VoiceID, Markup: req.Text, Language: req.Language, Locale: req.Locale, Style: req.Style,
-		Purpose: purpose, UserText: userText, Territory: req.Territory, Speed: req.Speed, Pitch: req.Pitch,
+		Purpose: purpose, UserText: true, Territory: req.Territory, Speed: req.Speed, Pitch: req.Pitch,
 	})
 	if err != nil {
 		h.writeVoicePlanError(w, r, req.VoiceID, email, err)
 		return
 	}
 	defer st.Body.Close()
-	_ = h.vplat.AppendRightsAudit(ctx, store.RightsAuditEntry{VoiceID: req.VoiceID, Actor: email, Action: "VOICE_STREAMED",
-		ModelID: plan.Model.ID, GrantVersion: plan.Decision.GrantVersion, Decision: "allowed", RemoteAddr: clientIP(r)})
+	// A worker can return valid headers well before it has any audio. Buffer
+	// just the first read and recheck the grant before committing client headers.
+	buf := make([]byte, 16<<10)
+	n, err := io.ReadAtLeast(st.Body, buf, 1)
+	if err != nil {
+		h.writeVoicePlanError(w, r, req.VoiceID, email, &voiceengine.Error{Class: voiceengine.ClassTransient, Msg: "preview ended before audio"})
+		return
+	}
+	if err := h.vplat.RecordStreamStart(ctx, plan.Use, store.RightsAuditEntry{Actor: email, ModelID: plan.Model.ID, RemoteAddr: clientIP(r)}); err != nil {
+		h.writeVoicePlanError(w, r, req.VoiceID, email, err)
+		return
+	}
 	ct := st.ContentType
 	if ct == "" {
 		ct = "audio/wav"
 	}
 	w.Header().Set("Content-Type", ct)
-	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Synthetic", "true")
 	w.Header().Set("X-AI-Disclosure", "AI-generated using an authorized synthetic voice.")
 	if st.SampleRate > 0 {
@@ -634,25 +651,20 @@ func (h *Handler) streamMinisterVoice(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusOK)
 	fl, _ := w.(http.Flusher)
-	buf := make([]byte, 16<<10)
-	first := true
+	voiceMetrics.streamStarted(time.Since(t0))
 	for {
-		n, rerr := st.Body.Read(buf)
 		if n > 0 {
-			if first {
-				first = false
-				voiceMetrics.streamStarted(time.Since(t0))
-			}
 			if _, werr := w.Write(buf[:n]); werr != nil {
-				return // client went away; closing Body cancels inference
+				return
 			}
 			if fl != nil {
 				fl.Flush()
 			}
 		}
-		if rerr != nil {
+		if err != nil {
 			return
 		}
+		n, err = st.Body.Read(buf)
 	}
 }
 

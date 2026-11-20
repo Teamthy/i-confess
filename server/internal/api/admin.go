@@ -267,6 +267,10 @@ func (h *Handler) adminUpsertAudio(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusBadRequest, "confession_id, voice_id and url are required")
 		return
 	}
+	if strings.HasPrefix(req.URL, "audio/") && !storage.GeneralMediaKey(req.URL) {
+		httpx.WriteError(w, http.StatusBadRequest, "not an eligible catalog audio source")
+		return
+	}
 	// Duration is measured when the bytes are reachable, and bounds-checked
 	// when they are not.
 	//

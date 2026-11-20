@@ -2,8 +2,8 @@
 
 Backends import their heavy ML dependencies lazily so the worker can start,
 report health, and be tested without a GPU. No backend downloads weights at
-runtime: checkpoints are resolved from ICF_CHECKPOINT_ROOT (populated from the
-private bucket by deployment), and are never returned to callers.
+runtime: each loads from a configured local, immutable bundle, populated by
+deployment. Weights are never returned to callers.
 
 Every engine passes the licence gate (licenses.check) at load time.
 
@@ -13,12 +13,14 @@ benchmarking tool (see docs/VOICESTUDIO_LICENSE.md), never linked in here.
 
 from __future__ import annotations
 
-import hashlib
 import logging
 import os
+from functools import cached_property
 from pathlib import Path
 
 import numpy as np
+
+from .checkpoint import bundle_sha256, revision_for, wire_engine
 
 log = logging.getLogger("icf_worker.engines")
 
@@ -33,20 +35,32 @@ class EngineError(Exception):
 
 class Engine:
     name = "base"
-    # base_version is the upstream generation ("0", "1", "v2"); `version` adds a
-    # fingerprint of the checkpoint actually in use. See checkpoint_revision.
-    base_version = "0"
     sample_rate = 24000
     capabilities: dict = {}
+    model_env = ""
 
-    def checkpoint_paths(self) -> tuple[str, ...]:
-        """Where this backend's weights live, for version fingerprinting."""
-        return ()
+    def __init__(self):
+        src = os.environ.get(self.model_env) if self.model_env else None
+        self.model_dir = Path(src).resolve() if src else None
 
     @property
+    def wire_name(self) -> str:
+        return wire_engine(self.name)
+
+    @cached_property
     def version(self) -> str:
-        rev = checkpoint_revision(*self.checkpoint_paths())
-        return f"{self.base_version}+{rev}" if rev else self.base_version
+        if self.model_dir is None:
+            raise EngineError("identity", "a locally mounted checkpoint bundle is required")
+        try:
+            return revision_for(self.name, bundle_sha256(self.model_dir))
+        except (OSError, ValueError) as e:
+            raise EngineError("identity", "cannot identify the checkpoint bundle") from e
+
+    def prepare_render(self, checkpoint: Path | None):
+        # A request cannot select weights outside the measured deployment.
+        if checkpoint is not None and (self.model_dir is None or
+                                       not checkpoint.resolve().is_relative_to(self.model_dir)):
+            raise EngineError("identity", "requested checkpoint is outside the pinned bundle")
 
     def synthesize_chunk(self, text: str, *, reference: dict | None, checkpoint: Path | None,
                          params: dict, chunk: dict) -> np.ndarray:
@@ -58,52 +72,6 @@ class Engine:
     def runtime_capabilities(self) -> dict:
         """Capabilities that are only known once the engine is in use."""
         return {}
-
-
-def checkpoint_revision(*paths: str) -> str:
-    """A short fingerprint of the checkpoint a backend will load.
-
-    ``engine_version`` used to be a hardcoded string per backend ("0" for
-    CosyVoice, "1" for VoxCPM). Two different checkpoints published under the
-    same version were therefore indistinguishable in the asset record, and the
-    content hash - which includes engine_version - would treat a render from the
-    old checkpoint and a render from the new one as the same audio (audit
-    VE-012).
-
-    This fingerprints the deployment's *layout*, not the weights: the path plus
-    the name and size of each file in the checkpoint directory. It is not a
-    checksum - two checkpoints with identical file names and sizes collide - but
-    it costs a directory listing instead of reading gigabytes, and it changes
-    whenever a deployment swaps in a different build. Operators who need
-    certainty set ICF_CHECKPOINT_REVISION, which wins over the derived value.
-
-    An empty result means "no checkpoint configured", and the version stays the
-    plain upstream generation rather than gaining a meaningless suffix.
-    """
-    explicit = os.environ.get("ICF_CHECKPOINT_REVISION", "").strip()
-    if explicit:
-        return explicit
-    h = hashlib.sha256()
-    found = False
-    for raw in paths:
-        if not raw:
-            continue
-        found = True
-        p = Path(raw)
-        h.update(str(p).encode())
-        try:
-            entries = sorted(p.iterdir()) if p.is_dir() else [p]
-        except OSError:
-            continue
-        for e in entries[:200]:  # a checkpoint directory is not a corpus
-            try:
-                st = e.stat()
-            except OSError:
-                continue
-            h.update(f"{e.name}:{st.st_size}".encode())
-    if not found:
-        return ""
-    return h.hexdigest()[:12]
 
 
 def resolve_checkpoint(key: str) -> Path | None:
@@ -129,11 +97,12 @@ class CosyVoiceEngine(Engine):
     """
 
     name = "cosyvoice"
-    base_version = "0"
+    model_env = "ICF_COSYVOICE_MODEL_DIR"
     capabilities = {"zero_shot": True, "fine_tune": True, "streaming": True, "languages": ["en", "zh"],
                     "max_chunk_chars": 300, "self_hosted": True, "license": "see MODEL_LICENSES.md"}
 
     def __init__(self):
+        super().__init__()
         self._model = None
         # VE-006: the Go adapter sends `instruct`, a natural-language style
         # instruction, alongside the numeric prosody. Inference uses
@@ -142,9 +111,6 @@ class CosyVoiceEngine(Engine):
         # but the fact that the instruction was dropped has to be visible, so
         # the flag is reported in /v1/capabilities as style_instruction.
         self._instruct_supported = True
-
-    def checkpoint_paths(self) -> tuple[str, ...]:
-        return (os.environ.get("ICF_COSYVOICE_MODEL_DIR") or "",)
 
     def runtime_capabilities(self) -> dict:
         return {"style_instruction": self._instruct_supported}
@@ -155,10 +121,10 @@ class CosyVoiceEngine(Engine):
                 from cosyvoice.cli.cosyvoice import AutoModel  # type: ignore
             except ImportError as e:  # pragma: no cover - needs the real engine
                 raise EngineError("model", f"CosyVoice is not installed on this worker: {e}")
-            model_dir = os.environ.get("ICF_COSYVOICE_MODEL_DIR")
+            model_dir = self.model_dir
             if not model_dir:
                 raise EngineError("model", "ICF_COSYVOICE_MODEL_DIR is not set")
-            self._model = AutoModel(model_dir=model_dir)
+            self._model = AutoModel(model_dir=str(model_dir))
             self.sample_rate = int(getattr(self._model, "sample_rate", 24000))
         return self._model
 
@@ -253,27 +219,23 @@ class DevToneEngine(Engine):
 class GPTSoVITSEngine(Engine):
     """Proxy to a GPT-SoVITS api_v2 server (ICF_GPTSOVITS_API, e.g.
     http://127.0.0.1:9880) running on the same GPU host. The upstream server
-    loads the weights; fine-tuned checkpoints are switched in through its
-    /set_gpt_weights and /set_sovits_weights endpoints.
+    must load the pinned weight pair and report its loaded identity on the
+    final setter and each /tts response. Stock uninstrumented api_v2 cannot
+    make that guarantee and is refused. See README.md.
 
     This backend has NOT been exercised against a live GPT-SoVITS instance in
     CI; verify the api_v2 parameter names against the pinned upstream commit.
     """
 
     name = "gpt_sovits"
-    # The upstream service owns the base weights; once a fine-tuned checkpoint
-    # is pushed to it, the version names that checkpoint too.
-    base_version = "v2"
+    model_env = "ICF_GPTSOVITS_MODEL_DIR"
     sample_rate = 32000
     capabilities = {"zero_shot": True, "fine_tune": True, "streaming": True, "languages": ["en", "zh", "ja", "ko"],
                     "max_chunk_chars": 200, "self_hosted": True, "license": "see MODEL_LICENSES.md"}
 
     def __init__(self):
+        super().__init__()
         self.base = os.environ.get("ICF_GPTSOVITS_API", "http://127.0.0.1:9880").rstrip("/")
-        self._loaded_ckpt: str | None = None
-
-    def checkpoint_paths(self) -> tuple[str, ...]:
-        return (self._loaded_ckpt or "",)
 
     def _get(self, path: str, params: dict) -> bytes:
         import urllib.parse
@@ -282,9 +244,18 @@ class GPTSoVITSEngine(Engine):
         url = f"{self.base}{path}?{urllib.parse.urlencode(params)}"
         try:
             with urllib.request.urlopen(url, timeout=300) as r:
+                if path in ("/set_sovits_weights", "/tts"):
+                    # A 200 from a setter does not identify the weights on the
+                    # OTHER process. Require its loaded-bundle readback before
+                    # sending text, then verify the replica that returned WAV.
+                    if (r.headers.get_all("X-Engine") != [self.wire_name] or
+                            r.headers.get_all("X-Engine-Version") != [self.version]):
+                        raise EngineError("identity", "GPT-SoVITS upstream did not confirm the pinned bundle")
                 return r.read()
-        except Exception as e:  # noqa: BLE001
-            raise EngineError("transient", f"GPT-SoVITS API: {e}")
+        except EngineError:
+            raise
+        except Exception as e:  # noqa: BLE001 - never log query params (text/reference)
+            raise EngineError("transient", "GPT-SoVITS upstream unavailable") from e
 
     def healthy(self) -> bool:
         import urllib.request
@@ -295,20 +266,22 @@ class GPTSoVITSEngine(Engine):
         except Exception:  # noqa: BLE001
             return False
 
-    def _ensure_weights(self, checkpoint: Path | None):
-        if checkpoint is None or str(checkpoint) == self._loaded_ckpt:
-            return
-        d = checkpoint.parent
-        gpt = next(iter(sorted(d.glob("*.ckpt"))), None)
-        sov = next(iter(sorted(d.glob("*.pth"))), None)
-        if not gpt or not sov:
-            raise EngineError("model", "fine-tuned GPT-SoVITS checkpoint needs a .ckpt (GPT) and a .pth (SoVITS)")
-        self._get("/set_gpt_weights", {"weights_path": str(gpt)})
-        self._get("/set_sovits_weights", {"weights_path": str(sov)})
-        self._loaded_ckpt = str(checkpoint)
+    def prepare_render(self, checkpoint: Path | None):
+        super().prepare_render(checkpoint)
+        # api_v2 has mutable process-wide weights.
+        # Require a dedicated upstream with the SAME read-only bundle mounted
+        # at the same absolute path. Select both files for EVERY request (also
+        # the base case and after a partial switch/restart), before first audio.
+        if self.model_dir is None:
+            raise EngineError("identity", "no pinned GPT-SoVITS bundle")
+        gpt = sorted(self.model_dir.glob("*.ckpt"))
+        sov = sorted(self.model_dir.glob("*.pth"))
+        if len(gpt) != 1 or len(sov) != 1:
+            raise EngineError("identity", "pinned GPT-SoVITS bundle needs exactly one .ckpt and one .pth")
+        self._get("/set_gpt_weights", {"weights_path": str(gpt[0])})
+        self._get("/set_sovits_weights", {"weights_path": str(sov[0])})
 
     def synthesize_chunk(self, text, *, reference, checkpoint, params, chunk):
-        self._ensure_weights(checkpoint)
         if not reference:
             raise EngineError("model", "GPT-SoVITS needs a reference clip and transcript")
         transcript = reference_transcript(reference)
@@ -334,16 +307,14 @@ class VoxCPMEngine(Engine):
     """
 
     name = "voxcpm"
-    base_version = "1"
+    model_env = "ICF_VOXCPM_MODEL"
     sample_rate = 16000
     capabilities = {"zero_shot": True, "fine_tune": False, "streaming": False, "languages": ["en", "zh"],
                     "max_chunk_chars": 300, "self_hosted": True, "license": "see MODEL_LICENSES.md"}
 
     def __init__(self):
+        super().__init__()
         self._model = None
-
-    def checkpoint_paths(self) -> tuple[str, ...]:
-        return (os.environ.get("ICF_VOXCPM_MODEL") or "",)
 
     def _load(self):
         if self._model is None:
@@ -351,10 +322,10 @@ class VoxCPMEngine(Engine):
                 from voxcpm import VoxCPM  # type: ignore
             except ImportError as e:  # pragma: no cover
                 raise EngineError("model", f"voxcpm is not installed on this worker: {e}")
-            src = os.environ.get("ICF_VOXCPM_MODEL")
+            src = self.model_dir
             if not src:
                 raise EngineError("model", "ICF_VOXCPM_MODEL is not set")
-            self._model = VoxCPM.from_pretrained(src)
+            self._model = VoxCPM.from_pretrained(str(src))
             tts = getattr(self._model, "tts_model", None)
             self.sample_rate = int(getattr(tts, "sample_rate", self.sample_rate))
         return self._model

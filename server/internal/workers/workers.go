@@ -109,7 +109,8 @@ func Register(q jobs.Queue, s Services) []string {
 	return installed
 }
 
-func (s Services) handleGenerate(ctx context.Context, p map[string]any) error {
+func (s Services) handleGenerate(ctx context.Context, job *jobs.Job) error {
+	p := job.Payload
 	if s.Generate == nil {
 		return jobs.Permanent(errors.New("no audio generator is configured on this server"))
 	}
@@ -137,7 +138,8 @@ func (s Services) handleGenerate(ctx context.Context, p map[string]any) error {
 	})
 }
 
-func (s Services) handleNotify(ctx context.Context, p map[string]any) error {
+func (s Services) handleNotify(ctx context.Context, job *jobs.Job) error {
+	p := job.Payload
 	if s.Notify == nil {
 		return jobs.Permanent(errors.New("no push sender is configured on this server"))
 	}
@@ -210,7 +212,8 @@ func (s Services) handleNotify(ctx context.Context, p map[string]any) error {
 	return jobs.Permanent(err)
 }
 
-func (s Services) handleProcess(ctx context.Context, p map[string]any) error {
+func (s Services) handleProcess(ctx context.Context, job *jobs.Job) error {
+	p := job.Payload
 	if s.Process == nil {
 		return jobs.Permanent(errors.New("no audio processor is configured on this server"))
 	}

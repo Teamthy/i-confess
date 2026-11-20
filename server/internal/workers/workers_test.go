@@ -46,7 +46,7 @@ func (f *fakeProcessor) Process(_ context.Context, assetID string) error {
 	return f.err
 }
 
-func handler(t *testing.T, s Services, typ string) jobs.Handler {
+func handler(t *testing.T, s Services, typ string) func(context.Context, map[string]any) error {
 	t.Helper()
 	q := jobs.NewMemoryQueue()
 	Register(q, s)
@@ -54,7 +54,7 @@ func handler(t *testing.T, s Services, typ string) jobs.Handler {
 	if !ok {
 		t.Fatalf("no handler registered for %q", typ)
 	}
-	return h
+	return func(ctx context.Context, payload map[string]any) error { return h(ctx, &jobs.Job{Payload: payload}) }
 }
 
 func TestGenerateHandlerPassesTheRequestThrough(t *testing.T) {
@@ -133,15 +133,16 @@ func TestUnconfiguredHandlerParksRatherThanSucceeding(t *testing.T) {
 		"confession_id": "c", "voice_id": "v",
 		"token": "tk", "title": "t", "audio_asset_id": "a",
 	}
+	job := &jobs.Job{Payload: payload}
 	var empty Services
 	ctx := context.Background()
 	for _, c := range []struct {
 		typ string
 		err error
 	}{
-		{TypeAudioGenerate, empty.handleGenerate(ctx, payload)},
-		{TypeNotificationSend, empty.handleNotify(ctx, payload)},
-		{TypeAudioProcess, empty.handleProcess(ctx, payload)},
+		{TypeAudioGenerate, empty.handleGenerate(ctx, job)},
+		{TypeNotificationSend, empty.handleNotify(ctx, job)},
+		{TypeAudioProcess, empty.handleProcess(ctx, job)},
 	} {
 		if c.err == nil {
 			t.Errorf("%s with no collaborator configured returned nil; the queue would mark it completed", c.typ)

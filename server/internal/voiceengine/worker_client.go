@@ -98,14 +98,15 @@ type TrainRequest struct {
 
 // TrainStatus is the worker's view of a run.
 type TrainStatus struct {
-	Status           string   `json:"status"` // RUNNING | COMPLETED | FAILED
-	Progress         *float64 `json:"progress"`
-	Loss             *float64 `json:"loss"`
-	CheckpointKey    string   `json:"checkpoint_key"`
-	CheckpointSHA256 string   `json:"checkpoint_sha256"`
-	Hardware         string   `json:"hardware"`
-	DurationSeconds  int      `json:"duration_seconds"`
-	Error            string   `json:"error"`
+	Status             string         `json:"status"` // RUNNING | COMPLETED | FAILED
+	Progress           *float64       `json:"progress"`
+	Loss               *float64       `json:"loss"`
+	CheckpointKey      string         `json:"checkpoint_key"`
+	CheckpointSHA256   string         `json:"checkpoint_sha256"`
+	CheckpointIdentity WorkerIdentity `json:"checkpoint_identity"`
+	Hardware           string         `json:"hardware"`
+	DurationSeconds    int            `json:"duration_seconds"`
+	Error              string         `json:"error"`
 }
 
 // StartTraining submits a run. Submitting the same run twice is idempotent
@@ -159,11 +160,12 @@ func (c *WorkerClient) CancelTraining(ctx context.Context, runID string) error {
 // Stream is an in-progress streamed render. Body yields a WAV stream whose
 // header declares an unknown length; close it to stop inference.
 type Stream struct {
-	Body        io.ReadCloser
-	ContentType string
-	SampleRate  int
-	Engine      Engine
-	Model       Model
+	Body          io.ReadCloser
+	ContentType   string
+	SampleRate    int
+	Engine        Engine
+	EngineVersion string
+	Model         Model
 }
 
 // StreamingProvider is implemented by providers whose worker can stream.
@@ -175,6 +177,10 @@ type StreamingProvider interface {
 // overall timeout (a long passage legitimately streams for minutes); the
 // caller's context bounds it and cancels inference on disconnect.
 func (p *HTTPProvider) GenerateStream(ctx context.Context, req GenerateRequest) (*Stream, error) {
+	req.ExpectedWorker.Engine = req.ExpectedWorker.Engine.Canonical()
+	if err := p.checkPin(req.ExpectedWorker); err != nil {
+		return nil, err
+	}
 	req.Params = p.mapper(req.Prosody, req.Style)
 	resp, err := p.doWith(ctx, p.streamClient, http.MethodPost, "/v1/synthesize/stream", req)
 	if err != nil {
@@ -184,8 +190,13 @@ func (p *HTTPProvider) GenerateStream(ctx context.Context, req GenerateRequest) 
 		defer resp.Body.Close()
 		return nil, p.decodeError(resp)
 	}
+	id := responseIdentity(resp.Header)
+	if err := req.ExpectedWorker.verify(id); err != nil {
+		resp.Body.Close() // no bytes, including the WAV header, may reach the listener
+		return nil, err
+	}
 	sr, _ := strconv.Atoi(resp.Header.Get("X-Sample-Rate"))
-	return &Stream{Body: resp.Body, ContentType: resp.Header.Get("Content-Type"), SampleRate: sr, Engine: p.engine}, nil
+	return &Stream{Body: resp.Body, ContentType: resp.Header.Get("Content-Type"), SampleRate: sr, Engine: id.Engine, EngineVersion: id.Revision}, nil
 }
 
 // EncodedVariant is one delivery encoding returned by the worker.

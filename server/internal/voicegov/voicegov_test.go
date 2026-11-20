@@ -242,3 +242,38 @@ func TestEveryActionAndPurposeHasCapabilities(t *testing.T) {
 		}
 	}
 }
+
+func TestRenderUseRechecksScopeAndClock(t *testing.T) {
+	g := fullGrant()
+	planned := now.Add(-time.Minute)
+	u := RenderUse{VoiceID: g.VoiceID, GrantVersion: g.Version, Request: Request{Action: ActionStream, Purpose: PurposePrayer,
+		Territory: "NG", Language: "pcm-NG", UserSubmittedText: true, ThirdParty: true, At: planned}}
+	if d := u.Recheck(g, now); !d.Allowed {
+		t.Fatal(d)
+	}
+	for _, tc := range []struct {
+		name   string
+		change func(*Grant)
+		reason Reason
+	}{
+		{"different voice", func(g *Grant) { g.VoiceID = "other" }, ReasonNoGrant},
+		{"new agreement", func(g *Grant) { g.Version++ }, ReasonStaleGrant},
+		{"expiry at handoff", func(g *Grant) { exp := now; g.ExpiresAt = &exp }, ReasonExpired},
+		{"future effective date", func(g *Grant) { future := now.Add(time.Second); g.EffectiveFrom = &future }, ReasonNotYetEffective},
+		{"restricted cannot generate preview", func(g *Grant) { g.Status = StatusRestricted }, ReasonNotApproved},
+		{"territory", func(g *Grant) { g.Territories = []string{"GB"} }, ReasonTerritory},
+		{"language", func(g *Grant) { g.Languages = []string{"en-NG"} }, ReasonLanguage},
+		{"purpose", func(g *Grant) { delete(g.Capabilities, CanUseInPrayers) }, ReasonMissingCapability},
+		{"external provider", func(g *Grant) { delete(g.Capabilities, CanUseThirdPartyInfra) }, ReasonMissingCapability},
+		{"private script", func(g *Grant) { delete(g.Capabilities, CanUseUserSubmittedText) }, ReasonMissingCapability},
+		{"distribute", func(g *Grant) { delete(g.Capabilities, CanDistribute) }, ReasonMissingCapability},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			g := fullGrant()
+			tc.change(g)
+			if d := u.Recheck(g, now); d.Allowed || d.Reason != tc.reason {
+				t.Fatalf("got %+v, want %s", d, tc.reason)
+			}
+		})
+	}
+}

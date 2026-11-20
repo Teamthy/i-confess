@@ -78,7 +78,7 @@ type Pipeline struct {
 
 // NewPipeline wires a pipeline with sane defaults.
 func NewPipeline(p Provider, s storage.ObjectStorage) *Pipeline {
-	return &Pipeline{Provider: p, Store: s, Audit: LogAudit{}, Now: time.Now}
+	return &Pipeline{Provider: p, Store: storage.GeneralMedia(s), Audit: LogAudit{}, Now: time.Now}
 }
 
 func (p *Pipeline) now() time.Time {
