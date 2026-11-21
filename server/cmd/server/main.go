@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Teamthy/i-confess/internal/ai"
 	"github.com/Teamthy/i-confess/internal/api"
 	"github.com/Teamthy/i-confess/internal/audio"
 	"github.com/Teamthy/i-confess/internal/bible"
@@ -187,6 +188,19 @@ func main() {
 		log.Printf("auth: no social providers configured")
 	}
 	h.SetVerifiers(verifiers)
+
+	// Session builder NLU. config.Validate has already rejected an unknown
+	// provider or a missing key, so an error here is a programming fault.
+	aiParser, err := ai.NewParser(ai.Options{Provider: cfg.AIProvider, APIKey: cfg.AnthropicAPIKey, Model: cfg.AIModel})
+	if err != nil {
+		log.Fatalf("ai: %v", err)
+	}
+	h.SetAIParser(aiParser)
+	if cfg.AIProvider == ai.ProviderAnthropic {
+		log.Printf("ai: claude parser enabled, keyword fallback on failure")
+	} else {
+		log.Printf("ai: keyword parser")
+	}
 
 	// Transactional email. Delivery is asynchronous so a slow or failing
 	// provider can never turn a registration into a 500 (PRD S57, S58).

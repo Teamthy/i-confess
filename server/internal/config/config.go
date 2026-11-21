@@ -47,6 +47,16 @@ type Config struct {
 	AzureSpeechKey    string
 	AzureSpeechRegion string
 
+	// --- Session builder NLU (§43) ---
+	// AIProvider selects how POST /ai/parse maps free text to categories:
+	// "keyword" (default, no network) or "anthropic" (Claude, falling back to
+	// keyword on an outage). Only the utterance is sent to the provider.
+	AIProvider string
+	// AnthropicAPIKey authenticates with the Claude API. Server-side only.
+	AnthropicAPIKey string
+	// AIModel overrides the Claude model. Empty means ai.DefaultModel.
+	AIModel string
+
 	// --- Object storage (§6) ---
 	// StorageProvider selects where audio binaries live. "s3" in production,
 	// "local" for development. "gcs" and "azure" are named in the schema but
@@ -124,6 +134,10 @@ func Load() Config {
 		GoogleTTSAPIKey:          os.Getenv("GOOGLE_TTS_API_KEY"),
 		AzureSpeechKey:           os.Getenv("AZURE_SPEECH_KEY"),
 		AzureSpeechRegion:        os.Getenv("AZURE_SPEECH_REGION"),
+
+		AIProvider:      strings.ToLower(strings.TrimSpace(os.Getenv("AI_PROVIDER"))),
+		AnthropicAPIKey: os.Getenv("ANTHROPIC_API_KEY"),
+		AIModel:         strings.TrimSpace(os.Getenv("AI_MODEL")),
 
 		StorageProvider: strings.ToLower(getenv("STORAGE_PROVIDER", "local")),
 		S3Bucket:        os.Getenv("S3_BUCKET"),
@@ -236,6 +250,17 @@ func (c Config) Validate() error {
 	}
 	if c.TTSProvider == "azure" && c.AzureSpeechKey == "" {
 		return errors.New("TTS_PROVIDER=azure requires AZURE_SPEECH_KEY and AZURE_SPEECH_REGION")
+	}
+	// AI_PROVIDER used to accept "openai" and "anthropic" and silently run the
+	// keyword parser for both. A provider that cannot run now stops the boot.
+	switch c.AIProvider {
+	case "", "keyword":
+	case "anthropic":
+		if c.AnthropicAPIKey == "" {
+			return errors.New("AI_PROVIDER=anthropic requires ANTHROPIC_API_KEY")
+		}
+	default:
+		return fmt.Errorf("AI_PROVIDER=%q is not one of keyword, anthropic", c.AIProvider)
 	}
 	// Half a credential is worse than none: the region forms the endpoint
 	// host, so without a key the failure is a clean 401, and without a region

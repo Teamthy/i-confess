@@ -3,15 +3,27 @@ package ai
 import (
 	"context"
 	"errors"
+	"sort"
 	"strings"
 
 	"github.com/Teamthy/i-confess/internal/engine"
 )
 
 // Builder §43, §106 — AI orchestrates, never invents theology.
-// NLU extracts {categories[], duration, context} from user utterance,
-// then the trusted Session Engine selects real Scripture-rooted content.
-// Prompt guardrails: no body/Scripture invention, only category/voice/duration mapping.
+// NLU extracts {categories[], duration} from a user utterance, then the
+// trusted Session Engine selects real Scripture-rooted content. A parser may
+// only choose among the categories it is handed; it never writes confession
+// text, never quotes Scripture, and never chooses a voice.
+
+// Duration bounds enforced on every parse, whichever parser produced it.
+const (
+	MinDurationSeconds     = 60
+	MaxDurationSeconds     = 3 * 3600
+	DefaultDurationSeconds = 600
+	// MaxCategories caps how many categories one utterance maps to, so a
+	// rambling request does not dilute the session across the whole catalogue.
+	MaxCategories = 3
+)
 
 type Request struct {
 	Utterance  string   `json:"utterance"` // free text: "I need peace before surgery"
@@ -20,73 +32,158 @@ type Request struct {
 	VoiceID    string   `json:"voice_id,omitempty"`
 }
 
+// Category is one category a parser may choose. The catalogue is read from the
+// database per request (categories are backend-configurable), so a parser
+// never relies on a hard-coded list.
+type Category struct {
+	Slug        string
+	Name        string
+	Description string
+}
+
 type Parsed struct {
-	Categories []string `json:"categories"` // resolved category slugs (backend 39)
+	Categories []string `json:"categories"` // category slugs from the supplied catalogue
 	Duration   int      `json:"duration_seconds"`
 	VoiceID    string   `json:"voice_id"`
 	Strategy   string   `json:"strategy"` // BALANCED default
 	Confidence float64  `json:"confidence"`
 	Reason     string   `json:"reason"`
+	// Parser names what produced this result: "keyword", "claude", or
+	// "keyword-fallback" when the configured model could not answer.
+	Parser string `json:"parser"`
 }
 
-// Parser is the NLU interface. Prod uses LLM with constrained output; dev uses keyword parser.
+// Parser is the NLU interface. Implementations must return only slugs present
+// in catalog.
 type Parser interface {
-	Parse(ctx context.Context, req Request) (Parsed, error)
+	Parse(ctx context.Context, req Request, catalog []Category) (Parsed, error)
 }
 
-// KeywordParser is the dev/test parser — deterministic, no LLM call.
+// ErrNoInput is returned when the request has neither text nor categories.
+var ErrNoInput = errors.New("utterance or categories required")
+
+// KeywordParser is the deterministic parser: no network call, no model. It is
+// the default and the fallback when a model is unavailable.
 type KeywordParser struct{}
 
+// keywordToCategory maps words in an utterance to canonical category slugs
+// (internal/seed/categories_canonical.go). Every target must be a canonical
+// slug; TestKeywordTargetsAreCanonical enforces it.
 var keywordToCategory = map[string]string{
-	"heal": "healing", "sick": "healing", "pain": "healing",
-	"peace": "peace", "anxious": "peace", "anxiety": "peace", "calm": "peace",
+	"heal": "healing", "sick": "healing", "pain": "healing", "surgery": "healing",
+	"peace": "peace", "anxious": "peace", "anxiety": "peace", "calm": "peace", "worry": "peace",
 	"faith": "faith", "trust": "faith",
-	"purpose": "purpose", "direction": "purpose",
+	"purpose": "purpose", "direction": "direction", "decision": "direction",
 	"joy": "joy", "gratitude": "gratitude", "thank": "gratitude",
 	"confidence": "confidence", "courage": "confidence",
-	"wisdom": "wisdom", "sleep": "sleep", "future": "future", "love": "love",
+	"fear": "overcoming-fear", "afraid": "overcoming-fear", "scared": "overcoming-fear",
+	"wisdom": "wisdom", "sleep": "rest", "rest": "rest", "tired": "rest",
+	"future": "hope", "hope": "hope", "love": "love",
+	"money": "finance", "debt": "finance", "job": "career", "work": "career",
+	"marriage": "marriage", "husband": "marriage", "wife": "marriage",
+	"family": "family", "children": "children", "kids": "children",
+	"forgive": "forgiveness", "pray": "prayer",
 }
 
-func (KeywordParser) Parse(_ context.Context, req Request) (Parsed, error) {
-	if req.Utterance == "" && len(req.Categories) == 0 {
-		return Parsed{}, errors.New("utterance or categories required")
+// defaultCategory is used when nothing in the utterance matches.
+const defaultCategory = "peace"
+
+func (KeywordParser) Parse(_ context.Context, req Request, catalog []Category) (Parsed, error) {
+	if strings.TrimSpace(req.Utterance) == "" && len(req.Categories) == 0 {
+		return Parsed{}, ErrNoInput
 	}
-	// If caller already supplied categories, trust them (editor flow)
+	// Caller-supplied categories are passed through; the handler resolves and
+	// rejects unknown ones (editor flow).
 	if len(req.Categories) > 0 {
-		dur := req.Duration
-		if dur == 0 {
-			dur = 1800
-		}
-		return Parsed{Categories: req.Categories, Duration: dur, VoiceID: req.VoiceID, Strategy: engine.StrategyBalanced, Confidence: 1, Reason: "explicit categories"}, nil
+		return Parsed{
+			Categories: req.Categories, Duration: ClampDuration(req.Duration, 1800), VoiceID: req.VoiceID,
+			Strategy: engine.StrategyBalanced, Confidence: 1, Reason: "explicit categories", Parser: "keyword",
+		}, nil
 	}
+
+	allowed := make(map[string]bool, len(catalog))
+	for _, c := range catalog {
+		allowed[c.Slug] = true
+	}
+
 	lower := strings.ToLower(req.Utterance)
+	// Order matches by where they appear in the utterance (ties by keyword) so
+	// the result does not depend on Go's randomised map iteration.
+	type match struct {
+		pos int
+		kw  string
+	}
+	var matches []match
+	for kw := range keywordToCategory {
+		if pos := strings.Index(lower, kw); pos >= 0 {
+			matches = append(matches, match{pos, kw})
+		}
+	}
+	sort.Slice(matches, func(i, j int) bool {
+		if matches[i].pos != matches[j].pos {
+			return matches[i].pos < matches[j].pos
+		}
+		return matches[i].kw < matches[j].kw
+	})
 	var cats []string
 	seen := map[string]bool{}
-	for kw, cat := range keywordToCategory {
-		if strings.Contains(lower, kw) && !seen[cat] {
+	for _, m := range matches {
+		cat := keywordToCategory[m.kw]
+		if allowed[cat] && !seen[cat] {
 			cats = append(cats, cat)
 			seen[cat] = true
 		}
 	}
-	if len(cats) == 0 {
-		cats = []string{"peace"} // safe default
+	if len(cats) > MaxCategories {
+		cats = cats[:MaxCategories]
 	}
+	confidence := 0.7
+	if len(cats) == 0 {
+		confidence = 0.3
+		if allowed[defaultCategory] {
+			cats = []string{defaultCategory}
+		} else if len(catalog) > 0 {
+			cats = []string{catalog[0].Slug}
+		} else {
+			return Parsed{}, errors.New("no categories are available")
+		}
+	}
+
 	dur := req.Duration
 	if dur == 0 {
-		dur = 600
+		dur = DefaultDurationSeconds
 		if strings.Contains(lower, "long") || strings.Contains(lower, "30") {
 			dur = 1800
 		}
 	}
-	return Parsed{Categories: cats, Duration: dur, VoiceID: req.VoiceID, Strategy: engine.StrategyBalanced, Confidence: 0.7, Reason: "keyword parser"}, nil
+	return Parsed{
+		Categories: cats, Duration: ClampDuration(dur, DefaultDurationSeconds), VoiceID: req.VoiceID,
+		Strategy: engine.StrategyBalanced, Confidence: confidence, Reason: "keyword parser", Parser: "keyword",
+	}, nil
 }
 
-// Build validates Parsed and returns an engine.Request for trusted selection.
-func (p Parsed) ToEngineRequest() (engine.Request, error) {
+// ClampDuration returns seconds within [MinDurationSeconds, MaxDurationSeconds],
+// using def when seconds is zero or negative.
+func ClampDuration(seconds, def int) int {
+	if seconds <= 0 {
+		seconds = def
+	}
+	if seconds < MinDurationSeconds {
+		return MinDurationSeconds
+	}
+	if seconds > MaxDurationSeconds {
+		return MaxDurationSeconds
+	}
+	return seconds
+}
+
+// ToEngineRequest validates Parsed and returns an engine.Request. ids maps each
+// category slug to its database id; the engine selects by id.
+func (p Parsed) ToEngineRequest(ids map[string]string) (engine.Request, error) {
 	if len(p.Categories) == 0 {
 		return engine.Request{}, errors.New("no categories")
 	}
-	if p.Duration < 60 || p.Duration > 3*3600 {
+	if p.Duration < MinDurationSeconds || p.Duration > MaxDurationSeconds {
 		return engine.Request{}, errors.New("duration out of range")
 	}
 	start := p.Strategy
@@ -96,8 +193,16 @@ func (p Parsed) ToEngineRequest() (engine.Request, error) {
 	if !engine.IsValidStrategy(start) {
 		return engine.Request{}, errors.New("invalid strategy")
 	}
+	catIDs := make([]string, 0, len(p.Categories))
+	for _, slug := range p.Categories {
+		id, ok := ids[slug]
+		if !ok {
+			return engine.Request{}, errors.New("unknown category: " + slug)
+		}
+		catIDs = append(catIDs, id)
+	}
 	return engine.Request{
-		CategoryIDs:     p.Categories,
+		CategoryIDs:     catIDs,
 		DurationSeconds: p.Duration,
 		Strategy:        engine.NormalizeStrategy(start),
 		VoiceID:         p.VoiceID,

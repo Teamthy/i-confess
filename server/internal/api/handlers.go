@@ -9,6 +9,7 @@ import (
 
 	"github.com/Teamthy/i-confess/internal/db"
 
+	"github.com/Teamthy/i-confess/internal/ai"
 	"github.com/Teamthy/i-confess/internal/audio"
 	"github.com/Teamthy/i-confess/internal/bible"
 	"github.com/Teamthy/i-confess/internal/billing"
@@ -90,6 +91,8 @@ type Handler struct {
 	devTokenSink func(purpose, email, token string)
 	// limiter throttles authentication abuse (S20, S21).
 	limiter ratelimit.Enforcer
+	// aiParser maps builder utterances to categories (POST /ai/parse).
+	aiParser ai.Parser
 	// profiles owns profile, preferences and interests (S5, S14, S20).
 	profiles *store.ProfileStore
 	// mail delivers transactional authentication email asynchronously, so a
@@ -197,6 +200,7 @@ func NewHandler(cfg Config, db *db.DB) *Handler {
 		vplat:        store.NewVoicePlatformStore(db),
 		db:           db,
 		limiter:      ratelimit.New(),
+		aiParser:     ai.KeywordParser{},
 		profiles:     store.NewProfileStore(db),
 		verifiers:    map[string]oauth.Verifier{},
 		library:      store.NewLibraryStore(db),
