@@ -3,11 +3,9 @@ package api
 import (
 	"net/http"
 
-	"github.com/Teamthy/i-confess/internal/adminui"
 	"github.com/Teamthy/i-confess/internal/auth"
 	"github.com/Teamthy/i-confess/internal/ratelimit"
 	"github.com/Teamthy/i-confess/internal/tracing"
-	"github.com/Teamthy/i-confess/internal/webapp"
 )
 
 // Routes builds the full HTTP handler with all routes registered.
@@ -54,12 +52,12 @@ func (h *Handler) Routes() http.Handler {
 	h.route(mux, "GET /metrics", "admin", "admin-ops", "Prometheus metrics", admin, h.promMetrics)
 	h.route(mux, "GET /openapi.json", "public", "ops", "OpenAPI JSON specification", nil, h.serveOpenAPI)
 
-	// Listener web application (SPA), served at the site root.
-	mux.Handle("GET /", webapp.Handler())
-
-	// Admin console (SPA)
-	mux.Handle("GET /admin", http.RedirectHandler("/admin/", http.StatusMovedPermanently))
-	mux.Handle("GET /admin/", http.StripPrefix("/admin/", adminui.Handler()))
+	// This binary is the API. The public site, the signed-in app and the admin
+	// console are the Next.js app in web/; the Go server used to embed older,
+	// differently designed copies of both at "/" and "/admin/", and its "/"
+	// catch-all answered every unknown GET with that HTML page instead of 404.
+	mux.HandleFunc("GET /{$}", serviceInfo)
+	mux.HandleFunc("GET /", notFoundJSON)
 
 	// Placeholder/dev audio assets (generated locally; replaced by CDN in production).
 	// Development audio origin. Previously this served the media directory

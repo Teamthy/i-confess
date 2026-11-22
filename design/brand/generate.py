@@ -19,7 +19,6 @@ Outputs
   apps/mobile/lib/src/core/brand/brand_mark_path.dart   Flutter Path
   apps/mobile/ios/.../AppIcon.appiconset/*.png          iOS launcher icons
   apps/mobile/android/.../mipmap-*/ic_launcher.png      Android launcher icons
-  server/internal/{webapp,adminui}/favicon.svg   favicons for the Go-served pages
 
 Usage
   python3 design/brand/generate.py           write everything
@@ -208,10 +207,6 @@ def main() -> int:
         ROOT / "web/app/icon.svg": icon_svg(d, vb_w, vb_h),
         ROOT / "web/public/brand/mark.svg": mark_svg_public(d, vb_w, vb_h),
         ROOT / "web/lib/brand-mark.ts": ts_module(d, vb_w, vb_h),
-        # The Go binary serves two embedded pages (listener site at /, admin
-        # console at /admin/); each embeds its own copy of the favicon.
-        ROOT / "server/internal/webapp/favicon.svg": icon_svg(d, vb_w, vb_h),
-        ROOT / "server/internal/adminui/favicon.svg": icon_svg(d, vb_w, vb_h),
         ROOT / "apps/mobile/lib/src/core/brand/brand_mark_path.dart": dart_module(subpaths, vb_w, vb_h),
     }
 
