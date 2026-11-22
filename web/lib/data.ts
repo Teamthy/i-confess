@@ -66,12 +66,11 @@ export function confessionsFor(cat: Category): Confession[] {
   return CONFESSIONS.filter((c) => c.category === cat.name);
 }
 
-/** Categories with no licensed photo yet. The files previously shipped for
- *  these were stock-agency watermarked previews (Dreamstime, Shutterstock) —
- *  not licensed for use — and were removed on 2026-11-22. Cards and pages fall
- *  back to the branded motif until a cleared photo is added as
- *  public/assets/cat-<slug>.jpg and the slug is removed from this list. */
-export const UNLICENSED_CAT_IMAGES = new Set(["breakthrough", "healing", "hope", "peace", "prayer", "wisdom"]);
+/** Categories with no cleared photo. Empty today: the six watermarked agency
+ *  previews removed on 2026-11-22 were replaced with CC0 photos (provenance in
+ *  web/ASSET-SOURCES.md). A slug listed here falls back to the branded motif
+ *  until a cleared photo is added as public/assets/cat-<slug>.jpg. */
+export const UNLICENSED_CAT_IMAGES = new Set<string>([]);
 
 export const CAT_IMAGES: Record<string, string> = Object.fromEntries(
   CATEGORIES.filter((c) => !UNLICENSED_CAT_IMAGES.has(c.slug)).map((c) => [c.slug, `cat-${c.slug}.jpg`]),
