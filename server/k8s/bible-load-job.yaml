@@ -1,0 +1,58 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  # The Bible reader is empty until an environment has loaded its translations:
+  # the repository ships the registry (edition, licence, checksum), never the
+  # text. This Job fetches the registered public-domain sources, verifies every
+  # file against its registry checksum and loads them. Re-running it is safe:
+  # an edition already loaded with the same digest is skipped, and a changed
+  # source is refused rather than overwriting cited verses.
+  #
+  # Needs outbound HTTPS to api.github.com (the seven1m/open-bibles sources)
+  # and the migration role, which owns the Bible tables.
+  generateName: iconfess-bible-load-
+  labels:
+    app: iconfess-bible-load
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 1800
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app: iconfess-bible-load
+    spec:
+      automountServiceAccountToken: false
+      restartPolicy: Never
+      containers:
+        - name: bible-load
+          image: ghcr.io/teamthy/i-confess:IMAGE_DIGEST_REQUIRED
+          command: ["/bin/sh", "-c"]
+          args:
+            - ./iconfess-bible-import fetch && ./iconfess-bible-import verify && ./iconfess-bible-import load
+          env:
+            - name: BIBLE_SOURCES
+              value: /work/sources
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: iconfess-migration-db
+                  key: database-url
+          volumeMounts:
+            - name: work
+              mountPath: /work
+          resources:
+            requests: {cpu: 250m, memory: 256Mi}
+            limits: {cpu: "2", memory: 1Gi}
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            seccompProfile: {type: RuntimeDefault}
+            capabilities: {drop: ["ALL"]}
+      volumes:
+        - name: work
+          emptyDir:
+            sizeLimit: 1Gi

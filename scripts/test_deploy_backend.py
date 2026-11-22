@@ -157,3 +157,32 @@ class ReleaseTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BibleLoadTest(ReleaseTest):
+    def test_load_bible_runs_the_hardened_job_and_never_touches_the_backend(self):
+        release.load_bible("staging", DIGEST)
+        job = self.job_manifest
+        self.assertEqual(job["metadata"]["labels"]["app"], "iconfess-bible-load")
+        pod = job["spec"]["template"]["spec"]
+        container = pod["containers"][0]
+        self.assertEqual(container["image"], IMAGE)
+        self.assertFalse(pod["automountServiceAccountToken"])
+        self.assertTrue(container["securityContext"]["readOnlyRootFilesystem"])
+        # The DSN comes from the migration Secret, never from an argument.
+        env = {e["name"]: e for e in container["env"]}
+        self.assertEqual(env["DATABASE_URL"]["valueFrom"]["secretKeyRef"]["name"], "iconfess-migration-db")
+        self.assertNotIn("postgres", " ".join(container["args"]))
+        self.assertIsNone(self.backend_manifest)
+        self.assertNotIn("rollout", [a[0] for a in self.calls])
+
+    def test_failed_load_is_reported(self):
+        self.status = condition("Failed")
+        with self.assertRaisesRegex(RuntimeError, "failed"):
+            release.load_bible("staging", DIGEST)
+
+    def test_mutable_image_ref_rejected(self):
+        with self.assertRaises(ValueError):
+            release.load_bible("staging", "latest")
+        self.assertEqual(self.calls, [])
+

@@ -66,6 +66,8 @@ loaded into the target database once:
 make bible-load BIBLE_DSN='host=127.0.0.1 port=5432 user=iconfess password=iconfess-dev-password dbname=iconfess sslmode=disable'
 ```
 
+In staging and production, run the **Deploy** workflow with operation `load-bible` ([how](docs/DEPLOYMENT.md#loading-the-bible-text)).
+
 ## Quality gates
 
 `make verify` runs the Go, design and mobile checks CI runs; `make help` lists every target.

@@ -39,6 +39,22 @@ signature enforcement, expiry and direct S3 denial before enabling delivery.
 For the separate direct-R2 mode, follow the [private R2 playback check](R2-STAGING-PLAYBACK.md).
 Neither check is a production deployment step.
 
+## Loading the Bible text
+
+The Bible reader shows "No approved translation" until an environment has its translations loaded.
+The repository ships only the registry (edition, licence, checksum), never the text, and the server
+does not fetch it at boot.
+
+Run the **Deploy** workflow once per environment with operation **`load-bible`** and the same
+approved image digest. It creates a `iconfess-bible-load-*` Job (`server/k8s/bible-load-job.yaml`)
+that fetches the registered public-domain sources, verifies each file against its registry checksum,
+and loads it using the migration role's Secret. It never touches the backend Deployment.
+
+- It needs outbound HTTPS to `api.github.com`, where the sources live (`seven1m/open-bibles`).
+- Re-running it is safe: an edition already loaded with the same digest is skipped, and a changed
+  source is refused instead of rewriting cited verses. Run it again when the registry gains an edition.
+- Locally: `make bible-load BIBLE_DSN=...`.
+
 ## Other release checks
 
 - PostgreSQL is the only backend database. The migrations shipped with the Go binary live in `server/internal/db/migrations/`; `DATABASE_URL` belongs to the runtime, `MIGRATION_DATABASE_URL` to the Job only.
