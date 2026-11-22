@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { Icon, Logo } from "./ui";
 import { useApp, mutate, track } from "@/lib/store";
 import { useAuth } from "@/lib/auth-context";
+import { authFetch } from "@/lib/auth-client";
+import { appApi } from "@/lib/app-api";
 import { useToast } from "@/lib/ui";
 import { CATEGORIES } from "@/lib/data";
 import { ALL_DAYS, deviceTimezone } from "@/lib/schedules";
@@ -46,6 +48,9 @@ export default function AuthPage({ kind }: { kind: string }) {
   const router = useRouter(); const toast = useToast(); const st = useApp();
   const auth = useAuth();
   const [interests, setInterests] = useState<string[]>(st.user?.interests || []);
+  // The query string is read after mount so server and client render the same markup.
+  const [search, setSearch] = useState("");
+  React.useEffect(() => { setSearch(window.location.search); }, []);
 
   /**
    * Sign in for real, and fall back honestly.
@@ -70,8 +75,7 @@ export default function AuthPage({ kind }: { kind: string }) {
       localSession(email, result.user?.display_name);
       track("account_created", { type: "login" });
       toast("Welcome back");
-      const next = new URLSearchParams(window.location.search).get("next");
-      router.push(next && next.startsWith("/") ? next : "/app");
+      router.push(safeNext(window.location.search));
       return;
     }
     if (result.mfaRequired) { toast(result.error || "Enter the code from your authenticator app."); return; }
@@ -118,18 +122,24 @@ export default function AuthPage({ kind }: { kind: string }) {
         <Logo /><h1>Welcome back</h1><p className="sub">Your words are where you left them.</p>
         <form onSubmit={(e) => submit(e, (fd) => { void signIn(String(fd.get("email")), String(fd.get("pw"))); })}>
           <div className="field"><label>Email</label><input name="email" type="email" required autoComplete="email" /></div>
-          <PasswordField label="Password" name="pw" required minLength={6} autoComplete="current-password" hint="At least 6 characters." />
+          <PasswordField label="Password" name="pw" required autoComplete="current-password" />
           <button className="btn btn-primary btn-lg" style={{ width: "100%", justifyContent: "center", marginTop: 22 }} type="submit">Log In</button>
         </form>
         <p className="auth-foot"><Link href="/forgot-password">Forgot password?</Link></p>
-        <p className="auth-foot">New here? <Link href="/register">Create an account</Link></p>
+        <p className="auth-foot">New here? <Link href={"/register" + search}>Create an account</Link></p>
       </>
     ),
     register: <Onboarding />,
     forgot: (
       <>
         <Logo /><h1>Reset password</h1><p className="sub">Enter your email and we'll send a reset link.</p>
-        <form onSubmit={(e) => submit(e, () => { toast("Reset link sent (demo)"); router.push("/reset-password"); })}>
+        <form onSubmit={(e) => submit(e, async (fd) => {
+          // The API answers every address the same way, registered or not.
+          const r = await authFetch("/auth/request-password-reset", { email: String(fd.get("email")).trim() });
+          if (!r.ok && r.status !== 0) { toast(r.message); return; }
+          toast("If that address has an account, a reset link is on its way.");
+          router.push("/login");
+        })}>
           <div className="field"><label>Email</label><input name="email" type="email" required /></div>
           <button className="btn btn-primary btn-lg" style={{ width: "100%", justifyContent: "center", marginTop: 20 }} type="submit">Send Reset Link</button>
         </form>
@@ -139,64 +149,114 @@ export default function AuthPage({ kind }: { kind: string }) {
     reset: (
       <>
         <Logo /><h1>Choose a new password</h1>
-        <form onSubmit={(e) => submit(e, (fd) => { if (fd.get("p1") !== fd.get("p2")) { toast("Passwords don't match"); return; } toast("Password updated"); router.push("/login"); })}>
-          <PasswordField label="New password" name="p1" minLength={6} required autoComplete="new-password" hint="Use at least 6 characters." />
-          <PasswordField label="Repeat password" name="p2" minLength={6} required autoComplete="new-password" />
+        <form onSubmit={(e) => submit(e, async (fd) => {
+          if (fd.get("p1") !== fd.get("p2")) { toast("Passwords don't match"); return; }
+          const token = new URLSearchParams(window.location.search).get("token") || "";
+          if (!token) { toast("Open this page from the link in your reset email."); return; }
+          const r = await authFetch("/auth/reset-password", { token, password: String(fd.get("p1")) });
+          if (!r.ok) { toast(r.message); return; }
+          toast("Password updated — sign in with the new one");
+          router.push("/login");
+        })}>
+          <PasswordField label="New password" name="p1" minLength={8} required autoComplete="new-password" hint="At least 8 characters. Avoid common passwords." />
+          <PasswordField label="Repeat password" name="p2" minLength={8} required autoComplete="new-password" />
           <button className="btn btn-primary btn-lg" style={{ width: "100%", justifyContent: "center", marginTop: 20 }} type="submit">Save Password</button>
         </form>
       </>
     ),
-    verifyEmail: verify("email", () => { toast("Verified"); router.push("/app"); }),
-    verifyPhone: verify("phone", () => { toast("Verified"); router.push("/app"); }),
+    verifyEmail: <VerifyEmail />,
+    verifyPhone: (
+      <>
+        <Logo /><h1>Phone verification</h1>
+        <p className="sub">Phone numbers aren't verified on the web yet. Your account works without one.</p>
+        <Link className="btn btn-primary btn-lg" href="/app/settings" style={{ width: "100%", justifyContent: "center", marginTop: 20 }}>Back to settings</Link>
+      </>
+    ),
   };
   return <div className="auth-card rv in">{card[kind]}</div>;
+}
 
-  function verify(kind2: string, done: () => void) {
-    return (
-      <>
-        <Logo /><h1>Verify your {kind2}</h1><p className="sub">Demo environment: use code <b>000000</b>.</p>
-        <form onSubmit={(e) => submit(e, (fd) => { String(fd.get("code")) === "000000" ? done() : toast("Wrong code — demo code is 000000"); })}>
-          <div className="field"><label>6-digit code</label><input name="code" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} required /></div>
-          <button className="btn btn-primary btn-lg" style={{ width: "100%", justifyContent: "center", marginTop: 20 }} type="submit">Verify</button>
-        </form>
-      </>
-    );
-  }
+/** A same-origin path from `?next=`, else the app. */
+function safeNext(search: string) {
+  const raw = new URLSearchParams(search).get("next") || "";
+  return raw.startsWith("/") && !raw.startsWith("//") ? raw : "/app";
+}
+
+/** Opened from the verification email: `?token=` is consumed once, on mount. */
+function VerifyEmail() {
+  const [state, setState] = useState<"working" | "done" | "failed">("working");
+  const [msg, setMsg] = useState("");
+  React.useEffect(() => {
+    const token = new URLSearchParams(window.location.search).get("token") || "";
+    if (!token) { setState("failed"); setMsg("Open this page from the link in your verification email."); return; }
+    void authFetch("/auth/verify-email", { token }).then((r) => {
+      setState(r.ok ? "done" : "failed");
+      if (!r.ok) setMsg(r.message || "That link has expired or was already used.");
+    });
+  }, []);
+  return (
+    <>
+      <Logo /><h1>{state === "done" ? "Email verified" : state === "failed" ? "We couldn't verify that link" : "Verifying your email…"}</h1>
+      <p className="sub" role="status">{state === "done" ? "Thank you. Your account is confirmed." : msg}</p>
+      {state !== "working" && <Link className="btn btn-primary btn-lg" href={state === "done" ? "/app" : "/login"} style={{ width: "100%", justifyContent: "center", marginTop: 20 }}>{state === "done" ? "Open I CONFESS" : "Go to sign in"}</Link>}
+    </>
+  );
 }
 
 function Onboarding() {
-  const router = useRouter(); const toast = useToast();
+  const router = useRouter(); const toast = useToast(); const auth = useAuth();
+  // Where the visitor was headed (a home CTA, a gated page). Same-origin paths only.
+  const [next, setNext] = useState("/app");
+  React.useEffect(() => { setNext(safeNext(window.location.search)); }, []);
   const [step, setStep] = useState(0);
+  const [busy, setBusy] = useState(false);
   const [name, setName] = useState(""); const [email, setEmail] = useState("");
   const [interests, setInterests] = useState<string[]>([]);
   const [time, setTime] = useState("06:00"); const [len, setLen] = useState("10");
   const [remind, setRemind] = useState(true);
 
-  const account = (e: React.FormEvent) => {
+  // Step 1 creates the real account. The API answers an address that is
+  // already registered exactly like a fresh one (no membership oracle), with
+  // `pending` and no session — that visitor is sent to check their email.
+  const account = async (e: React.FormEvent) => {
     e.preventDefault();
     const f = e.target as HTMLFormElement;
     if (!f.reportValidity()) return;
-    setStep(1);
+    const password = String(new FormData(f).get("password") || "");
+    setBusy(true);
+    const r = await authFetch("/auth/register", { email: email.trim(), password, display_name: name.trim(), timezone: deviceTimezone() });
+    setBusy(false);
+    // No API in front of the site (the static demo): keep the setup walkable locally.
+    if (!r.ok && r.status === 0) { setStep(2); return; }
+    if (!r.ok) { toast(r.message || "We couldn't create your account."); return; }
+    if (!r.token || !r.user) { setStep(1); return; }
+    auth.setToken(r.token, r.user);
+    track("account_created");
+    setStep(2);
   };
-  const verifyCode = (e: React.FormEvent) => {
-    e.preventDefault();
-    const fd = new FormData(e.target as HTMLFormElement);
-    if (String(fd.get("code")) === "000000") setStep(2); else toast("Wrong code — demo code is 000000");
-  };
-  const finish = () => {
+  const finish = async () => {
     const cats = interests.slice(0, 3);
+    setBusy(true);
+    // Interests are stored server-side by category id; the static library is keyed by slug.
+    const list = await appApi<{ id: string; slug: string }[] | { categories: { id: string; slug: string }[] }>("/categories");
+    if (list.ok && auth.token) {
+      const rows = Array.isArray(list.data) ? list.data : list.data.categories || [];
+      const ids = rows.filter((c) => interests.includes(c.slug)).map((c) => c.id);
+      if (ids.length) await appApi("/me/interests", { token: auth.token, method: "PUT", body: { category_ids: ids, source: "ONBOARDING" } });
+    }
+    setBusy(false);
     mutate((s) => {
       s.user = { name: name.trim(), email: email.trim(), plan: "free", interests };
       s.routines = [{ slot: time, cats }];
       s.schedule = [...s.schedule.filter((sc) => sc.localOwner !== email.trim()), ...cats.map((c, i) => ({ id: `local-${Date.now()}-${i}`, label: `${CATEGORIES.find((cat) => cat.slug === c)?.name || c} practice`, time, days_of_week: [...ALL_DAYS], timezone: deviceTimezone(), duration_seconds: Number(len) * 60, category_ids: [c], enabled: remind, localOwner: email.trim() }))];
       s.settings.notifications.reminders = remind;
     });
-    track("account_created"); track("onboarding_complete", { interests: interests.length });
+    track("onboarding_complete", { interests: interests.length });
     toast("Your practice is set up");
-    router.push("/app");
+    router.push(next);
   };
 
-  const steps = ["Account", "Verify", "Interests", "Practice"];
+  const steps = ["Account", "Email", "Interests", "Practice"];
   return (
     <>
       <Logo />
@@ -210,23 +270,21 @@ function Onboarding() {
           <form onSubmit={account}>
             <div className="field"><label>Name</label><input value={name} onChange={(e) => setName(e.target.value)} required autoComplete="name" /></div>
             <div className="field"><label>Email</label><input value={email} onChange={(e) => setEmail(e.target.value)} type="email" required autoComplete="email" /></div>
-            <PasswordField label="Password" name="password" required minLength={6} autoComplete="new-password" hint="At least 6 characters." />
+            <PasswordField label="Password" name="password" required minLength={8} autoComplete="new-password" hint="At least 8 characters. Avoid common passwords." />
             <label style={{ display: "flex", gap: 10, alignItems: "flex-start", marginTop: 16, fontSize: 12.5, color: "var(--n600)" }}><input type="checkbox" required style={{ width: "auto", marginTop: 2 }} /> I consent to product analytics and understand my private content is never reviewed unless I submit it.</label>
-            <button className="btn btn-primary btn-lg" style={{ width: "100%", justifyContent: "center", marginTop: 20 }} type="submit">Continue</button>
+            <button className="btn btn-primary btn-lg" style={{ width: "100%", justifyContent: "center", marginTop: 20 }} type="submit" disabled={busy}>{busy ? "Creating account…" : "Create account"}</button>
           </form>
-          <p className="auth-foot">Already have an account? <Link href="/login">Log in</Link></p>
+          <p className="auth-foot">Already have an account? <Link href={`/login?next=${encodeURIComponent(next)}`}>Log in</Link></p>
         </>
       )}
       {step === 1 && (
         <>
-          <h1>Verify your email</h1><p className="sub">We sent a 6-digit code to <b>{email}</b>. Demo environment: use <b>000000</b>.</p>
-          <form onSubmit={verifyCode}>
-            <div className="field"><label>6-digit code</label><input name="code" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} required autoFocus /></div>
-            <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
-              <button className="btn btn-ghost btn-lg" type="button" onClick={() => setStep(0)} style={{ flex: 1, justifyContent: "center" }}>Back</button>
-              <button className="btn btn-primary btn-lg" type="submit" style={{ flex: 2, justifyContent: "center" }}>Verify</button>
-            </div>
-          </form>
+          <h1>Check your email</h1>
+          <p className="sub">We sent a link to <b>{email}</b>. Open it to finish setting up, then sign in. If you already have an account, the email says so.</p>
+          <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
+            <button className="btn btn-ghost btn-lg" type="button" onClick={() => setStep(0)} style={{ flex: 1, justifyContent: "center" }}>Back</button>
+            <Link className="btn btn-primary btn-lg" href={`/login?next=${encodeURIComponent(next)}`} style={{ flex: 2, justifyContent: "center" }}>Go to sign in</Link>
+          </div>
         </>
       )}
       {step === 2 && (
@@ -240,7 +298,7 @@ function Onboarding() {
           </div>
           <p className="sub" style={{ marginTop: 14 }}>{interests.length} selected{interests.length < 3 ? " — pick at least 3" : ""}</p>
           <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
-            <button className="btn btn-ghost btn-lg" type="button" onClick={() => setStep(1)} style={{ flex: 1, justifyContent: "center" }}>Back</button>
+            <button className="btn btn-ghost btn-lg" type="button" onClick={() => router.push(next)} style={{ flex: 1, justifyContent: "center" }}>Skip</button>
             <button className="btn btn-primary btn-lg" type="button" disabled={interests.length < 3} onClick={() => setStep(3)} style={{ flex: 2, justifyContent: "center" }}>Continue</button>
           </div>
         </>
@@ -260,7 +318,7 @@ function Onboarding() {
             <button className="switch" type="button" role="switch" aria-checked={remind} onClick={() => setRemind(!remind)} aria-label="Daily reminder" /></label>
           <div style={{ display: "flex", gap: 10, marginTop: 22 }}>
             <button className="btn btn-ghost btn-lg" type="button" onClick={() => setStep(2)} style={{ flex: 1, justifyContent: "center" }}>Back</button>
-            <button className="btn btn-primary btn-lg" type="button" onClick={finish} style={{ flex: 2, justifyContent: "center" }}>Finish setup</button>
+            <button className="btn btn-primary btn-lg" type="button" onClick={finish} disabled={busy} style={{ flex: 2, justifyContent: "center" }}>{busy ? "Saving…" : "Finish setup"}</button>
           </div>
         </>
       )}

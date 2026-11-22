@@ -81,12 +81,12 @@ export function Logo({ onDark, tagline }: { onDark?: boolean; tagline?: boolean 
   );
 }
 
-export function SectionHead({ eyebrow, title, lede, right, onDark }: { eyebrow?: React.ReactNode; title?: React.ReactNode; lede?: React.ReactNode; right?: React.ReactNode; onDark?: boolean }) {
+export function SectionHead({ eyebrow, title, lede, right, onDark, as: H = "h2" }: { eyebrow?: React.ReactNode; title?: React.ReactNode; lede?: React.ReactNode; right?: React.ReactNode; onDark?: boolean; /** "h1" when this heads the page. */ as?: "h1" | "h2" }) {
   return (
     <div className="section-head rv in">
       <div>
         {eyebrow && <span className={"eyebrow" + (onDark ? " on-dark" : "")}>{eyebrow}</span>}
-        {title && <h2 className="h1" style={{ marginTop: eyebrow ? 14 : 0 }}>{title}</h2>}
+        {title && <H className="h1" style={{ marginTop: eyebrow ? 14 : 0 }}>{title}</H>}
         {lede && <p className="lede" style={{ marginTop: 14, maxWidth: "52ch" }}>{lede}</p>}
       </div>
       {right}

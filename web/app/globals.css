@@ -1989,3 +1989,53 @@ input[type="range"],input[type="checkbox"],input[type="radio"],progress{accent-c
 .session-ready{display:flex;flex-direction:column;align-items:flex-start;gap:10px;max-width:760px}
 .session-ready>.btn{margin-top:8px}
 .session-ready>.textlink{margin-top:6px}
+
+/* ---------- Home sections (who we are, approach, voice, sharing, promise) ---------- */
+.hm-actions{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+.hm-intro{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:clamp(40px,6vw,96px);align-items:center}
+.hm-intro-copy{display:flex;flex-direction:column;align-items:flex-start;gap:22px}
+.hm-intro-copy .h1{max-width:15ch;margin:0}
+.hm-intro-copy .lede{max-width:46ch;margin:0}
+.hm-pillars{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.hm-pillars li{display:grid;grid-template-columns:56px 1fr;gap:18px;padding:26px 0;border-top:1px solid var(--n100)}
+.hm-pillars li:last-child{border-bottom:1px solid var(--n100)}
+.hm-num{font-family:var(--disp);font-size:14px;font-weight:600;color:var(--blue2);letter-spacing:.06em;padding-top:4px}
+.hm-pillars h3{font-size:20px;margin:0 0 6px;color:var(--deep)}
+.hm-pillars p{margin:0;font-size:14.5px;color:var(--n600);line-height:1.6;max-width:44ch}
+.hm-commit{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:18px}
+.hm-commit-card{background:var(--white);border:1px solid var(--n100);border-radius:var(--r-20);padding:28px 24px;display:flex;flex-direction:column;gap:12px;transition:transform .3s var(--ease),box-shadow .3s var(--ease),border-color .3s var(--ease)}
+.hm-commit-card:hover{transform:translateY(-4px);box-shadow:var(--shadow-1);border-color:var(--tint2)}
+.hm-commit-card h3{font-size:18px;margin:6px 0 0;color:var(--deep)}
+.hm-commit-card p{margin:0;font-size:14px;color:var(--n600);line-height:1.6}
+.hm-chip{width:46px;height:46px;border-radius:14px;background:var(--light);color:var(--blue2);display:inline-flex;align-items:center;justify-content:center}
+.hm-voice{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr);gap:clamp(36px,5vw,80px);align-items:center}
+.hm-voice-copy{display:flex;flex-direction:column;align-items:flex-start;gap:20px}
+.hm-voice-copy .h1,.hm-voice-copy .lede{margin:0}
+.hm-voice-copy .lede{max-width:44ch}
+.hm-voice .hm-voice-cards{margin-top:0}
+.hm-checks{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px;font-size:14.5px;color:var(--n700)}
+.hm-checks li{display:flex;align-items:center;gap:10px}
+.hm-checks .ic{color:var(--blue2);flex:none}
+.hm-share{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:14px}
+.hm-share li{display:grid;grid-template-columns:38px 1fr;gap:14px;align-items:start;font-size:14px;color:var(--tint1);line-height:1.5}
+.hm-share li>span{width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.12);color:#fff;display:inline-flex;align-items:center;justify-content:center}
+.hm-share b{display:block;color:#fff;font-weight:600;margin-bottom:2px}
+.split-card .sc-foot{flex-wrap:wrap}
+.hm-promise{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:clamp(28px,4vw,56px);align-items:stretch}
+.hm-quote{margin:0;background:var(--deep);color:#fff;border-radius:var(--r-24);padding:clamp(32px,4.5vw,60px);display:flex;flex-direction:column;gap:22px;position:relative;overflow:hidden}
+.hm-quote::after{content:"";position:absolute;right:-80px;bottom:-80px;width:260px;height:260px;border-radius:50%;background:radial-gradient(circle,rgba(66,94,175,.45),transparent 70%);pointer-events:none}
+.hm-qmark{font-family:Georgia,serif;font-size:64px;line-height:.6;color:var(--tint3)}
+.hm-quote blockquote{margin:0;font-family:var(--disp);font-size:clamp(20px,2.1vw,27px);line-height:1.45;letter-spacing:-.01em}
+.hm-quote figcaption{display:flex;align-items:center;gap:12px;font-size:13px;color:var(--tint2)}
+.hm-quote figcaption b{color:#fff;font-weight:600}
+.hm-quote .mark{color:var(--tint1)}
+.hm-promise-side{display:grid;grid-template-columns:1fr;gap:12px;align-content:center}
+.hm-promise-side>div{display:flex;align-items:baseline;gap:14px;padding:18px 0;border-bottom:1px solid var(--n100)}
+.hm-promise-side b{font-family:var(--disp);font-size:clamp(30px,3vw,40px);font-weight:500;color:var(--blue2);min-width:2.6ch}
+.hm-promise-side span{font-size:14px;color:var(--n600)}
+.hm-promise-side .btn{justify-self:start;margin-top:14px}
+.hm-faq-actions{margin-top:auto;padding-top:48px;display:flex;gap:12px;flex-wrap:wrap}
+.news-done{margin-top:18px;font-size:14px;color:var(--tint1);display:flex;align-items:center;gap:8px}
+@media (max-width:1024px){.hm-commit{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:900px){.hm-intro,.hm-voice,.hm-promise{grid-template-columns:1fr}}
+@media (max-width:560px){.hm-commit{grid-template-columns:1fr}.hm-pillars li{grid-template-columns:40px 1fr;gap:12px}}
