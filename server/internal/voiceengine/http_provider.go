@@ -68,6 +68,9 @@ func NewHTTPProvider(c HTTPProviderConfig) *HTTPProvider {
 }
 
 // Generate implements VoiceProvider.
+// maxWorkerAudioBytes caps one rendered file read from a worker.
+var maxWorkerAudioBytes = 512 << 20
+
 func (p *HTTPProvider) Generate(ctx context.Context, req GenerateRequest) (*GenerateResult, error) {
 	req.ExpectedWorker.Engine = req.ExpectedWorker.Engine.Canonical()
 	if err := p.checkPin(req.ExpectedWorker); err != nil {
@@ -86,9 +89,15 @@ func (p *HTTPProvider) Generate(ctx context.Context, req GenerateRequest) (*Gene
 	if err := req.ExpectedWorker.verify(id); err != nil {
 		return nil, err
 	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 512<<20))
+	// Read one byte past the cap: a LimitReader alone would stop at the cap and
+	// return the first 512 MiB as if it were the whole render, which is cut-off
+	// audio cached and served as a success.
+	body, err := io.ReadAll(io.LimitReader(resp.Body, int64(maxWorkerAudioBytes)+1))
 	if err != nil {
 		return nil, &Error{Class: ClassTransient, Engine: p.engine, Msg: "read audio: " + err.Error()}
+	}
+	if len(body) > maxWorkerAudioBytes {
+		return nil, &Error{Class: ClassPermanent, Engine: p.engine, Msg: "worker audio exceeds the size limit"}
 	}
 	if len(body) == 0 {
 		return nil, &Error{Class: ClassModel, Engine: p.engine, Msg: "worker returned empty audio"}

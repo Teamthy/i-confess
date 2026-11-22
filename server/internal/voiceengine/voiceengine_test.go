@@ -546,3 +546,30 @@ func TestValidateScript(t *testing.T) {
 		t.Fatalf("editorial URL refused: %v", err)
 	}
 }
+
+// Audio past the read cap used to come back truncated and successful; a
+// cut-off render must be an error, never a cached asset.
+func TestHTTPProviderRefusesOversizedAudio(t *testing.T) {
+	old := maxWorkerAudioBytes
+	maxWorkerAudioBytes = 16
+	defer func() { maxWorkerAudioBytes = old }()
+	size := 16
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "audio/wav")
+		w.Header().Set("X-Engine", "cosyvoice")
+		w.Header().Set("X-Engine-Version", testRevision)
+		_, _ = w.Write([]byte(strings.Repeat("a", size)))
+	}))
+	defer srv.Close()
+	p := NewCosyVoiceProvider(srv.URL, "tok")
+	req := GenerateRequest{ExpectedWorker: WorkerIdentity{EngineCosyVoice, testRevision}, Chunks: []Chunk{{Text: "hi"}}}
+
+	if res, err := p.Generate(context.Background(), req); err != nil || len(res.Audio) != 16 {
+		t.Fatalf("audio at the cap: %v (%d bytes)", err, len(res.Audio))
+	}
+	size = 17
+	res, err := p.Generate(context.Background(), req)
+	if err == nil || Classify(err) != ClassPermanent {
+		t.Fatalf("oversized audio returned %v, %v; want a permanent error", res, err)
+	}
+}

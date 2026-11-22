@@ -182,3 +182,30 @@ func TestClaudeParserFailuresFallBackToKeyword(t *testing.T) {
 		})
 	}
 }
+
+// The keyword parser (the fallback whenever no model is configured) used to
+// read only "30" or "long": "15 minutes" came back as the 10-minute default.
+func TestKeywordParserReadsSpokenDurations(t *testing.T) {
+	cases := map[string]int{
+		"15 minutes on fear":                    900,
+		"Fifteen minutes before a hard meeting": 900,
+		"give me an hour of peace":              3600,
+		"half an hour on hope":                  1800,
+		"20m of faith":                          1200,
+		"2 hrs of prayer":                       7200,
+		"forty-five minutes on healing":         2700,
+		"I am anxious about money":              DefaultDurationSeconds, // "a m" is not a length
+		"Psalm 30 for my family":                DefaultDurationSeconds, // a bare number is not a length
+		"something long on gratitude":           1800,
+	}
+	catalog := []Category{{Slug: "peace", Name: "Peace"}}
+	for utterance, want := range cases {
+		got, err := (KeywordParser{}).Parse(context.Background(), Request{Utterance: utterance}, catalog)
+		if err != nil {
+			t.Fatalf("%q: %v", utterance, err)
+		}
+		if got.Duration != want {
+			t.Errorf("%q: duration %d, want %d", utterance, got.Duration, want)
+		}
+	}
+}

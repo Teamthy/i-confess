@@ -3,7 +3,9 @@ package ai
 import (
 	"context"
 	"errors"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/Teamthy/i-confess/internal/engine"
@@ -152,7 +154,9 @@ func (KeywordParser) Parse(_ context.Context, req Request, catalog []Category) (
 	dur := req.Duration
 	if dur == 0 {
 		dur = DefaultDurationSeconds
-		if strings.Contains(lower, "long") || strings.Contains(lower, "30") {
+		if secs, ok := spokenDuration(lower); ok {
+			dur = secs
+		} else if strings.Contains(lower, "long") {
 			dur = 1800
 		}
 	}
@@ -207,4 +211,42 @@ func (p Parsed) ToEngineRequest(ids map[string]string) (engine.Request, error) {
 		Strategy:        engine.NormalizeStrategy(start),
 		VoiceID:         p.VoiceID,
 	}, nil
+}
+
+// numberWords covers how people say a session length out loud.
+var numberWords = map[string]int{
+	"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9,
+	"ten": 10, "eleven": 11, "twelve": 12, "fifteen": 15, "twenty": 20, "thirty": 30, "forty": 40,
+	"forty-five": 45, "fortyfive": 45, "fifty": 50, "sixty": 60, "ninety": 90, "a": 1, "an": 1,
+}
+
+// Digits may take a bare unit ("15m", "2h"); words need a spelled-out one,
+// so "I am anxious" is not read as "a m(inute)".
+var durationPattern = regexp.MustCompile(`\b(?:(half an hour|half-hour)|(\d{1,3})\s*(minutes?|mins?|m|hours?|hrs?|h)\b|([a-z]+(?:-[a-z]+)?)\s+(minutes?|mins?|hours?|hrs?)\b)`)
+
+// spokenDuration finds the first stated length in an utterance: "15 minutes",
+// "fifteen minutes", "an hour", "2 hrs", "half an hour". It reports false when
+// none is stated, so the caller keeps its default instead of guessing from a
+// stray number ("Psalm 30" is not a length).
+func spokenDuration(lower string) (int, bool) {
+	for _, m := range durationPattern.FindAllStringSubmatch(lower, -1) {
+		if m[1] != "" {
+			return 1800, true
+		}
+		var n int
+		unit := m[3]
+		if m[2] != "" {
+			n, _ = strconv.Atoi(m[2])
+		} else {
+			n, unit = numberWords[m[4]], m[5]
+		}
+		if n <= 0 {
+			continue
+		}
+		if strings.HasPrefix(unit, "h") {
+			return n * 3600, true
+		}
+		return n * 60, true
+	}
+	return 0, false
 }
