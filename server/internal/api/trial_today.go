@@ -59,10 +59,11 @@ func (h *Handler) startTrialToday(w http.ResponseWriter, r *http.Request) {
 	for _, c := range cats {
 		idBySlug[c.Slug] = c.ID
 	}
-	var catIDs []string
+	var catIDs, catSlugs []string
 	for _, slug := range day.Categories {
 		if id, ok := idBySlug[slug]; ok {
 			catIDs = append(catIDs, id)
+			catSlugs = append(catSlugs, slug)
 		}
 	}
 	if len(catIDs) == 0 {
@@ -82,7 +83,9 @@ func (h *Handler) startTrialToday(w http.ResponseWriter, r *http.Request) {
 	// the day, so the response is the prefill only.
 	if day.Custom {
 		resp["action"] = "open_builder"
-		resp["builder"] = map[string]any{"category_ids": catIDs, "duration_seconds": duration}
+		// Both forms: ids for API clients, slugs for routes that are keyed by
+		// slug (the web builder's ?cat=).
+		resp["builder"] = map[string]any{"category_ids": catIDs, "category_slugs": catSlugs, "duration_seconds": duration}
 		resp["sessions"] = []any{}
 		httpx.WriteJSON(w, http.StatusOK, resp)
 		return

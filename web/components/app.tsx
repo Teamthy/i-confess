@@ -13,6 +13,7 @@ import { SoundSettings } from "./sound-settings";
 import { SessionPlayer } from "./session-player";
 import { SchedulePage, ScheduleReminderSettings } from "./schedules";
 import { useAuth } from "@/lib/auth-context";
+import { TrialCard } from "./trial";
 
 const SIDE_LIBRARY: [string, string, string][] = [
   ["/app", "home", "Home"],
@@ -285,6 +286,7 @@ function AppHome() {
         <Link className="icon-btn" href="/app/notifications" aria-label="Notifications" title="Notifications"><Icon n="bell" s={17} /></Link>
       </div>
       <Head title={`${greet()}, ${u.name.split(" ")[0]}.`} sub="What do you want to return to today?" />
+      <TrialCard compact />
       <HandoffCard />
       <div className="app-section"><div className="section-head"><h3>Morning Mix</h3><Link className="textlink" href="/app/recommendations">Why? <Icon n="arrow" s={12} /></Link></div>
         <div className="big-tile rv in" style={{ background: "linear-gradient(140deg, var(--navy), var(--deep))" }}><div><span className="eyebrow on-dark">Made for you</span><h3 style={{ marginTop: 8 }}>Built from the categories you follow</h3><p>One confession from each of your areas — queued, never autoplayed.</p></div><MixBtn cats={recCats.map((c) => c!.slug)} label="Play Morning Mix" /></div></div>
@@ -347,7 +349,7 @@ function AppSession({ slug }: { slug: string }) {
 function Builder() {
   const sp = useSearchParams();
   const [cat, setCat] = useState(sp.get("cat") || "peace");
-  const [min, setMin] = useState(5);
+  const [min, setMin] = useState(() => { const m = Number(sp.get("min")); return [5, 10, 15].includes(m) ? m : m > 10 ? 15 : 5; });
   const [tone, setTone] = useState("any");
   const [out, setOut] = useState<Session | null>(null);
   const audio = useAudio(); const router = useRouter();
@@ -474,18 +476,16 @@ function SpeedChips() {
 }
 
 function Sub({ manage }: { manage?: boolean }) {
-  const st = useApp(); const toast = useToast();
-  const prem = st.user!.plan !== "free";
+  const st = useApp();
+  const paid = st.user!.plan !== "free" && st.user!.plan !== "trial";
   return (
     <>
-      <Head title={manage ? "Manage subscription" : "Subscription"} sub={prem ? "Premium active — 7-day trial" : "Free plan"} />
-      {prem && (
-        <div className="form-card" style={{ maxWidth: 640, marginBottom: 24 }}>
-          {[["Current plan", st.user!.plan === "annual" ? "Premium Annual" : "Premium Monthly"], ["Renewal", "In 30 days (demo)"], ["Benefits", "Additional licensed voices when available · offline downloads · long sessions"]].map(([b, s]) => <div className="setting-row" key={b}><div><b>{b}</b><span>{s}</span></div></div>)}
-          <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
-            <button className="btn btn-ghost btn-sm" onClick={() => { mutate((s) => { s.user!.plan = "free"; }); track("subscription_cancelled"); toast("Subscription cancelled — you keep Premium until period end"); }}>Cancel subscription</button>
-            <button className="btn btn-ghost btn-sm" onClick={() => toast("Purchase restore checked — nothing to restore (demo).")}>Restore purchase</button>
-          </div>
+      <Head title={manage ? "Manage subscription" : "Subscription"} sub={paid ? "Premium" : st.user!.plan === "trial" ? "Premium trial" : "Free plan"} />
+      <TrialCard />
+      {paid && (
+        <div className="feature-notice" style={{ maxWidth: 640 }}>
+          <b>Premium is active.</b>
+          <p>Billing, renewal, cancellation and restoring a purchase are handled by the App Store or Google Play, wherever you subscribed.</p>
         </div>
       )}
       <div className="plan-grid">
@@ -494,7 +494,9 @@ function Sub({ manage }: { manage?: boolean }) {
             <h3 className="h3">{p.name}</h3>
             <div><span className="price">{p.prices.USD}</span> <span className="per">/ {p.interval} · {p.prices.NGN}</span></div>
             <ul>{["Additional licensed voices when available", "Offline downloads (mobile)", "Longer sessions", "7-day trial"].map((f) => <li key={f}><Icon n="check" s={14} /> {f}</li>)}</ul>
-            <button className={"btn " + (p.interval === "year" ? "btn-light" : "btn-primary")} onClick={() => { mutate((s) => { s.user!.plan = p.id; }); track("subscription_started", { plan: p.id }); toast("Premium trial started"); }}>{prem ? "Switch to " + p.name : "Start 7-day trial"}</button>
+            {/* Purchases are verified store receipts (IC-003); the web cannot take
+                payment, so it sends the listener to the app rather than faking one. */}
+            <Link className={"btn " + (p.interval === "year" ? "btn-light" : "btn-primary")} href="/download">Subscribe in the app</Link>
           </div>
         ))}
       </div>

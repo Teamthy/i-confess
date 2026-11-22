@@ -226,7 +226,8 @@ final class Entitlements {
 
 /// An optional onboarding step (§12). Advisory only — never a gate.
 final class CompletionStep {
-  const CompletionStep({required this.key, required this.label, required this.done});
+  const CompletionStep(
+      {required this.key, required this.label, required this.done});
 
   final String key;
   final String label;
@@ -240,7 +241,8 @@ final class CompletionStep {
 }
 
 final class ProfileCompletion {
-  const ProfileCompletion({this.completed = 0, this.total = 0, this.steps = const []});
+  const ProfileCompletion(
+      {this.completed = 0, this.total = 0, this.steps = const []});
 
   final int completed;
   final int total;
@@ -286,10 +288,10 @@ final class Bootstrap {
 
     return Bootstrap(
       account: Account.fromJson(user is Map<String, dynamic> ? user : const {}),
-      profile:
-          Profile.fromJson(profile is Map<String, dynamic> ? profile : const {}),
-      preferences:
-          Preferences.fromJson(prefs is Map<String, dynamic> ? prefs : const {}),
+      profile: Profile.fromJson(
+          profile is Map<String, dynamic> ? profile : const {}),
+      preferences: Preferences.fromJson(
+          prefs is Map<String, dynamic> ? prefs : const {}),
       entitlements:
           Entitlements.fromJson(ents is Map<String, dynamic> ? ents : const {}),
       interests: (json['interests'] is List)
@@ -487,14 +489,20 @@ final class Confession {
         tags: (json['tags'] is List)
             ? (json['tags'] as List).whereType<String>().toList()
             : (json['tags'] is String && (json['tags'] as String).isNotEmpty)
-                ? (json['tags'] as String).split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList()
+                ? (json['tags'] as String)
+                    .split(',')
+                    .map((s) => s.trim())
+                    .where((s) => s.isNotEmpty)
+                    .toList()
                 : const [],
         language: _str(json, 'language', 'en'),
         status: _str(json, 'status'),
         author: _str(json, 'author'),
         version: _int(json, 'version'),
-        variants: _list(json['variants']).map(ConfessionVariant.fromJson).toList(),
-        scriptures: _list(json['scriptures']).map(ScriptureRef.fromJson).toList(),
+        variants:
+            _list(json['variants']).map(ConfessionVariant.fromJson).toList(),
+        scriptures:
+            _list(json['scriptures']).map(ScriptureRef.fromJson).toList(),
       );
 }
 
@@ -818,8 +826,7 @@ final class SessionPreview {
   /// remains the single author of what a plan is called.
   final String display;
 
-  factory SessionPreview.fromJson(Map<String, dynamic> json) =>
-      SessionPreview(
+  factory SessionPreview.fromJson(Map<String, dynamic> json) => SessionPreview(
         targetSeconds: _int(json, 'target_seconds'),
         actualSeconds: _int(json, 'actual_seconds'),
         totalItems: _int(json, 'total_items'),
@@ -876,7 +883,8 @@ final class SessionTemplate {
       id: _str(t, 'id'),
       name: _str(t, 'name'),
       description: _str(t, 'description'),
-      categoryIds: (t['category_ids'] as List?)?.whereType<String>().toList() ?? const [],
+      categoryIds: (t['category_ids'] as List?)?.whereType<String>().toList() ??
+          const [],
       voiceId: _str(t, 'voice_id'),
       isPublic: _bool(t, 'is_public'),
       shareToken: _str(t, 'share_token'),
@@ -1359,8 +1367,7 @@ final class Recommendations {
     final rawSignals = json['signals'];
     return Recommendations(
       categories: _list(json['categories']).map(Category.fromJson).toList(),
-      confessions:
-          _list(json['confessions']).map(Confession.fromJson).toList(),
+      confessions: _list(json['confessions']).map(Confession.fromJson).toList(),
       personalized: _bool(json, 'personalized'),
       listenAgain:
           _list(json['listen_again']).map(ListenAgain.fromJson).toList(),
@@ -1442,7 +1449,8 @@ final class Subscription {
   /// must never be used to infer Premium (it can describe an expired purchase).
   factory Subscription.fromVerification(Map<String, dynamic> json) {
     final entitlements = json['entitlements'];
-    final premium = json['verified'] == true && entitlements is Map &&
+    final premium = json['verified'] == true &&
+        entitlements is Map &&
         (entitlements['Plan'] ?? entitlements['plan']) == 'premium';
     return Subscription(
       plan: premium ? 'premium' : 'free',
@@ -1592,8 +1600,9 @@ final class TrialDay {
         // Categories are category slugs, so this is a string list. The shared
         // _list helper only yields maps, which would have decoded every slug
         // into the string form of an empty map.
-        categories: (json['categories'] as List?)?.whereType<String>().toList() ??
-            const <String>[],
+        categories:
+            (json['categories'] as List?)?.whereType<String>().toList() ??
+                const <String>[],
         duration: _int(json, 'duration'),
         sessionCount: _int(json, 'session_count', 1),
         personalized: _bool(json, 'personalized'),
@@ -1601,6 +1610,99 @@ final class TrialDay {
         custom: _bool(json, 'custom'),
         summary: _bool(json, 'summary'),
       );
+}
+
+/// The listener's trial right now: its lifecycle state, today's journey day
+/// (personalised by the server) and the days already completed.
+final class TrialOverview {
+  const TrialOverview({
+    this.state = '',
+    this.currentDay = 0,
+    this.today,
+    this.completedDays = const <int>[],
+  });
+
+  /// ELIGIBLE, ACTIVE, EXPIRING, EXPIRED or CONVERTED.
+  final String state;
+  final int currentDay;
+  final TrialDay? today;
+  final List<int> completedDays;
+
+  bool get eligible => state == 'ELIGIBLE';
+  bool get running => state == 'ACTIVE' || state == 'EXPIRING';
+
+  factory TrialOverview.fromJson(Map<String, dynamic> json) => TrialOverview(
+        state: _str(json, 'state'),
+        currentDay: _int(json, 'current_day'),
+        today: json['today'] is Map<String, dynamic>
+            ? TrialDay.fromJson(json['today'] as Map<String, dynamic>)
+            : null,
+        completedDays: (json['completed_days'] as List?)
+                ?.whereType<num>()
+                .map((n) => n.toInt())
+                .toList() ??
+            const <int>[],
+      );
+}
+
+/// One session the trial built for today, with its slot label (Day 2's
+/// "Morning" / "Evening"; empty otherwise).
+final class TrialTodaySession {
+  const TrialTodaySession(
+      {required this.sessionId, this.label = '', this.title = ''});
+  final String sessionId;
+  final String label;
+  final String title;
+}
+
+/// What POST /subscriptions/trial/today did: built sessions to [play] or
+/// [review], or handed back the builder prefilled ([openBuilder]).
+final class TrialTodayResult {
+  const TrialTodayResult({
+    this.day = 0,
+    this.action = '',
+    this.sessions = const <TrialTodaySession>[],
+    this.builderCategoryIds = const <String>[],
+    this.builderDurationSeconds = 0,
+    this.premiumVoiceAvailable,
+  });
+
+  final int day;
+  final String action;
+  final List<TrialTodaySession> sessions;
+  final List<String> builderCategoryIds;
+  final int builderDurationSeconds;
+
+  /// Only set on the Premium-voice day; false means the standard voice was used.
+  final bool? premiumVoiceAvailable;
+
+  bool get openBuilder => action == 'open_builder';
+
+  factory TrialTodayResult.fromJson(Map<String, dynamic> json) {
+    final builder = json['builder'] is Map<String, dynamic>
+        ? json['builder'] as Map<String, dynamic>
+        : const <String, dynamic>{};
+    return TrialTodayResult(
+      day: _int(json, 'day'),
+      action: _str(json, 'action'),
+      sessions: _list(json['sessions']).map((s) {
+        final session = s['session'] is Map<String, dynamic>
+            ? s['session'] as Map<String, dynamic>
+            : const <String, dynamic>{};
+        return TrialTodaySession(
+            sessionId: _str(session, 'id'),
+            label: _str(s, 'label'),
+            title: _str(session, 'title'));
+      }).toList(),
+      builderCategoryIds:
+          (builder['category_ids'] as List?)?.whereType<String>().toList() ??
+              const <String>[],
+      builderDurationSeconds: _int(builder, 'duration_seconds'),
+      premiumVoiceAvailable: json['premium_voice_available'] is bool
+          ? json['premium_voice_available'] as bool
+          : null,
+    );
+  }
 }
 
 /// One measured day of the trial journey.
@@ -1710,8 +1812,10 @@ final class TrialStatus {
 }
 
 /// Parses a list endpoint, tolerating both a bare array and a wrapped one.
-List<T> parseList<T>(Object? source, T Function(Map<String, dynamic>) fromJson) {
+List<T> parseList<T>(
+    Object? source, T Function(Map<String, dynamic>) fromJson) {
   if (source is List) return _list(source).map(fromJson).toList();
-  if (source is Map<String, dynamic>) return _list(source['data']).map(fromJson).toList();
+  if (source is Map<String, dynamic>)
+    return _list(source['data']).map(fromJson).toList();
   return const [];
 }

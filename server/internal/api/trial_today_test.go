@@ -133,7 +133,11 @@ func TestTrialTodayBuildsWhatEachDayDeclares(t *testing.T) {
 	if status != http.StatusOK || body["action"] != "open_builder" || len(body["sessions"].([]any)) != 0 {
 		t.Fatalf("day 6: %d %v", status, body)
 	}
-	if ids := body["builder"].(map[string]any)["category_ids"].([]any); len(ids) != 2 {
+	builder := body["builder"].(map[string]any)
+	if ids := builder["category_ids"].([]any); len(ids) != 2 {
 		t.Fatalf("day 6 builder categories = %v", ids)
+	}
+	if slugs := builder["category_slugs"].([]any); len(slugs) != 2 || slugs[0] != "purpose" {
+		t.Fatalf("day 6 builder slugs = %v", slugs)
 	}
 }

@@ -9,6 +9,7 @@ import '../../core/theme/tokens.dart';
 import '../../core/widgets/category_card.dart';
 import '../../core/widgets/screen.dart';
 import 'home_providers.dart';
+import 'trial_card.dart';
 
 /// The signed-in landing surface.
 ///
@@ -40,6 +41,7 @@ class HomeScreen extends ConsumerWidget {
         children: [
           const _Greeting(),
           const SizedBox(height: IConfess.space6),
+          const TrialTodayCard(),
           const _DailySessionCard(),
           const SizedBox(height: IConfess.space3),
           Align(

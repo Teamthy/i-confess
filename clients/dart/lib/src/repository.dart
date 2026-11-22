@@ -202,7 +202,8 @@ final class AuthRepository extends Repository {
   Future<Loadable<List<AuthSession>>> sessions() async {
     try {
       final json = await api.getAuthSessions();
-      return Loadable.loaded(parseList(json['data'] ?? json, AuthSession.fromJson));
+      return Loadable.loaded(
+          parseList(json['data'] ?? json, AuthSession.fromJson));
     } on ApiException catch (e) {
       return Loadable.failed(e);
     }
@@ -300,7 +301,8 @@ final class SignInFailed extends SignInOutcome {
   /// wrong when they are on a train makes them change one that was never wrong.
   bool get isOffline => error is NetworkException;
 
-  bool get isRateLimited => error is ApiError && (error as ApiError).isRateLimited;
+  bool get isRateLimited =>
+      error is ApiError && (error as ApiError).isRateLimited;
 }
 
 /// Profile, preferences and interests.
@@ -351,7 +353,8 @@ final class ProfileRepository extends Repository {
         decode: Preferences.fromJson,
       );
 
-  Future<WriteResult<Preferences>> updatePreferences(Map<String, dynamic> changes) =>
+  Future<WriteResult<Preferences>> updatePreferences(
+          Map<String, dynamic> changes) =>
       write(() => api.patchMePreferences(changes), Preferences.fromJson);
 
   Future<Loadable<Interests>> interests() async {
@@ -364,7 +367,8 @@ final class ProfileRepository extends Repository {
 
   /// Replaces the user's stated interests. Inferred ones are left alone: this
   /// endpoint speaks only for what the user chose (§15).
-  Future<WriteResult<Interests>> setInterests(List<String> categoryIds) => write(
+  Future<WriteResult<Interests>> setInterests(List<String> categoryIds) =>
+      write(
         () => api.putMeInterests({'category_ids': categoryIds}),
         Interests.fromJson,
       );
@@ -392,8 +396,9 @@ final class ContentRepository extends Repository {
       cachedRead(
         key: 'catconf:$id',
         ttl: CacheTtl.categories,
-        fetch: () async =>
-            {'data': (await api.getCategoriesByIdConfessions(id))['data'] ?? []},
+        fetch: () async => {
+          'data': (await api.getCategoriesByIdConfessions(id))['data'] ?? []
+        },
         decode: (json) => parseList(json['data'], Confession.fromJson),
       );
 
@@ -474,7 +479,8 @@ final class ContentRepository extends Repository {
   /// replaying a stored session: the previous links will have expired.
   Future<Loadable<ListeningSession>> session(String id) async {
     try {
-      return Loadable.loaded(ListeningSession.fromJson(await api.getSessionsById(id)));
+      return Loadable.loaded(
+          ListeningSession.fromJson(await api.getSessionsById(id)));
     } on ApiException catch (e) {
       return Loadable.failed(e);
     }
@@ -538,8 +544,7 @@ final class ContentRepository extends Repository {
       );
 
   /// Completes the session.
-  Future<WriteResult<Map<String, dynamic>>> completeSession(String id) =>
-      write(
+  Future<WriteResult<Map<String, dynamic>>> completeSession(String id) => write(
         () => api.postSessionsByIdComplete(id),
         (json) => json,
       );
@@ -552,7 +557,8 @@ final class ContentRepository extends Repository {
   Future<Loadable<List<ListeningSession>>> mySessions() async {
     try {
       final json = await api.getSessions();
-      return Loadable.loaded(parseList(json['sessions'], ListeningSession.fromJson));
+      return Loadable.loaded(
+          parseList(json['sessions'], ListeningSession.fromJson));
     } on ApiException catch (e) {
       return Loadable.failed(e);
     }
@@ -616,7 +622,8 @@ final class ContentRepository extends Repository {
       final json = await api.getMeFavorites(type: 'confession');
       final favorites = parseList(json['data'], Favorite.fromJson);
       return Loadable.loaded(
-        favorites.any((f) => f.entityType == 'confession' && f.entityId == confessionId),
+        favorites.any(
+            (f) => f.entityType == 'confession' && f.entityId == confessionId),
       );
     } on ApiException catch (e) {
       return Loadable.failed(e);
@@ -635,7 +642,8 @@ final class LibraryRepository extends Repository {
   Future<Loadable<List<UserCollection>>> collections() => cachedRead(
         key: CacheKeys.collections,
         ttl: CacheTtl.library,
-        fetch: () async => {'data': (await api.getMeCollections())['data'] ?? []},
+        fetch: () async =>
+            {'data': (await api.getMeCollections())['data'] ?? []},
         decode: (json) => parseList(json['data'], UserCollection.fromJson),
       );
 
@@ -647,7 +655,8 @@ final class LibraryRepository extends Repository {
   /// means the user reorders rows that no longer exist.
   Future<Loadable<UserCollection>> collection(String id) async {
     try {
-      return Loadable.loaded(UserCollection.fromJson(await api.getMeCollectionsById(id)));
+      return Loadable.loaded(
+          UserCollection.fromJson(await api.getMeCollectionsById(id)));
     } on ApiException catch (e) {
       return Loadable.failed(e);
     }
@@ -665,7 +674,8 @@ final class LibraryRepository extends Repository {
         () => api.postMeCollections({
           'name': name,
           if (description.isNotEmpty) 'description': description,
-          if (visibility != null && visibility.isNotEmpty) 'visibility': visibility,
+          if (visibility != null && visibility.isNotEmpty)
+            'visibility': visibility,
           if (coverUrl != null && coverUrl.isNotEmpty) 'cover_url': coverUrl,
         }),
         UserCollection.fromJson,
@@ -768,7 +778,8 @@ final class LibraryRepository extends Repository {
   Future<Loadable<List<UserConfession>>> myConfessions() => cachedRead(
         key: CacheKeys.myConfessions,
         ttl: CacheTtl.library,
-        fetch: () async => {'data': (await api.getMeConfessions())['data'] ?? []},
+        fetch: () async =>
+            {'data': (await api.getMeConfessions())['data'] ?? []},
         decode: (json) => parseList(json['data'], UserConfession.fromJson),
       );
 
@@ -816,7 +827,8 @@ final class LibraryRepository extends Repository {
 
   /// Takes a confession offline. Premium-only, enforced server-side; a 402
   /// here is the upgrade prompt, not an error.
-  Future<WriteResult<DownloadTicket>> download(String confessionId, {String? voiceId}) =>
+  Future<WriteResult<DownloadTicket>> download(String confessionId,
+          {String? voiceId}) =>
       write(
         () => api.postMeDownloads({
           'confession_id': confessionId,
@@ -856,11 +868,13 @@ final class DownloadLibrary {
       .where((d) => d.expiresWithin(window, now: now))
       .toList(growable: false);
 
-  factory DownloadLibrary.fromJson(Map<String, dynamic> json) => DownloadLibrary(
+  factory DownloadLibrary.fromJson(Map<String, dynamic> json) =>
+      DownloadLibrary(
         downloads: parseList(json['downloads'], Download.fromJson),
         limit: (json['limit'] as num?)?.toInt() ?? 0,
         used: (json['used'] as num?)?.toInt() ?? 0,
-        offlineHoursAllowed: (json['offline_hours_allowed'] as num?)?.toInt() ?? 0,
+        offlineHoursAllowed:
+            (json['offline_hours_allowed'] as num?)?.toInt() ?? 0,
       );
 }
 
@@ -926,8 +940,8 @@ final class TemplateRepository extends Repository {
   Future<Loadable<List<SessionTemplate>>> templates() async {
     try {
       final json = await api.getTemplates();
-      return Loadable.loaded(
-          parseList(json['templates'] ?? json['data'] ?? json, SessionTemplate.fromJson));
+      return Loadable.loaded(parseList(
+          json['templates'] ?? json['data'] ?? json, SessionTemplate.fromJson));
     } on ApiException catch (e) {
       return Loadable.failed(e);
     }
@@ -935,7 +949,8 @@ final class TemplateRepository extends Repository {
 
   Future<Loadable<SessionTemplate>> template(String id) async {
     try {
-      return Loadable.loaded(SessionTemplate.fromJson(await api.getTemplatesById(id)));
+      return Loadable.loaded(
+          SessionTemplate.fromJson(await api.getTemplatesById(id)));
     } on ApiException catch (e) {
       return Loadable.failed(e);
     }
@@ -943,7 +958,8 @@ final class TemplateRepository extends Repository {
 
   Future<Loadable<SessionTemplate>> sharedTemplate(String token) async {
     try {
-      return Loadable.loaded(SessionTemplate.fromJson(await api.getTByToken(token)));
+      return Loadable.loaded(
+          SessionTemplate.fromJson(await api.getTByToken(token)));
     } on ApiException catch (e) {
       return Loadable.failed(e);
     }
@@ -1007,7 +1023,8 @@ final class CommunityRepository extends Repository {
 
   /// Block a story's anonymous author without exposing the account ID.
   Future<WriteResult<Map<String, dynamic>>> blockPostAuthor(String postId) =>
-      write(() => api.postCommunityPostsByIdBlockAuthor(postId), (json) => json);
+      write(
+          () => api.postCommunityPostsByIdBlockAuthor(postId), (json) => json);
 }
 
 /// Subscription plans, entitlements and trial.
@@ -1031,7 +1048,8 @@ final class SubscriptionRepository extends Repository {
 
   Future<Loadable<Subscription>> subscription() async {
     try {
-      return Loadable.loaded(Subscription.fromJson(await api.getSubscription()));
+      return Loadable.loaded(
+          Subscription.fromJson(await api.getSubscription()));
     } on ApiException catch (e) {
       return Loadable.failed(e);
     }
@@ -1059,6 +1077,22 @@ final class SubscriptionRepository extends Repository {
     }
   }
 
+  /// The listener's trial right now. Not cached: it changes when the trial
+  /// starts and every day after.
+  Future<Loadable<TrialOverview>> trialOverview() async {
+    try {
+      return Loadable.loaded(
+          TrialOverview.fromJson(await api.getSubscriptionsTrial()));
+    } on ApiException catch (e) {
+      return Loadable.failed(e);
+    }
+  }
+
+  /// Builds today's journey session(s). Safe to retry: the server returns the
+  /// sessions it already built for today.
+  Future<WriteResult<TrialTodayResult>> startTrialToday() =>
+      write(() => api.postSubscriptionsTrialToday(), TrialTodayResult.fromJson);
+
   /// The measured trial: which days were actually completed, and the funnel
   /// behind it.
   ///
@@ -1067,8 +1101,8 @@ final class SubscriptionRepository extends Repository {
   /// it show a day as unfinished that the listener completed a moment ago.
   Future<Loadable<TrialEngagement>> trialEngagement() async {
     try {
-      return Loadable.loaded(
-          TrialEngagement.fromJson(await api.getSubscriptionsTrialEngagement()));
+      return Loadable.loaded(TrialEngagement.fromJson(
+          await api.getSubscriptionsTrialEngagement()));
     } on ApiException catch (e) {
       return Loadable.failed(e);
     }
