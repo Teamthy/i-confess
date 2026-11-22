@@ -2,6 +2,8 @@ package api
 
 import (
 	"net/http"
+	"sort"
+	"strings"
 
 	"github.com/Teamthy/i-confess/internal/httpx"
 	"github.com/Teamthy/i-confess/internal/tracing"
@@ -14,14 +16,24 @@ func (h *Handler) promMetrics(w http.ResponseWriter, r *http.Request) {
 	accept := r.Header.Get("Accept")
 	isProm := accept == "text/plain" || r.URL.Query().Get("format") == "prom"
 
-	if h.metrics != nil && isProm {
+	if isProm {
 		// lightweight Prom text for Grafana agent
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
-		snap := h.metrics.Snapshot()
-		// Use AuthMetrics snapshot for counters already present
-		for k, v := range snap {
-			_, _ = w.Write([]byte(k + " " + itoa64(v) + "\n"))
+		var b strings.Builder
+		if h.metrics != nil {
+			// AuthMetrics counters, sorted so scrapes diff cleanly.
+			snap := h.metrics.Snapshot()
+			names := make([]string, 0, len(snap))
+			for k := range snap {
+				names = append(names, k)
+			}
+			sort.Strings(names)
+			for _, k := range names {
+				b.WriteString(k + " " + itoa64(snap[k]) + "\n")
+			}
 		}
+		h.latency.Snapshot().WriteProm(&b)
+		_, _ = w.Write([]byte(b.String()))
 		return
 	}
 	// JSON snapshot — includes cache hit rate if wired
@@ -49,6 +61,8 @@ func (h *Handler) promMetrics(w http.ResponseWriter, r *http.Request) {
 			return map[string]int64{}
 		}(),
 		"cache": cache,
+		// Request latency (p50/p95/p99 estimated from the histogram buckets).
+		"latency": h.latency.Snapshot(),
 	})
 }
 

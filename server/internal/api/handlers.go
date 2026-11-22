@@ -125,7 +125,9 @@ type Handler struct {
 	cacheBus   cache.Bus
 	cacheOwner string
 	// metrics counts security-relevant events for alerting (S83, S84).
-	metrics      *AuthMetrics
+	metrics *AuthMetrics
+	// latency is the request-latency histogram reported at /metrics.
+	latency      *RequestLatency
 	bibleMetrics *bibleOperationMetrics
 	// Store notification collaborators (IC-003, PR B). Nil means "resolve from
 	// the environment", which is what production does; tests supply them

@@ -677,5 +677,8 @@ func (h *Handler) Routes() http.Handler {
 	h.registerVoiceIntakeRoutes(mux, authed, voiceMgr, audioMgr)
 	h.registerVoiceOpsRoutes(mux)
 
-	return RequestIDMiddleware(tracing.Middleware(SecurityHeadersMiddleware(logRequests(mux), h.isProd)))
+	if h.latency == nil {
+		h.latency = NewRequestLatency()
+	}
+	return RequestIDMiddleware(tracing.Middleware(SecurityHeadersMiddleware(logRequests(mux, h.latency), h.isProd)))
 }

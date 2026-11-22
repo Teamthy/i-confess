@@ -6,13 +6,18 @@ import (
 	"time"
 )
 
-// logRequests is a minimal structured access-log middleware.
-func logRequests(next http.Handler) http.Handler {
+// logRequests is a minimal structured access-log middleware. It also feeds
+// the request-latency histogram, so every request is timed exactly once.
+func logRequests(next http.Handler, latency *RequestLatency) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		rec := &statusRecorder{ResponseWriter: w, status: 200}
 		next.ServeHTTP(rec, r)
-		log.Printf("%s %s %d %s", r.Method, r.URL.Path, rec.status, time.Since(start))
+		elapsed := time.Since(start)
+		if !latencyExcluded(r) {
+			latency.Observe(elapsed, rec.status)
+		}
+		log.Printf("%s %s %d %s", r.Method, r.URL.Path, rec.status, elapsed)
 	})
 }
 
