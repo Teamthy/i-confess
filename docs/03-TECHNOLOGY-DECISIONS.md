@@ -32,7 +32,7 @@ PHASE 02, for the runtime topology these choices have to support.
 
 | Layer | Choice | Version / size |
 |---|---|---|
-| Backend | Go, modular monolith | 1.25, **4 direct dependencies** |
+| Backend | Go, modular monolith | 1.26 (moved from 1.25 on 2026-11-22: the last 1.25 patch still carried reachable stdlib vulnerabilities), **4 direct dependencies** |
 | Database | PostgreSQL | 17, 64 tables, one dialect |
 | Cache | in-process TTL+SWR | `internal/cache`, 95 lines |
 | Rate limiting | Redis *or* per-process | `internal/ratelimit` |

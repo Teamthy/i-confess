@@ -66,7 +66,7 @@ fmt: ## Format the Go source
 # on their pull request.
 fmt-check: ## Fail if anything is unformatted
 	@command -v gofmt >/dev/null 2>&1 || { \
-	  echo "fmt-check: gofmt is not on PATH; install the Go toolchain (go1.25+)."; exit 1; }
+	  echo "fmt-check: gofmt is not on PATH; install the Go toolchain (go1.26+)."; exit 1; }
 	@cd $(SERVER) && files=$$(gofmt -l .); \
 	  if [ -n "$$files" ]; then echo "not gofmt-formatted:"; echo "$$files"; exit 1; fi
 
