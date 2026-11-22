@@ -682,6 +682,6 @@ full process — conception, audit, build, verify, deliver — is in
 make verify      # fmt-check, design-check, build, vet, lint, test
 ```
 
-Requires Go 1.25+ and a PostgreSQL 17 reachable at `TEST_DATABASE_URL`.
+Requires Go 1.26+ and a PostgreSQL 17 reachable at `TEST_DATABASE_URL`.
 Tests fail rather than skip without a database — a green suite always means a
 real database was exercised.
