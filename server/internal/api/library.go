@@ -8,6 +8,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/Teamthy/i-confess/internal/community"
 	"github.com/Teamthy/i-confess/internal/httpx"
 	"github.com/Teamthy/i-confess/internal/models"
 	"github.com/Teamthy/i-confess/internal/store"
@@ -362,6 +363,10 @@ func (h *Handler) exportData(w http.ResponseWriter, r *http.Request) {
 	favorites, _ := h.eng.ListFavorites(ctx, userID, "")
 	sessions, _ := h.sess.ListByUser(ctx, userID, 500)
 	schedules, _ := h.sched.ListByUser(ctx, userID)
+	history, _ := h.eng.History(ctx, userID, 100)
+	posts, _ := community.NewStore(h.db).ByAuthor(ctx, userID, 100)
+	journal, _ := h.study.ListJournal(ctx, userID, 200)
+	memory, _ := h.study.ListMemory(ctx, userID)
 
 	// Attachment disposition so a browser saves the file rather than rendering
 	// personal data inline.
@@ -383,6 +388,10 @@ func (h *Handler) exportData(w http.ResponseWriter, r *http.Request) {
 		"sessions":                 sessions,
 		"schedules":                schedules,
 		"my_confessions":           userConfessions,
+		"listening_history":        history,
+		"community_posts":          posts,
+		"journal":                  journal,
+		"memory_verses":            memory,
 		"excluded": []string{
 			"password hashes",
 			"session and refresh tokens",

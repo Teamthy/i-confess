@@ -1233,6 +1233,13 @@
   },
   {
     "method": "GET",
+    "path": "/confessions",
+    "auth": "public",
+    "summary": "Library index: every published confession with its slug and text",
+    "tag": "content"
+  },
+  {
+    "method": "GET",
     "path": "/confessions/{id}",
     "auth": "public",
     "summary": "One confession",
@@ -1755,6 +1762,62 @@
     "auth": "user",
     "summary": "Replace explicitly chosen interests",
     "tag": "profile"
+  },
+  {
+    "method": "GET",
+    "path": "/me/journal",
+    "auth": "user",
+    "summary": "List your private journal entries",
+    "tag": "study"
+  },
+  {
+    "method": "POST",
+    "path": "/me/journal",
+    "auth": "user",
+    "summary": "Add a private journal entry",
+    "tag": "study"
+  },
+  {
+    "method": "DELETE",
+    "path": "/me/journal/{id}",
+    "auth": "user",
+    "summary": "Delete a journal entry",
+    "tag": "study"
+  },
+  {
+    "method": "PATCH",
+    "path": "/me/journal/{id}",
+    "auth": "user",
+    "summary": "Edit a journal entry (row_version conflict protected)",
+    "tag": "study"
+  },
+  {
+    "method": "GET",
+    "path": "/me/memory",
+    "auth": "user",
+    "summary": "List verses in Scripture-memory practice",
+    "tag": "study"
+  },
+  {
+    "method": "POST",
+    "path": "/me/memory",
+    "auth": "user",
+    "summary": "Put a verse into memory practice",
+    "tag": "study"
+  },
+  {
+    "method": "DELETE",
+    "path": "/me/memory/{id}",
+    "auth": "user",
+    "summary": "Take a verse out of practice",
+    "tag": "study"
+  },
+  {
+    "method": "POST",
+    "path": "/me/memory/{id}/review",
+    "auth": "user",
+    "summary": "Record one recall; the server schedules the next",
+    "tag": "study"
   },
   {
     "method": "GET",
@@ -3347,6 +3410,13 @@
   },
   {
     "method": "GET",
+    "path": "/v1/confessions",
+    "auth": "public",
+    "summary": "Library index: every published confession with its slug and text",
+    "tag": "content"
+  },
+  {
+    "method": "GET",
     "path": "/v1/confessions/{id}",
     "auth": "public",
     "summary": "One confession",
@@ -3869,6 +3939,62 @@
     "auth": "user",
     "summary": "Replace explicitly chosen interests",
     "tag": "profile"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/me/journal",
+    "auth": "user",
+    "summary": "List your private journal entries",
+    "tag": "study"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/me/journal",
+    "auth": "user",
+    "summary": "Add a private journal entry",
+    "tag": "study"
+  },
+  {
+    "method": "DELETE",
+    "path": "/v1/me/journal/{id}",
+    "auth": "user",
+    "summary": "Delete a journal entry",
+    "tag": "study"
+  },
+  {
+    "method": "PATCH",
+    "path": "/v1/me/journal/{id}",
+    "auth": "user",
+    "summary": "Edit a journal entry (row_version conflict protected)",
+    "tag": "study"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/me/memory",
+    "auth": "user",
+    "summary": "List verses in Scripture-memory practice",
+    "tag": "study"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/me/memory",
+    "auth": "user",
+    "summary": "Put a verse into memory practice",
+    "tag": "study"
+  },
+  {
+    "method": "DELETE",
+    "path": "/v1/me/memory/{id}",
+    "auth": "user",
+    "summary": "Take a verse out of practice",
+    "tag": "study"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/me/memory/{id}/review",
+    "auth": "user",
+    "summary": "Record one recall; the server schedules the next",
+    "tag": "study"
   },
   {
     "method": "GET",

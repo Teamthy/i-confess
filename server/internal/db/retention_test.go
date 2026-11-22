@@ -56,8 +56,10 @@ func TestEveryApplicationTableHasRetentionAndVersionColumns(t *testing.T) {
 	// retry.
 	// 122 since 0035 added newsletter_subscriptions and contact_messages: the
 	// site's public forms used to acknowledge submissions and store nothing.
-	if count != 122 {
-		t.Errorf("application table count=%d, want 122", count)
+	// 124 since 0037 added journal_entries and memory_verses: the web journal
+	// and Scripture memory used to live only in the browser.
+	if count != 124 {
+		t.Errorf("application table count=%d, want 124", count)
 	}
 }
 

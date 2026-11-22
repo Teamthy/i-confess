@@ -117,6 +117,10 @@ var Policies = []TablePolicy{
 	// history is a record of what a person prayed about, which is exactly the
 	// kind of data a deletion request is usually about.
 	{Table: "playback_history", Action: Erase},
+	// ---- Private study data (0037): a journal and the verses someone is
+	// memorising are among the most personal things the service holds.
+	{Table: "journal_entries", Action: Erase},
+	{Table: "memory_verses", Action: Erase},
 	{Table: "playback_progress", Action: Erase},
 	{Table: "audio_playback_sessions", Action: Erase},
 	{Table: "audio_downloads", Action: Erase},

@@ -93,6 +93,7 @@ type Handler struct {
 	limiter ratelimit.Enforcer
 	// inbox stores the public site's newsletter sign-ups and contact messages.
 	inbox *store.PublicInboxStore
+	study *store.StudyStore
 	// aiParser maps builder utterances to categories (POST /ai/parse).
 	aiParser ai.Parser
 	// profiles owns profile, preferences and interests (S5, S14, S20).
@@ -206,6 +207,7 @@ func NewHandler(cfg Config, db *db.DB) *Handler {
 		limiter:      ratelimit.New(),
 		aiParser:     ai.KeywordParser{},
 		inbox:        store.NewPublicInboxStore(db),
+		study:        store.NewStudyStore(db),
 		profiles:     store.NewProfileStore(db),
 		verifiers:    map[string]oauth.Verifier{},
 		library:      store.NewLibraryStore(db),

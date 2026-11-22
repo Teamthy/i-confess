@@ -116,8 +116,8 @@ func TestPostgresSchemaLoads(t *testing.T) {
 	}
 	// 119 since migration 0032 dropped voice_licenses, the never-read orphan
 	// that made a third rights model look possible (VE-002).
-	if tables != 122 {
-		t.Errorf("expected 122 tables, got %d", tables)
+	if tables != 124 {
+		t.Errorf("expected 124 tables, got %d", tables)
 	}
 
 	var fks int
@@ -126,8 +126,8 @@ func TestPostgresSchemaLoads(t *testing.T) {
 		 WHERE constraint_type = 'FOREIGN KEY' AND table_schema = 'public'`).Scan(&fks); err != nil {
 		t.Fatalf("count foreign keys: %v", err)
 	}
-	if fks != 158 {
-		t.Errorf("expected 158 foreign keys, got %d", fks)
+	if fks != 160 {
+		t.Errorf("expected 160 foreign keys, got %d", fks)
 	}
 
 	var flags int

@@ -1,6 +1,7 @@
 package models
 
 import (
+	"encoding/json"
 	"strings"
 	"time"
 )
@@ -854,7 +855,10 @@ type UserPreferences struct {
 	PersonalizationEnabled bool   `json:"personalization_enabled"`
 	Language               string `json:"language"`
 	Theme                  string `json:"theme"`
-	UpdatedAt              string `json:"updated_at,omitempty"`
+	// ClientSettings is the web app's own settings object, stored verbatim
+	// (bounded and validated as a JSON object) so it follows the account.
+	ClientSettings json.RawMessage `json:"client_settings,omitempty"`
+	UpdatedAt      string          `json:"updated_at,omitempty"`
 }
 
 // UserInterest links a user to a category (PRD §14).

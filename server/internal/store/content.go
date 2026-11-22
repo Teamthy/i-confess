@@ -343,3 +343,26 @@ func placeholders(n int) string {
 	}
 	return out
 }
+
+// AllPublishedScriptures returns the Scripture references of every published
+// confession in one query, keyed by confession id, for the library index.
+func (s *ContentStore) AllPublishedScriptures(ctx context.Context) (map[string][]models.ScriptureRef, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT s.id,s.confession_id,s.book,COALESCE(s.chapter,0),COALESCE(s.verse,''),s.translation,s.is_direct_quote,COALESCE(s.notes,''),s.sort_order
+		 FROM scripture_references s
+		 JOIN confessions c ON c.id = s.confession_id AND c.deleted_at IS NULL AND c.status = 'published'
+		 WHERE s.deleted_at IS NULL ORDER BY s.confession_id, s.sort_order`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string][]models.ScriptureRef{}
+	for rows.Next() {
+		var sc models.ScriptureRef
+		if err := rows.Scan(&sc.ID, &sc.ConfessionID, &sc.Book, &sc.Chapter, &sc.Verse, &sc.Translation, &sc.IsDirectQuote, &sc.Notes, &sc.SortOrder); err != nil {
+			return nil, err
+		}
+		out[sc.ConfessionID] = append(out[sc.ConfessionID], sc)
+	}
+	return out, rows.Err()
+}

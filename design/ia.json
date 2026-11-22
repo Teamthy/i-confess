@@ -685,6 +685,51 @@
       "reason": "The newsletter form is on the public website (web/components/islands.tsx NewsletterForm); the mobile app has no newsletter screen."
     },
     {
+      "endpoint": "GET /confessions",
+      "category": "web-admin",
+      "reason": "The website's library pages and its account sync read the whole published library (web/lib/library-server.ts, web/lib/account-sync.tsx). Mobile reads per category."
+    },
+    {
+      "endpoint": "GET /me/journal",
+      "category": "web-admin",
+      "reason": "Web app journal (web/components/app.tsx JournalApp via web/lib/account-sync.tsx). No mobile journal screen yet."
+    },
+    {
+      "endpoint": "POST /me/journal",
+      "category": "web-admin",
+      "reason": "Web app journal: save an entry. No mobile journal screen yet."
+    },
+    {
+      "endpoint": "PATCH /me/journal/{id}",
+      "category": "web-admin",
+      "reason": "Web app journal: edit with row_version. No mobile journal screen yet."
+    },
+    {
+      "endpoint": "DELETE /me/journal/{id}",
+      "category": "web-admin",
+      "reason": "Web app journal: delete an entry. No mobile journal screen yet."
+    },
+    {
+      "endpoint": "GET /me/memory",
+      "category": "web-admin",
+      "reason": "Web app Scripture memory (MemoryApp). No mobile memory screen yet."
+    },
+    {
+      "endpoint": "POST /me/memory",
+      "category": "web-admin",
+      "reason": "Web app Scripture memory: add a verse. No mobile memory screen yet."
+    },
+    {
+      "endpoint": "POST /me/memory/{id}/review",
+      "category": "web-admin",
+      "reason": "Web app Scripture memory: record a recall. No mobile memory screen yet."
+    },
+    {
+      "endpoint": "DELETE /me/memory/{id}",
+      "category": "web-admin",
+      "reason": "Web app Scripture memory: remove a verse. No mobile memory screen yet."
+    },
+    {
       "endpoint": "POST /newsletter/unsubscribe",
       "category": "web-admin",
       "reason": "Reached from the link in newsletter mail, which opens the website page /newsletter/unsubscribe (web/components/islands.tsx NewsletterUnsubscribe); the mobile app has no newsletter screen."
