@@ -468,6 +468,11 @@ extension IConfessEndpoints on ApiClient {
   Future<Map<String, dynamic>> getSubscriptionsTrialEngagement() =>
       get('/subscriptions/trial/engagement');
 
+  /// Build today's trial-journey session(s); idempotent per day
+  Future<Map<String, dynamic>> postSubscriptionsTrialToday(
+          [Map<String, dynamic>? body]) =>
+      post('/subscriptions/trial/today', body);
+
   /// Finish the trial before store verification
   Future<Map<String, dynamic>> postSubscriptionsTrialConvert(
           [Map<String, dynamic>? body]) =>

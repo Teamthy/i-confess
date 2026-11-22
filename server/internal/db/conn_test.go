@@ -95,7 +95,8 @@ func replaceDatabaseName(url, name string) string {
 // silently fails to apply is caught here instead of by whatever query reaches
 // the missing table first. It moves by one with each new table - 0011 added
 // store_notifications, the ledger of store notifications applied to
-// subscriptions (IC-003, PR B); 0018 added trial_day_completions and
+// subscriptions (IC-003, PR B); 0034 added trial_day_sessions (G-48);
+// 0018 added trial_day_completions and
 // analytics_events, the measured trial journey and the persisted funnel
 // events (PHASE 41); 0019 added user_blocks and moderation_appeals, the
 // listener's self-service boundary and the answer to a moderation decision
@@ -115,8 +116,8 @@ func TestPostgresSchemaLoads(t *testing.T) {
 	}
 	// 119 since migration 0032 dropped voice_licenses, the never-read orphan
 	// that made a third rights model look possible (VE-002).
-	if tables != 119 {
-		t.Errorf("expected 119 tables, got %d", tables)
+	if tables != 120 {
+		t.Errorf("expected 120 tables, got %d", tables)
 	}
 
 	var fks int
@@ -125,8 +126,8 @@ func TestPostgresSchemaLoads(t *testing.T) {
 		 WHERE constraint_type = 'FOREIGN KEY' AND table_schema = 'public'`).Scan(&fks); err != nil {
 		t.Fatalf("count foreign keys: %v", err)
 	}
-	if fks != 155 {
-		t.Errorf("expected 155 foreign keys, got %d", fks)
+	if fks != 158 {
+		t.Errorf("expected 158 foreign keys, got %d", fks)
 	}
 
 	var flags int

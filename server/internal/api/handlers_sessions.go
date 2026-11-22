@@ -1,10 +1,12 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"net/http"
 
 	"github.com/Teamthy/i-confess/internal/engine"
+	"github.com/Teamthy/i-confess/internal/entitlements"
 	"github.com/Teamthy/i-confess/internal/httpx"
 	"github.com/Teamthy/i-confess/internal/sessions"
 	"github.com/Teamthy/i-confess/internal/store"
@@ -61,22 +63,7 @@ func (h *Handler) createSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Favorites + recency for content selection (§18)
-	favs, _ := h.eng.ListFavorites(r.Context(), h.userID(r), "confession")
-	favMap := map[string]bool{}
-	for _, f := range favs {
-		favMap[f.EntityID] = true
-	}
-	history, _ := h.eng.History(r.Context(), h.userID(r), 20)
-	recentMap := map[string]bool{}
-	for i, rec := range history {
-		if i >= 10 {
-			break
-		}
-		if rec.ConfessionID != "" {
-			recentMap[rec.ConfessionID] = true
-		}
-	}
+	favMap, recentMap := h.selectionHints(r.Context(), h.userID(r))
 
 	sess, err := h.engn.Build(r.Context(), engine.Request{
 		UserID:          h.userID(r),
@@ -93,48 +80,7 @@ func (h *Handler) createSession(w http.ResponseWriter, r *http.Request) {
 		// one is the guarantee that survives a future edit to the handler.
 		MaxDurationSeconds: ent.MaxSessionSeconds(),
 	})
-	if errors.Is(err, engine.ErrNoVoice) {
-		httpx.WriteJSON(w, http.StatusUnprocessableEntity, map[string]any{
-			"error":  "no available active voice",
-			"code":   "VOICE_UNAVAILABLE",
-			"reason": "voice_unavailable",
-		})
-		return
-	}
-	if errors.Is(err, engine.ErrNoContent) {
-		httpx.WriteJSON(w, http.StatusUnprocessableEntity, map[string]any{
-			"error":  "no published content available for the selected categories and voice",
-			"code":   "CONTENT_UNAVAILABLE",
-			"reason": "content_unavailable",
-		})
-		return
-	}
-	if errors.Is(err, engine.ErrDurationTooShort) || errors.Is(err, engine.ErrDurationTooLong) {
-		httpx.WriteJSON(w, http.StatusUnprocessableEntity, map[string]any{
-			"error":  err.Error(),
-			"code":   "DURATION_OUT_OF_BOUNDS",
-			"reason": "duration_out_of_bounds",
-		})
-		return
-	}
-	if errors.Is(err, engine.ErrDurationExceedsPlan) {
-		writePlanLimit(w, ent)
-		return
-	}
-	if errors.Is(err, engine.ErrNoExactFit) {
-		// Distinct from "no content": the library has material for these
-		// categories, it just cannot land exactly on the requested length
-		// without cutting a confession short, which we do not do.
-		httpx.WriteJSON(w, http.StatusUnprocessableEntity, map[string]any{
-			"error":  "no combination of complete confessions matches that exact length",
-			"code":   "EXACT_DURATION_UNAVAILABLE",
-			"reason": "exact_duration_unavailable",
-			"hint":   "choose a nearby length, or use the balanced strategy",
-		})
-		return
-	}
-	if err != nil {
-		httpx.WriteError(w, http.StatusInternalServerError, "failed to build session")
+	if writeEngineError(w, err, ent) {
 		return
 	}
 	// Optional metadata — client can name a session (long-form §22)
@@ -241,3 +187,75 @@ func validSessionStatus(s string) bool {
 }
 
 // ---------- Schedules ----------
+
+// selectionHints returns the listener's favourites and recently heard
+// confessions, which the engine uses to lean toward and away from (§18).
+func (h *Handler) selectionHints(ctx context.Context, userID string) (map[string]bool, map[string]bool) {
+	favs, _ := h.eng.ListFavorites(ctx, userID, "confession")
+	favMap := map[string]bool{}
+	for _, f := range favs {
+		favMap[f.EntityID] = true
+	}
+	history, _ := h.eng.History(ctx, userID, 20)
+	recentMap := map[string]bool{}
+	for i, rec := range history {
+		if i >= 10 {
+			break
+		}
+		if rec.ConfessionID != "" {
+			recentMap[rec.ConfessionID] = true
+		}
+	}
+	return favMap, recentMap
+}
+
+// writeEngineError maps an engine build failure to its HTTP response and
+// reports whether it wrote one. Shared by every path that builds a session,
+// so a listener sees the same reason whichever button they pressed.
+func writeEngineError(w http.ResponseWriter, err error, ent entitlements.Entitlements) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, engine.ErrNoVoice) {
+		httpx.WriteJSON(w, http.StatusUnprocessableEntity, map[string]any{
+			"error":  "no available active voice",
+			"code":   "VOICE_UNAVAILABLE",
+			"reason": "voice_unavailable",
+		})
+		return true
+	}
+	if errors.Is(err, engine.ErrNoContent) {
+		httpx.WriteJSON(w, http.StatusUnprocessableEntity, map[string]any{
+			"error":  "no published content available for the selected categories and voice",
+			"code":   "CONTENT_UNAVAILABLE",
+			"reason": "content_unavailable",
+		})
+		return true
+	}
+	if errors.Is(err, engine.ErrDurationTooShort) || errors.Is(err, engine.ErrDurationTooLong) {
+		httpx.WriteJSON(w, http.StatusUnprocessableEntity, map[string]any{
+			"error":  err.Error(),
+			"code":   "DURATION_OUT_OF_BOUNDS",
+			"reason": "duration_out_of_bounds",
+		})
+		return true
+	}
+	if errors.Is(err, engine.ErrDurationExceedsPlan) {
+		writePlanLimit(w, ent)
+		return true
+	}
+	if errors.Is(err, engine.ErrNoExactFit) {
+		// Distinct from "no content": the library has material for these
+		// categories, it just cannot land exactly on the requested length
+		// without cutting a confession short, which we do not do.
+		httpx.WriteJSON(w, http.StatusUnprocessableEntity, map[string]any{
+			"error":  "no combination of complete confessions matches that exact length",
+			"code":   "EXACT_DURATION_UNAVAILABLE",
+			"reason": "exact_duration_unavailable",
+			"hint":   "choose a nearby length, or use the balanced strategy",
+		})
+		return true
+	}
+	httpx.WriteError(w, http.StatusInternalServerError, "failed to build session")
+	return true
+}

@@ -51,8 +51,11 @@ func TestEveryApplicationTableHasRetentionAndVersionColumns(t *testing.T) {
 	// script or client reference anywhere in the repository (VE-002). Any future
 	// change to this number should come with the table that caused it: the count
 	// is here so that a table cannot appear or vanish without a decision.
-	if count != 119 {
-		t.Errorf("application table count=%d, want 119", count)
+	// 120 since migration 0034 added trial_day_sessions (G-48): the sessions
+	// the trial journey built for each day, which makes "start today" safe to
+	// retry.
+	if count != 120 {
+		t.Errorf("application table count=%d, want 120", count)
 	}
 }
 

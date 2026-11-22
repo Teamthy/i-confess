@@ -552,6 +552,7 @@
         "POST /subscriptions/trial",
         "GET /subscriptions/trial/status",
         "GET /subscriptions/trial/engagement",
+        "POST /subscriptions/trial/today",
         "POST /subscriptions/trial/convert",
         "GET /subscription",
         "POST /subscriptions/verify"

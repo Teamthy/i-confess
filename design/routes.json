@@ -2010,6 +2010,13 @@
   },
   {
     "method": "POST",
+    "path": "/subscriptions/trial/today",
+    "auth": "user",
+    "summary": "Build today's trial-journey session(s); idempotent per day",
+    "tag": "subscription"
+  },
+  {
+    "method": "POST",
     "path": "/subscriptions/verify",
     "auth": "user",
     "summary": "Verify store receipt (server-side, billing.Verifier)",
@@ -4085,6 +4092,13 @@
     "path": "/v1/subscriptions/trial/status",
     "auth": "user",
     "summary": "Current trial lifecycle state",
+    "tag": "subscription"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/subscriptions/trial/today",
+    "auth": "user",
+    "summary": "Build today's trial-journey session(s); idempotent per day",
     "tag": "subscription"
   },
   {

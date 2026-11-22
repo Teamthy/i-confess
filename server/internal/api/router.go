@@ -419,6 +419,7 @@ func (h *Handler) Routes() http.Handler {
 	})
 	h.route(mux, "GET /subscriptions/trial/status", "user", "subscription", "Current trial lifecycle state", authed, h.getTrialStatus)
 	h.route(mux, "GET /subscriptions/trial/engagement", "user", "subscription", "Measured trial journey: completed days and funnel", authed, h.getTrialEngagement)
+	h.route(mux, "POST /subscriptions/trial/today", "user", "subscription", "Build today's trial-journey session(s); idempotent per day", authed, h.startTrialToday)
 	h.route(mux, "POST /subscriptions/trial/convert", "user", "subscription", "Finish the trial before store verification", authed, func(w http.ResponseWriter, r *http.Request) {
 		idempotent(http.HandlerFunc(h.convertTrial)).ServeHTTP(w, r)
 	})
@@ -584,6 +585,7 @@ func (h *Handler) Routes() http.Handler {
 	})
 	h.route(mux, "GET /v1/subscriptions/trial/status", "user", "subscription", "Current trial lifecycle state", authed, h.getTrialStatus)
 	h.route(mux, "GET /v1/subscriptions/trial/engagement", "user", "subscription", "Measured trial journey: completed days and funnel", authed, h.getTrialEngagement)
+	h.route(mux, "POST /v1/subscriptions/trial/today", "user", "subscription", "Build today's trial-journey session(s); idempotent per day", authed, h.startTrialToday)
 	h.route(mux, "POST /v1/subscriptions/trial/convert", "user", "subscription", "Finish the trial before store verification", authed, func(w http.ResponseWriter, r *http.Request) {
 		idempotent(http.HandlerFunc(h.convertTrial)).ServeHTTP(w, r)
 	})

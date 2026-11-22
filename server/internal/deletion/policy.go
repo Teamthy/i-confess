@@ -193,6 +193,8 @@ var Policies = []TablePolicy{
 	// The measured journey is personal in the same way the trial row is: it
 	// names which days this person listened. Erased with the account.
 	{Table: "trial_day_completions", Action: Erase},
+	// Which sessions the journey built for each day: personal in the same way.
+	{Table: "trial_day_sessions", Action: Erase},
 	// A block names two people, and the row exists only because one of them
 	// asked for it. It goes when either leaves: it is not a record of anything
 	// that happened to the blocked account, it is a preference of the blocker.
