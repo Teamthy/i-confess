@@ -12,8 +12,10 @@ import { VoiceLibrary } from "@/components/voices";
 import { SoundSettings } from "./sound-settings";
 import { SessionPlayer } from "./session-player";
 import { SchedulePage, ScheduleReminderSettings } from "./schedules";
+import { useSchedules } from "@/lib/schedule-context";
 import { useAuth } from "@/lib/auth-context";
 import { appApi, useApiData, newIdempotencyKey } from "@/lib/app-api";
+import { addJournal, deleteJournal, addMemoryVerse, reviewMemoryVerse, libraryIndex } from "@/lib/account-sync";
 import { TrialCard } from "./trial";
 
 const SIDE_LIBRARY: [string, string, string][] = [
@@ -237,10 +239,7 @@ export function AppPage({ kind, slug, token }: { kind: string; slug?: string; to
     case "history": { const cnt: Record<string, number> = {}; st.history.forEach((h) => { cnt[h.slug] = (cnt[h.slug] || 0) + 1; }); const chart = Object.entries(cnt).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([sl, n]) => ({ c: confBySlug(sl), n })).filter((x) => x.c); return <><Head title="History" sub="Everything you've returned to" />
       {chart.length > 0 && <div className="app-section" style={{ marginTop: 0, marginBottom: 24 }}><div className="section-head"><h3>Your chart — most returned to</h3></div><div className="form-card">{chart.map((x, i) => <div className="list-row" key={x.c!.slug}><div className="lr-main"><h4>{i + 1}. {x.c!.title}</h4><p>{x.c!.category} · {x.n} return{x.n === 1 ? "" : "s"}</p></div><PlayChip slug={x.c!.slug} /></div>)}</div><p className="small" style={{ marginTop: 8 }}>Your data only. We never publish global charts.</p></div>}{st.history.length ? st.history.map((h, i) => <div className="list-row" key={i}><div className="lr-main"><h4>{h.title}</h4><p>{h.category} · {new Date(h.at).toLocaleString()}</p></div><PlayChip slug={h.slug} /></div>) : <EmptyState icon="clock" title="No history yet" sub="Play a confession or start a session and it will appear here." cta={<Link className="btn btn-primary" href="/app/explore">Explore</Link>} />}</>; }
     case "favorites": { const favs = st.favs.map(confBySlug).filter(Boolean); return <><Head title="Favorites" sub="Saved words" />{favs.length ? <div className="grid4">{favs.map((c) => <ConfTile key={c!.slug} c={c!} />)}</div> : <EmptyState icon="heart" title="No favorites yet" sub="Tap the heart on any confession to keep it here." />}</>; }
-    case "downloads": { const dl = st.downloads.filter((d) => !d.includes(":")).map(sessionBySlug).filter(Boolean); const pins = st.downloads.filter((d) => d.startsWith("cat:")); const packs = st.downloads.filter((d) => d.startsWith("pack:")); return <><Head title="Downloads" sub="Premium · available offline on this device" />
-      {packs.length > 0 && <div className="app-section" style={{ marginTop: 0 }}><div className="section-head"><h3>Mixtapes</h3></div><div className="downloads-grid">{packs.map((p) => { const pk = PACKS.find((x) => "pack:" + x.id === p); return pk ? <div className="tile" key={p}><span className="t-meta">Pack</span><h4>{pk.title}</h4><p>{pk.desc}</p></div> : null; })}</div></div>}
-      {pins.length > 0 && <div className="app-section"><div className="section-head"><h3>Pinned categories</h3></div><div className="downloads-grid downloads-categories">{pins.map((p) => { const c = catBySlug(p.slice(4)); return c ? <TCard key={p} c={c} /> : null; })}</div></div>}
-      {dl.length ? <div className="app-section"><div className="section-head"><h3>Sessions</h3></div><div className="downloads-grid">{dl.map((x) => <SessionTile key={x!.slug} s={x!} />)}</div></div> : !pins.length && !packs.length ? <EmptyState icon="dl" title="Nothing saved offline yet" sub="Pin a category, grab a mixtape pack, or save any session — Premium keeps it on this device for bad-network mornings." cta={<Link className="btn btn-primary" href="/app/sessions">Browse sessions</Link>} /> : null}</>; }
+    case "downloads": return <DownloadsPage />;
     case "schedule": return <SchedulePage />;
     case "routines": return <Routines />;
     case "notifications": return <><Head title="Notifications" /><div className="form-card" style={{ maxWidth: 560 }}><Switch title="Daily words" sub="A quiet nudge with today's confession" path="notifications.daily" /><Switch title="Reminders" sub="If you miss a morning, we offer the words again at midday" path="notifications.reminders" /><ScheduleReminderSettings /><Switch title="Community" sub="When a submission you follow is approved" path="notifications.community" /><Switch title="Weekly review digest" sub="One optional Sunday email: the words you returned to, plus a journal prompt. Never more." path="notifications.digest" /><div className="setting-row"><div><b>Quiet hours</b><span>Browser schedule reminders are suppressed in this window. Mobile push follows your account preference.</span></div><div style={{ display: "flex", gap: 8, alignItems: "center" }}><input type="time" defaultValue={st.settings.notifications.quietStart} style={{ width: 110 }} onChange={(e) => mutate((x) => { x.settings.notifications.quietStart = e.target.value; })} aria-label="Quiet hours start" /><span>–</span><input type="time" defaultValue={st.settings.notifications.quietEnd} style={{ width: 110 }} onChange={(e) => mutate((x) => { x.settings.notifications.quietEnd = e.target.value; })} aria-label="Quiet hours end" /></div></div></div></>;
@@ -291,6 +290,20 @@ function ExportBtn() {
   return <button className="btn btn-ghost btn-sm" onClick={go} disabled={busy}>{busy ? "Preparing…" : "Export"}</button>;
 }
 
+/** The listener's schedules (from the account when signed in). */
+function HomeRoutines() {
+  const sch = useSchedules();
+  if (sch.loading) return <p className="small">Loading…</p>;
+  if (!sch.schedules.length) return <div className="tile"><span className="t-meta">Routine</span><h4>Nothing yet</h4><p>Choose a time and a few areas, and the practice is ready when you are.</p><Link className="textlink" href="/app/schedule" style={{ marginTop: 4 }}>Set one up <Icon n="arrow" s={12} /></Link></div>;
+  return (
+    <div className="card-row snap" style={{ gridTemplateColumns: "repeat(2,1fr)" }}>
+      {sch.schedules.slice(0, 4).map((r) => (
+        <div className="tile" key={r.id}><span className="t-meta">{r.time} · {Math.round(r.duration_seconds / 60)} min</span><h4>{r.label}</h4><p>{(r.category_ids || []).map((c) => catBySlug(c)?.name).filter(Boolean).join(" · ") || (r.enabled ? "Ready when you are." : "Paused")}</p><Link className="textlink" href="/app/schedule" style={{ marginTop: 4 }}>Open <Icon n="arrow" s={12} /></Link></div>
+      ))}
+    </div>
+  );
+}
+
 function AppHome() {
   const st = useApp(); const u = st.user!;
   const cont = st.history[0] ? confBySlug(st.history[0].slug) : null;
@@ -321,9 +334,9 @@ function AppHome() {
       <div className="app-section"><div className="section-head"><h3>Your Journal</h3><Link className="textlink" href="/app/journal">Open <Icon n="arrow" s={12} /></Link></div>
         {st.journals.length ? <div className="list-row"><div className="lr-main"><h4>{st.journals[0].title}</h4><p>{st.journals[0].mood} · {new Date(st.journals[0].date).toLocaleDateString()}</p></div><Link className="btn btn-ghost btn-sm" href="/app/journal">Continue</Link></div> : <EmptyState icon="edit" title="A quiet page, kept for you" sub="Journal entries stay on your account. No review, no publishing — ever." cta={<Link className="btn btn-primary" href="/app/journal">Write today's entry</Link>} />}</div>
       <div className="app-section"><div className="section-head"><h3>More practice tools</h3></div>
-        <div className="card-row snap">{[["/app/memory", "Scripture memory", "Spaced returns to the verses your words stand on."], ["/app/partners", "Practice partner", "One confession a week, shared with consent."], ["/app/family", "Family space", "Guardians and kids, age-appropriate words. Premium."], ["/app/languages", "Languages", "English live; Yoruba, Igbo and Hausa in review."], ["/app/widget", "Home-screen widget", "Today's line, one tap from your phone."], ["/review-log", "Review log", "The transparency ledger for everything published."], ["/app/wrapped", "Year in Words", "Your private annual review of returned words."]].map(([h, t, x]) => <Link className="tile" href={h} key={h}><h4>{t}</h4><p>{x}</p><span className="textlink" style={{ marginTop: 6 }}>Open <Icon n="arrow" s={12} /></span></Link>)}</div></div>
+        <div className="card-row snap">{[["/app/memory", "Scripture memory", "Spaced returns to the verses your words stand on."], ["/app/languages", "Languages", "English live; Yoruba, Igbo and Hausa in review."], ["/app/widget", "Home-screen widget", "Today's line, one tap from your phone."], ["/review-log", "Review log", "The transparency ledger for everything published."], ["/app/wrapped", "Year in Words", "Your private annual review of returned words."]].map(([h, t, x]) => <Link className="tile" href={h} key={h}><h4>{t}</h4><p>{x}</p><span className="textlink" style={{ marginTop: 6 }}>Open <Icon n="arrow" s={12} /></span></Link>)}</div></div>
       <div className="app-section"><div className="section-head"><h3>Your Routines</h3><Link className="textlink" href="/app/routines">Manage <Icon n="arrow" s={12} /></Link></div>
-        <div className="card-row snap" style={{ gridTemplateColumns: "repeat(2,1fr)" }}>{["Morning", "Evening"].map((slot) => { const r = st.routines.find((x) => x.slot === slot); return <div className="tile" key={slot}><span className="t-meta">{slot}</span><h4>{r && r.cats.length ? r.cats.map((s) => catBySlug(s)?.name || s).join(" · ") : "Nothing yet"}</h4><p>{r && r.cats.length ? "Ready when you are." : "Add a category to begin."}</p><Link className="textlink" href="/app/routines" style={{ marginTop: 4 }}>Open <Icon n="arrow" s={12} /></Link></div>; })}</div></div>
+        <HomeRoutines /></div>
       <div className="app-section"><div className="section-head"><h3>Recently Played</h3><Link className="textlink" href="/app/history">History <Icon n="arrow" s={12} /></Link></div>
         {st.history.length ? st.history.slice(0, 5).map((h, i) => <div className="list-row" key={i}><div className="lr-main"><h4>{h.title}</h4><p>{h.category} · {new Date(h.at).toLocaleDateString()}</p></div><PlayChip slug={h.slug} /></div>) : <EmptyState icon="play" title="Nothing played yet" sub="Your history appears after your first session." />}</div>
     </>
@@ -452,24 +465,8 @@ function Switch({ title, sub, path }: { title: string; sub: string; path: string
   );
 }
 
-function Routines() {
-  const st = useApp(); const toast = useToast();
-  return (
-    <>
-      <Head title="Routines" sub="Morning and evening anchors" />
-      {["Morning", "Evening"].map((slot) => {
-        const r = st.routines.find((x) => x.slot === slot);
-        return (
-          <div className="app-section" key={slot}>
-            <div className="section-head"><h3>{slot}</h3></div>
-            <div className="form-card">{r && r.cats.length ? r.cats.map((s) => <div className="list-row" key={s}><div className="lr-main"><h4>{catBySlug(s)?.name || s}</h4><p>{catBySlug(s)?.tagline || ""}</p></div><PlaySessionBtn slug={`${s}-5-min`} /></div>) : <p className="small">Add categories below.</p>}</div>
-            <div className="chip-row" style={{ marginTop: 12 }}>{CATEGORIES.slice(0, 10).map((c) => <button className="chip" key={c.slug} onClick={() => { mutate((s) => { const rt = s.routines.find((x) => x.slot === slot) || (s.routines.push({ slot, cats: [] }), s.routines.find((x) => x.slot === slot))!; if (!rt.cats.includes(c.slug)) rt.cats.push(c.slug); }); toast(`Added to ${slot} routine`); }}>+ {c.name}</button>)}</div>
-          </div>
-        );
-      })}
-    </>
-  );
-}
+/** Morning and evening routines are schedules: one server-backed list. */
+function Routines() { return <SchedulePage />; }
 
 function CreateConfession() {
   const router = useRouter(); const toast = useToast(); const auth = useAuth();
@@ -559,7 +556,7 @@ function CommunityDetail({ slug }: { slug: string }) {
   }
   const c = st.community.find((x) => x.slug === slug);
   if (!c) return <EmptyState icon="info" title="Not found" sub="This confession doesn't exist." />;
-  return <><Head title={c.title} sub={"Visibility: " + c.status.replace("_", " ")} /><div className="form-card"><p style={{ fontSize: 16, lineHeight: 1.7 }}>“{c.text}”</p></div><div style={{ marginTop: 16 }}><ShareBtn slug={c.slug} /></div></>;
+  return <><Head title={c.title} sub={"Visibility: " + c.status.replace("_", " ")} /><div className="form-card"><p style={{ fontSize: 16, lineHeight: 1.7 }}>“{c.text}”</p></div></>;
 }
 
 function Profile() {
@@ -632,10 +629,13 @@ function SearchPage() {
     </>
   );
 }
+/** Old device-local share links ("sh-<slug>") now open the public page. */
 function Shared({ token }: { token: string }) {
-  const st = useApp(); const sh = st.shared[token]; const c = sh && confBySlug(sh.slug);
-  if (!c) return <div style={{ maxWidth: 520, margin: "40px auto" }}><EmptyState icon="share" title="This share link has expired or doesn't exist" sub="Shared links live only as long as the sharer wants." /></div>;
-  return <><Head title="Shared with you" sub={c.category} /><div className="form-card"><p style={{ fontSize: 18, lineHeight: 1.7 }}>“{c.long}”</p>{c.scriptures.map((s, i) => <div className="scripture" key={i}><b>{s.book} {s.chapter}:{s.verse}</b></div>)}</div><div style={{ marginTop: 16 }}><PlayBtn slug={c.slug} /></div></>;
+  const router = useRouter();
+  const c = token.startsWith("sh-") ? confBySlug(token.slice(3)) : undefined;
+  useEffect(() => { if (c) router.replace(`/confessions/${c.slug}`); }, [c, router]);
+  if (!c) return <div style={{ maxWidth: 520, margin: "40px auto" }}><EmptyState icon="share" title="This link doesn't open anything" sub="Shared confessions open on their public page." cta={<Link className="btn btn-primary" href="/confessions">Browse confessions</Link>} /></div>;
+  return <p className="small">Opening…</p>;
 }
 function Invite() {
   const toast = useToast();
@@ -650,33 +650,62 @@ function Invite() {
     </>
   );
 }
+/** Feedback reaches the same support inbox as the contact form (POST /contact). */
 function FeedbackForm() {
-  const toast = useToast();
-  return <form className="form-card" style={{ maxWidth: 560 }} onSubmit={(e) => { e.preventDefault(); toast("Thank you — feedback recorded"); (e.target as HTMLFormElement).reset(); }}>
-    <div className="field"><label>What's on your mind?</label><textarea rows={5} required /></div>
+  const toast = useToast(); const auth = useAuth(); const st = useApp();
+  return <form className="form-card" style={{ maxWidth: 560 }} onSubmit={async (e) => {
+    e.preventDefault();
+    const form = e.currentTarget;
+    const message = String(new FormData(form).get("msg") || "").trim();
+    const email = auth.user?.email || st.user?.email || "";
+    if (!email) { toast("Sign in, or use the contact page, so we can reply."); return; }
+    const r = await appApi("/contact", { method: "POST", body: { name: auth.user?.display_name || st.user?.name || "Listener", email, message: "[In-app feedback]\n\n" + message } });
+    if (!r.ok) { toast(r.message); return; }
+    toast("Thank you — your feedback reached the team"); form.reset();
+  }}>
+    <div className="field"><label htmlFor="fb-msg">What's on your mind?</label><textarea id="fb-msg" name="msg" rows={5} required maxLength={4000} /></div>
     <button className="btn btn-primary" type="submit" style={{ marginTop: 14 }}>Send</button>
   </form>;
 }
 
-function SaveOffline({ slug }: { slug: string }) {
-  const st = useApp(); const toast = useToast();
-  const on = st.downloads.includes(slug);
+/** Offline listening is a mobile-app feature: the app takes a licence
+ *  (POST /me/downloads) and stores the audio. A browser caches nothing, so the
+ *  web never claims to have saved anything offline. */
+/** The account's offline licences, taken in the mobile app. */
+function DownloadsPage() {
+  const auth = useAuth();
+  const list = useApiData<{ downloads: { id: string; title?: string; duration_seconds: number; expires_at?: string }[]; limit: number; used: number }>(auth.token, "/me/downloads");
+  const cta = <Link className="btn btn-primary btn-sm" href="/download">Get the app</Link>;
   return (
-    <button className="btn btn-ghost" onClick={() => {
-      if (!on && st.user?.plan === "free") { toast("Offline downloads are a Premium feature"); return; }
-      mutate((s) => { s.downloads = on ? s.downloads.filter((x) => x !== slug) : [...s.downloads, slug]; });
-      toast(on ? "Removed from offline" : "Saved for offline");
-    }}>{on ? "Saved offline ✓" : "Save for offline"}</button>
+    <>
+      <Head title="Downloads" sub="Offline listening lives in the I CONFESS mobile app (Premium). Downloads you make there are listed here." right={cta} />
+      {list.loading ? <p className="small">Loading…</p>
+        : list.error ? <div className="feature-notice" role="alert"><p>{list.error.message}</p><button className="btn btn-ghost btn-sm" onClick={list.reload}>Retry</button></div>
+        : list.data && list.data.downloads.length ? <>
+          <p className="small" style={{ marginBottom: 12 }}>{list.data.used} of {list.data.limit} offline slots used</p>
+          {list.data.downloads.map((d) => <div className="list-row" key={d.id}><div className="lr-main"><h4>{d.title || "Confession"}</h4><p>{Math.round(d.duration_seconds / 60) || 1} min{d.expires_at ? ` · offline until ${new Date(d.expires_at).toLocaleDateString()}` : ""}</p></div><span className="tag private">offline</span></div>)}
+        </>
+        : <EmptyState icon="dl" title="Nothing downloaded yet" sub="In the mobile app, save any confession for bad-network mornings. It will appear here." cta={cta} />}
+    </>
   );
 }
 
+function SaveOffline({ slug: _slug }: { slug: string }) {
+  return <Link className="btn btn-ghost" href="/download"><Icon n="dl" s={14} /> Listen offline in the app</Link>;
+}
+
 function JournalApp() {
-  const st = useApp(); const toast = useToast();
+  const st = useApp(); const toast = useToast(); const auth = useAuth();
+  const [saving, setSaving] = useState(false);
   const [title, setTitle] = useState(""); const [text, setText] = useState(""); const [mood, setMood] = useState("Grateful"); const [audioNote, setAudioNote] = useState("");
-  const save = (e: React.FormEvent) => {
+  const save = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!text.trim()) { toast("Write a line first"); return; }
-    mutate((s) => { s.journals.unshift({ id: Date.now(), date: new Date().toISOString(), title: title.trim() || "Entry — " + new Date().toLocaleDateString(), text: text.trim(), mood, audio: audioNote || undefined }); }); setAudioNote("");
+    setSaving(true);
+    const r = await addJournal(auth.token, { title: title.trim() || "Entry — " + new Date().toLocaleDateString(), text: text.trim(), mood, audio: auth.token ? undefined : audioNote || undefined });
+    setSaving(false);
+    if (!r.ok) { toast(r.message); return; }
+    setAudioNote("");
     track("content_saved", { kind: "journal" });
     toast("Journal saved — private to you");
     setTitle(""); setText("");
@@ -689,7 +718,7 @@ function JournalApp() {
           <div className="chip-row">{["Grateful", "Hopeful", "Heavy", "Quiet", "Bold"].map((m) => <button type="button" className="chip" key={m} aria-pressed={mood === m} onClick={() => setMood(m)}>{m}</button>)}</div></div>
         <div className="field"><label>Title (optional)</label><input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={80} placeholder={new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })} /></div>
         <div className="field"><label>Entry</label><textarea rows={6} value={text} onChange={(e) => setText(e.target.value)} placeholder="What did the words meet in you today?" /></div>
-        <div className="field"><label>Voice note (optional, 30s, stays private)</label>
+        {!auth.token && <div className="field"><label>Voice note (optional, 30s, stays on this device)</label>
           <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
             <button type="button" className="btn btn-ghost" onClick={() => {
               const MR = (window as any).MediaRecorder; if (!MR) { toast("Recording not supported here"); return; }
@@ -701,15 +730,15 @@ function JournalApp() {
               }).catch(() => toast("Microphone permission denied"));
             }}><Icon n="mic" s={14} /> Record</button>
             {audioNote && <><span className="tag private">attached</span><audio controls src={audioNote} style={{ height: 36, flex: 1 }} /><button type="button" className="icon-btn" aria-label="Remove voice note" onClick={() => setAudioNote("")}><Icon n="x" s={12} /></button></>}
-          </div></div>
-        <button className="btn btn-primary btn-lg" type="submit" style={{ marginTop: 16 }}>Save entry</button>
+          </div></div>}
+        <button className="btn btn-primary btn-lg" type="submit" style={{ marginTop: 16 }} disabled={saving}>{saving ? "Saving…" : "Save entry"}</button>
       </form>
       <div style={{ maxWidth: 640, marginTop: 24, display: "flex", flexDirection: "column", gap: 14 }}>
         {st.journals.map((j) => (
           <div className="form-card rv in" key={j.id}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
               <div><span className="tag private">{j.mood}</span><h4 style={{ marginTop: 8 }}>{j.title}</h4><p className="small">{new Date(j.date).toLocaleString()}</p></div>
-              <button className="icon-btn" aria-label="Delete entry" onClick={() => { mutate((s) => { s.journals = s.journals.filter((x) => x.id !== j.id); }); toast("Entry deleted"); }}><Icon n="x" s={14} /></button>
+              <button className="icon-btn" aria-label="Delete entry" onClick={async () => { const r = await deleteJournal(auth.token, j.id); toast(r.ok ? "Entry deleted" : r.message); }}><Icon n="x" s={14} /></button>
             </div>
             <p style={{ marginTop: 12, lineHeight: 1.7 }}>{j.text}</p>{j.audio && <audio controls src={j.audio} style={{ marginTop: 10, width: "100%", height: 36 }} />}
           </div>
@@ -720,19 +749,19 @@ function JournalApp() {
 }
 
 function MemoryApp() {
-  const st = useApp(); const toast = useToast();
+  const st = useApp(); const toast = useToast(); const auth = useAuth();
   const now = Date.now();
   const due = st.memory.filter((m) => m.due <= now);
   const [reveal, setReveal] = useState<string | null>(null);
-  const addToday = () => {
+  const addToday = async () => {
     const c = CONFESSIONS[(new Date().getDate() + st.memory.length) % CONFESSIONS.length];
     const sc = c.scriptures[0];
-    if (st.memory.some((m) => m.ref === `${sc.book} ${sc.chapter}:${sc.verse}`)) { toast("Already in your memory box"); return; }
-    mutate((s) => { s.memory.push({ ref: `${sc.book} ${sc.chapter}:${sc.verse}`, text: c.short, title: c.title, box: 0, due: Date.now() }); });
-    toast("Added to memory practice");
+    const r = await addMemoryVerse(auth.token, { ref: `${sc.book} ${sc.chapter}:${sc.verse}`, text: c.short, title: c.title });
+    toast(!r.ok ? r.message : r.existed ? "Already in your memory box" : "Added to memory practice");
   };
-  const grade = (ref: string, up: boolean) => {
-    mutate((s) => { const m = s.memory.find((x) => x.ref === ref); if (!m) return; m.box = up ? Math.min(m.box + 1, 5) : 0; m.due = Date.now() + [1, 1, 3, 7, 14, 30][m.box] * 864e5; });
+  const grade = async (ref: string, up: boolean) => {
+    const r = await reviewMemoryVerse(auth.token, ref, up);
+    if (!r.ok) toast(r.message);
     setReveal(null);
   };
   return (
@@ -753,55 +782,24 @@ function MemoryApp() {
   );
 }
 
+/** Not built yet: needs real invitations between accounts. Says so plainly
+ *  instead of storing a fake pairing in this browser. */
 function PartnersApp() {
-  const st = useApp(); const toast = useToast();
-  const [name, setName] = useState("");
-  const week = Math.floor(Date.now() / (7 * 864e5));
-  const shared = CONFESSIONS[week % CONFESSIONS.length];
-  const pair = (e: React.FormEvent) => {
-    e.preventDefault();
-    mutate((s) => { s.partners = [{ name: name.trim() || "Partner", code: "IC-" + Math.random().toString(36).slice(2, 7).toUpperCase(), since: Date.now() }]; });
-    track("partner_paired"); toast("Paired — one confession a week, both ways");
-  };
   return (
     <>
-      <Head title="Practice partner" sub="A consensual 1:1 pairing. One confession a week, shared both ways. Unpair any time." />
-      {st.partners.length ? (
-        <>
-          <div className="big-tile rv in"><div><span className="eyebrow on-dark">This week, you and {st.partners[0].name}</span><h3 style={{ marginTop: 8 }}>{shared.title}</h3><p>“{shared.medium}”</p><p className="small" style={{ marginTop: 8, color: "var(--tint2)" }}>Paired since {new Date(st.partners[0].since).toLocaleDateString()} · code {st.partners[0].code}</p></div><div style={{ display: "flex", gap: 10 }}><PlayBtn slug={shared.slug} /><button className="btn btn-ghost on-dark" onClick={() => { mutate((s) => { s.partners = []; }); toast("Unpaired"); }}>Unpair</button></div></div>
-          <div className="form-card rv in" style={{ marginTop: 16, maxWidth: 640 }}><p className="small">Sharing is double opt-in: your partner sees only the weekly confession and never your history, journal or private words.</p></div>
-        </>
-      ) : (
-        <form className="form-card rv in" style={{ maxWidth: 560 }} onSubmit={pair}>
-          <div className="field"><label>Partner's first name</label><input value={name} onChange={(e) => setName(e.target.value)} required maxLength={30} /></div>
-          <div className="field"><label>Their pairing code (they get one when they accept)</label><input placeholder="IC-XXXXX" pattern="IC-[A-Z0-9]{5}" required /></div>
-          <button className="btn btn-primary btn-lg" type="submit" style={{ marginTop: 16 }}>Pair up</button>
-        </form>
-      )}
+      <Head title="Practice partner" sub="A consensual 1:1 pairing: one confession a week, shared both ways." />
+      <EmptyState icon="user" title="Not available yet" sub="Pairing needs both people to accept an invitation, and that isn't built yet. Until it is, nothing here pretends to pair you. Share a confession's public link with someone instead." cta={<Link className="btn btn-primary" href="/app/explore">Back to the library</Link>} />
     </>
   );
 }
 
+/** Not built yet: needs real invitations between accounts. Says so plainly
+ *  instead of storing a fake pairing in this browser. */
 function FamilyApp() {
-  const st = useApp(); const toast = useToast();
-  const [nm, setNm] = useState(""); const [role, setRole] = useState("guardian"); const [band, setBand] = useState("16+");
-  if (st.user?.plan === "free") return <><Head title="Family space" /><EmptyState icon="lock" title="A Premium space" sub="Two guardians plus children, an age-appropriate library and one shared family routine." cta={<Link className="btn btn-primary" href="/premium">See Premium</Link>} /></>;
-  const suggest = (b: string) => b === "Under 10" ? ["children", "family", "gratitude", "joy", "hope"] : b === "11–15" ? ["identity", "confidence", "purpose", "relationships", "discipline"] : [];
   return (
     <>
-      <Head title="Family space" sub="Guardians and kids. Age-appropriate words, one shared routine, nothing tracked on children." />
-      <form className="form-card rv in" style={{ maxWidth: 640 }} onSubmit={(e) => { e.preventDefault(); mutate((s) => { s.family.push({ id: Date.now(), name: nm.trim(), role, band }); }); toast(nm + " added"); setNm(""); }}>
-        <div className="field"><label>Name</label><input value={nm} onChange={(e) => setNm(e.target.value)} required maxLength={30} /></div>
-        <div className="field"><label>Role</label><div className="chip-row">{["guardian", "child"].map((r) => <button type="button" className="chip" key={r} aria-pressed={role === r} onClick={() => setRole(r)}>{r}</button>)}</div></div>
-        <div className="field"><label>Age band</label><div className="chip-row">{["Under 10", "11–15", "16+"].map((b) => <button type="button" className="chip" key={b} aria-pressed={band === b} onClick={() => setBand(b)}>{b}</button>)}</div></div>
-        <button className="btn btn-primary btn-lg" type="submit" style={{ marginTop: 14 }}>Add member</button>
-      </form>
-      {st.family.map((f) => (
-        <div className="form-card rv in" key={f.id} style={{ maxWidth: 640, marginTop: 14 }}>
-          <div style={{ display: "flex", justifyContent: "space-between" }}><div><h4>{f.name}</h4><p className="small">{f.role} · {f.band}</p></div><button className="icon-btn" aria-label={"Remove " + f.name} onClick={() => mutate((s) => { s.family = s.family.filter((x) => x.id !== f.id); })}><Icon n="x" s={12} /></button></div>
-          {suggest(f.band).length > 0 && <><p className="small" style={{ marginTop: 10 }}>Suggested library:</p><div className="chip-row" style={{ marginTop: 6 }}>{suggest(f.band).map((c) => <Link className="chip" key={c} href={`/categories/${c}`}>{catBySlug(c)?.name}</Link>)}</div></>}
-        </div>
-      ))}
+      <Head title="Family space" sub="Guardians and children, age-appropriate words and one shared routine." />
+      <EmptyState icon="user" title="Not available yet" sub="Family accounts need guardian consent and linked accounts, which aren't built yet. Until they are, nothing here pretends to add anyone." cta={<Link className="btn btn-primary" href="/app/explore">Back to the library</Link>} />
     </>
   );
 }
@@ -850,13 +848,11 @@ function WidgetApp() {
   );
 }
 
-function PackCard({ id, title, desc, cats }: { id: string; title: string; desc: string; cats: string[] }) {
-  const st = useApp(); const toast = useToast();
-  const on = st.downloads.includes("pack:" + id);
+function PackCard({ title, desc, cats }: { id: string; title: string; desc: string; cats: string[] }) {
   return (
     <div className="tile"><span className="t-meta">Pack</span><h4>{title}</h4><p>{desc}</p>
       <div style={{ display: "flex", gap: 10, marginTop: 10, flexWrap: "wrap" }}><MixBtn cats={cats} label="Queue pack" />
-      <button className="btn btn-ghost btn-sm" onClick={() => { if (st.user?.plan === "free") { toast("Mixtapes are a Premium feature"); return; } mutate((x) => { x.downloads = on ? x.downloads.filter((d) => d !== "pack:" + id) : [...x.downloads, "pack:" + id]; }); toast(on ? "Pack removed" : "Pack saved offline"); }}>{on ? "Saved ✓" : "Save offline"}</button></div>
+      <Link className="btn btn-ghost btn-sm" href="/download">Offline in the app</Link></div>
     </div>
   );
 }

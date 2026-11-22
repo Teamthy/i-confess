@@ -5,6 +5,7 @@ import { UiProvider } from "@/lib/ui";
 import { AuthProvider } from "@/lib/auth-context";
 import { PlayerProvider } from "@/lib/player";
 import { ScheduleProvider } from "@/lib/schedule-context";
+import { AccountSync } from "@/lib/account-sync";
 import { ScheduleReminders } from "@/components/schedules";
 import { CardShapeDefs } from "@/components/ui";
 
@@ -37,7 +38,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           {/* One persistent queue for device speech, published session and
               Bible audio, with shared sound controls and Media Session. */}
           <PlayerProvider>
-            <UiProvider><ScheduleProvider>{children}<ScheduleReminders /></ScheduleProvider></UiProvider>
+            <UiProvider><ScheduleProvider><AccountSync />{children}<ScheduleReminders /></ScheduleProvider></UiProvider>
           </PlayerProvider>
         </AuthProvider>
       </body>

@@ -14,14 +14,18 @@ export type AppState = {
   settings: AppSettings;
   streak: { count: number; last: string | null };
   recentSearches: string[];
-  journals: { id: number; date: string; title: string; text: string; mood: string; audio?: string }[];
+  /** Signed in, `id` is the server's entry id and `rowVersion` its version. */
+  journals: { id: number | string; date: string; title: string; text: string; mood: string; audio?: string; rowVersion?: number }[];
   downloads: string[];
-  memory: { ref: string; text: string; title: string; box: number; due: number }[];
+  memory: { ref: string; text: string; title: string; box: number; due: number; id?: string }[];
   seasons: { id: number; name: string; cats: string[]; active: boolean; archived: boolean }[];
   partners: { name: string; code: string; since: number }[];
   family: { id: number; name: string; role: string; band: string }[];
   partnerQueue: string[];
   annotations: Record<string, string>;
+  /** The account whose server data is loaded into this state; null when the
+   *  state is this device's own (signed out, or no API). */
+  syncedAs?: string | null;
   /** Set when the reader hides the sidebar tour card (persisted locally). */
   promoHidden?: boolean;
 };
@@ -57,6 +61,8 @@ export function mutate(fn: (s: AppState) => void) {
 if (typeof window !== "undefined") window.addEventListener("storage", (event) => {
   if (event.key === KEY) { state = load(); listeners.forEach((l) => l()); }
 });
+/** Observe every committed change (the account sync uses this to push writes). */
+export function subscribeApp(fn: () => void): () => void { listeners.add(fn); return () => { listeners.delete(fn); }; }
 export function useApp(): AppState {
   return useSyncExternalStore(
     (cb) => { listeners.add(cb); return () => listeners.delete(cb); },

@@ -263,7 +263,6 @@ function Onboarding() {
     setBusy(false);
     mutate((s) => {
       s.user = { name: name.trim(), email: email.trim(), plan: "free", interests };
-      s.routines = [{ slot: time, cats }];
       if (!token) {
         // No API (the static demo): keep the practice on this device only.
         s.schedule = [...s.schedule.filter((sc) => sc.localOwner !== email.trim()), { id: `local-${Date.now()}`, label: "Daily practice", time, days_of_week: [...ALL_DAYS], timezone: deviceTimezone(), duration_seconds: Number(len) * 60, category_ids: cats, enabled: true, localOwner: email.trim() }];

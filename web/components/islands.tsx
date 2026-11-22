@@ -50,14 +50,19 @@ export function FavBtn({ slug, ghost }: { slug: string; ghost?: boolean }) {
     </button>
   );
 }
+/** Shares a confession's public page — a link that works for anyone,
+ *  anywhere, because the page is served from the published library. */
 export function ShareBtn({ slug }: { slug: string }) {
   const toast = useToast();
   return (
-    <button className="btn btn-ghost" onClick={() => {
-      const token = "sh-" + slug;
-      mutate((s) => { s.shared[token] = { slug, at: Date.now() }; });
-      track("content_shared", { token });
-      toast("Share link created — " + location.origin + "/app/shared/" + token);
+    <button className="btn btn-ghost" onClick={async () => {
+      const url = `${location.origin}/confessions/${encodeURIComponent(slug)}`;
+      track("content_shared", { slug });
+      try {
+        if (navigator.share) { await navigator.share({ url }); return; }
+        await navigator.clipboard.writeText(url);
+        toast("Link copied");
+      } catch { toast(url); }
     }}><Icon n="share" s={14} /> Share</button>
   );
 }
@@ -84,10 +89,10 @@ export function ConfTile({ c }: { c: Confession }) {
     </div>
   );
 }
-export function ConfessionFilter() {
-  const cats = [...new Set(CONFESSIONS.map((c) => c.category))];
+export function ConfessionFilter({ items = CONFESSIONS }: { items?: Confession[] }) {
+  const cats = [...new Set(items.map((c) => c.category))];
   const [f, setF] = useState("All");
-  const list = f === "All" ? CONFESSIONS : CONFESSIONS.filter((c) => c.category === f);
+  const list = f === "All" ? items : items.filter((c) => c.category === f);
   return (
     <>
       <div className="chip-row" style={{ marginBottom: 28 }}>

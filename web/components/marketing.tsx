@@ -5,7 +5,7 @@ import { PlayChip, PlayBtn, PlaySessionBtn, FavBtn, ShareBtn, VoicePreviewBtn, C
 import { CATEGORIES, CONFESSIONS, ARTICLES, VOICES, PLANS, FAQS, catBySlug, confBySlug, artBySlug, sessionsFor, ALL_SESSIONS, sessionBySlug, motifStyle, CAT_IMAGES, confessionsFor } from "@/lib/data";
 import { ART_W, ART_H, shapeCentre, shapeForIndex, shapePaths } from "@/lib/card-shapes";
 import { MARK_PATH, MARK_VIEWBOX } from "@/lib/brand-mark";
-import type { Category } from "@/lib/data";
+import type { Category, Confession } from "@/lib/data";
 import { CANON } from "@/lib/canon";
 import { VoiceLibrary } from "@/components/voices";
 
@@ -417,9 +417,9 @@ export function Categories() {
   );
 }
 
-export function CategoryDetail({ slug }: { slug: string }) {
+export function CategoryDetail({ slug, library = CONFESSIONS }: { slug: string; library?: Confession[] }) {
   const cat = catBySlug(slug); if (!cat) return <NotFoundBody />;
-  const confs = CONFESSIONS.filter((c) => c.category === cat.name);
+  const confs = library.filter((c) => c.category === cat.name);
   const s5 = sessionsFor(cat.slug)[0];
   const related = CATEGORIES.filter((c) => c.slug !== cat.slug).slice(0, 4);
   return (
@@ -452,21 +452,21 @@ export function CategoryDetail({ slug }: { slug: string }) {
   );
 }
 
-export function Confessions() {
+export function Confessions({ library = CONFESSIONS }: { library?: Confession[] }) {
   return (
     <section className="section container-wide" style={{ paddingTop: "calc(var(--header-h) + 56px)" }}>
       <SectionHead as="h1" eyebrow="Confession Library" title={<>Words that were <span className="accent">checked</span> before you saw them.</>} />
-      <ConfessionFilter />
-      <PageStats items={[[String(CONFESSIONS.length), "confessions"], ["1–5", "intensity scale"], ["Quoted or labelled", "every Scripture line"], ["One-way", "draft → review → published"]]} />
+      <ConfessionFilter items={library} />
+      <PageStats items={[[String(library.length), "confessions"], ["1–5", "intensity scale"], ["Quoted or labelled", "every Scripture line"], ["One-way", "draft → review → published"]]} />
       <CtaBand title="Find the sentence you have been trying to say." />
     </section>
   );
 }
 
-export function ConfessionDetail({ slug }: { slug: string }) {
-  const c = confBySlug(slug); if (!c) return <NotFoundBody />;
+export function ConfessionDetail({ slug, library = CONFESSIONS }: { slug: string; library?: Confession[] }) {
+  const c = library.find((x) => x.slug === slug); if (!c) return <NotFoundBody />;
   const cat = CATEGORIES.find((x) => x.name === c.category);
-  const siblings = CONFESSIONS.filter((x) => x.category === c.category && x.slug !== c.slug);
+  const siblings = library.filter((x) => x.category === c.category && x.slug !== c.slug);
   return (
     <>
       <section className="container detail-hero">
