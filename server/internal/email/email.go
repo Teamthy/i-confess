@@ -132,6 +132,29 @@ func (c Config) PasswordResetMessage(to, token string) Message {
 	}
 }
 
+// NewsletterWelcomeMessage confirms a newsletter sign-up and carries the
+// one-click unsubscribe link every newsletter mail must have.
+func (c Config) NewsletterWelcomeMessage(to, unsubscribeToken string) Message {
+	link := c.link("/newsletter/unsubscribe", unsubscribeToken)
+	return Message{
+		To:      to,
+		Tag:     "newsletter_welcome",
+		Subject: "You're on the " + c.AppName + " list",
+		Text: strings.Join([]string{
+			"Thank you for signing up.",
+			"",
+			"We send one email when a new category, voice or essay lands. Never more, and your address is never sold.",
+			"",
+			"If you didn't sign up, or change your mind, unsubscribe here:",
+			link,
+		}, "\n"),
+		HTML: c.wrapHTML("You're on the list",
+			"<p>Thank you for signing up.</p>"+
+				"<p>We send one email when a new category, voice or essay lands. Never more, and your address is never sold.</p>"+
+				"<p class=\"muted\">If you didn't sign up, or change your mind, <a href=\""+esc(link)+"\">unsubscribe</a>.</p>"),
+	}
+}
+
 // SecurityAlertMessage notifies a user of a meaningful account event (§52).
 //
 // It carries no token and no link that performs an action: a security alert

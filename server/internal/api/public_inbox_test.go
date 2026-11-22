@@ -53,3 +53,73 @@ func TestNewsletterAndContactAreStoredAndForwarded(t *testing.T) {
 		t.Fatalf("support was not forwarded the message: %+v", msg)
 	}
 }
+
+// Every sign-up gets a way off the list: the welcome mail carries a link
+// whose token unsubscribes that address and nothing else.
+func TestNewsletterUnsubscribeLink(t *testing.T) {
+	a := newAuthHarness(t)
+	var token string
+	a.h.SetDevTokenSink(func(purpose, _, tok string) {
+		if purpose == "newsletter_unsubscribe" {
+			token = tok
+		}
+	})
+	if code, _ := a.do("POST", "/newsletter", "", map[string]string{"email": "leaver@example.com"}); code != http.StatusAccepted {
+		t.Fatalf("subscribe: %d", code)
+	}
+	if token == "" {
+		t.Fatal("no unsubscribe token was issued")
+	}
+	unsubscribed := func() bool {
+		var at *string
+		if err := a.db.QueryRowContext(context.Background(),
+			`SELECT unsubscribed_at FROM newsletter_subscriptions WHERE email='leaver@example.com'`).Scan(&at); err != nil {
+			t.Fatal(err)
+		}
+		return at != nil
+	}
+
+	if code, _ := a.do("POST", "/v1/newsletter/unsubscribe", "", map[string]string{"token": "not-the-token"}); code != http.StatusNotFound {
+		t.Fatalf("wrong token: %d, want 404", code)
+	}
+	if unsubscribed() {
+		t.Fatal("a wrong token unsubscribed the address")
+	}
+	for i := 0; i < 2; i++ { // the link may be clicked twice
+		if code, out := a.do("POST", "/newsletter/unsubscribe", "", map[string]string{"token": token}); code != http.StatusOK {
+			t.Fatalf("unsubscribe #%d: %d %v", i+1, code, out)
+		}
+	}
+	if !unsubscribed() {
+		t.Fatal("address is still subscribed")
+	}
+
+	// Signing up again re-subscribes and rotates the token: the old link is dead.
+	old := token
+	if code, _ := a.do("POST", "/newsletter", "", map[string]string{"email": "leaver@example.com"}); code != http.StatusAccepted || unsubscribed() {
+		t.Fatalf("re-subscribe: %d, unsubscribed=%v", code, unsubscribed())
+	}
+	if code, _ := a.do("POST", "/newsletter/unsubscribe", "", map[string]string{"token": old}); code != http.StatusNotFound {
+		t.Fatalf("old token after re-subscribe: %d, want 404", code)
+	}
+}
+
+func TestNewsletterWelcomeMailCarriesUnsubscribeLink(t *testing.T) {
+	a := newAuthHarness(t)
+	a.h.SetDevTokenSink(nil)
+	sent := email.NewMemorySender()
+	q := email.NewQueue(sent, 8)
+	q.Start(context.Background(), 1)
+	defer q.Stop()
+	a.h.SetMailer(q, email.Config{AppName: "I CONFESS", BaseURL: "https://iconfess.app"})
+	if code, _ := a.do("POST", "/newsletter", "", map[string]string{"email": "welcome@example.com"}); code != http.StatusAccepted {
+		t.Fatalf("subscribe: %d", code)
+	}
+	if !q.Drain(2 * time.Second) {
+		t.Fatal("mail queue did not drain")
+	}
+	msg, ok := sent.LastTo("welcome@example.com")
+	if !ok || !strings.Contains(msg.Text, "https://iconfess.app/newsletter/unsubscribe?token=") {
+		t.Fatalf("welcome mail has no unsubscribe link: %+v", msg)
+	}
+}

@@ -7,6 +7,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/Teamthy/i-confess/internal/auth"
 	"github.com/Teamthy/i-confess/internal/email"
 	"github.com/Teamthy/i-confess/internal/httpx"
 )
@@ -33,11 +34,45 @@ func (h *Handler) newsletterSubscribe(w http.ResponseWriter, r *http.Request) {
 		writeCode(w, http.StatusBadRequest, "EMAIL_INVALID", "enter a valid email address")
 		return
 	}
-	if err := h.inbox.Subscribe(r.Context(), req.Email, "web", time.Now()); err != nil {
+	token, hash, err := auth.NewOneTimeToken()
+	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "could not save your subscription")
 		return
 	}
+	if err := h.inbox.Subscribe(r.Context(), req.Email, "web", hash, time.Now()); err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, "could not save your subscription")
+		return
+	}
+	// The welcome mail carries the unsubscribe link, so the address's owner
+	// can leave even if someone else typed it in.
+	if h.devTokenSink != nil {
+		h.devTokenSink("newsletter_unsubscribe", req.Email, token)
+	} else if h.mail != nil {
+		h.mail.Enqueue(h.mailCfg.NewsletterWelcomeMessage(strings.TrimSpace(req.Email), token))
+	}
 	httpx.WriteJSON(w, http.StatusAccepted, map[string]string{"status": "subscribed"})
+}
+
+// newsletterUnsubscribe takes an address off the list using the token from
+// the link in any newsletter mail.
+func (h *Handler) newsletterUnsubscribe(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Token string `json:"token"`
+	}
+	if err := httpx.DecodeJSON(r, &req); err != nil || strings.TrimSpace(req.Token) == "" {
+		writeCode(w, http.StatusBadRequest, "TOKEN_INVALID", "this unsubscribe link is incomplete")
+		return
+	}
+	ok, err := h.inbox.Unsubscribe(r.Context(), auth.HashToken(strings.TrimSpace(req.Token)), time.Now())
+	if err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, "could not unsubscribe")
+		return
+	}
+	if !ok {
+		writeCode(w, http.StatusNotFound, "TOKEN_UNKNOWN", "this unsubscribe link is no longer valid")
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]string{"status": "unsubscribed"})
 }
 
 // contactMessage stores a message for support and, when mail is configured,
