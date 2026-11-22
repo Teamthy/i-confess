@@ -82,7 +82,7 @@ export default async function PricingPage() {
                   {plan.trial_days > 0 && <p className="small">{plan.trial_days}-day trial, cancel any time.</p>}
                   <div className="btrans-actions">
                     <Link className="btn btn-primary btn-sm" href="/register">
-                      Get started <Icon n="arrow" s={12} />
+                      {plan.trial_days > 0 ? `Start ${plan.trial_days}-day trial` : "Get started"} <Icon n="arrow" s={12} />
                     </Link>
                   </div>
                 </article>

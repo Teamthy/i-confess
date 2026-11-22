@@ -58,14 +58,16 @@ export default function AuthPage({ kind }: { kind: string }) {
    * session so the demo surfaces stay walkable. It never pretends a failed
    * password succeeded.
    */
-  const localSession = (email: string) => {
-    mutate((s) => { s.user = { name: email.split("@")[0].replace(/[._]/g, " "), email, plan: "free", interests: s.user?.interests || [] }; });
+  // `name` is the account's display name when the server supplied one; the
+  // email-derived name is only for the no-API demo session.
+  const localSession = (email: string, name?: string) => {
+    mutate((s) => { s.user = { name: name?.trim() || email.split("@")[0].replace(/[._]/g, " "), email, plan: "free", interests: s.user?.interests || [] }; });
   };
 
   const signIn = async (email: string, password: string) => {
     const result = await auth.login(email, password);
     if (result.ok) {
-      localSession(email);
+      localSession(email, result.user?.display_name);
       track("account_created", { type: "login" });
       toast("Welcome back");
       const next = new URLSearchParams(window.location.search).get("next");

@@ -189,10 +189,12 @@ export function AppPage({ kind, slug, token }: { kind: string; slug?: string; to
   const st = useApp();
   const auth = useAuth();
   useEffect(() => {
-    if (auth.user && (!st.user || st.user.email !== auth.user.email)) mutate((s) => {
+    // Also re-sync when the server's display name differs from the local one,
+    // so a session started before a rename (or from the email) corrects itself.
+    if (auth.user && (!st.user || st.user.email !== auth.user.email || (!!auth.user.display_name && st.user.name !== auth.user.display_name))) mutate((s) => {
       s.user = { name: auth.user!.display_name || auth.user!.email.split("@")[0], email: auth.user!.email, plan: "free", interests: s.user?.email === auth.user!.email ? s.user.interests : [] };
     });
-  }, [auth.user, st.user?.email]);
+  }, [auth.user, st.user?.email, st.user?.name]);
   const needsAuth = !["player", "shared"].includes(kind);
   useEffect(() => { }, [kind, slug]);
   if (needsAuth && !st.user) return <NeedAuth />;

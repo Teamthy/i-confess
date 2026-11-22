@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
-import { Logo } from "./ui";
+import { Logo, Mark } from "./ui";
 
 export default function Header() {
   const [open, setOpen] = useState(false);
@@ -35,14 +35,12 @@ export default function Header() {
     { href: "/faq", label: "FAQ" },
   ];
   return (
+    <>
+    <a className="skip-link" href="#main">Skip to content</a>
     <header className={"site-header" + (scrolled ? " scrolled" : "") + (darkHero ? " on-dark" : "")}>
       <div className="header-in container-wide">
       <Link className={"logo" + (darkHero ? " on-dark" : "")} href="/" aria-label="I CONFESS home">
-        <svg className="mark" width="30" height="30" viewBox="0 0 100 96" fill="none" stroke="currentColor" strokeWidth="9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <path d="M50 5 L63 23 L50 40 L37 23 Z" />
-          <path d="M47 51 C40 42 27 42 20 52 C12 63 13 77 24 81 C32 84 40 79 47 71 L58 59" />
-          <path d="M53 51 C60 42 73 42 80 52 C88 63 87 77 76 81 C68 84 60 79 53 71 L42 59" />
-        </svg>
+        <Mark />
         <span className="lw"><b>I CONFESS</b></span>
       </Link>
       <nav className={"main-nav" + (open ? " open" : "")} aria-label="Main">
@@ -87,6 +85,7 @@ export default function Header() {
         </div>
       </div>
     </header>
+    </>
   );
 }
 

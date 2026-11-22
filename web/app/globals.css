@@ -106,7 +106,7 @@ mark{background:var(--tint1);color:var(--deep);padding:0 .18em;border-radius:4px
 .section{padding:var(--s-96) 0}
 .section.tight{padding:var(--s-64) 0}
 .section-head{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;margin-bottom:var(--s-48)}
-.section-head .eyebrow{display:block;margin-bottom:14px}
+.section-head .eyebrow{display:inline-flex;margin-bottom:14px}
 .pill{display:inline-flex;align-items:center;gap:8px;border-radius:var(--r-pill);border:1px solid var(--n200);background:var(--white);padding:8px 16px;font-size:12px;font-weight:600;color:var(--n600)}
 .pill.on-dark{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.2);color:var(--white)}
 
@@ -559,7 +559,6 @@ mark{background:var(--tint1);color:var(--deep);padding:0 .18em;border-radius:4px
 .fcard.imgcard{padding:0;overflow:hidden;position:relative;min-height:132px}
 .fcard.imgcard img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .fcard.imgcard .fc-label{position:absolute;top:12px;left:14px;color:#fff;text-shadow:0 1px 8px rgba(0,7,45,.5);z-index:1}
-/* dark-block category cards: white frame around photo, dark arrow circle */
 
 /* principles: toggle-style glyph pills, icon-only cards, white section */
 .glyph{width:56px;height:30px;border-radius:999px;border:1px solid var(--n200);background:#fff;position:relative}
@@ -728,6 +727,7 @@ h1,h2,h3,h4,.h-display,.h1,.h2,.h3,.h4,.logo{font-family:var(--disp);font-weight
 .main-nav a{padding:8px 14px;border-radius:999px}
 .main-nav a[aria-current="page"]{background:var(--n100);color:var(--deep)}
 .grid-btn{width:44px;height:44px;border-radius:50%;background:var(--navy);color:#fff;display:inline-flex;align-items:center;justify-content:center;border:0}
+.grid-btn .icon{width:18px;height:18px;flex:none}
 
 /* ============================================================
    v4 — brand logo, dark hero, tennis category cards, motion,
@@ -826,6 +826,7 @@ h1,h2,h3,h4,.h-display,.h1,.h2,.h3,.h4,.logo{font-family:var(--disp);font-weight
 [data-theme="dark"] mark{background:var(--blue2);color:#fff}
 [data-theme="dark"] .icon-btn{background:var(--n50);border-color:var(--n200);color:#fff}
 [data-theme="dark"] .switch{background:var(--n200)}
+[data-theme="dark"] .logo{color:var(--white)}
 [data-theme="dark"] .logo .lw span{color:var(--tint2)}
 
 /* v4 additions: tabs, stats, cta band, brand panel, dark header, theme toggle */
@@ -973,7 +974,7 @@ video.chrome{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;o
 
 /* ============ v7 ============ */
 /* category detail image hero */
-.cd-hero{position:relative;overflow:hidden}
+.cd-hero{position:relative;overflow:hidden;border-radius:var(--r-32);padding:clamp(40px,5.5vw,80px)}
 .cd-bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .cd-veil{position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,7,45,.55),rgba(0,7,45,.92))}
 .cd-in{position:relative;z-index:1}
@@ -1018,12 +1019,22 @@ html{scroll-behavior:smooth}
 .mini-player .mp-hide{position:absolute;right:8px;top:-14px;width:26px;height:16px;border:0;border-radius:8px 8px 0 0;background:var(--navy);color:#fff;font-size:9px;cursor:pointer}
 .mini-player.hid .mp-in{display:none}
 .mini-player.hid{padding:0;height:14px}
-.mini-player{position:relative}
+/* Idle: fully hidden, not just slid off-screen — the hide tab sits above the
+   bar and would otherwise peek in the corner, and nothing inside should be
+   focusable while there is nothing playing. (A later `position:relative`
+   here once pinned the "fixed" player to the end of the page.) */
+.mini-player:not(.on){visibility:hidden;transition:transform .4s var(--ease),visibility 0s .4s}
 .ps-canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.22;animation:kenburns 40s ease-in-out infinite alternate}
 @keyframes kenburns{from{transform:scale(1)}to{transform:scale(1.15) translate(2%, -2%)}}
 @media (prefers-reduced-motion:reduce){.ps-canvas{animation:none}}
 .player-stage{position:relative;overflow:hidden}
 .player-stage>*{position:relative}
+/* Children that must stay out of the flow: the background canvas, the voice
+   chip (top-left) and the exit (top-right). Same specificity as the rule
+   above would lose to it, so these are scoped to the stage. */
+.player-stage>.ps-canvas{position:absolute}
+.player-stage>.ps-voice{position:absolute}
+.player-stage>.ps-exit{position:absolute}
 .player-stage .transcript-text{white-space:pre-wrap}
 .player-stage .transcript-note{max-width:42ch;margin-top:8px;font-size:.8rem;line-height:1.5;color:var(--tint1)}
 .ps-queue{margin-top:26px;max-width:560px;width:100%;background:rgba(0,7,45,.5);border:1px solid rgba(255,255,255,.1);border-radius:18px;padding:16px}
@@ -1760,7 +1771,7 @@ html,body{max-width:100%;overflow-x:clip}
 @media (max-width:560px){
   .app-main{padding-left:14px;padding-right:14px}
   .app-top{align-items:flex-start}
-  .app-top>div:last-child{margin-left:auto}
+  .app-top>div:last-child:not(:first-child){margin-left:auto}
   .explore-section-head{align-items:flex-start;flex-direction:column;gap:8px}
   .moment-grid{grid-template-columns:1fr}
   .downloads-grid,.downloads-grid.downloads-categories{grid-template-columns:1fr}
@@ -1801,7 +1812,7 @@ html,body{max-width:100%;overflow-x:clip}
 
 .tcard{--t-bg:var(--tint1);--t-halo:rgba(255,255,255,.55);--t-fill:var(--tint2);--t-ink:var(--deep);
   position:relative;display:flex;flex-direction:column;background:var(--t-bg);color:var(--t-ink);border-radius:var(--r-24);overflow:hidden;
-  min-height:330px;transition:transform .35s var(--ease),box-shadow .35s var(--ease)}
+  transition:transform .35s var(--ease),box-shadow .35s var(--ease)}
 .tcard:hover{transform:translateY(-6px);box-shadow:0 22px 48px rgba(0,7,45,.32)}
 .tcard .t-art{display:block;aspect-ratio:300/230;position:relative}
 .tcard .t-art svg{position:absolute;inset:0;width:100%;height:100%;overflow:hidden}
@@ -1829,3 +1840,136 @@ html,body{max-width:100%;overflow-x:clip}
 .brand-lockup{display:inline-flex;flex-direction:column;align-items:center;gap:14px;color:#fff;text-align:center}
 .brand-lockup b{font-family:var(--disp);font-weight:700;font-size:clamp(30px,4vw,44px);letter-spacing:.06em;line-height:1}
 .brand-lockup span{font-size:12px;font-weight:600;letter-spacing:.28em;text-transform:uppercase;color:var(--tint2)}
+
+/* While the docked player is showing, keep the end of the page clear of it. */
+body:has(.mini-player.on:not(.hid)){padding-bottom:72px}
+body.has-bottomnav:has(.mini-player.on:not(.hid)){padding-bottom:136px}
+
+/* p-cards used without the inner .p-in panel (Community): the tag is a pill,
+   not a full-width bar, and the highlighted card's own text must read on blue. */
+.p-card>.tag{align-self:flex-start;margin-bottom:10px}
+.p-card.active>h3{color:var(--white)}
+.p-card.active>p{color:var(--tint1)}
+
+/* Public site frame: footer stays at the bottom on short pages. */
+.site-shell{min-height:100vh;min-height:100dvh;display:flex;flex-direction:column}
+.site-main{flex:1 0 auto}
+
+/* Skip link: first focusable element, visible only when focused. */
+.skip-link{position:absolute;left:16px;top:-48px;z-index:200;background:var(--white);color:var(--navy);border-radius:var(--r-pill);padding:10px 18px;font-size:13px;font-weight:600;box-shadow:var(--shadow-2);transition:top .2s}
+.skip-link:focus{top:12px}
+
+/* Published narration voices (Voices page). These classes were rendered
+   without any styles, so the catalogue printed as stacked raw text. */
+.published-voice-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:18px;margin-top:18px}
+.published-voice-card{display:flex;flex-direction:column;gap:8px;background:var(--white);border:1px solid var(--n100);border-radius:var(--r-20);padding:22px;transition:border-color .25s,box-shadow .25s}
+.published-voice-card:hover{box-shadow:var(--shadow-1)}
+.published-voice-card.selected{border-color:var(--blue2);box-shadow:0 0 0 3px var(--tint1)}
+.published-voice-heading{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.published-voice-avatar{width:48px;height:48px;border-radius:50%;background:var(--light);color:var(--blue);display:flex;align-items:center;justify-content:center}
+.published-voice-card h3{font-size:19px}
+.published-voice-card p{font-size:14px;color:var(--n600)}
+.published-voice-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:auto;padding-top:12px}
+[data-theme="dark"] .published-voice-card{background:var(--n50);border-color:var(--n100)}
+[data-theme="dark"] .published-voice-avatar{background:var(--n100);color:var(--tint1)}
+
+/* ============================================================
+   Signed-in app components that shipped without styles.
+   Found by diffing className usage against this file; each rendered as
+   raw browser defaults (fieldset borders, grey buttons, overlapping
+   absolutely-positioned text).
+   ============================================================ */
+
+/* Native controls take the brand colour instead of the browser's blue. */
+input[type="range"],input[type="checkbox"],input[type="radio"],progress{accent-color:var(--blue)}
+
+/* Notices and inline errors, used across schedules, voices and sound. */
+.feature-notice{display:flex;flex-direction:column;gap:8px;align-items:flex-start;background:var(--light);border:1px solid var(--tint1);border-radius:var(--r-16);padding:16px 18px;margin:16px 0;color:var(--navy);font-size:14px}
+.feature-notice p{color:var(--n600);font-size:13px}
+.feature-error{color:var(--err);font-size:13px;font-weight:500;margin-top:8px}
+[data-theme="dark"] .feature-notice{background:var(--n50);border-color:var(--n100);color:var(--tint1)}
+
+/* Password input with its show/hide button. */
+.password-field{position:relative;display:flex;align-items:center}
+.password-field input{flex:1;padding-right:48px}
+.password-field button{position:absolute;right:6px}
+
+/* Schedule (routines) */
+.schedule-page{display:flex;flex-direction:column;gap:20px}
+.schedule-layout{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:24px;align-items:start}
+@media (max-width:1100px){.schedule-layout{grid-template-columns:1fr}}
+.schedule-editor-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:8px}
+.schedule-editor-heading .h3{margin-top:10px}
+.schedule-fields,.schedule-days,.schedule-categories{border:0;margin:0;padding:0;min-width:0}
+.schedule-days,.schedule-categories{margin-top:22px}
+.schedule-days legend,.schedule-categories legend{font-size:12px;font-weight:600;color:var(--n600);margin-bottom:10px;padding:0;display:flex;gap:8px;align-items:baseline}
+.schedule-form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:0 16px}
+.weekday-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px}
+.weekday-button{min-width:48px;height:40px;border-radius:var(--r-12);border:1px solid var(--n200);background:var(--white);color:var(--n600);font-size:12.5px;font-weight:600;transition:background .2s,border-color .2s,color .2s}
+.weekday-button:hover{border-color:var(--blue2);color:var(--navy)}
+.weekday-button[aria-pressed="true"]{background:var(--navy);border-color:var(--navy);color:var(--white)}
+.schedule-next-preview{display:flex;gap:12px;align-items:center;background:var(--light);border-radius:var(--r-16);padding:14px 16px;margin:22px 0 18px;color:var(--navy)}
+.schedule-next-preview>div{display:flex;flex-direction:column;gap:2px}
+.schedule-next-preview span{font-size:12.5px;color:var(--n600)}
+.schedule-list-panel{display:flex;flex-direction:column;gap:14px}
+.schedule-list-panel .section-head{margin-bottom:0}
+.schedule-card{background:var(--white);border:1px solid var(--n100);border-radius:var(--r-20);padding:20px;display:flex;flex-direction:column;gap:6px}
+.schedule-card.paused{opacity:.72}
+.schedule-card-heading{display:flex;align-items:center;justify-content:space-between}
+.schedule-clock{font-family:var(--disp);font-size:28px;font-weight:600;color:var(--navy);letter-spacing:-.01em}
+.schedule-card h4{font-size:16px}
+.schedule-card p{font-size:13px;color:var(--n600)}
+.schedule-card-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.schedule-delete-confirm{margin-top:10px;background:#FBEDEA;border-radius:var(--r-12);padding:12px 14px;display:flex;flex-direction:column;gap:8px}
+.schedule-delete-confirm>div{display:flex;gap:8px}
+.schedule-next{font-size:12.5px;color:var(--blue2);font-weight:600}
+.schedule-reminder-settings{display:flex;flex-direction:column;gap:4px}
+.schedule-reminder-banner{position:fixed;right:24px;bottom:24px;z-index:80;max-width:380px;display:flex;gap:14px;align-items:flex-start;background:var(--white);border:1px solid var(--n100);border-radius:var(--r-20);padding:18px;box-shadow:var(--shadow-2)}
+.schedule-reminder-banner p{font-size:13px;color:var(--n600);margin-top:2px}
+.schedule-reminder-icon{flex:none;width:40px;height:40px;border-radius:50%;background:var(--light);color:var(--blue);display:flex;align-items:center;justify-content:center}
+[data-theme="dark"] .schedule-card,[data-theme="dark"] .schedule-reminder-banner{background:var(--n50);border-color:var(--n100)}
+[data-theme="dark"] .weekday-button{background:var(--n50);border-color:var(--n200);color:var(--n600)}
+[data-theme="dark"] .weekday-button[aria-pressed="true"]{background:var(--tint1);border-color:var(--tint1);color:var(--deep)}
+[data-theme="dark"] .schedule-next-preview{background:var(--n100);color:var(--tint1)}
+[data-theme="dark"] .schedule-clock{color:var(--white)}
+
+/* Sound choices and listening presets (Voice & sound settings, player). */
+.sound-choice-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin-top:14px}
+.sound-choice{display:flex;flex-direction:column;align-items:flex-start;gap:6px;text-align:left;background:var(--white);border:1px solid var(--n200);border-radius:var(--r-16);padding:14px 16px;color:var(--navy);transition:border-color .2s,background .2s,box-shadow .2s}
+.sound-choice b{font-size:14px}
+.sound-choice span{font-size:12px;color:var(--n500);line-height:1.5}
+.sound-choice .ic{color:var(--blue2)}
+.sound-choice:hover{border-color:var(--blue2)}
+.sound-choice[aria-pressed="true"]{border-color:var(--navy);background:var(--light);box-shadow:0 0 0 2px var(--tint1)}
+.listening-settings{display:flex;flex-direction:column;gap:20px}
+.listening-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:20px;align-items:start}
+.listening-presets{display:flex;flex-direction:column;gap:6px}
+.listening-presets>button{align-self:flex-start;margin-top:8px}
+[data-theme="dark"] .sound-choice{background:var(--n50);border-color:var(--n200);color:var(--white)}
+[data-theme="dark"] .sound-choice[aria-pressed="true"]{background:var(--n100);border-color:var(--tint2)}
+
+/* Session player states */
+.player-stage .ps-exit{position:absolute;top:24px;right:24px;z-index:2}
+.player-empty-actions{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin-top:28px}
+.player-volume{display:flex;flex-direction:column;gap:6px;margin-top:22px;min-width:220px;font-size:12px;color:var(--tint2)}
+.player-sound-panel{margin-top:26px;width:100%;max-width:640px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:var(--r-20);padding:18px}
+.player-sound-panel .sound-choice{background:transparent;border-color:rgba(255,255,255,.18);color:var(--white)}
+.player-sound-panel .sound-choice span{color:var(--tint2)}
+.player-sound-panel .sound-choice[aria-pressed="true"]{background:rgba(255,255,255,.12);border-color:var(--tint1);box-shadow:none}
+.player-error{margin-top:22px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;background:rgba(179,64,47,.18);border:1px solid rgba(179,64,47,.5);border-radius:var(--r-16);padding:12px 16px;color:#F6D9D3;font-size:13px}
+.player-completed{margin-top:24px;display:flex;flex-direction:column;gap:6px;align-items:center;background:rgba(255,255,255,.07);border-radius:var(--r-20);padding:18px 22px;color:var(--white)}
+.player-completed p{font-size:13px;color:var(--tint2)}
+.player-transcript{margin-top:26px;max-width:42ch;font-size:clamp(16px,2vw,22px);line-height:1.7;color:var(--tint1)}
+.device-voice-portrait{width:84px;height:84px;border-radius:50%;border:1px solid rgba(255,255,255,.25);display:flex;align-items:center;justify-content:center;color:var(--tint1)}
+.voice-search{max-width:520px}
+
+/* Narrow cards (two-up grids on phones): smaller type and arrow so names
+   like "Breakthrough" or "Emotional Strength" never break mid-word. */
+.tcard{container-type:inline-size}
+@container (max-width:220px){
+  .tcard .t-foot{padding:12px 14px 14px;gap:8px}
+  .tcard h3{font-size:15.5px}
+  .tcard .t-meta{font-size:11px}
+  .tcard .t-orb{width:32px;height:32px}
+}
+.tcard h3{overflow-wrap:normal;word-break:normal;hyphens:manual}

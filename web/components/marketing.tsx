@@ -689,7 +689,7 @@ export function Mission() {
 }
 
 export function Journal() {
-  const imgs = ["journal-1.jpg", "cat-rest.jpg", "cat-faith.jpg", "journal-1.jpg", "cat-purpose.jpg"];
+  const imgs = ["journal-1.jpg", "cat-rest.jpg", "cat-faith.jpg", "immersive.jpg", "cat-purpose.jpg"];
   return (
     <section className="section container-wide" style={{ paddingTop: "calc(var(--header-h) + 56px)" }}>
       <SectionHead eyebrow="The Journal" title={<>Words to <span className="accent">return to.</span></>} lede="Essays written for this product and signed I CONFESS — no invented authors." />
