@@ -335,3 +335,35 @@ export function AuthLink({ href, className, children, style, "aria-label": label
   const to = auth.token ? href : `/register?next=${encodeURIComponent(href)}`;
   return <Link className={className} href={to} style={style} aria-label={label}>{children}</Link>;
 }
+
+/** Opened from the link in a newsletter mail; `?token=` unsubscribes on click. */
+export function NewsletterUnsubscribe() {
+  const [token, setToken] = useState("");
+  const [state, setState] = useState<"ready" | "working" | "done" | "failed">("ready");
+  const [msg, setMsg] = useState("");
+  React.useEffect(() => { setToken(new URLSearchParams(window.location.search).get("token") || ""); }, []);
+  // A button, not an automatic request on load: mail scanners prefetch links,
+  // and a prefetch must not unsubscribe anyone.
+  const go = async () => {
+    setState("working");
+    const r = await appApi("/newsletter/unsubscribe", { method: "POST", body: { token } });
+    setState(r.ok ? "done" : "failed");
+    if (!r.ok) setMsg(r.message);
+  };
+  return (
+    <div className="rv in" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 18 }}>
+      <span className="eyebrow">Newsletter</span>
+      <h1 className="h2">{state === "done" ? "You're unsubscribed." : state === "failed" ? "That link didn't work." : "Leave the list?"}</h1>
+      <p className="lede" role="status">
+        {state === "done" ? "We won't email this address again. Sign up from the home page any time to come back."
+          : state === "failed" ? msg || "This unsubscribe link is no longer valid."
+          : token ? "One click and we'll stop emailing this address." : "Open this page from the link at the bottom of one of our emails."}
+      </p>
+      {state === "done" || state === "failed" ? (
+        <Link className="btn btn-primary" href="/">Back to I CONFESS</Link>
+      ) : (
+        <button className="btn btn-primary" onClick={go} disabled={!token || state === "working"}>{state === "working" ? "Unsubscribing…" : "Unsubscribe"}</button>
+      )}
+    </div>
+  );
+}

@@ -1604,6 +1604,13 @@
   },
   {
     "method": "GET",
+    "path": "/me/community/posts",
+    "auth": "user",
+    "summary": "List your own community posts in every status",
+    "tag": "community"
+  },
+  {
+    "method": "GET",
     "path": "/me/confessions",
     "auth": "user",
     "summary": "List personal confessions",
@@ -1810,6 +1817,13 @@
     "path": "/newsletter",
     "auth": "public",
     "summary": "Subscribe an address to the newsletter",
+    "tag": "site"
+  },
+  {
+    "method": "POST",
+    "path": "/newsletter/unsubscribe",
+    "auth": "public",
+    "summary": "Unsubscribe from the newsletter with the token from its link",
     "tag": "site"
   },
   {
@@ -3704,6 +3718,13 @@
   },
   {
     "method": "GET",
+    "path": "/v1/me/community/posts",
+    "auth": "user",
+    "summary": "List your own community posts in every status",
+    "tag": "community"
+  },
+  {
+    "method": "GET",
     "path": "/v1/me/confessions",
     "auth": "user",
     "summary": "List personal confessions",
@@ -3910,6 +3931,13 @@
     "path": "/v1/newsletter",
     "auth": "public",
     "summary": "Subscribe an address to the newsletter",
+    "tag": "site"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/newsletter/unsubscribe",
+    "auth": "public",
+    "summary": "Unsubscribe from the newsletter with the token from its link",
     "tag": "site"
   },
   {

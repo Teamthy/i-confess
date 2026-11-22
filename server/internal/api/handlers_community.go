@@ -63,6 +63,16 @@ func (h *Handler) createCommunityPost(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusCreated, p)
 }
 
+// myCommunityPosts lists the caller's own posts in every status.
+func (h *Handler) myCommunityPosts(w http.ResponseWriter, r *http.Request) {
+	posts, err := community.NewStore(h.db).ByAuthor(r.Context(), h.userID(r), 50)
+	if err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, "failed to load your posts")
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"posts": posts})
+}
+
 func (h *Handler) feedCommunity(w http.ResponseWriter, r *http.Request) {
 	store := community.NewStore(h.db)
 	posts, err := store.FeedFor(r.Context(), 20, h.userID(r))

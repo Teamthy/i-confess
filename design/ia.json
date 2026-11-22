@@ -497,6 +497,7 @@
         "profile"
       ],
       "endpoints": [
+        "GET /me/community/posts",
         "GET /community/feed",
         "GET /community/confessions",
         "POST /community/posts",
@@ -682,6 +683,11 @@
       "endpoint": "POST /newsletter",
       "category": "web-admin",
       "reason": "The newsletter form is on the public website (web/components/islands.tsx NewsletterForm); the mobile app has no newsletter screen."
+    },
+    {
+      "endpoint": "POST /newsletter/unsubscribe",
+      "category": "web-admin",
+      "reason": "Reached from the link in newsletter mail, which opens the website page /newsletter/unsubscribe (web/components/islands.tsx NewsletterUnsubscribe); the mobile app has no newsletter screen."
     },
     {
       "endpoint": "POST /contact",

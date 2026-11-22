@@ -237,22 +237,41 @@ function Onboarding() {
   const finish = async () => {
     const cats = interests.slice(0, 3);
     setBusy(true);
-    // Interests are stored server-side by category id; the static library is keyed by slug.
-    const list = await appApi<{ id: string; slug: string }[] | { categories: { id: string; slug: string }[] }>("/categories");
-    if (list.ok && auth.token) {
-      const rows = Array.isArray(list.data) ? list.data : list.data.categories || [];
-      const ids = rows.filter((c) => interests.includes(c.slug)).map((c) => c.id);
-      if (ids.length) await appApi("/me/interests", { token: auth.token, method: "PUT", body: { category_ids: ids, source: "ONBOARDING" } });
+    const token = auth.token;
+    let saved = true;
+    if (token) {
+      // Signed in: the practice lives on the account, so the reminder fires on
+      // every device. Interests and schedules are keyed by category id; the
+      // static library is keyed by slug.
+      const list = await appApi<{ id: string; slug: string }[]>("/categories");
+      const rows = list.ok && Array.isArray(list.data) ? list.data : [];
+      const idOf = (slug: string) => rows.find((c) => c.slug === slug)?.id;
+      const interestIds = interests.map(idOf).filter((x): x is string => !!x);
+      const practiceIds = cats.map(idOf).filter((x): x is string => !!x);
+      if (interestIds.length) {
+        const r = await appApi("/me/interests", { token, method: "PUT", body: { category_ids: interestIds, source: "ONBOARDING" } });
+        saved = saved && r.ok;
+      }
+      const sc = await appApi("/schedules", {
+        token, method: "POST", idempotencyKey: crypto.randomUUID(),
+        body: { label: "Daily practice", time, days_of_week: [...ALL_DAYS], timezone: deviceTimezone(), duration_seconds: Number(len) * 60, category_ids: practiceIds, enabled: true },
+      });
+      if (!sc.ok) { saved = false; toast(sc.message || "We couldn't save your practice time."); }
+      const pr = await appApi("/me/notifications", { token, method: "PATCH", body: { scheduled_sessions: remind } });
+      saved = saved && pr.ok;
     }
     setBusy(false);
     mutate((s) => {
       s.user = { name: name.trim(), email: email.trim(), plan: "free", interests };
       s.routines = [{ slot: time, cats }];
-      s.schedule = [...s.schedule.filter((sc) => sc.localOwner !== email.trim()), ...cats.map((c, i) => ({ id: `local-${Date.now()}-${i}`, label: `${CATEGORIES.find((cat) => cat.slug === c)?.name || c} practice`, time, days_of_week: [...ALL_DAYS], timezone: deviceTimezone(), duration_seconds: Number(len) * 60, category_ids: [c], enabled: remind, localOwner: email.trim() }))];
-      s.settings.notifications.reminders = remind;
+      if (!token) {
+        // No API (the static demo): keep the practice on this device only.
+        s.schedule = [...s.schedule.filter((sc) => sc.localOwner !== email.trim()), { id: `local-${Date.now()}`, label: "Daily practice", time, days_of_week: [...ALL_DAYS], timezone: deviceTimezone(), duration_seconds: Number(len) * 60, category_ids: cats, enabled: true, localOwner: email.trim() }];
+        s.settings.notifications.reminders = remind;
+      }
     });
     track("onboarding_complete", { interests: interests.length });
-    toast("Your practice is set up");
+    if (saved) toast("Your practice is set up");
     router.push(next);
   };
 

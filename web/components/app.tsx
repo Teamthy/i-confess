@@ -13,6 +13,7 @@ import { SoundSettings } from "./sound-settings";
 import { SessionPlayer } from "./session-player";
 import { SchedulePage, ScheduleReminderSettings } from "./schedules";
 import { useAuth } from "@/lib/auth-context";
+import { appApi, useApiData, newIdempotencyKey } from "@/lib/app-api";
 import { TrialCard } from "./trial";
 
 const SIDE_LIBRARY: [string, string, string][] = [
@@ -243,8 +244,7 @@ export function AppPage({ kind, slug, token }: { kind: string; slug?: string; to
     case "schedule": return <SchedulePage />;
     case "routines": return <Routines />;
     case "notifications": return <><Head title="Notifications" /><div className="form-card" style={{ maxWidth: 560 }}><Switch title="Daily words" sub="A quiet nudge with today's confession" path="notifications.daily" /><Switch title="Reminders" sub="If you miss a morning, we offer the words again at midday" path="notifications.reminders" /><ScheduleReminderSettings /><Switch title="Community" sub="When a submission you follow is approved" path="notifications.community" /><Switch title="Weekly review digest" sub="One optional Sunday email: the words you returned to, plus a journal prompt. Never more." path="notifications.digest" /><div className="setting-row"><div><b>Quiet hours</b><span>Browser schedule reminders are suppressed in this window. Mobile push follows your account preference.</span></div><div style={{ display: "flex", gap: 8, alignItems: "center" }}><input type="time" defaultValue={st.settings.notifications.quietStart} style={{ width: 110 }} onChange={(e) => mutate((x) => { x.settings.notifications.quietStart = e.target.value; })} aria-label="Quiet hours start" /><span>–</span><input type="time" defaultValue={st.settings.notifications.quietEnd} style={{ width: 110 }} onChange={(e) => mutate((x) => { x.settings.notifications.quietEnd = e.target.value; })} aria-label="Quiet hours end" /></div></div></div></>;
-    case "community": { const pub = st.community.filter((c) => c.status === "public" || c.status === "approved"); return <><Head title="Community" sub="Private by default. Shared intentionally." right={<Link className="btn btn-primary btn-sm" href="/app/community/create"><Icon n="plus" s={12} /> Create</Link>} />
-      <div className="form-card rv in" style={{ maxWidth: 640, marginBottom: 20 }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><div><h4>Your creator page</h4><p className="small">{pub.length} published · {st.community.filter((c) => c.status === "pending_review").length} in review · decisions always recorded with a reason</p></div><span className="tag shared">reviewed</span></div><p className="small" style={{ marginTop: 8 }}>When your words publish, this page lists them. Followers get a quiet "new words" notice — never a feed, never a feed algorithm.</p></div>{st.community.length ? st.community.map((c) => <Link className="list-row" href={`/app/community/${c.slug}`} key={c.slug} style={{ display: "flex" }}><div className="lr-main"><h4>{c.title}</h4><p>{new Date(c.at).toLocaleDateString()}</p></div><span className={"tag " + (c.status === "pending_review" ? "pending" : c.visibility)}>{c.status.replace("_", " ")}</span></Link>) : <EmptyState icon="edit" title="No confessions yet" sub="Write your first words — they stay private unless you say otherwise." />}</>; }
+    case "community": return <CommunityList />;
     case "communityCreate": return <CreateConfession />;
     case "communityDetail": return <CommunityDetail slug={slug!} />;
     case "profile": return <Profile />;
@@ -271,7 +271,25 @@ export function AppPage({ kind, slug, token }: { kind: string; slug?: string; to
   }
 }
 
-function ExportBtn() { const toast = useToast(); return <button className="btn btn-ghost btn-sm" onClick={() => toast("Export queued — you'll receive a download link (demo).")}>Export</button>; }
+/** Downloads everything the account holds (GET /me/export) as a JSON file. */
+function ExportBtn() {
+  const toast = useToast(); const auth = useAuth(); const st = useApp();
+  const [busy, setBusy] = useState(false);
+  const save = (data: unknown) => {
+    const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }));
+    const a = document.createElement("a"); a.href = url; a.download = `iconfess-export-${new Date().toISOString().slice(0, 10)}.json`; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+  const go = async () => {
+    if (!auth.token) { save({ note: "Local data on this device only", user: st.user, favs: st.favs, history: st.history, community: st.community }); return; }
+    setBusy(true);
+    const r = await appApi<unknown>("/me/export", { token: auth.token });
+    setBusy(false);
+    if (!r.ok) { toast(r.message); return; }
+    save(r.data); toast("Your data has been downloaded");
+  };
+  return <button className="btn btn-ghost btn-sm" onClick={go} disabled={busy}>{busy ? "Preparing…" : "Export"}</button>;
+}
 
 function AppHome() {
   const st = useApp(); const u = st.user!;
@@ -347,12 +365,34 @@ function AppSession({ slug }: { slug: string }) {
 }
 
 function Builder() {
-  const sp = useSearchParams();
+  const sp = useSearchParams(); const auth = useAuth(); const toast = useToast();
   const [cat, setCat] = useState(sp.get("cat") || "peace");
   const [min, setMin] = useState(() => { const m = Number(sp.get("min")); return [5, 10, 15].includes(m) ? m : m > 10 ? 15 : 5; });
   const [tone, setTone] = useState("any");
+  const [need, setNeed] = useState("");
+  const [why, setWhy] = useState("");
+  const [busy, setBusy] = useState<"" | "parse" | "build">("");
   const [out, setOut] = useState<Session | null>(null);
   const audio = useAudio(); const router = useRouter();
+  const nearest = (secs: number) => [5, 10, 15].reduce((a, b) => Math.abs(b * 60 - secs) < Math.abs(a * 60 - secs) ? b : a, 10);
+
+  // "Describe what you need" → category and length (POST /ai/parse). The
+  // parser only chooses among published categories; it never writes words.
+  const interpret = async () => {
+    if (!auth.token || !need.trim()) return;
+    setBusy("parse");
+    const r = await appApi<{ parsed: { categories: string[]; duration_seconds: number; reason?: string; parser?: string } }>("/ai/parse", { token: auth.token, method: "POST", body: { utterance: need.trim() } });
+    setBusy("");
+    if (!r.ok) { toast(r.message); return; }
+    const p = r.data.parsed;
+    const slug = p.categories.find((c) => catBySlug(c)) || cat;
+    const m = p.duration_seconds ? nearest(p.duration_seconds) : min;
+    setCat(slug); setMin(m);
+    // Always shown before anything is built: the listener confirms the choice.
+    const picked = `${catBySlug(slug)!.name}, ${m} minutes. Change either below, then build.`;
+    setWhy(p.parser === "claude" && p.reason ? `${p.reason} — ${picked}` : `Suggested: ${picked}`);
+  };
+
   const preview = () => {
     let items = CONFESSIONS.filter((c) => c.category === catBySlug(cat)!.name);
     if (tone === "gentle") items = items.filter((c) => c.intensity <= 2) || items;
@@ -360,14 +400,38 @@ function Builder() {
     if (!items.length) items = CONFESSIONS.filter((c) => c.category === catBySlug(cat)!.name);
     setOut({ slug: "built", category: cat, minutes: min, title: `${catBySlug(cat)!.name} — ${min} minutes (built)`, description: "Your custom session.", items });
   };
+
+  // Signed in, the server composes the session (POST /sessions) from the
+  // published library with signed audio, so it counts in history and the trial.
+  const build = async () => {
+    if (!auth.token) return;
+    setBusy("build");
+    const cats = await appApi<{ id: string; slug: string }[]>("/categories");
+    const id = cats.ok && Array.isArray(cats.data) ? cats.data.find((c) => c.slug === cat)?.id : undefined;
+    if (!id) { setBusy(""); toast("That category isn't available right now."); return; }
+    const r = await appApi<{ id: string }>("/sessions", { token: auth.token, method: "POST", idempotencyKey: newIdempotencyKey(), body: { category_ids: [id], duration_seconds: min * 60, strategy: "BALANCED" } });
+    setBusy("");
+    if (!r.ok) { toast(r.message); return; }
+    track("session_started", { built: true });
+    router.push(`/app/player?session=${encodeURIComponent(r.data.id)}`);
+  };
+
   return (
     <>
       <Head title="Session Builder" sub="Choose a category and a length — the engine assembles the rest." />
-      <form className="form-card rv in" style={{ maxWidth: 640 }} onSubmit={(e) => { e.preventDefault(); preview(); }}>
-        <div className="field"><label>Category</label><select value={cat} onChange={(e) => setCat(e.target.value)}>{CATEGORIES.map((c) => <option value={c.slug} key={c.slug}>{c.name}</option>)}</select></div>
+      {auth.token && (
+        <form className="form-card rv in" style={{ maxWidth: 640, marginBottom: 20 }} onSubmit={(e) => { e.preventDefault(); void interpret(); }}>
+          <div className="field"><label htmlFor="sb-need">Describe what you need <span className="small">(optional)</span></label>
+            <textarea id="sb-need" rows={2} maxLength={500} value={need} onChange={(e) => setNeed(e.target.value)} placeholder="e.g. Ten quiet minutes before a hard conversation at work" /></div>
+          <button className="btn btn-ghost" type="submit" disabled={!need.trim() || busy !== ""}>{busy === "parse" ? "Choosing…" : "Choose for me"}</button>
+          {why && <p className="small" role="status" style={{ marginTop: 10 }}>{why}</p>}
+        </form>
+      )}
+      <form className="form-card rv in" style={{ maxWidth: 640 }} onSubmit={(e) => { e.preventDefault(); if (auth.token) void build(); else preview(); }}>
+        <div className="field"><label htmlFor="sb-cat">Category</label><select id="sb-cat" value={cat} onChange={(e) => setCat(e.target.value)}>{CATEGORIES.map((c) => <option value={c.slug} key={c.slug}>{c.name}</option>)}</select></div>
         <div className="field"><label>Length</label><div className="chip-row">{[5, 10, 15].map((m) => <button type="button" className="chip" key={m} aria-pressed={min === m} onClick={() => setMin(m)}>{m} minutes</button>)}</div></div>
-        <div className="field"><label>Tone</label><select value={tone} onChange={(e) => setTone(e.target.value)}><option value="any">Any intensity</option><option value="gentle">Gentle (1–2)</option><option value="urgent">Urgent (3+)</option></select></div>
-        <button className="btn btn-primary btn-lg" type="submit" style={{ marginTop: 20 }}>Preview Session</button>
+        {!auth.token && <div className="field"><label htmlFor="sb-tone">Tone</label><select id="sb-tone" value={tone} onChange={(e) => setTone(e.target.value)}><option value="any">Any intensity</option><option value="gentle">Gentle (1–2)</option><option value="urgent">Urgent (3+)</option></select></div>}
+        <button className="btn btn-primary btn-lg" type="submit" style={{ marginTop: 20 }} disabled={busy !== ""}>{auth.token ? (busy === "build" ? "Building…" : "Build and start") : "Preview Session"}</button>
       </form>
       {out && <div className="form-card" style={{ marginTop: 24, maxWidth: 640 }}><h3 className="h4" style={{ marginBottom: 12 }}>{buildQueue(out).length} confessions · ~{out.minutes} min</h3>
         {buildQueue(out).map((q, i) => <div className="list-row" key={i}><div className="lr-main"><h4>{q.title}</h4><p>{q.category}</p></div></div>)}
@@ -408,41 +472,92 @@ function Routines() {
 }
 
 function CreateConfession() {
-  const router = useRouter(); const toast = useToast();
+  const router = useRouter(); const toast = useToast(); const auth = useAuth();
   const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
   const onFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]; if (!f) return;
     if (f.size > 200000) { toast("File too large — 200KB max"); return; }
     const r = new FileReader();
-    r.onload = () => { setText(String(r.result || "").slice(0, 4000)); toast("Loaded from " + f.name); };
+    r.onload = () => { setText(String(r.result || "").slice(0, 1900)); toast("Loaded from " + f.name); };
     r.readAsText(f);
+  };
+  const submit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const f = new FormData(e.currentTarget);
+    const title = String(f.get("title") || "My confession").trim();
+    const vis = String(f.get("vis"));
+    if (auth.token) {
+      // The server stores one body; its first line is the title.
+      setBusy(true);
+      const r = await appApi("/community/posts", { token: auth.token, method: "POST", idempotencyKey: newIdempotencyKey(), body: { body: `${title}\n${text.trim()}`, visibility: vis } });
+      setBusy(false);
+      if (!r.ok) {
+        toast(r.status === 403 ? "Verify your email before sharing — the link is in your inbox. Private confessions don't need it." : r.message);
+        return;
+      }
+    } else {
+      mutate((s) => { s.community.unshift({ slug: "mine-" + Date.now().toString(36), title, text, visibility: vis, status: vis === "public" ? "pending_review" : vis, category: String(f.get("cat")), at: Date.now() }); });
+    }
+    track("content_saved", { kind: "community" });
+    toast(vis === "public" ? "Submitted — a person reviews it before anyone else sees it" : vis === "shared" ? "Saved — shared once it's approved" : "Saved privately");
+    router.push("/app/community");
   };
   return (
     <>
-      <Head title="Create a confession" sub="Type it or upload it. Your words, your visibility. Human review for anything public." />
-      <form className="form-card rv in" style={{ maxWidth: 640 }} onSubmit={(e) => {
-        e.preventDefault();
-        const f = new FormData(e.currentTarget);
-        const vis = String(f.get("vis"));
-        mutate((s) => { s.community.unshift({ slug: "mine-" + Date.now().toString(36), title: String(f.get("title") || "My confession"), text: text, visibility: vis === "mentor" ? "private" : vis, status: vis === "public" ? "pending_review" : vis === "mentor" ? "mentor_review" : vis, category: String(f.get("cat")), at: Date.now() }); });
-        track("content_saved", { kind: "community" });
-        toast(vis === "public" ? "Submitted for human review" : "Saved — " + vis);
-        router.push("/app/community");
-      }}>
-        <div className="field"><label>Title</label><input name="title" required maxLength={60} /></div>
-        <div className="field"><label>Your confession</label><textarea name="text" rows={6} required value={text} onChange={(e) => setText(e.target.value)} placeholder="Write in the first person, present tense…" /></div>
+      <Head title="Create a confession" sub="Type it or upload it. Your words, your visibility. A person reviews anything you offer to others." />
+      <form className="form-card rv in" style={{ maxWidth: 640 }} onSubmit={submit}>
+        <div className="field"><label htmlFor="cc-title">Title</label><input id="cc-title" name="title" required maxLength={60} /></div>
+        <div className="field"><label htmlFor="cc-text">Your confession</label><textarea id="cc-text" name="text" rows={6} required maxLength={1900} value={text} onChange={(e) => setText(e.target.value)} placeholder="Write in the first person, present tense…" /><span className="small">{text.length} / 1,900</span></div>
         <div className="field"><label>…or upload it</label>
           <label className="upload-box" htmlFor="conf-file"><Icon n="dl" s={16} /> <span>{text ? "Replace from a file (.txt / .md)" : "Upload a text file (.txt / .md)"}</span></label>
           <input id="conf-file" type="file" accept=".txt,.md,text/plain,text/markdown" style={{ display: "none" }} onChange={onFile} /></div>
-        <div className="field"><label>Category</label><select name="cat">{CATEGORIES.map((c) => <option value={c.slug} key={c.slug}>{c.name}</option>)}</select></div>
-        <div className="field"><label>Visibility</label><select name="vis"><option value="private">Private — only me, forever</option><option value="shared">Shared — anyone with my link</option><option value="public">Public — submit for human review</option><option value="mentor">Mentor — Premium written feedback, never published</option></select></div>
-        <button className="btn btn-primary btn-lg" type="submit" style={{ marginTop: 18 }}>Save</button>
+        <div className="field"><label htmlFor="cc-vis">Visibility</label><select id="cc-vis" name="vis"><option value="private">Private — only me</option><option value="shared">Shared — people I share it with, after review</option><option value="public">Community — everyone, after review</option></select></div>
+        <button className="btn btn-primary btn-lg" type="submit" style={{ marginTop: 18 }} disabled={busy}>{busy ? "Saving…" : "Save"}</button>
       </form>
     </>
   );
 }
+type MyPost = { id: string; body: string; visibility: string; status: string; created_at: string };
+const POST_STATUS: Record<string, string> = { submitted: "in review", under_review: "in review", approved: "approved", published: "published", rejected: "declined", archived: "archived", draft: "draft" };
+/** A post's first line is its title; the rest is the confession. */
+const splitPost = (body: string) => { const [first, ...rest] = body.split("\n"); return { title: first.slice(0, 80) || "Untitled", text: rest.join("\n").trim() || first }; };
+const postTag = (p: { visibility: string; status: string }) => p.visibility === "private" ? "private" : POST_STATUS[p.status] || p.status;
+
+function CommunityList() {
+  const st = useApp(); const auth = useAuth();
+  const mine = useApiData<{ posts: MyPost[] }>(auth.token, "/me/community/posts");
+  const create = <Link className="btn btn-primary btn-sm" href="/app/community/create"><Icon n="plus" s={12} /> Create</Link>;
+  const rows = auth.token
+    ? (mine.data?.posts || []).map((p) => ({ key: p.id, href: `/app/community/${p.id}`, title: splitPost(p.body).title, at: new Date(p.created_at), tag: postTag(p) }))
+    : st.community.map((c) => ({ key: c.slug, href: `/app/community/${c.slug}`, title: c.title, at: new Date(c.at), tag: c.status.replace("_", " ") }));
+  const inReview = rows.filter((r) => r.tag === "in review").length;
+  const published = rows.filter((r) => r.tag === "published" || r.tag === "approved").length;
+  return (
+    <>
+      <Head title="Community" sub="Private by default. Shared intentionally." right={create} />
+      <div className="form-card rv in" style={{ maxWidth: 640, marginBottom: 20 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><div><h4>Your words</h4><p className="small">{published} published · {inReview} in review · a person reviews anything you offer to the community</p></div><span className="tag shared">reviewed</span></div>
+      </div>
+      {auth.token && mine.loading ? <p className="small">Loading your confessions…</p>
+        : auth.token && mine.error ? <div className="feature-notice" role="alert"><p>{mine.error.message}</p><button className="btn btn-ghost btn-sm" onClick={mine.reload}>Retry</button></div>
+        : rows.length ? rows.map((r) => <Link className="list-row" href={r.href} key={r.key} style={{ display: "flex" }}><div className="lr-main"><h4>{r.title}</h4><p>{r.at.toLocaleDateString()}</p></div><span className={"tag " + (r.tag === "in review" ? "pending" : r.tag === "private" ? "private" : "shared")}>{r.tag}</span></Link>)
+        : <EmptyState icon="edit" title="No confessions yet" sub="Write your first words — they stay private unless you say otherwise." />}
+    </>
+  );
+}
+
 function CommunityDetail({ slug }: { slug: string }) {
-  const st = useApp(); const c = st.community.find((x) => x.slug === slug);
+  const st = useApp(); const auth = useAuth();
+  const mine = useApiData<{ posts: MyPost[] }>(auth.token, "/me/community/posts");
+  if (auth.token) {
+    if (mine.loading) return <p className="small">Loading…</p>;
+    const p = mine.data?.posts.find((x) => x.id === slug);
+    if (!p) return <EmptyState icon="info" title="Not found" sub="This confession doesn't exist, or isn't yours." />;
+    const { title, text } = splitPost(p.body);
+    return <><Head title={title} sub={p.visibility === "private" ? "Private — only you can see this" : `${p.visibility === "public" ? "Community" : "Shared"} · ${POST_STATUS[p.status] || p.status}`} /><div className="form-card"><p style={{ fontSize: 16, lineHeight: 1.7, whiteSpace: "pre-wrap" }}>“{text}”</p></div></>;
+  }
+  const c = st.community.find((x) => x.slug === slug);
   if (!c) return <EmptyState icon="info" title="Not found" sub="This confession doesn't exist." />;
   return <><Head title={c.title} sub={"Visibility: " + c.status.replace("_", " ")} /><div className="form-card"><p style={{ fontSize: 16, lineHeight: 1.7 }}>“{c.text}”</p></div><div style={{ marginTop: 16 }}><ShareBtn slug={c.slug} /></div></>;
 }

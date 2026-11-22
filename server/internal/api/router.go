@@ -71,6 +71,7 @@ func (h *Handler) Routes() http.Handler {
 	// The website's public forms, each rate-limited per address in its own
 	// bucket; both answer the same way for known and unknown addresses.
 	h.route(mux, "POST /newsletter", "public", "site", "Subscribe an address to the newsletter", perIP(ratelimit.PublicForm, "newsletter"), h.newsletterSubscribe)
+	h.route(mux, "POST /newsletter/unsubscribe", "public", "site", "Unsubscribe from the newsletter with the token from its link", perIP(ratelimit.PublicForm, "newsletter-unsubscribe"), h.newsletterUnsubscribe)
 	h.route(mux, "POST /contact", "public", "site", "Send a message to support", perIP(ratelimit.PublicForm, "contact"), h.contactMessage)
 
 	// Public auth
@@ -438,6 +439,7 @@ func (h *Handler) Routes() http.Handler {
 		"App Store Server Notifications V2 (JWS verified against the pinned Apple root)", nil, h.appleStoreWebhook)
 	h.route(mux, "POST /subscriptions/webhooks/google", "public", "subscription",
 		"Play real-time developer notification via Pub/Sub push (OIDC verified)", nil, h.googleStoreWebhook)
+	h.route(mux, "GET /me/community/posts", "user", "community", "List your own community posts in every status", authed, h.myCommunityPosts)
 	h.route(mux, "POST /community/posts", "user", "community", "Create community post (moderated, never auto-publish)", authed, h.createCommunityPost)
 	h.route(mux, "GET /community/feed", "public", "community", "Approved community feed", nil, h.feedCommunity)
 	h.route(mux, "GET /community/confessions", "public", "community", "Published user confessions (public UGC reader, anonymous)", nil, h.feedUserConfessions)
@@ -454,6 +456,7 @@ func (h *Handler) Routes() http.Handler {
 	// Idempotency (§47) is enforced on mutating session/progress/subscription/download endpoints.
 	// Public auth (v1)
 	h.route(mux, "POST /v1/newsletter", "public", "site", "Subscribe an address to the newsletter", perIP(ratelimit.PublicForm, "newsletter"), h.newsletterSubscribe)
+	h.route(mux, "POST /v1/newsletter/unsubscribe", "public", "site", "Unsubscribe from the newsletter with the token from its link", perIP(ratelimit.PublicForm, "newsletter-unsubscribe"), h.newsletterUnsubscribe)
 	h.route(mux, "POST /v1/contact", "public", "site", "Send a message to support", perIP(ratelimit.PublicForm, "contact"), h.contactMessage)
 	h.route(mux, "POST /v1/auth/register", "public", "auth", "Create an account and send a verification email", registerLimit, h.register)
 	h.route(mux, "POST /v1/auth/login", "public", "auth", "Sign in; returns mfa_required when a second factor is enrolled", loginLimit, h.login)
@@ -602,6 +605,7 @@ func (h *Handler) Routes() http.Handler {
 		"App Store Server Notifications V2 (JWS verified against the pinned Apple root)", nil, h.appleStoreWebhook)
 	h.route(mux, "POST /v1/subscriptions/webhooks/google", "public", "subscription",
 		"Play real-time developer notification via Pub/Sub push (OIDC verified)", nil, h.googleStoreWebhook)
+	h.route(mux, "GET /v1/me/community/posts", "user", "community", "List your own community posts in every status", authed, h.myCommunityPosts)
 	h.route(mux, "POST /v1/community/posts", "user", "community", "Create community post (moderated, never auto-publish)", authed, h.createCommunityPost)
 	h.route(mux, "GET /v1/community/feed", "public", "community", "Approved community feed", nil, h.feedCommunity)
 	h.route(mux, "GET /v1/community/confessions", "public", "community", "Published user confessions (public UGC reader, anonymous)", nil, h.feedUserConfessions)
