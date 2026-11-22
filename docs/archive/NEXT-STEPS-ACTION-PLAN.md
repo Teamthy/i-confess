@@ -1091,9 +1091,9 @@ flutter build ios --release
 
 ### Documentation
 
-- **INTEGRATION-GUIDE-PHASE3.md** - Step-by-step integration
-- **STEP-BY-STEP-INTEGRATION.md** - Detailed instructions
-- **TESTING-GUIDE-PHASE3.md** - Comprehensive testing
+- **docs/archive/INTEGRATION-GUIDE-PHASE3.md** - Step-by-step integration
+- **docs/archive/STEP-BY-STEP-INTEGRATION.md** - Detailed instructions
+- **docs/archive/TESTING-GUIDE-PHASE3.md** - Comprehensive testing
 - **PHASE4-IMPLEMENTATION.md** - Phase 4 features
 
 ### Need Help?

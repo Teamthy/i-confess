@@ -373,7 +373,7 @@ audio.ProcessorConfig{
 6. `server/internal/jobs/audio_handler.go` - Background job handler
 7. `server/internal/jobs/audio_processor.go` - Job post-processor
 8. `server/internal/api/admin_audio_generation.go` - Admin API handlers
-9. `docs/PHASE1-AUDIO-IMPLEMENTATION.md` - This document
+9. `docs/archive/PHASE1-AUDIO-IMPLEMENTATION.md` - This document
 
 ## Testing
 

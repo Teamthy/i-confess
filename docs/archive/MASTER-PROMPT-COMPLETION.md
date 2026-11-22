@@ -145,7 +145,7 @@ PrefixForJob()              // List by job
 11. MVP Implementation Checklist (Weeks 1-10)
 
 **Additional Documentation**:
-- `AUDIO-PLATFORM-STATUS.md` — Implementation roadmap & quick start
+- `docs/archive/AUDIO-PLATFORM-STATUS.md` — Implementation roadmap & quick start
 - Database schema comments inline with table definitions
 - Go model struct tags for JSON marshaling
 - Storage key format examples
@@ -417,8 +417,8 @@ load_test.go        # 5K → 10K concurrent users
 
 ### Documentation (New)
 - ✅ `docs/AUDIO-INFRASTRUCTURE.md` — 12,000+ word guide
-- ✅ `AUDIO-PLATFORM-STATUS.md` — Implementation roadmap
-- ✅ `MASTER-PROMPT-COMPLETION.md` — This file
+- ✅ `docs/archive/AUDIO-PLATFORM-STATUS.md` — Implementation roadmap
+- ✅ `docs/archive/MASTER-PROMPT-COMPLETION.md` — This file
 
 ---
 

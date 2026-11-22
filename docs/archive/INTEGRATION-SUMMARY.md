@@ -80,8 +80,8 @@
 
 #### Documentation
 
-11. **`docs/PHASE1-AUDIO-IMPLEMENTATION.md`** - Complete implementation guide
-12. **`docs/INTEGRATION-SUMMARY.md`** - This document
+11. **`docs/archive/PHASE1-AUDIO-IMPLEMENTATION.md`** - Complete implementation guide
+12. **`docs/archive/INTEGRATION-SUMMARY.md`** - This document
 
 ---
 
@@ -490,8 +490,8 @@ The new `audioJobHandler` runs separately from the existing `workers.Register` q
 - `server/internal/api/handlers.go` - Added fields, setters, imports
 - `server/cmd/server/main.go` - Added initialization code, imports
 - `server/internal/api/router.go` - Added new routes
-- `docs/PHASE1-AUDIO-IMPLEMENTATION.md` - Created
-- `docs/INTEGRATION-SUMMARY.md` - Created
+- `docs/archive/PHASE1-AUDIO-IMPLEMENTATION.md` - Created
+- `docs/archive/INTEGRATION-SUMMARY.md` - Created
 
 ---
 

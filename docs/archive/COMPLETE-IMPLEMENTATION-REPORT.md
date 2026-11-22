@@ -970,8 +970,8 @@ All files created or modified during this implementation:
 - `apps/mobile/lib/src/features/audio/widgets/audio_player_widget.dart`
 - `apps/mobile/test/features/audio/audio_player_test.dart`
 - `apps/mobile/test/features/audio/audio_services_test.dart`
-- `docs/PHASE1-AUDIO-IMPLEMENTATION.md`
-- `docs/PHASE2-FLUTTER-AUDIO-PLAYER.md`
+- `docs/archive/PHASE1-AUDIO-IMPLEMENTATION.md`
+- `docs/archive/PHASE2-FLUTTER-AUDIO-PLAYER.md`
 
 **Modified Files (4):**
 - `server/internal/api/handlers.go`

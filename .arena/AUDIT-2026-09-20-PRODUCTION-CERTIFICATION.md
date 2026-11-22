@@ -70,8 +70,8 @@ The **product is not functional end to end**:
 
 ### 1.4 Biggest weaknesses
 
-* **A documentation layer that outruns the implementation.** `README-COMPLETE.md` promises
-  "Spotify-grade reliability"; `MASTER-PROMPT-COMPLETION.md` declares the audio platform
+* **A documentation layer that outruns the implementation.** `docs/archive/README-COMPLETE.md` promises
+  "Spotify-grade reliability"; `docs/archive/MASTER-PROMPT-COMPLETION.md` declares the audio platform
   "**100% complete**"; `docs/PROJECT-STATUS.md` marks PHASE 24 Player and PHASE 30 Premium
   "**PASS**". None of those three survives contact with the running code.
 * **The generated OpenAPI spec lies about authorization.** It is generated from the live route
@@ -170,7 +170,7 @@ Dart/Flutter, no Docker** preinstalled; the toolchain was reconstructed to match
 | **Contracts** | `contracts/openapi.json` (222 paths), `design/routes.json` (286 routes), `internal/api/openapi.go` | Single-source spec generated from the live route table | **Real mechanism, wrong output.** The `auth` column records intent, not installed middleware → 8 endpoints documented `bearerAuth` are unauthenticated. Only one schema component exists (`Error`); every request/response body is `"type":"object"`. 3 routes are registered via raw `mux.Handle*` and never recorded at all. |
 | **CI/CD** | `.github/workflows/ci.yml`; `.golangci.yml` | build, vet, `test -race` vs PostgreSQL 17, design checks, golangci-lint v2.13, gofmt | **One job, backend-only.** No Dart/Flutter, no dependency or secret scanning, no container build/push, no deploy, no rollback, no coverage gate. `new-from-merge-base: main` means pre-existing lint debt is invisible. |
 | **Testing** | 101 test files, 23,701 lines (Go 36 in `internal/api` alone; Dart 15; Python 4) | Unit + integration + contract + arch | **Backend: genuinely good. Clients: never executed.** Total statement coverage **50.6%**; `internal/api` 55.4%, `internal/store` 26.6%, `internal/auth` 37.5%, `internal/billing` 20.9%, `internal/ratelimit` 32.6%, `internal/content` 23.1%. |
-| **Docs** | 60 markdown files, 14,757 lines (`docs/00`–`docs/31`, plus 20 topic docs) | Phase-gated build record | **Exceptional volume, unreliable status claims.** The phase documents record real defects found and fixed — a rare and valuable practice — while the top-level `README-COMPLETE.md` / `MASTER-PROMPT-COMPLETION.md` overstate readiness. |
+| **Docs** | 60 markdown files, 14,757 lines (`docs/00`–`docs/31`, plus 20 topic docs) | Phase-gated build record | **Exceptional volume, unreliable status claims.** The phase documents record real defects found and fixed — a rare and valuable practice — while the top-level `docs/archive/README-COMPLETE.md` / `docs/archive/MASTER-PROMPT-COMPLETION.md` overstate readiness. |
 | **Design** | `design/tokens.json`, `generate.py`, `test_design.py`, `test_ia.py`, `check_contrast.py`, `ia.json`, `routes.json` | Token single-source + IA validation | **Real and enforced in CI.** Generates Dart/CSS/TS; validates spacing scale, radius set, green-primary hue, typography roles, tab order, screen reachability, endpoint↔screen coverage and WCAG AA contrast. |
 
 ### Hidden / ignored / generated artefacts
@@ -185,7 +185,7 @@ Dart/Flutter, no Docker** preinstalled; the toolchain was reconstructed to match
   ignore rules contradict the tracked tree.
 * `.arena/` holds machine state plus prior audits; consistent with the repo's own convention.
 * No `.env` files are tracked. `server/.env.example` exists; the root `.env.example` referenced by
-  `README-COMPLETE.md:38` **does not**.
+  `docs/archive/README-COMPLETE.md:38` **does not**.
 
 ---
 
@@ -943,7 +943,7 @@ network boundary rather than the public origin.
 **Evidence:**
 * `git ls-files` contains **no** `LICENSE`, `COPYING`, `NOTICE` or third-party licence file.
 * No privacy-policy or terms page exists on any served surface; `apps/web/app/sitemap.ts` is
-  documented (`docs/PHASE7_SCALE_TRUST.md:36`) as listing `/privacy` and `/terms` — those pages do
+  documented (`docs/archive/PHASE7_SCALE_TRUST.md:36`) as listing `/privacy` and `/terms` — those pages do
   not exist in `apps/web/app/`, and `apps/web` is retired and unbuilt.
 * Consent infrastructure exists server-side (`POST /auth/consent`, `consent_records` table with
   `category/granted/version/ip/user_agent`, retained-by-policy on deletion) but **no client
@@ -1216,15 +1216,15 @@ imported anywhere** and `SENTRY_DSN` is never read by the Go code.
 
 ### IC-032 · P4 · Documentation accuracy
 
-`README-COMPLETE.md`'s Quick Start fails at step 2: `cp .env.example .env` (no such file at the
+`docs/archive/README-COMPLETE.md`'s Quick Start fails at step 2: `cp .env.example .env` (no such file at the
 root — it is `server/.env.example`), `docker-compose up -d` (it is `server/docker-compose.yml`),
 `go run ./cmd/server` from the repo root (the module is in `server/`), "PostgreSQL 16+ (production)
 or **SQLite** (development)" (SQLite was removed; `db.Open` supports only `lib/pq`), and
 `PATCH … '{"status":"completed"}'` (the canonical vocabulary is now `COMPLETED`; lowercase is
-accepted only via a legacy map). `MASTER-PROMPT-COMPLETION.md` states the audio platform is
+accepted only via a legacy map). `docs/archive/MASTER-PROMPT-COMPLETION.md` states the audio platform is
 "**100% complete**" and "**ready for Phase 1 implementation**" in the same document. The root
 `Makefile` is, by contrast, excellent and correct — `README.md` should point at it and
-`README-COMPLETE.md` should be deleted or rewritten.
+`docs/archive/README-COMPLETE.md` should be deleted or rewritten.
 
 ### IC-033 · P5 · Positive observations worth preserving
 
@@ -1275,7 +1275,7 @@ function does not exist**.
 | IC-029 | P3 | Supply chain | `// indirect` mislabels, tag-pinned actions, no SBOM, compose Postgres 16 vs CI 17 | `go.mod`, `ci.yml`, `docker-compose.yml` | Reproducibility | tidy, pin SHA, align versions | no |
 | IC-030 | P3 | Structure | 1,524-line `handlers.go`; single 73-file `internal/api` package; `models.go` 0% covered | file metrics | Maintainability | split packages | no |
 | IC-031 | P3 | Observability | Identity in targeted logs; `LogJSON` doesn't emit JSON; Sentry/NewRelic/Datadog documented but never imported | `log.go:132-137`; `rg SENTRY` → config only | No error tracking, log privacy | wire structured logging + APM | no |
-| IC-032 | P4 | Docs | `README-COMPLETE.md` Quick Start fails at step 2; "100% complete" claims | `README-COMPLETE.md:38-48` | New-engineer friction | rewrite/delete | no |
+| IC-032 | P4 | Docs | `docs/archive/README-COMPLETE.md` Quick Start fails at step 2; "100% complete" claims | `docs/archive/README-COMPLETE.md:38-48` | New-engineer friction | rewrite/delete | no |
 | IC-033 | P5 | Positive | Defect-driven phase docs, gap numbering, arch tests, contrast/IA enforcement | `docs/*`, `arch_test.go` | Auditable codebase | preserve | no |
 
 ---
@@ -1603,8 +1603,8 @@ likelihood × production impact. (Fewer than 25 genuine blockers exist; the list
     email-keyed, so "anonymous" means *pseudonymous to other users*, not *unknown to the operator*.
     If true anonymity is a product promise, it needs a separate design (no email, no IP retention,
     no device ids, per-post unlinkability) — none of which exists.
-37. Delete `apps/web` and `apps/admin`, or finish them; delete `README-COMPLETE.md` and
-    `MASTER-PROMPT-COMPLETION.md`, or rewrite them to match reality (IC-032).
+37. Delete `apps/web` and `apps/admin`, or finish them; delete `docs/archive/README-COMPLETE.md` and
+    `docs/archive/MASTER-PROMPT-COMPLETION.md`, or rewrite them to match reality (IC-032).
 38. Add an `.gitignore` fix for the bare `.md` line before it silently swallows a new document.
 39. Add contract tests generated from `contracts/openapi.json` and run them against a live server
     in CI, so the spec becomes a checked artifact rather than an output.
@@ -1878,7 +1878,7 @@ illustrates the gap concretely: a deployment with zero playable content reports
 | 6 | `make verify` | ✓ works, and the root `Makefile` is excellent — it handles the `server/` module boundary, exports `TEST_DATABASE_URL`, and documents why there is no skip fallback | **ok**, except `mobile-check` silently skips and `golangci-lint` is usually absent |
 | 7 | `make test` | requires a live PostgreSQL 17 at `TEST_DATABASE_URL`; fails rather than skips (correct and documented) | ok once PostgreSQL exists |
 
-The **root `Makefile` and `docs/ENGINEERING-PIPELINE.md` are the good path**; `README-COMPLETE.md`
+The **root `Makefile` and `docs/ENGINEERING-PIPELINE.md` are the good path**; `docs/archive/README-COMPLETE.md`
 is the bad one and should be deleted. `README.md` is short and accurate but does not mention
 `make`. Environment variables are documented in three places that disagree:
 `server/.env.example` (lists `DB_PATH`, `MEDIA_DIR`, `SENTRY_DSN`, `NEWRELIC_LICENSE_KEY`,
@@ -2207,7 +2207,7 @@ Following the completion of the adversarial engineering audit, all identified P0
 | **IC-013** | P1 | Mobile / Offline Storage | Implemented `DownloadController` and offline storage layer in `downloads_providers.dart` handling license acquisition, audio file caching, and offline playback availability checks. | `apps/mobile/lib/src/features/downloads/downloads_providers.dart` | **RESOLVED & VERIFIED** |
 | **IC-014** | P1 | API Compatibility | Removed `DisallowUnknownFields` from `httpx.Decode` to prevent backward compatibility breakage when clients send newer/additive payload fields. | `internal/httpx/httpx.go` | **RESOLVED & VERIFIED** |
 | **IC-015** | P1 | Admin Console Operations | Updated embedded admin console (`index.html`) with interactive moderation queue view, decision actions (Approve, Reject, Flag), audit log viewer, and multi-step MFA TOTP challenge handler. | `internal/adminui/index.html` | **RESOLVED & VERIFIED** |
-| **IC-016** | P1 | Legal / Privacy & Terms | Created root repository `LICENSE` (MIT), `PRIVACY.md` (specifically providing GDPR Article 9 special category data notice, explicit consent framework, and retention policy), and `TERMS.md` (Terms of Service). | `LICENSE`, `PRIVACY.md`, `TERMS.md` | **RESOLVED & VERIFIED** |
+| **IC-016** | P1 | Legal / Privacy & Terms | Created root repository `LICENSE` (MIT), `docs/legal/PRIVACY.md` (specifically providing GDPR Article 9 special category data notice, explicit consent framework, and retention policy), and `docs/legal/TERMS.md` (Terms of Service). | `LICENSE`, `docs/legal/PRIVACY.md`, `docs/legal/TERMS.md` | **RESOLVED & VERIFIED** |
 | **IC-017** | P1 | Abuse Prevention / UGC | Gated public/shared community confession submissions (`POST /community/posts`) on verified email status (`email_verified == true`), returning HTTP 403 `FORBIDDEN` for unverified accounts. | `internal/api/handlers_community.go` | **RESOLVED & VERIFIED** |
 | **IC-019** | P1 | Content Quality & Inventory | Added canonical voice and collection verification during boot in `seed.EnsureContent`; mapped engine errors to structured 422 HTTP responses. | `internal/seed/ensure.go`, `internal/api/handlers.go` | **RESOLVED & VERIFIED** |
 | **IC-020** | P2 | Search / SQL Performance | Escaped SQL `LIKE` special characters (`%`, `_`, `\`) in `search.go` and capped query input length to 100 characters to prevent query amplification attacks. | `internal/search/search.go` | **RESOLVED & VERIFIED** |

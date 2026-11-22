@@ -950,8 +950,8 @@ The Audio Platform with Background Playback and Queue Management is ready for pr
 - apps/mobile/lib/src/features/audio/PHASE3-GUIDE.md
 - apps/mobile/test/features/audio/queue_test.dart
 - apps/mobile/test/features/audio/background_playback_test.dart
-- docs/PHASE3-BACKGROUND-AND-QUEUE.md
-- docs/PHASE3-IMPLEMENTATION.md
+- docs/archive/PHASE3-BACKGROUND-AND-QUEUE.md
+- docs/archive/PHASE3-IMPLEMENTATION.md
 
 ### Appendix B: Required Dependencies
 

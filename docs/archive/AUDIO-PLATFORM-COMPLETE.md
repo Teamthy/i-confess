@@ -98,12 +98,12 @@ This implementation adds a comprehensive audio generation and playback system to
 - `apps/mobile/test/features/audio/audio_services_test.dart` - 42+ tests
 
 **Documentation Created:**
-- `docs/PHASE1-AUDIO-IMPLEMENTATION.md`
-- `docs/INTEGRATION-SUMMARY.md`
-- `docs/TEST-RESULTS-PHASE1.md`
-- `docs/PHASE2-FLUTTER-AUDIO-PLAYER.md`
-- `docs/PHASE2-IMPLEMENTATION-SUMMARY.md`
-- `docs/COMPLETE-IMPLEMENTATION-REPORT.md`
+- `docs/archive/PHASE1-AUDIO-IMPLEMENTATION.md`
+- `docs/archive/INTEGRATION-SUMMARY.md`
+- `docs/archive/TEST-RESULTS-PHASE1.md`
+- `docs/archive/PHASE2-FLUTTER-AUDIO-PLAYER.md`
+- `docs/archive/PHASE2-IMPLEMENTATION-SUMMARY.md`
+- `docs/archive/COMPLETE-IMPLEMENTATION-REPORT.md`
 - `docs/AUDIO-PLATFORM-COMPLETE.md` (this file)
 
 ---
@@ -379,16 +379,16 @@ All required dependencies were already present in the project:
 ### All Documentation Files
 
 1. **Phase 1**
-   - [PHASE1-AUDIO-IMPLEMENTATION.md](docs/PHASE1-AUDIO-IMPLEMENTATION.md) - Detailed Phase 1 implementation
-   - [TEST-RESULTS-PHASE1.md](docs/TEST-RESULTS-PHASE1.md) - Phase 1 test results
+   - [PHASE1-AUDIO-IMPLEMENTATION.md](docs/archive/PHASE1-AUDIO-IMPLEMENTATION.md) - Detailed Phase 1 implementation
+   - [TEST-RESULTS-PHASE1.md](docs/archive/TEST-RESULTS-PHASE1.md) - Phase 1 test results
 
 2. **Phase 2**
-   - [PHASE2-FLUTTER-AUDIO-PLAYER.md](docs/PHASE2-FLUTTER-AUDIO-PLAYER.md) - Detailed Phase 2 implementation
-   - [PHASE2-IMPLEMENTATION-SUMMARY.md](docs/PHASE2-IMPLEMENTATION-SUMMARY.md) - Phase 2 summary
+   - [PHASE2-FLUTTER-AUDIO-PLAYER.md](docs/archive/PHASE2-FLUTTER-AUDIO-PLAYER.md) - Detailed Phase 2 implementation
+   - [PHASE2-IMPLEMENTATION-SUMMARY.md](docs/archive/PHASE2-IMPLEMENTATION-SUMMARY.md) - Phase 2 summary
 
 3. **Complete**
-   - [COMPLETE-IMPLEMENTATION-REPORT.md](docs/COMPLETE-IMPLEMENTATION-REPORT.md) - Comprehensive report
-   - [INTEGRATION-SUMMARY.md](docs/INTEGRATION-SUMMARY.md) - Integration overview
+   - [COMPLETE-IMPLEMENTATION-REPORT.md](docs/archive/COMPLETE-IMPLEMENTATION-REPORT.md) - Comprehensive report
+   - [INTEGRATION-SUMMARY.md](docs/archive/INTEGRATION-SUMMARY.md) - Integration overview
 
 4. **Feature**
    - [apps/mobile/lib/src/features/audio/README.md](apps/mobile/lib/src/features/audio/README.md) - Feature documentation
@@ -499,9 +499,9 @@ server/internal/api/
 For issues or questions:
 
 1. **Check Documentation**
-   - [Phase 1 Docs](docs/PHASE1-AUDIO-IMPLEMENTATION.md)
-   - [Phase 2 Docs](docs/PHASE2-FLUTTER-AUDIO-PLAYER.md)
-   - [Complete Report](docs/COMPLETE-IMPLEMENTATION-REPORT.md)
+   - [Phase 1 Docs](docs/archive/PHASE1-AUDIO-IMPLEMENTATION.md)
+   - [Phase 2 Docs](docs/archive/PHASE2-FLUTTER-AUDIO-PLAYER.md)
+   - [Complete Report](docs/archive/COMPLETE-IMPLEMENTATION-REPORT.md)
 
 2. **Run Tests**
    ```bash

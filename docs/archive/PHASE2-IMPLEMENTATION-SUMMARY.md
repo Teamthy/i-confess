@@ -66,9 +66,9 @@ This document provides a comprehensive summary of Phase 2 implementation, which 
   - Unit tests for audio services and models
 
 ### 6. Documentation
-- `docs/PHASE2-FLUTTER-AUDIO-PLAYER.md`
+- `docs/archive/PHASE2-FLUTTER-AUDIO-PLAYER.md`
   - Comprehensive documentation for Phase 2
-- `docs/PHASE2-IMPLEMENTATION-SUMMARY.md`
+- `docs/archive/PHASE2-IMPLEMENTATION-SUMMARY.md`
   - This file
 
 ---

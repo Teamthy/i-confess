@@ -657,7 +657,7 @@ port 8601 can synthesise with any licensed voice and read `voice-private/` keys.
 | Auditable? | Yes — `voice_rights_audit_logs` records actor, action, decision, reason, `grant_version`, `remote_addr`, including **refusals** |
 | Cross-user access? | Prevented by per-owner cache key + `visibility` constraint (unchecked at runtime) |
 
-`PRIVACY.md` exists and names Cloudflare/AWS S3 with encryption at rest and in transit.
+`docs/legal/PRIVACY.md` exists and names Cloudflare/AWS S3 with encryption at rest and in transit.
 
 **Good:** refused attempts are audited, not only successes — *"so a rights dispute can
 be reconstructed after the fact."*

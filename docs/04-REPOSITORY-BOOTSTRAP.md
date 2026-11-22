@@ -140,11 +140,11 @@ contradicts:
 
 | Document | Claim |
 |---|---|
-| `MASTER-PROMPT-COMPLETION.md` | "✅ COMPLETE", "100% complete" |
-| `CONTENT-DOMAIN-COMPLETION.md` | "✅ COMPLETE AND VALIDATED", "production-ready" |
-| `AUDIO-PLATFORM-STATUS.md` | "🟢 Architecture Complete" |
-| `SESSION-NOTES.md` | "\| **Production Ready** \| ✅ Yes \|" |
-| `README-COMPLETE.md` | a complete-looking setup guide |
+| `docs/archive/MASTER-PROMPT-COMPLETION.md` | "✅ COMPLETE", "100% complete" |
+| `docs/archive/CONTENT-DOMAIN-COMPLETION.md` | "✅ COMPLETE AND VALIDATED", "production-ready" |
+| `docs/archive/AUDIO-PLATFORM-STATUS.md` | "🟢 Architecture Complete" |
+| `docs/archive/SESSION-NOTES.md` | "\| **Production Ready** \| ✅ Yes \|" |
+| `docs/archive/README-COMPLETE.md` | a complete-looking setup guide |
 
 PHASE 00–04 found, among other things: three tables missing from the running
 schema, session queues that were not snapshots, 22 endpoints unreachable at

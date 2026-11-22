@@ -107,9 +107,9 @@ applies — see `docs/31-MODERATION.md`, `docs/33-AUDIT-COVERAGE.md`,
 `docs/41-TRIAL-ENGAGEMENT.md`, `docs/42-MODERATION-BLOCKING-APPEALS.md`,
 `docs/43-PERSONALIZATION-SIGNALS.md`).
 
-This file supersedes `MASTER-PROMPT-COMPLETION.md`,
-`CONTENT-DOMAIN-COMPLETION.md`, `AUDIO-PLATFORM-STATUS.md`, `SESSION-NOTES.md`
-and `README-COMPLETE.md`. Those documents claim the system is complete and
+This file supersedes `docs/archive/MASTER-PROMPT-COMPLETION.md`,
+`docs/archive/CONTENT-DOMAIN-COMPLETION.md`, `docs/archive/AUDIO-PLATFORM-STATUS.md`, `docs/archive/SESSION-NOTES.md`
+and `docs/archive/README-COMPLETE.md`. Those documents claim the system is complete and
 production-ready. It is not, and the claims are contradicted by specific defects
 found in PHASE 00–04. They are kept as a record of what was believed, not as a
 description of the system.

@@ -40,7 +40,7 @@ You asked for:
    - `OfflineAudioService` - Main service for caching
    - Riverpod providers for easy access
 
-4. **`docs/PHASE4-IMPLEMENTATION.md`** (~800 lines)
+4. **`docs/archive/PHASE4-IMPLEMENTATION.md`** (~800 lines)
    - Complete implementation guide
    - Usage examples
    - Integration instructions
@@ -206,8 +206,8 @@ await offlineService.clearCache();
 
 ### Immediate (Ready Now)
 
-1. **Integrate Phase 3** - Use `INTEGRATION-GUIDE-PHASE3.md`
-2. **Test Phase 3** - Use `TESTING-GUIDE-PHASE3.md`
+1. **Integrate Phase 3** - Use `docs/archive/INTEGRATION-GUIDE-PHASE3.md`
+2. **Test Phase 3** - Use `docs/archive/TESTING-GUIDE-PHASE3.md`
 3. **Deploy Phases 1-3** - All production-ready
 
 ### Phase 4 Integration
@@ -260,12 +260,12 @@ Just say "Continue Phase 4" and I'll implement these!
 - `PHASE1-AUDIO-IMPLEMENTATION.md` - Backend implementation
 - `PHASE2-FLUTTER-AUDIO-PLAYER.md` - Frontend implementation
 - `PHASE3-BACKGROUND-AND-QUEUE.md` - Background & queue implementation
-- `INTEGRATION-GUIDE-PHASE3.md` - Step-by-step integration
-- `TESTING-GUIDE-PHASE3.md` - Comprehensive testing
+- `docs/archive/INTEGRATION-GUIDE-PHASE3.md` - Step-by-step integration
+- `docs/archive/TESTING-GUIDE-PHASE3.md` - Comprehensive testing
 
 ### Phase 4
 - `PHASE4-IMPLEMENTATION.md` - Complete Phase 4 guide
-- `PHASE4-STARTED.md` - This file
+- `docs/archive/PHASE4-STARTED.md` - This file
 
 ---
 

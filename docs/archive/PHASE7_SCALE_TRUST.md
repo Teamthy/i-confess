@@ -84,7 +84,7 @@ Remaining (carry to Phase 8 / polish):
 |-------|------|-------|
 | `server/internal/api/analytics_batch.go` | NEW | `POST /v1/analytics/batch` (user, no PII) — allowlist 13 events `app_opened→subscription_cancelled`, strips `body/email/scripture_text`, stamps `timestamp`, returns `202 {accepted}`. Prod forwards to OTel/Segment sink. |
 | `server/internal/api/router.go` | PATCHED | `POST /v1/analytics/batch` added (used by `Analytics.I.track` batcher). |
-| `docs/PHASE7_SCALE_TRUST.md` | CLOSED | All §7.1–§7.3 foundations verified: cache SWR 85%+, `X-Request-Id`+`traceparent`+`X-Trace-Id`, `/metrics` Prom+JSON, SEO `sitemap/robots`+JSON-LD, a11y, perf headers. Next is Phase 8 surfaces. |
+| `docs/archive/PHASE7_SCALE_TRUST.md` | CLOSED | All §7.1–§7.3 foundations verified: cache SWR 85%+, `X-Request-Id`+`traceparent`+`X-Trace-Id`, `/metrics` Prom+JSON, SEO `sitemap/robots`+JSON-LD, a11y, perf headers. Next is Phase 8 surfaces. |
 
 ## Phase 7 — Closed
 

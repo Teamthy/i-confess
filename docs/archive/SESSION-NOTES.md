@@ -56,7 +56,7 @@ Build a **complete, production-ready content management and session creation sys
   - Performance and caching notes
 
 #### 6. Architecture & Planning Documentation
-- ✅ Created `CONTENT-DOMAIN-COMPLETION.md` with:
+- ✅ Created `docs/archive/CONTENT-DOMAIN-COMPLETION.md` with:
   - Executive summary
   - Architecture diagram
   - Complete component overview
@@ -163,7 +163,7 @@ Each variant can be voiced independently and cached separately.
 
 ### New Documentation
 - `docs/CONTENT-API.md` — Complete API reference (40+ endpoints)
-- `CONTENT-DOMAIN-COMPLETION.md` — Completion summary and validation report
+- `docs/archive/CONTENT-DOMAIN-COMPLETION.md` — Completion summary and validation report
 
 ### Modified Files
 - `server/internal/httpx/httpx.go` — Added missing EncodeJSON helper

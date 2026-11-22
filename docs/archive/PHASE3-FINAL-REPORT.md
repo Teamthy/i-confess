@@ -378,9 +378,9 @@ docs/
 ├── PHASE3-BACKGROUND-AND-QUEUE.md    # Detailed docs (NEW)
 └── PHASE3-IMPLEMENTATION.md          # Complete reference (NEW)
 
-INTEGRATION-GUIDE-PHASE3.md           # Step-by-step guide (NEW)
+docs/archive/INTEGRATION-GUIDE-PHASE3.md           # Step-by-step guide (NEW)
 integrate_phase3.sh                    # Integration script (NEW)
-PHASE3-FINAL-REPORT.md                # This file (NEW)
+docs/archive/PHASE3-FINAL-REPORT.md                # This file (NEW)
 ```
 
 ---
@@ -560,7 +560,7 @@ IconButton(
 
 ### Documentation Files
 
-1. **INTEGRATION-GUIDE-PHASE3.md** - Step-by-step integration
+1. **docs/archive/INTEGRATION-GUIDE-PHASE3.md** - Step-by-step integration
 2. **PHASE3-GUIDE.md** - Quick start and usage
 3. **PHASE3-BACKGROUND-AND-QUEUE.md** - Detailed implementation
 4. **PHASE3-IMPLEMENTATION.md** - Complete reference
@@ -586,7 +586,7 @@ IconButton(
 
 ### Immediate (This Week)
 
-1. **Integrate Phase 3** using INTEGRATION-GUIDE-PHASE3.md
+1. **Integrate Phase 3** using docs/archive/INTEGRATION-GUIDE-PHASE3.md
 2. **Test on devices** - Physical Android and iOS
 3. **Fix any issues** - Check troubleshooting guides
 4. **Deploy to production** - All 3 phases ready
@@ -663,7 +663,7 @@ flutter analyze
 
 ### What You Can Do Now
 
-🎯 **Integrate Phase 3** - Use INTEGRATION-GUIDE-PHASE3.md
+🎯 **Integrate Phase 3** - Use docs/archive/INTEGRATION-GUIDE-PHASE3.md
 🧪 **Test everything** - Run tests and test on devices
 📦 **Deploy to production** - All 3 phases ready
 ⭐ **Start Phase 4** - Foundation is ready
@@ -700,7 +700,7 @@ flutter analyze
 ## Contact & Support
 
 For questions or issues:
-- Check INTEGRATION-GUIDE-PHASE3.md
+- Check docs/archive/INTEGRATION-GUIDE-PHASE3.md
 - Review PHASE3-GUIDE.md
 - Run the integration script: `./integrate_phase3.sh`
 - Check the test files for usage examples

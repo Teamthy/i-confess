@@ -472,8 +472,8 @@ For production deployment, ensure:
 ## 📚 Additional Resources
 
 ### Documentation
-- **INTEGRATION-GUIDE-PHASE3.md** - Integration instructions
-- **STEP-BY-STEP-INTEGRATION.md** - Detailed step-by-step guide
+- **docs/archive/INTEGRATION-GUIDE-PHASE3.md** - Integration instructions
+- **docs/archive/STEP-BY-STEP-INTEGRATION.md** - Detailed step-by-step guide
 - **PHASE3-GUIDE.md** - Quick start and usage
 - **PHASE3-BACKGROUND-AND-QUEUE.md** - Detailed implementation
 - **PHASE3-IMPLEMENTATION.md** - Complete reference

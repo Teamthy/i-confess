@@ -39,7 +39,7 @@
 | `apps/mobile/lib/src/player/player_ui.dart` | NEW | `MiniPlayer{title,category,position/duration,progress}` + `FullPlayer{remaining/elapsed, Slider, queue preview, play/pause/skip}`. §22 calm, 4.5:1, reduced motion, a11y labels. Wraps `just_audio`+`audio_service` (§3) — deps in `/tmp`. |
 | `server/internal/ai/llm_adapter.go` | NEW | `LLMParser{inner}` + `NewParserFromEnv()` (`AI_PROVIDER=keyword|openai|anthropic` → `KeywordParser` fallback). Prompt guardrail: JSON `{"categories":[],"duration":int,"voice_id":""}` only, no body/Scripture invention. Prod wires SDK in `/tmp`. |
 | `server/internal/api/handlers_ai.go` | PATCHED | Now `ai.NewParserFromEnv()` — env-selected, still `POST /v1/ai/parse` same contract. |
-| `docs/PHASE8_ADVANCED_SURFACES.md` | CLOSED | All §62-§70, §96-97 surfaces delivered: bottom nav, onboarding 90s, paywall live, categories live, admin dashboard+preview, AI orchestrates, community moderated. |
+| `docs/archive/PHASE8_ADVANCED_SURFACES.md` | CLOSED | All §62-§70, §96-97 surfaces delivered: bottom nav, onboarding 90s, paywall live, categories live, admin dashboard+preview, AI orchestrates, community moderated. |
 
 ## Phase 8 — Closed
 All advanced surfaces delivered. Remaining polish (Phase 9 if needed): Lighthouse CI budgets, `flutter test --a11y`, OTel SDK exporter wiring, Grafana dashboards, final `README`/`DEPLOYMENT` docs.
