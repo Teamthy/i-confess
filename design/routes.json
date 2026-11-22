@@ -1239,6 +1239,13 @@
     "tag": "content"
   },
   {
+    "method": "POST",
+    "path": "/contact",
+    "auth": "public",
+    "summary": "Send a message to support",
+    "tag": "site"
+  },
+  {
     "method": "GET",
     "path": "/entitlements",
     "auth": "user",
@@ -1797,6 +1804,13 @@
     "auth": "public",
     "summary": "Licensed minister voice library",
     "tag": "voice"
+  },
+  {
+    "method": "POST",
+    "path": "/newsletter",
+    "auth": "public",
+    "summary": "Subscribe an address to the newsletter",
+    "tag": "site"
   },
   {
     "method": "GET",
@@ -3325,6 +3339,13 @@
     "tag": "content"
   },
   {
+    "method": "POST",
+    "path": "/v1/contact",
+    "auth": "public",
+    "summary": "Send a message to support",
+    "tag": "site"
+  },
+  {
     "method": "GET",
     "path": "/v1/entitlements",
     "auth": "user",
@@ -3883,6 +3904,13 @@
     "auth": "public",
     "summary": "Licensed minister voice library",
     "tag": "voice"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/newsletter",
+    "auth": "public",
+    "summary": "Subscribe an address to the newsletter",
+    "tag": "site"
   },
   {
     "method": "GET",

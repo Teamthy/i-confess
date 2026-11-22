@@ -11668,6 +11668,53 @@
         ]
       }
     },
+    "/contact": {
+      "post": {
+        "operationId": "postContact",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Rate limited; honour Retry-After"
+          }
+        },
+        "summary": "Send a message to support",
+        "tags": [
+          "site"
+        ]
+      }
+    },
     "/entitlements": {
       "get": {
         "operationId": "getEntitlements",
@@ -16915,6 +16962,53 @@
         "summary": "Licensed minister voice library",
         "tags": [
           "voice"
+        ]
+      }
+    },
+    "/newsletter": {
+      "post": {
+        "operationId": "postNewsletter",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Rate limited; honour Retry-After"
+          }
+        },
+        "summary": "Subscribe an address to the newsletter",
+        "tags": [
+          "site"
         ]
       }
     },
@@ -31420,6 +31514,53 @@
         ]
       }
     },
+    "/v1/contact": {
+      "post": {
+        "operationId": "postV1Contact",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Rate limited; honour Retry-After"
+          }
+        },
+        "summary": "Send a message to support",
+        "tags": [
+          "site"
+        ]
+      }
+    },
     "/v1/entitlements": {
       "get": {
         "operationId": "getV1Entitlements",
@@ -36667,6 +36808,53 @@
         "summary": "Licensed minister voice library",
         "tags": [
           "voice"
+        ]
+      }
+    },
+    "/v1/newsletter": {
+      "post": {
+        "operationId": "postV1Newsletter",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Rate limited; honour Retry-After"
+          }
+        },
+        "summary": "Subscribe an address to the newsletter",
+        "tags": [
+          "site"
         ]
       }
     },

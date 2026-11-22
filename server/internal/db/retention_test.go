@@ -54,8 +54,10 @@ func TestEveryApplicationTableHasRetentionAndVersionColumns(t *testing.T) {
 	// 120 since migration 0034 added trial_day_sessions (G-48): the sessions
 	// the trial journey built for each day, which makes "start today" safe to
 	// retry.
-	if count != 120 {
-		t.Errorf("application table count=%d, want 120", count)
+	// 122 since 0035 added newsletter_subscriptions and contact_messages: the
+	// site's public forms used to acknowledge submissions and store nothing.
+	if count != 122 {
+		t.Errorf("application table count=%d, want 122", count)
 	}
 }
 

@@ -116,8 +116,8 @@ func TestPostgresSchemaLoads(t *testing.T) {
 	}
 	// 119 since migration 0032 dropped voice_licenses, the never-read orphan
 	// that made a third rights model look possible (VE-002).
-	if tables != 120 {
-		t.Errorf("expected 120 tables, got %d", tables)
+	if tables != 122 {
+		t.Errorf("expected 122 tables, got %d", tables)
 	}
 
 	var fks int

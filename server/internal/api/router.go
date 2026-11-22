@@ -68,6 +68,11 @@ func (h *Handler) Routes() http.Handler {
 		mux.Handle("GET /media/", h.mediaHandler)
 	}
 
+	// The website's public forms, each rate-limited per address in its own
+	// bucket; both answer the same way for known and unknown addresses.
+	h.route(mux, "POST /newsletter", "public", "site", "Subscribe an address to the newsletter", perIP(ratelimit.PublicForm, "newsletter"), h.newsletterSubscribe)
+	h.route(mux, "POST /contact", "public", "site", "Send a message to support", perIP(ratelimit.PublicForm, "contact"), h.contactMessage)
+
 	// Public auth
 	h.route(mux, "POST /auth/register", "public", "auth", "Create an account and send a verification email", registerLimit, h.register)
 	h.route(mux, "POST /auth/login", "public", "auth", "Sign in; returns mfa_required when a second factor is enrolled", loginLimit, h.login)
@@ -448,6 +453,8 @@ func (h *Handler) Routes() http.Handler {
 	// Legacy without prefix is kept for backward compat until minVersion forces upgrade.
 	// Idempotency (§47) is enforced on mutating session/progress/subscription/download endpoints.
 	// Public auth (v1)
+	h.route(mux, "POST /v1/newsletter", "public", "site", "Subscribe an address to the newsletter", perIP(ratelimit.PublicForm, "newsletter"), h.newsletterSubscribe)
+	h.route(mux, "POST /v1/contact", "public", "site", "Send a message to support", perIP(ratelimit.PublicForm, "contact"), h.contactMessage)
 	h.route(mux, "POST /v1/auth/register", "public", "auth", "Create an account and send a verification email", registerLimit, h.register)
 	h.route(mux, "POST /v1/auth/login", "public", "auth", "Sign in; returns mfa_required when a second factor is enrolled", loginLimit, h.login)
 	h.route(mux, "POST /v1/auth/verify-email", "public", "auth", "Verify an email address with a one-time token", nil, h.verifyEmail)

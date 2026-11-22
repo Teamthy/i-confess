@@ -679,6 +679,16 @@
   ],
   "coverage_exceptions": [
     {
+      "endpoint": "POST /newsletter",
+      "category": "web-admin",
+      "reason": "The newsletter form is on the public website (web/components/islands.tsx NewsletterForm); the mobile app has no newsletter screen."
+    },
+    {
+      "endpoint": "POST /contact",
+      "category": "web-admin",
+      "reason": "The contact form is on the public website (web/components/islands.tsx ContactForm); mobile support links to the site."
+    },
+    {
       "endpoint": "POST /voices/stream",
       "category": "web-admin",
       "reason": "The live preview is called by web/components/voice-studio.tsx, not the mobile information architecture."
