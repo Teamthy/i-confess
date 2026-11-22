@@ -153,7 +153,7 @@ func Load() Config {
 		EmailFrom:     getenv("EMAIL_FROM", "no-reply@iconfess.local"),
 		EmailSupport:  getenv("EMAIL_SUPPORT", "support@iconfess.local"),
 		PublicBaseURL: getenv("PUBLIC_BASE_URL", "http://localhost:8080"),
-		AppName:       getenv("APP_NAME", "i-confess"),
+		AppName:       getenv("APP_NAME", "I CONFESS"),
 		RedisPassword: os.Getenv("REDIS_PASSWORD"),
 
 		GoogleClientID: os.Getenv("GOOGLE_CLIENT_ID"),

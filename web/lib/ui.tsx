@@ -104,7 +104,7 @@ function SearchPanel({ close }: { close: () => void }) {
       ...ARTICLES.filter((a) => (a.title + a.excerpt).toLowerCase().includes(q)).slice(0, 4).map((a) => ({ kind: "Journal", title: a.title, sub: a.category, href: `/journal/${a.slug}` })),
     ];
   return (
-    <div className="search-panel" role="dialog" aria-modal="true" aria-label="Search iCONFESS">
+    <div className="search-panel" role="dialog" aria-modal="true" aria-label="Search I CONFESS">
       <input autoFocus type="search" placeholder="Search confessions, categories, sessions, voices, articles…" aria-label="Search"
         value={q} onChange={(e) => setQ(e.target.value.toLowerCase())} onKeyDown={(e) => e.key === "Escape" && close()} />
       <div className="search-results">

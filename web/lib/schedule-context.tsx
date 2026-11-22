@@ -180,7 +180,7 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
         const key = `${sc.id}:${due.key}`;
         setNotices((list) => [...list.filter((n) => n.key !== key), { schedule: sc, key }].slice(-3));
         if ("Notification" in window && Notification.permission === "granted") {
-          const options = { body: "Your scheduled practice is ready. Open iCONFESS when you're ready to begin.", tag: key, silent: true, icon: "/assets/logo-mark.jpg", data: { url: "/app/schedule" } };
+          const options = { body: "Your scheduled practice is ready. Open I CONFESS when you're ready to begin.", tag: key, silent: true, icon: "/brand/icon-192.png", data: { url: "/app/schedule" } };
           try {
             const registration = await navigator.serviceWorker?.getRegistration();
             if (registration) await registration.showNotification("Time for your practice", options);

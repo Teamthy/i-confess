@@ -4,7 +4,8 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <meta name="theme-color" content="#12100E" />
-<title>i-confess — Speak the Word over your life</title>
+<title>I CONFESS — Speak it. Believe it. Live it.</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <style>
 /* ------------------------------------------------------------------
    Design system. One source of truth: no arbitrary values below.
@@ -316,7 +317,7 @@ function updateMediaSession(){
   if (!("mediaSession" in navigator)) return;
   const it = currentItem(); if (!it) return;
   navigator.mediaSession.metadata = new MediaMetadata({
-    title: it.title || "Confession", artist: "i-confess",
+    title: it.title || "Confession", artist: "I CONFESS",
     album: state.session?.type ? state.session.type + " session" : "Session",
   });
   navigator.mediaSession.setActionHandler("play", () => audio.play());
@@ -572,7 +573,7 @@ function viewProfile(){
 /* ---------------------- chrome ---------------------- */
 function topbar(title, sub){
   return `<header class="topbar">
-    <div class="greet"><span class="eyebrow">i&#8209;confess</span><h1>${h(title)}</h1>${sub?`<p class="muted" style="font-size:14px">${h(sub)}</p>`:""}</div>
+    <div class="greet"><span class="eyebrow">I CONFESS</span><h1>${h(title)}</h1>${sub?`<p class="muted" style="font-size:14px">${h(sub)}</p>`:""}</div>
     <button class="avatar" title="Profile" onclick="setTab('profile')">${h(initials(state.user))}</button>
   </header>`;
 }

@@ -1,5 +1,5 @@
 /* ============================================================================
-   iCONFESS web — the canonical Bible structure, as data.
+   I CONFESS web — the canonical Bible structure, as data.
 
    canon.json is generated from server/internal/bible by
    `go run ./cmd/bible-structure ../web/lib/canon.json`, and a Go test fails

@@ -53,7 +53,7 @@ export default async function SharedTemplatePage({ params }: { params: Promise<{
               its place.
             </p>
             <Link className="btn btn-ghost btn-lg" style={{ marginTop: 24 }} href="/">
-              Go to iCONFESS
+              Go to I CONFESS
             </Link>
           </>
         )}

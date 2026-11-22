@@ -3,7 +3,7 @@ import { BibleLanguagesPage } from "@/components/bible-pages";
 
 export const metadata: Metadata = {
   title: "Bible languages",
-  description: "The languages iCONFESS serves Scripture in — listed only where an approved translation exists.",
+  description: "The languages I CONFESS serves Scripture in — listed only where an approved translation exists.",
   alternates: { canonical: "/bible/languages" },
 };
 

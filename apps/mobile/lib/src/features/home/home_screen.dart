@@ -6,6 +6,7 @@ import 'package:iconfess_api/iconfess_api.dart';
 import '../../core/routing/routes.dart';
 import '../../core/theme/theme.dart';
 import '../../core/theme/tokens.dart';
+import '../../core/widgets/category_card.dart';
 import '../../core/widgets/screen.dart';
 import 'home_providers.dart';
 
@@ -351,20 +352,22 @@ class _CarouselPlaceholder extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final surfaces = AppSurfaces.of(context);
-    return Row(
-      children: [
-        for (final width in const <double>[96, 120, 84]) ...[
-          Container(
-            width: width,
-            height: 40,
-            decoration: BoxDecoration(
-              color: surfaces.surfaceRaised,
-              borderRadius: BorderRadius.circular(IConfess.radiusFull),
-            ),
+    // Card-sized blocks, so the rail does not jump when categories arrive.
+    return SizedBox(
+      height: categoryCardRailHeight,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        physics: const NeverScrollableScrollPhysics(),
+        itemCount: 3,
+        separatorBuilder: (_, _) => const SizedBox(width: IConfess.space3),
+        itemBuilder: (_, _) => Container(
+          width: categoryCardRailWidth,
+          decoration: BoxDecoration(
+            color: surfaces.surfaceRaised,
+            borderRadius: BorderRadius.circular(IConfess.radiusXl),
           ),
-          const SizedBox(width: IConfess.space2),
-        ],
-      ],
+        ),
+      ),
     );
   }
 }
@@ -418,17 +421,21 @@ class _CategoryCarousel extends StatelessWidget {
         final categories = loadable.valueOrNull ?? const <Category>[];
         if (categories.isEmpty) return const SizedBox.shrink();
         return SizedBox(
-          height: 40,
+          height: categoryCardRailHeight,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             itemCount: categories.length,
-            separatorBuilder: (_, _) => const SizedBox(width: IConfess.space2),
+            separatorBuilder: (_, _) => const SizedBox(width: IConfess.space3),
             itemBuilder: (context, index) {
               final category = categories[index];
-              return ActionChip(
-                label: Text(category.name),
-                onPressed: () =>
-                    context.go(AppRoutes.categoryDetail(category.id)),
+              return SizedBox(
+                width: categoryCardRailWidth,
+                child: CategoryCard(
+                  name: category.name,
+                  index: index,
+                  onTap: () =>
+                      context.go(AppRoutes.categoryDetail(category.id)),
+                ),
               );
             },
           ),

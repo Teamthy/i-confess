@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>i-confess · Admin Console</title>
+<title>I CONFESS · Admin Console</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
 <style>
   :root {
     --bg: #0f1220;
@@ -43,6 +44,8 @@
   }
   .brand { font-family: var(--serif); font-size: 26px; color: var(--gold); margin: 0 0 4px; }
   .brand span { color: var(--text); }
+  .brand { display: flex; align-items: center; gap: 10px; letter-spacing: .04em; }
+  .brand-mark { border-radius: 7px; flex: none; }
   .login-sub { color: var(--muted); margin: 0 0 24px; font-size: 13px; }
   /* ---------- shell ---------- */
   .shell { display: grid; grid-template-columns: 220px 1fr; min-height: 100vh; }
@@ -173,7 +176,7 @@ function shell(inner) {
   return `
   <div class="shell">
     <div class="sidebar">
-      <div class="brand">i-<span>confess</span></div>
+      <div class="brand"><img class="brand-mark" src="favicon.svg" alt="" width="28" height="28"> I <span>CONFESS</span></div>
       ${[['dashboard','▦','Dashboard'],['categories','▤','Categories'],['confessions','≡','Confessions'],['voices','◉','Voices'],['audio','♪','Audio'],['moderation','⚖','Moderation'],['audit','📋','Audit Log'],['users','⛁','Users']].map(([v,i,l]) =>
         `<button class="nav-btn ${current===v?'active':''}" onclick="nav(this,'${v}')"><span class="ico">${i}</span>${l}</button>`).join('')}
       <div class="spacer"></div>
@@ -192,7 +195,7 @@ function loginScreen() {
     document.getElementById('app').innerHTML = `
     <div class="login-wrap">
       <div class="login-card">
-        <h1 class="brand">i-<span>confess</span></h1>
+        <h1 class="brand"><img class="brand-mark" src="favicon.svg" alt="" width="28" height="28"> I <span>CONFESS</span></h1>
         <p class="login-sub">Two-Factor Authentication · Enter 6-digit TOTP code</p>
         <label>Verification Code</label>
         <input id="lg-code" type="text" placeholder="123456" maxlength="8" autofocus>
@@ -208,7 +211,7 @@ function loginScreen() {
   document.getElementById('app').innerHTML = `
   <div class="login-wrap">
     <div class="login-card">
-      <h1 class="brand">i-<span>confess</span></h1>
+      <h1 class="brand"><img class="brand-mark" src="favicon.svg" alt="" width="28" height="28"> I <span>CONFESS</span></h1>
       <p class="login-sub">Admin Console · sign in</p>
       <label>Email</label>
       <input id="lg-email" type="email" placeholder="admin@iconfess.dev">

@@ -140,7 +140,7 @@ const Head = ({ title, sub, right }: { title: React.ReactNode; sub?: string; rig
   <div className="app-top"><div><h2 className="h2" style={{ fontSize: "clamp(22px,3vw,32px)" }}>{title}</h2>{sub && <p className="small" style={{ marginTop: 4 }}>{sub}</p>}</div>{right}</div>
 );
 const NeedAuth = () => (
-  <div style={{ maxWidth: 520, margin: "40px auto" }}><EmptyState icon="lock" title="Sign in to continue" sub="This area belongs to your iCONFESS account." cta={<><Link className="btn btn-primary" href="/login">Log in</Link><Link className="btn btn-ghost" href="/register">Create account</Link></>} /></div>
+  <div style={{ maxWidth: 520, margin: "40px auto" }}><EmptyState icon="lock" title="Sign in to continue" sub="This area belongs to your I CONFESS account." cta={<><Link className="btn btn-primary" href="/login">Log in</Link><Link className="btn btn-ghost" href="/register">Create account</Link></>} /></div>
 );
 const greet = () => { const h = new Date().getHours(); return h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening"; };
 const slugOfName = (name: string) => CATEGORIES.find((c) => c.name === name)?.slug || "";
@@ -264,7 +264,7 @@ export function AppPage({ kind, slug, token }: { kind: string; slug?: string; to
     case "invite": case "referrals": return <Invite />;
     case "feedback": return <><Head title="Feedback" sub="Tell us what to fix." /><FeedbackForm /></>;
     case "support": return <><Head title="Support" /><div className="card-row snap">{[["/help", "Help Center", "Guides and answers"], ["/faq", "FAQ", "The honest eleven"], ["/contact", "Contact", "We read everything"]].map(([h, t, s]) => <Link className="tile" href={h} key={t}><h4>{t}</h4><p>{s}</p></Link>)}</div></>;
-    default: return <EmptyState icon="info" title="Not found" sub="This area doesn't exist in your iCONFESS." cta={<Link className="btn btn-primary" href="/app">Go home</Link>} />;
+    default: return <EmptyState icon="info" title="Not found" sub="This area doesn't exist in your I CONFESS." cta={<Link className="btn btn-primary" href="/app">Go home</Link>} />;
   }
 }
 
@@ -717,7 +717,7 @@ function WidgetApp() {
     <>
       <Head title="Home-screen widget" sub="Today's one line and a play button, one tap from your phone. The web equivalent ships now; native widgets land with the mobile beta." />
       <div className="widget-mock rv in" aria-label="Widget preview">
-        <span className="small" style={{ color: "var(--tint2)" }}>iCONFESS · today</span>
+        <span className="small" style={{ color: "var(--tint2)" }}>I CONFESS · today</span>
         <h4 style={{ color: "#fff", marginTop: 6 }}>{t.title}</h4>
         <p className="small" style={{ color: "var(--tint2)", marginTop: 4 }}>“{t.short}”</p>
         <span className="orb" style={{ marginTop: 12 }} aria-hidden="true"><Icon n="play" s={14} /></span>

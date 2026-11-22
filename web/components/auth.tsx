@@ -105,7 +105,7 @@ export default function AuthPage({ kind }: { kind: string }) {
             }}>{c.name}</button>
           ))}
         </div>
-        <Link className="btn btn-primary btn-lg" style={{ width: "100%", justifyContent: "center", marginTop: 24 }} href="/app">Enter iCONFESS</Link>
+        <Link className="btn btn-primary btn-lg" style={{ width: "100%", justifyContent: "center", marginTop: 24 }} href="/app">Enter I CONFESS</Link>
       </div>
     );
   }

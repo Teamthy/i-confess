@@ -115,6 +115,7 @@ jobs:
         working-directory: .
         run: |
           python3 design/generate.py --check
+          python3 design/brand/generate.py --check
           python3 design/test_design.py
           python3 design/test_ia.py
 

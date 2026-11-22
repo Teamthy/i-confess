@@ -27,7 +27,7 @@ export function ScheduleReminderSettings() {
   const toast = useToast();
   const [error, setError] = useState<string | null>(null);
   return <div className="schedule-reminder-settings">
-    <div className="setting-row"><div><b>{schedules.mode === "account" ? "Schedule reminders" : "Browser-only reminders"}</b><span>{schedules.mode === "account" ? "Synced with your account's scheduled-session notification preference." : "In-app reminders while iCONFESS is open on this browser."}</span></div><button type="button" className="switch" role="switch" aria-label="Schedule reminders" aria-checked={schedules.reminders} disabled={schedules.remindersLoading || !!schedules.preferencesError} onClick={async () => {
+    <div className="setting-row"><div><b>{schedules.mode === "account" ? "Schedule reminders" : "Browser-only reminders"}</b><span>{schedules.mode === "account" ? "Synced with your account's scheduled-session notification preference." : "In-app reminders while I CONFESS is open on this browser."}</span></div><button type="button" className="switch" role="switch" aria-label="Schedule reminders" aria-checked={schedules.reminders} disabled={schedules.remindersLoading || !!schedules.preferencesError} onClick={async () => {
       setError(null); const result = await schedules.setReminders(!schedules.reminders);
       if (!result.ok) setError(result.message); else toast(schedules.reminders ? "Schedule reminders off" : "Schedule reminders on");
     }} /></div>

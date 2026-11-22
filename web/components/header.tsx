@@ -37,7 +37,7 @@ export default function Header() {
   return (
     <header className={"site-header" + (scrolled ? " scrolled" : "") + (darkHero ? " on-dark" : "")}>
       <div className="header-in container-wide">
-      <Link className={"logo" + (darkHero ? " on-dark" : "")} href="/" aria-label="iCONFESS home">
+      <Link className={"logo" + (darkHero ? " on-dark" : "")} href="/" aria-label="I CONFESS home">
         <svg className="mark" width="30" height="30" viewBox="0 0 100 96" fill="none" stroke="currentColor" strokeWidth="9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <path d="M50 5 L63 23 L50 40 L37 23 Z" />
           <path d="M47 51 C40 42 27 42 20 52 C12 63 13 77 24 81 C32 84 40 79 47 71 L58 59" />

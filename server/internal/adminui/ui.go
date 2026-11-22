@@ -7,7 +7,7 @@ import (
 	"net/http"
 )
 
-//go:embed index.html
+//go:embed index.html favicon.svg
 var files embed.FS
 
 // Handler serves the admin console SPA. It is served unauthenticated because the

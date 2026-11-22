@@ -1,8 +1,10 @@
 import React from "react";
 import Link from "next/link";
-import { Icon, SessionTile, ArticleCard, SectionHead, PhoneMock, EmptyState, Logo } from "./ui";
+import { Icon, SessionTile, ArticleCard, SectionHead, PhoneMock, EmptyState, Logo, Mark } from "./ui";
 import { PlayChip, PlayBtn, PlaySessionBtn, FavBtn, ShareBtn, VoicePreviewBtn, ConfTile, ConfessionFilter, ConfDetailTabs, FaqList, NewsletterForm, ContactForm, RailScroll, SearchBtn, HeroCtas, StoryTabs, ReviewLog, RadioBtn, SnippetBtn, Annotations, SnippetAuto } from "./islands";
-import { CATEGORIES, CONFESSIONS, ARTICLES, VOICES, PLANS, FAQS, catBySlug, confBySlug, artBySlug, sessionsFor, ALL_SESSIONS, sessionBySlug, motifStyle, CAT_IMAGES } from "@/lib/data";
+import { CATEGORIES, CONFESSIONS, ARTICLES, VOICES, PLANS, FAQS, catBySlug, confBySlug, artBySlug, sessionsFor, ALL_SESSIONS, sessionBySlug, motifStyle, CAT_IMAGES, confessionsFor } from "@/lib/data";
+import { ART_W, ART_H, shapeCentre, shapeForIndex, shapePaths } from "@/lib/card-shapes";
+import { MARK_PATH, MARK_VIEWBOX } from "@/lib/brand-mark";
 import type { Category } from "@/lib/data";
 import { CANON } from "@/lib/canon";
 import { VoiceLibrary } from "@/components/voices";
@@ -51,21 +53,17 @@ export function Home() {
         <aside className="story-side rv in" style={{ borderLeft: 0, paddingLeft: 0 }}><StoryTabs /></aside>
       </div></section>
 
-      {/* 04 CATEGORY RAIL — tennis-style, auto motion */}
-      <section className="section" style={{ background: "var(--paper)", paddingBottom: 96 }}>
-        <div className="container">
-          <div className="c-head rv in">
-            <span className="eyebrow">Categories</span>
-            <h2 className="h1" style={{ marginTop: 18 }}>Every season has<br />a <span className="accent">confession.</span></h2>
-            <p className="lede c-lede">Pick the ones that name where you are. The practice follows you there.</p>
-            <Link className="pill" href="/categories" style={{ marginTop: 26 }}>All {CATEGORIES.length} <Icon n="arrow" s={12} /></Link>
-          </div>
-        </div>
-        <div className="rail-auto rv in" style={{ marginTop: 44 }}>
-          <div className="rail-track">
-            <div className="rail-set">{CATEGORIES.map((c) => <TCard key={c.slug} c={c} />)}</div>
-            <div className="rail-set" aria-hidden="true">{CATEGORIES.map((c) => <TCard key={c.slug + "-dup"} c={c} />)}</div>
-          </div>
+      {/* 04 CATEGORIES — navy panel, shaped photo cards */}
+      <section className="section" style={{ paddingBottom: 96 }}>
+        <div className="container-wide">
+          <CategoryPanel
+            eyebrow="Categories"
+            title={<>Every season has<br />a <span className="cp-accent">confession.</span></>}
+            lede="Pick the ones that name where you are. The practice follows you there."
+            action={<Link className="btn btn-light" href="/categories">All {CATEGORIES.length} categories <Icon n="arrow" s={14} /></Link>}
+          >
+            <div className="cp-row" role="list">{CATEGORIES.slice(0, 8).map((c) => <div role="listitem" key={c.slug}><TCard c={c} /></div>)}</div>
+          </CategoryPanel>
         </div>
       </section>
 
@@ -78,7 +76,7 @@ export function Home() {
         </div>
         <div className="principle-grid snap" style={{ marginTop: 48 }}>
           <div className="p-card rv in"><span className="venn v1"><i /><i /></span><div className="p-in"><h3>Intention</h3><p>One area of life at a time. A session asks for a minute of honest speech, not an hour of scrolling.</p></div></div>
-          <div className="p-card rv in"><span className="venn v2"><i /><i /></span><div className="p-in"><h3>Presence</h3><p>Nothing autoplays. Nothing pings. The loudest thing in iCONFESS should be the words themselves.</p></div></div>
+          <div className="p-card rv in"><span className="venn v2"><i /><i /></span><div className="p-in"><h3>Presence</h3><p>Nothing autoplays. Nothing pings. The loudest thing in I CONFESS should be the words themselves.</p></div></div>
           <div className="p-card rv in"><span className="venn v3"><i /><i /></span><div className="p-in"><h3>Repetition</h3><p>A sentence said thirty times stops being an affirmation and starts being a description. Return daily.</p></div></div>
           <div className="p-card rv in"><span className="venn v4"><i /><i /></span><div className="p-in"><h3>Personal Experience</h3><p>Your voice, your pace, your routine. Private by default, shared only when you choose.</p></div></div>
         </div>
@@ -88,7 +86,7 @@ export function Home() {
       <section className="band rv in">
         <img src="/assets/immersive.jpg" alt="A person listening with headphones, eyes closed, in soft morning light" loading="lazy" />
         <div className="band-card">
-          <div className="bc-top"><span className="eyebrow">Why iCONFESS?</span><span className="orb sm" aria-hidden="true"><Icon n="ast" s={13} /></span></div>
+          <div className="bc-top"><span className="eyebrow">Why I CONFESS?</span><span className="orb sm" aria-hidden="true"><Icon n="ast" s={13} /></span></div>
           <h3 style={{ fontSize: "clamp(24px,2.6vw,32px)" }}>You'll find<br /><mark>what you need</mark></h3>
           <div className="bc-foot">
             <p style={{ margin: 0 }}>Transparent like that. No gimmicks. Five or fifteen minutes, sized to your day.</p>
@@ -109,7 +107,7 @@ export function Home() {
         </div>
         <div className="voice-feature-grid">
           <Link className="v-card highlight rv in" href="/voices/grace">
-            <div className="v-top"><img className="avatar" src="/assets/voice-grace.jpg" alt="Portrait of Grace, iCONFESS narration voice" /></div>
+            <div className="v-top"><img className="avatar" src="/assets/voice-grace.jpg" alt="Portrait of Grace, I CONFESS narration voice" /></div>
             <div className="v-div"><div><h3>Grace</h3><span className="v-role">Warm · Calm · Licensed</span></div><span className="v-arrow"><Icon n="ne" s={15} /></span></div>
           </Link>
           <Link className="v-card voice-policy-card rv in" href="/voices">
@@ -191,9 +189,9 @@ export function Home() {
         </div>
         <div className="testi-card rv in">
           <div className="q" style={{ fontFamily: "Georgia,serif", fontSize: 44, lineHeight: 1 }}>“</div>
-          <blockquote>iCONFESS is built for a few honest minutes a day. No streak guilt, no noise, no autoplay — just words you chose, in a voice you trust, returned to until they become yours.</blockquote>
+          <blockquote>I CONFESS is built for a few honest minutes a day. No streak guilt, no noise, no autoplay — just words you chose, in a voice you trust, returned to until they become yours.</blockquote>
           <div className="t-foot">
-            <div className="who" style={{ border: 0, margin: 0, padding: 0 }}><span className="w-ic"><Icon n="spark" s={16} /></span><div><b>The iCONFESS Team</b><span>Product statement, not a testimonial</span></div></div>
+            <div className="who" style={{ border: 0, margin: 0, padding: 0 }}><span className="w-ic"><Icon n="spark" s={16} /></span><div><b>The I CONFESS Team</b><span>Product statement, not a testimonial</span></div></div>
             <div style={{ display: "flex", gap: 10 }}><span className="orb white" style={{ color: "var(--deep)" }}><Icon n="arrowL" s={15} /></span><Link className="orb navy" href="/app/community/create" aria-label="Share yours"><Icon n="ne" s={15} /></Link></div>
           </div>
         </div>
@@ -206,13 +204,13 @@ export function Home() {
       <section className="section band-gray"><div className="container-wide">
         <div className="c-head rv in">
           <span className="eyebrow">Insights</span>
-          <h2 className="h1" style={{ marginTop: 18 }}>Hear <span className="accent">directly</span><br />from iCONFESS.</h2>
+          <h2 className="h1" style={{ marginTop: 18 }}>Hear <span className="accent">directly</span><br />from I CONFESS.</h2>
           <Link className="btn btn-primary" href="/journal" style={{ marginTop: 26 }}>More Insights</Link>
         </div>
         <div className="journal-grid snap" style={{ gridTemplateColumns: "repeat(3,1fr)" }}>
           <ArticleCard a={ARTICLES[0]} img="journal-1.jpg" />
           <Link className="j-card dark rv in" href="/download">
-            <div className="jd-title">The iCONFESS app — carry the practice with you.</div>
+            <div className="jd-title">The I CONFESS app — carry the practice with you.</div>
             <div className="jd-blob" aria-hidden="true" />
             <PhoneMock />
             <div className="jd-meta"><Icon n="ast" s={14} /> 2026</div>
@@ -226,7 +224,7 @@ export function Home() {
       <section className="section" style={{ background: "var(--paper)" }}><div className="container faq">
         <div className="faq-left rv in" style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
           <span className="eyebrow">FAQ</span>
-          <h2 className="h1" style={{ marginTop: 22 }}>Questions about<br />iCONFESS?</h2>
+          <h2 className="h1" style={{ marginTop: 22 }}>Questions about<br />I CONFESS?</h2>
           <p className="lede" style={{ marginTop: 16, fontSize: 14 }}>Common questions on confessions, sessions, voices and privacy.</p>
           <div style={{ marginTop: "auto", paddingTop: 60 }}><Link className="btn btn-primary" href="/help">Learn More</Link></div>
         </div>
@@ -266,27 +264,54 @@ export function Home() {
   );
 }
 
-export function TCard({ c, hl }: { c: Category; hl?: boolean }) {
-  const n = CONFESSIONS.filter((x) => x.category === c.slug).length;
+/** The navy panel category cards sit on: eyebrow pill, heading, one action. */
+export function CategoryPanel({ eyebrow, title, lede, action, children }: { eyebrow: string; title: React.ReactNode; lede?: string; action?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <Link href={"/categories/" + c.slug} className={"tcard" + (hl ? " hl" : "")} style={{ position: "relative" }}>
-      <div className="t-top">
-        <span className="t-orb"><Icon n="ne" s={13} /></span>
-        <div className="t-chips">
-          <span className="t-chip">{n} confession{n === 1 ? "" : "s"}</span>
-          <span className="t-chip">Daily practice</span>
+    <div className="cat-panel rv in">
+      <div className="cp-head">
+        <div>
+          <span className="cp-eyebrow">{eyebrow}</span>
+          <h2 className="h1 cp-title">{title}</h2>
+          {lede && <p className="cp-lede">{lede}</p>}
         </div>
-        <h3 className="h3" style={{ fontSize: 26, lineHeight: 1.08 }}>{c.name}</h3>
-        <p>{c.tagline}</p>
+        {action}
       </div>
-      <div className="t-photo">
-        {CAT_IMAGES[c.slug] ? (
-          <img src={`/assets/${CAT_IMAGES[c.slug]}`} alt="" loading="lazy" />
-        ) : (
-          <span className="motif" style={{ ...motifStyle(c.slug), width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}><span className="m-glyph" style={{ fontSize: 52, color: "rgba(255,255,255,.92)" }}>{c.name[0]}</span></span>
-        )}
-        <span className="t-read">Read More <span className="orb"><Icon n="ne" s={13} /></span></span>
-      </div>
+      {children}
+    </div>
+  );
+}
+
+/** Category card: the photo seen through a shaped window with a halo band,
+ *  title bottom-left and a round arrow bottom-right. The shape is fixed per
+ *  category (by catalogue position), so a category looks the same everywhere. */
+export function TCard({ c }: { c: Category }) {
+  const n = confessionsFor(c).length;
+  const shape = shapeForIndex(Math.max(0, CATEGORIES.findIndex((x) => x.slug === c.slug)));
+  const paths = shapePaths(shape);
+  const img = CAT_IMAGES[c.slug];
+  return (
+    <Link href={"/categories/" + c.slug} className="tcard" aria-label={`${c.name} — ${n} confession${n === 1 ? "" : "s"}`}>
+      <span className="t-art">
+        <svg viewBox={`0 0 ${ART_W} ${ART_H}`} preserveAspectRatio="xMidYMin slice" aria-hidden="true" focusable="false">
+          <g className="t-halo">{paths.map((d, k) => <path key={k} d={d} />)}</g>
+          <g className="t-fill">{paths.map((d, k) => <path key={k} d={d} />)}</g>
+          {img ? (
+            <image className="t-img" href={`/assets/${img}`} x="0" y="0" width={ART_W} height={ART_H} preserveAspectRatio="xMidYMid slice" clipPath={`url(#tshape-${shape})`} />
+          ) : (
+            <g clipPath={`url(#tshape-${shape})`}>
+              <rect width={ART_W} height={ART_H} fill="url(#tshape-motif)" />
+              <svg x={shapeCentre(shape)[0] - 28} y={shapeCentre(shape)[1] - 28} width="56" height="56" viewBox={MARK_VIEWBOX}><path fill="rgba(255,255,255,.9)" fillRule="evenodd" d={MARK_PATH} /></svg>
+            </g>
+          )}
+        </svg>
+      </span>
+      <span className="t-foot">
+        <span className="t-text">
+          <h3>{c.name}</h3>
+          <span className="t-meta">{n} confession{n === 1 ? "" : "s"}</span>
+        </span>
+        <span className="t-orb" aria-hidden="true"><Icon n="ne" s={16} /></span>
+      </span>
     </Link>
   );
 }
@@ -344,8 +369,14 @@ export function Explore() {
 export function Categories() {
   return (
     <section className="section container-wide" style={{ paddingTop: "calc(var(--header-h) + 56px)" }}>
-      <SectionHead title={<>39 areas of life. <span className="accent">One practice.</span></>} lede="Every category is a reviewed library of confessions. Order leads with the areas people reach for first in trouble." />
-      <div className="tgrid">{CATEGORIES.map((c) => <TCard key={c.slug} c={c} />)}</div>
+      <CategoryPanel
+        eyebrow="Categories"
+        title={<>{CATEGORIES.length} areas of life. <span className="cp-accent">One practice.</span></>}
+        lede="Every category is a reviewed library of confessions. Order leads with the areas people reach for first in trouble."
+        action={<Link className="btn btn-light" href="/register">Choose mine <Icon n="arrow" s={14} /></Link>}
+      >
+        <div className="tgrid">{CATEGORIES.map((c) => <TCard key={c.slug} c={c} />)}</div>
+      </CategoryPanel>
       <PageStats items={[[String(CATEGORIES.length), "areas of life"], [String(CONFESSIONS.length), "confessions in the library"], ["Every one", "reviewed before publishing"], ["1–15 min", "sessions to fit your day"]]} />
       <div className="form-card rv in" style={{ marginTop: 48, maxWidth: 820 }}>
         <h3 className="h4" style={{ marginBottom: 12 }}>How to choose a category</h3>
@@ -630,12 +661,16 @@ export function About() {
   return (
     <section className="section container" style={{ paddingTop: "calc(var(--header-h) + 56px)" }}>
       <div className="story"><div className="rv in"><span className="eyebrow">About</span><h1 className="h1" style={{ marginTop: 16 }}>Built for a few <span className="accent">honest minutes</span> a day.</h1>
-        <p className="lede" style={{ marginTop: 20 }}>iCONFESS began with a simple observation: every meaningful commitment in history was spoken before it was written. Speech is slower than reading. It costs breath. It makes words harder to dismiss.</p>
+        <p className="lede" style={{ marginTop: 20 }}>I CONFESS began with a simple observation: every meaningful commitment in history was spoken before it was written. Speech is slower than reading. It costs breath. It makes words harder to dismiss.</p>
         <p className="lede" style={{ marginTop: 16 }}>So we built a home for that practice — curated confessions checked against the Scripture they stand on, a licensed narration voice, and sessions sized to real days.</p>
         <div className="story-cta"><Link className="btn btn-primary" href="/mission">Our Mission</Link></div></div>
-        <aside className="story-side rv in"><p>We do not use streak guilt. Motion is sparing. Nothing autoplays. The loudest thing in iCONFESS should be the words themselves.</p><p className="small" style={{ marginTop: 16 }}>Design principle, from “Designing a quiet app on purpose” — the iCONFESS journal.</p></aside></div>
+        <aside className="story-side rv in"><p>We do not use streak guilt. Motion is sparing. Nothing autoplays. The loudest thing in I CONFESS should be the words themselves.</p><p className="small" style={{ marginTop: 16 }}>Design principle, from “Designing a quiet app on purpose” — the I CONFESS journal.</p></aside></div>
       <div className="brand-panel rv in" style={{ marginTop: 72 }}>
-        <img src="/assets/logo-stacked-dark.jpg" alt="iCONFESS — Speak it. Believe it. Live it." style={{ width: "min(340px,72%)", borderRadius: 18 }} />
+        <div className="brand-lockup" role="img" aria-label="I CONFESS — Speak it. Believe it. Live it.">
+          <Mark s={88} />
+          <b>I CONFESS</b>
+          <span>Speak it. Believe it. Live it.</span>
+        </div>
         <p className="lede" style={{ color: "var(--tint2)", maxWidth: "44ch", marginTop: 26 }}>Speak it. Believe it. Live it. — the order is the product. Speaking comes first because speech is where belief is tested, and living is where it is proven.</p>
       </div>
       <PageStats items={[[String(CATEGORIES.length), "categories"], [String(CONFESSIONS.length), "reviewed confessions"], ["Human", "review on everything published"], ["Quiet", "by design, on purpose"]]} />
@@ -654,10 +689,10 @@ export function Mission() {
 }
 
 export function Journal() {
-  const imgs = ["journal-1.jpg", "cat-peace.jpg", "cat-faith.jpg", "journal-1.jpg", "cat-purpose.jpg"];
+  const imgs = ["journal-1.jpg", "cat-rest.jpg", "cat-faith.jpg", "journal-1.jpg", "cat-purpose.jpg"];
   return (
     <section className="section container-wide" style={{ paddingTop: "calc(var(--header-h) + 56px)" }}>
-      <SectionHead eyebrow="The Journal" title={<>Words to <span className="accent">return to.</span></>} lede="Essays written for this product and signed iCONFESS — no invented authors." />
+      <SectionHead eyebrow="The Journal" title={<>Words to <span className="accent">return to.</span></>} lede="Essays written for this product and signed I CONFESS — no invented authors." />
       <div className="journal-grid" style={{ gridTemplateColumns: "repeat(3,1fr)" }}>{ARTICLES.map((a, i) => <ArticleCard key={a.slug} a={a} img={imgs[i]} />)}</div>
       <CtaBand title="Read less. Say more. Start the practice." />
     </section>
@@ -707,7 +742,7 @@ export function NotFoundBody() {
     <section className="section container" style={{ paddingTop: "calc(var(--header-h) + 80px)", textAlign: "center" }}>
       <span className="eyebrow" style={{ justifyContent: "center" }}>404</span>
       <h1 className="h-display" style={{ marginTop: 14 }}>This page went <span className="accent">quiet.</span></h1>
-      <p className="lede" style={{ margin: "18px auto", maxWidth: "40ch" }}>The address doesn't match anything in iCONFESS.</p>
+      <p className="lede" style={{ margin: "18px auto", maxWidth: "40ch" }}>The address doesn't match anything in I CONFESS.</p>
       <div style={{ display: "flex", gap: 12, justifyContent: "center" }}><Link className="btn btn-primary" href="/">Go home</Link><Link className="btn btn-ghost" href="/explore">Explore</Link></div>
     </section>
   );
@@ -716,7 +751,7 @@ export function NotFoundBody() {
 export function Legal({ kind }: { kind: string }) {
   const L: Record<string, [string, string[]]> = {
     privacy: ["Privacy", ["Your private confessions are yours. They are stored against your account, never indexed for search, never reviewed unless you explicitly submit them, and never used to train anything.", "We collect the minimum needed to run the service: an email address, your content, and playback events that make “continue listening” possible. Analytics events are product events, not advertising profiles.", "You can export or delete your account and its content from Settings. Deletion is complete, not a hide."]],
-    terms: ["Terms", ["iCONFESS provides curated confession content, audio narration and session tooling. You may use it personally; you may not scrape, resell or redistribute the library.", "Content you create remains yours. If you submit it for community publication you grant us a licence to publish it after review, revocable by withdrawing the submission.", "Premium subscriptions renew until cancelled and are billed by the stores or our billing provider; the 7-day trial converts only with notice."]],
+    terms: ["Terms", ["I CONFESS provides curated confession content, audio narration and session tooling. You may use it personally; you may not scrape, resell or redistribute the library.", "Content you create remains yours. If you submit it for community publication you grant us a licence to publish it after review, revocable by withdrawing the submission.", "Premium subscriptions renew until cancelled and are billed by the stores or our billing provider; the 7-day trial converts only with notice."]],
     cookies: ["Cookies", ["We use a session cookie for sign-in and a preferences cookie for settings. We do not use third-party advertising cookies.", "Analytics are first-party product events (a session started, a confession played) and respect your consent choice at registration."]],
     guidelines: ["Community Guidelines", ["Community confessions must stand on Scripture honestly, harm no person or group, and be your own words.", "Nothing publishes automatically. A human reviewer approves or declines with a reason; repeated violations close the submission path.", "Private stays private. Sharing someone else's words requires their explicit share link."]],
     policy: ["Content Policy", ["Every confession is drafted, edited and checked against the Scripture it claims to stand on. Quotations must quote; allusions must allude honestly.", "The pipeline is one-way: draft → review → published, enforced by the platform, not by habit."]],

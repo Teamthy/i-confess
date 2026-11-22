@@ -14,7 +14,7 @@ import { Icon } from "@/components/ui";
 export const metadata: Metadata = {
   title: "Pricing",
   description:
-    "iCONFESS plans and regional pricing, served live from the same source the apps use. Free to start; Premium for the full practice.",
+    "I CONFESS plans and regional pricing, served live from the same source the apps use. Free to start; Premium for the full practice.",
   alternates: { canonical: "/pricing" },
 };
 
@@ -56,7 +56,7 @@ export default async function PricingPage() {
 
       {!data && (
         <div className="bible-note">
-          The plan table is served by the iCONFESS API and is not reachable from this deployment, so no price is
+          The plan table is served by the I CONFESS API and is not reachable from this deployment, so no price is
           shown here. Nothing is substituted for it — see <Link className="textlink" href="/premium">what Premium
           includes</Link>.
         </div>

@@ -1,7 +1,7 @@
 "use client";
 
 /* ============================================================================
-   iCONFESS web — the Bible routes around the reader: search, the translation
+   I CONFESS web — the Bible routes around the reader: search, the translation
    and language catalogues, the private library (highlights, bookmarks, notes,
    collections, history), reading plans and reader settings.
 

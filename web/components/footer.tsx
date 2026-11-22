@@ -19,7 +19,7 @@ export default function Footer() {
           </div>
         </div>
         <div className="footer-bar" style={{ paddingTop: 0, justifyContent: "space-between" }}>
-          <span className="footer-copy">© 2026 iCONFESS. All rights reserved.</span>
+          <span className="footer-copy">© 2026 I CONFESS. All rights reserved.</span>
           <span className="footer-copy"><Link href="/privacy" style={{ marginRight: 14 }}>Privacy</Link><Link href="/terms" style={{ marginRight: 14 }}>Terms</Link><Link href="/cookies">Cookies</Link></span>
         </div>
       </div>

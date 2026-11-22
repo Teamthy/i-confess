@@ -8,7 +8,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const name = slug.replace(/-/g, " ");
   return {
     title: `Bible verses about ${name}`,
-    description: `The passages the reviewed iCONFESS corpus stands on for ${name}.`,
+    description: `The passages the reviewed I CONFESS corpus stands on for ${name}.`,
     alternates: { canonical: `/bible/topics/${encodeURIComponent(slug)}` },
   };
 }

@@ -11,7 +11,7 @@ export function HeroCtas() {
   return (
     <>
       <Link className="btn btn-primary btn-lg" href="/register" onClick={() => track("hero_clicked")}>Start Your Experience</Link>
-      <Link className="btn btn-ghost btn-lg" href="/explore">Explore iCONFESS</Link>
+      <Link className="btn btn-ghost btn-lg" href="/explore">Explore I CONFESS</Link>
     </>
   );
 }
@@ -148,9 +148,9 @@ export function ContactForm() {
 
 export function StoryTabs() {
   const TABS = [
-    "iCONFESS is built by people who keep a practice themselves — curated words, a licensed narration voice, and a library checked line by line before you ever see it.",
+    "I CONFESS is built by people who keep a practice themselves — curated words, a licensed narration voice, and a library checked line by line before you ever see it.",
     "Every confession is drafted, edited and verified against the Scripture it claims to stand on. Nothing publishes automatically — not ever.",
-    "The design is quiet on purpose: no streak guilt, no autoplay, no noise. The loudest thing in iCONFESS should be the words themselves.",
+    "The design is quiet on purpose: no streak guilt, no autoplay, no noise. The loudest thing in I CONFESS should be the words themselves.",
   ];
   const [i, setI] = useState(0);
   return (

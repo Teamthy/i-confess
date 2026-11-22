@@ -1,5 +1,5 @@
 /* ============================================================
-   iCONFESS — Design System
+   I CONFESS — Design System
    Tokens sourced from repo design/tokens.json (navy ramp).
    Layout rhythm reconstructed from the reference wireframe.
    ============================================================ */
@@ -151,19 +151,7 @@ mark{background:var(--tint1);color:var(--deep);padding:0 .18em;border-radius:4px
 .dark-block .section-head{margin-bottom:40px}
 .dark-block .h1 .accent{color:var(--tint2)}
 .cat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
-.cat-card{background:var(--white);color:var(--deep);border-radius:var(--r-20);padding:14px;display:flex;flex-direction:column;gap:12px;transition:transform .3s var(--ease),box-shadow .3s;position:relative}
-.cat-card:hover{transform:translateY(-6px);box-shadow:0 20px 50px rgba(0,7,45,.35)}
-.cat-card .cc-media{height:150px;border-radius:var(--r-12);overflow:hidden;position:relative}
-.cat-card .cc-media img{width:100%;height:100%;object-fit:cover;transition:transform .8s var(--ease)}
-.cat-card:hover .cc-media img{transform:scale(1.05)}
-.cat-card .cc-num{position:absolute;top:10px;right:10px;width:26px;height:26px;border-radius:50%;background:rgba(255,255,255,.92);color:var(--navy);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center}
-.cat-card .cc-name{font-size:17px;font-weight:700;letter-spacing:-.01em;padding:0 6px}
-.cat-card .cc-tag{font-size:13px;color:var(--n500);padding:0 6px;flex:1}
-.cat-card .cc-arrow{align-self:flex-end;width:34px;height:34px;border-radius:50%;background:var(--light);color:var(--blue);display:flex;align-items:center;justify-content:center;transition:background .25s,color .25s}
-.cat-card:hover .cc-arrow{background:var(--blue);color:#fff}
-.cat-card.featured{background:var(--blue);color:#fff}
-.cat-card.featured .cc-tag{color:var(--tint1)}
-.cat-card.featured .cc-arrow{background:rgba(255,255,255,.14);color:#fff}
+
 /* motif (no photo) media */
 .motif{display:flex;align-items:flex-end;padding:14px;color:rgba(255,255,255,.9)}
 .motif .m-glyph{font-size:34px;font-weight:800;letter-spacing:-.04em;opacity:.9}
@@ -353,8 +341,7 @@ mark{background:var(--tint1);color:var(--deep);padding:0 .18em;border-radius:4px
 .app-side.rail-collapsed{width:74px}
 .rail-collapsed .side-head{justify-content:center;padding:18px 8px 12px}
 .rail-collapsed .side-head .logo .lw{display:none}
-.rail-collapsed .side-label,.rail-collapsed .side-badge,.rail-collapsed .side-group-title,
-.rail-collapsed .side-promo,.rail-collapsed .side-email{display:none}
+.rail-collapsed .side-label,.rail-collapsed .side-badge,.rail-collapsed .side-group-title,.rail-collapsed .side-promo,.rail-collapsed .side-email{display:none}
 .rail-collapsed .side-primary,.rail-collapsed .side-account{padding-left:10px;padding-right:10px}
 .rail-collapsed .side-scroll{padding-left:10px;padding-right:10px}
 .rail-collapsed .side-item,.rail-collapsed .side-recent{justify-content:center;padding:10px 0;gap:0}
@@ -490,8 +477,8 @@ mark{background:var(--tint1);color:var(--deep);padding:0 .18em;border-radius:4px
 .plan-card.gold li .ic{color:var(--gold)}
 
 /* toast */
-.toast{position:fixed;bottom:24px;left:50%;transform:translate(-50%,80px);background:var(--deep);color:#fff;border-radius:99px;padding:12px 22px;font-size:13px;font-weight:600;z-index:100;transition:transform .4s var(--ease);box-shadow:var(--shadow-2);display:flex;gap:10px;align-items:center}
-.toast.on{transform:translate(-50%,0)}
+.toast{position:fixed;bottom:24px;left:50%;transform:translate(-50%,80px);background:var(--deep);color:#fff;border-radius:99px;padding:12px 22px;font-size:13px;font-weight:600;z-index:100;transition:transform .4s var(--ease),opacity .3s;box-shadow:var(--shadow-2);display:flex;gap:10px;align-items:center;opacity:0;pointer-events:none}
+.toast.on{transform:translate(-50%,0);opacity:1;pointer-events:auto}
 
 /* search overlay */
 .search-ovl{position:fixed;inset:0;z-index:90;background:rgba(0,7,45,.5);backdrop-filter:blur(6px);display:none;padding:10vh 20px 20px}
@@ -546,9 +533,7 @@ mark{background:var(--tint1);color:var(--deep);padding:0 .18em;border-radius:4px
 .eyebrow{display:inline-flex;align-items:center;gap:10px}
 .eyebrow::before{content:"";width:22px;height:2px;background:currentColor;opacity:.7;border-radius:2px}
 /* category cards in the dark block: one bright hue, like the reference's lime cards */
-.cat-card{background:var(--light)}
-.cat-card .cc-arrow{background:var(--white);color:var(--blue)}
-.cat-card:hover .cc-arrow{background:var(--blue);color:#fff}
+
 /* principle cards carry a small icon chip like the reference */
 .p-ic{width:38px;height:38px;border-radius:50%;background:var(--white);border:1px solid var(--n100);display:inline-flex;align-items:center;justify-content:center;color:var(--blue2)}
 .p-card.active .p-ic{background:var(--blue2);border-color:var(--blue2);color:#fff}
@@ -575,11 +560,7 @@ mark{background:var(--tint1);color:var(--deep);padding:0 .18em;border-radius:4px
 .fcard.imgcard img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .fcard.imgcard .fc-label{position:absolute;top:12px;left:14px;color:#fff;text-shadow:0 1px 8px rgba(0,7,45,.5);z-index:1}
 /* dark-block category cards: white frame around photo, dark arrow circle */
-.cat-card{padding:10px;background:var(--light)}
-.cat-card .cc-media{border:6px solid var(--white);border-radius:14px;height:160px;background:#fff}
-.cat-card .cc-name,.cat-card .cc-tag{padding:0 8px}
-.cat-card .cc-arrow{background:var(--navy);color:#fff;margin:0 8px 8px 0}
-.cat-card:hover .cc-arrow{background:var(--blue)}
+
 /* principles: toggle-style glyph pills, icon-only cards, white section */
 .glyph{width:56px;height:30px;border-radius:999px;border:1px solid var(--n200);background:#fff;position:relative}
 .glyph b{position:absolute;top:8px;width:13px;height:13px;border-radius:50%;background:var(--blue2)}
@@ -659,20 +640,7 @@ h1,h2,h3,h4,.h-display,.h1,.h2,.h3,.h4,.logo{font-family:var(--disp);font-weight
 .tabs button[aria-selected="true"]{color:var(--deep)}
 .tabs button[aria-selected="true"]::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:2px;background:var(--blue2)}
 /* dark block category cards v3: tall bright card + blob photo + ring */
-.cat-card{background:var(--light);border-radius:20px;padding:0;min-height:400px;display:flex;flex-direction:column;overflow:hidden}
-.cat-card .cc-blob{position:relative;height:250px;margin:0 0 8px}
-.cat-card .cc-blob .blob{position:absolute;inset:16px 16px 0;border-radius:0 46% 54% 46%/0 50% 50% 54%;overflow:hidden;box-shadow:0 0 0 10px rgba(255,255,255,.75)}
-.cat-card .cc-blob .blob img{width:100%;height:100%;object-fit:cover}
-.cat-card .cc-blob .blob.motif{display:flex;align-items:center;justify-content:center}
-.cat-card .cc-name{font-family:var(--disp);font-size:17px;padding:0 20px;font-weight:500}
-.cat-card .cc-tag{padding:4px 20px 0;font-size:12.5px}
-.cat-card .cc-foot{margin-top:auto;display:flex;align-items:center;justify-content:flex-end;padding:16px 18px}
-.cat-card .cc-arrow{width:42px;height:42px;background:#fff;color:var(--navy)}
-.cat-card:hover .cc-arrow{background:var(--navy);color:#fff}
-.cat-card.featured{background:var(--blue2);color:#fff}
-.cat-card.featured .cc-tag{color:var(--tint1)}
-.cat-card.featured .cc-arrow{background:var(--navy);color:#fff}
-.cat-card.featured .cc-blob .blob{box-shadow:0 0 0 10px rgba(255,255,255,.25)}
+
 /* principles v3: outer card + venn glyph + inner panel */
 .p-card{background:var(--white);border:1px solid var(--n100);border-radius:20px;padding:22px;gap:0;box-shadow:none}
 .p-card .venn{position:relative;width:78px;height:44px;margin-bottom:56px}
@@ -793,29 +761,10 @@ h1,h2,h3,h4,.h-display,.h1,.h2,.h3,.h4,.logo{font-family:var(--disp);font-weight
 .dhero .logo-row span{font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:var(--tint3);font-weight:600}
 
 /* tennis-style category cards */
-.tcard{width:300px;flex:none;border-radius:22px;overflow:hidden;background:var(--paper);display:flex;flex-direction:column;text-align:left;border:0;transition:transform .3s var(--ease)}
-.tcard:hover{transform:translateY(-6px)}
-.tcard .t-top{padding:20px 20px 16px;display:flex;flex-direction:column;gap:12px;flex:1}
-.tcard .t-chips{display:flex;gap:8px}
-.tcard .t-chip{background:#fff;border-radius:999px;padding:6px 12px;font-size:10.5px;font-weight:600;color:var(--n600)}
-.tcard .t-orb{position:absolute;top:18px;right:18px;width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.85);color:var(--deep);display:flex;align-items:center;justify-content:center}
-.tcard h3{font-size:26px;line-height:1.08;font-weight:600;letter-spacing:-.01em}
-.tcard p{font-size:12px;color:var(--n600)}
-.tcard .t-photo{position:relative;height:250px}
-.tcard .t-photo img,.tcard .t-photo .motif{width:100%;height:100%;object-fit:cover}
-.tcard .t-read{position:absolute;left:14px;bottom:14px;display:flex;align-items:center;gap:8px;color:#fff;font-size:11px;font-weight:600}
-.tcard .t-read .orb{width:30px;height:30px;background:#fff;color:var(--deep)}
-.tcard.hl{background:var(--blue2);color:#fff}
-.tcard.hl .t-chip{background:rgba(255,255,255,.92);color:var(--navy)}
-.tcard.hl p{color:var(--tint1)}
-.tcard.hl .t-orb{background:var(--navy);color:#fff}
+
 /* auto-moving rail */
-.rail-auto{overflow:hidden;position:relative}
-.rail-track{display:flex;width:max-content;animation:railmove 70s linear infinite}
-.rail-set{display:flex;gap:18px;padding-right:18px;flex:none}
-.rail-auto:hover .rail-track{animation-play-state:paused}
+
 @keyframes railmove{to{transform:translateX(-50%)}}
-@media (prefers-reduced-motion:reduce){.rail-track{animation:none}}
 
 /* edge-to-edge sections */
 .dark-block{border-radius:0;margin:0;padding:clamp(56px,7vw,110px) 0}
@@ -843,16 +792,15 @@ h1,h2,h3,h4,.h-display,.h1,.h2,.h3,.h4,.logo{font-family:var(--disp);font-weight
 [data-theme="dark"] .eyebrow{background:transparent;border-color:var(--n200);color:var(--tint2)}
 [data-theme="dark"] .btn-ghost{color:#EDEFF7;border-color:var(--n200)}
 [data-theme="dark"] .fcard,[data-theme="dark"] .tile,[data-theme="dark"] .p-card,[data-theme="dark"] .v-card,[data-theme="dark"] .j-card,[data-theme="dark"] .form-card,[data-theme="dark"] .auth-card,[data-theme="dark"] .plan-card,[data-theme="dark"] .list-row,[data-theme="dark"] .testi-card{background:var(--n50);border-color:var(--n100);color:#EDEFF7}
-[data-theme="dark"] .fcard .fc-label,[data-theme="dark"] .tcard p,[data-theme="dark"] .tile p{color:var(--n500)}
+[data-theme="dark"] .fcard .fc-label,[data-theme="dark"] .tile p{color:var(--n500)}
 [data-theme="dark"] .fcard .fc-value,[data-theme="dark"] .fc-big{color:#fff}
-[data-theme="dark"] .tcard{background:var(--n50)}
-[data-theme="dark"] .tcard .t-chip{background:var(--n100);color:var(--tint1)}
+
 [data-theme="dark"] .p-card .p-in{background:var(--n100)}
 [data-theme="dark"] .p-card.active{background:var(--blue2)}
 [data-theme="dark"] .p-card.active .p-in{background:var(--n50)}
-[data-theme="dark"] .cat-card{background:var(--n50)}
-[data-theme="dark"] .cat-card .cc-arrow,[data-theme="dark"] .v-card .v-arrow,[data-theme="dark"] .j-card .j-arrow2{background:var(--n100);color:#fff}
-[data-theme="dark"] .cc-blob .blob{box-shadow:0 0 0 10px rgba(255,255,255,.08)}
+
+[data-theme="dark"] .v-card .v-arrow,[data-theme="dark"] .j-card .j-arrow2{background:var(--n100);color:#fff}
+
 [data-theme="dark"] .story-side{border-color:var(--n100)}
 [data-theme="dark"] .lede,[data-theme="dark"] .small,[data-theme="dark"] .auth-card .sub{color:var(--n600)}
 [data-theme="dark"] .faq-q{color:#fff}
@@ -942,7 +890,6 @@ h1,h2,h3,h4,.h-display,.h1,.h2,.h3,.h4,.logo{font-family:var(--disp);font-weight
 .c-lede{margin:18px auto 0;max-width:56ch}
 
 /* slower rail */
-.rail-track{animation-duration:150s}
 
 /* approach cards all hover blue */
 .p-card{transition:background .35s var(--ease),color .35s var(--ease),transform .35s var(--ease)}
@@ -953,7 +900,6 @@ h1,h2,h3,h4,.h-display,.h1,.h2,.h3,.h4,.logo{font-family:var(--disp);font-weight
 
 /* tcard grids on index pages */
 .tgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:18px}
-.tgrid .tcard{width:auto}
 
 /* full-bleed split */
 /* ---------- home: scripture band ---------- */
@@ -1012,11 +958,7 @@ h1,h2,h3,h4,.h-display,.h1,.h2,.h3,.h4,.logo{font-family:var(--disp);font-weight
 /* grid button: mobile only */
 @media (min-width:901px){.header-actions .grid-btn{display:none}}
 /* all category cards hover blue */
-.tcard:hover{background:var(--blue2);color:#fff;transform:translateY(-6px)}
-.tcard:hover h3{color:#fff}
-.tcard:hover p{color:var(--tint1)}
-.tcard:hover .t-chip{background:rgba(255,255,255,.92);color:var(--navy)}
-.tcard:hover .t-orb{background:var(--navy);color:#fff}
+
 /* premium layout */
 .pc-top{display:flex;justify-content:space-between;align-items:center}
 .plan-grid{max-width:940px;gap:20px}
@@ -1094,8 +1036,8 @@ html{scroll-behavior:smooth}
 .wrap-grid>div{background:var(--navy);padding:22px;text-align:center}
 .wrap-grid b{display:block;font-family:var(--disp);font-size:34px}
 .wrap-grid span{font-size:11px;color:var(--tint2);letter-spacing:.06em}
-[data-saver="on"] .t-photo img,[data-saver="on"] .blob img,[data-saver="on"] .dhero-bg,[data-saver="on"] .band>img,[data-saver="on"] .rec-band>img,[data-saver="on"] .ps-canvas,[data-saver="on"] .split-img img{display:none}
-[data-saver="on"] .t-photo{background:linear-gradient(140deg,var(--light),var(--n100))}
+[data-saver="on"] .dhero-bg,[data-saver="on"] .band>img,[data-saver="on"] .rec-band>img,[data-saver="on"] .ps-canvas,[data-saver="on"] .split-img img{display:none}
+
 [data-saver="on"] .band{background:var(--navy)}
 
 /* ---------- Bible reader (original design) ---------- */
@@ -1406,16 +1348,7 @@ html{scroll-behavior:smooth}
   .bible-main{padding:14px 4px}
 }
 
-[data-theme="dark"] .bible-quick a,[data-theme="dark"] .bible-search-bar,[data-theme="dark"] .bs-filter,
-[data-theme="dark"] .bible-filter-row input,[data-theme="dark"] .bible-filter-row select,
-[data-theme="dark"] .btb-book,[data-theme="dark"] .btb-left select,[data-theme="dark"] .btb-icon,
-[data-theme="dark"] .bible-structure,[data-theme="dark"] .bible-book,[data-theme="dark"] .bcited,
-[data-theme="dark"] .btrans,[data-theme="dark"] .bversion,[data-theme="dark"] .blang,[data-theme="dark"] .bmark,[data-theme="dark"] .bnote,
-[data-theme="dark"] .bcoll,[data-theme="dark"] .bplan,[data-theme="dark"] .bplan-day,[data-theme="dark"] .bset,
-[data-theme="dark"] .bresult,[data-theme="dark"] .bible-actions,[data-theme="dark"] .bible-card,
-[data-theme="dark"] .bible-panel,[data-theme="dark"] .ba-row button,[data-theme="dark"] .ba-link,
-[data-theme="dark"] .ba-note textarea,[data-theme="dark"] .bset select,[data-theme="dark"] .bible-search-bar select
-{background:var(--n50);border-color:var(--n100);color:var(--tint1)}
+[data-theme="dark"] .bible-quick a,[data-theme="dark"] .bible-search-bar,[data-theme="dark"] .bs-filter,[data-theme="dark"] .bible-filter-row input,[data-theme="dark"] .bible-filter-row select,[data-theme="dark"] .btb-book,[data-theme="dark"] .btb-left select,[data-theme="dark"] .btb-icon,[data-theme="dark"] .bible-structure,[data-theme="dark"] .bible-book,[data-theme="dark"] .bcited,[data-theme="dark"] .btrans,[data-theme="dark"] .bversion,[data-theme="dark"] .blang,[data-theme="dark"] .bmark,[data-theme="dark"] .bnote,[data-theme="dark"] .bcoll,[data-theme="dark"] .bplan,[data-theme="dark"] .bplan-day,[data-theme="dark"] .bset,[data-theme="dark"] .bresult,[data-theme="dark"] .bible-actions,[data-theme="dark"] .bible-card,[data-theme="dark"] .bible-panel,[data-theme="dark"] .ba-row button,[data-theme="dark"] .ba-link,[data-theme="dark"] .ba-note textarea,[data-theme="dark"] .bset select,[data-theme="dark"] .bible-search-bar select{background:var(--n50);border-color:var(--n100);color:var(--tint1)}
 [data-theme="dark"] .bible-search-bar input{color:#fff}
 [data-theme="dark"] .bible-book.open{background:var(--n100)}
 [data-theme="dark"] .bible-main{background:var(--paper-bg,#0B1230)}
@@ -1449,8 +1382,7 @@ html{scroll-behavior:smooth}
 .bible-random p{font-size:16px;line-height:1.7;max-width:70ch;font-family:Georgia,"Iowan Old Style",serif}
 .bible-random p.small{font-family:var(--font);font-size:13px;margin-top:6px}
 @media (max-width:900px){.bcompare{grid-template-columns:minmax(0,1fr)}}
-[data-theme="dark"] .btopic,[data-theme="dark"] .bcompare-col,[data-theme="dark"] .bcompare-picker button,
-[data-theme="dark"] .bible-random{background:var(--n50);border-color:var(--n100);color:var(--tint1)}
+[data-theme="dark"] .btopic,[data-theme="dark"] .bcompare-col,[data-theme="dark"] .bcompare-picker button,[data-theme="dark"] .bible-random{background:var(--n50);border-color:var(--n100);color:var(--tint1)}
 
 /* ============================================================
    Admin console — the same design system, a denser surface.
@@ -1558,8 +1490,7 @@ html{scroll-behavior:smooth}
 .adm-check{width:18px;height:18px;border-radius:5px;border:1.5px solid var(--n200);display:inline-flex;align-items:center;justify-content:center;font-size:12px}
 .adm-check.on{background:var(--deep);border-color:var(--deep);color:#fff}
 [data-theme="dark"] .adm{background:var(--deep)}
-[data-theme="dark"] .adm-card,[data-theme="dark"] .adm-stat,[data-theme="dark"] .adm-note,
-[data-theme="dark"] .adm-empty,[data-theme="dark"] .adm-input,[data-theme="dark"] .adm-chip{background:var(--n50);border-color:var(--n100);color:var(--tint1)}
+[data-theme="dark"] .adm-card,[data-theme="dark"] .adm-stat,[data-theme="dark"] .adm-note,[data-theme="dark"] .adm-empty,[data-theme="dark"] .adm-input,[data-theme="dark"] .adm-chip{background:var(--n50);border-color:var(--n100);color:var(--tint1)}
 [data-theme="dark"] .adm-stat b,[data-theme="dark"] .adm-table td b{color:#fff}
 
 /* ============================================================================
@@ -1572,33 +1503,13 @@ html{scroll-behavior:smooth}
    ========================================================================== */
 
 /* --- guards --------------------------------------------------------------- */
-html,
-body{max-width:100%;overflow-x:hidden}
-img,
-video,
-canvas,
-table,
-pre{max-width:100%}
+html,body{max-width:100%;overflow-x:hidden}
+img,video,canvas,table,pre{max-width:100%}
 /* Prose may break long words anywhere so a narrow column never overflows —
    except scripture, which keeps whole words together and hyphenates instead:
    a broken "Jerusa-lem" mid-verse reads worse than a slightly wide line. */
-p,
-li,
-h1,
-h2,
-h3,
-h4,
-h5,
-h6,
-blockquote,
-figcaption,
-.small,
-.lede{overflow-wrap:anywhere}
-.bible-verses,
-.bible-verses *,
-.bcompare-text,
-.bcompare-text *,
-.votd-card blockquote{overflow-wrap:normal;hyphens:auto}
+p,li,h1,h2,h3,h4,h5,h6,blockquote,figcaption,.small,.lede{overflow-wrap:anywhere}
+.bible-verses,.bible-verses *,.bcompare-text,.bcompare-text *,.votd-card blockquote{overflow-wrap:normal;hyphens:auto}
 
 /* --- ≤1024: two-column layouts give way ----------------------------------- */
 @media (max-width:1024px){
@@ -1622,10 +1533,7 @@ figcaption,
   /* The verse action sheet clears the home indicator. */
   .bible-actions{bottom:calc(0px + env(safe-area-inset-bottom))}
   /* Bible card grids and the settings board go one-up. */
-  .bible-books-grid,
-  .bible-translations,
-  .bible-versions,
-  .bible-settings{grid-template-columns:1fr}
+  .bible-books-grid,.bible-translations,.bible-versions,.bible-settings{grid-template-columns:1fr}
   /* The compare picker and the admin nav scroll sideways instead of wrapping. */
   .bcompare-picker{flex-wrap:nowrap;overflow-x:auto;overscroll-behavior-x:contain;padding-bottom:6px}
   .bcompare-picker>*{flex:none}
@@ -1637,33 +1545,21 @@ figcaption,
 
 /* --- ≤420: tight phones --------------------------------------------------- */
 @media (max-width:420px){
-  .container,
-  .container-wide,
-  .app-main{padding-left:16px;padding-right:16px}
-  .hb-stats,
-  .adm-stats{grid-template-columns:1fr}
+  .container,.container-wide,.app-main{padding-left:16px;padding-right:16px}
+  .hb-stats,.adm-stats{grid-template-columns:1fr}
 }
 
 /* --- short landscape screens: stop sticking, start scrolling -------------- */
 @media (max-height:520px) and (orientation:landscape){
-  .bible-panel,
-  .app-side{position:static}
+  .bible-panel,.app-side{position:static}
   .app-side{height:auto;overflow-y:auto}
 }
 
 /* --- coarse pointers: real tap targets ------------------------------------ */
 @media (pointer:coarse){
-  .btn,
-  .chip,
-  .icon-btn,
-  .btb-icon,
-  .side-item,
-  .side-recent,
-  .bottom-nav a,
-  .adm-nav a{min-height:44px}
+  .btn,.chip,.icon-btn,.btb-icon,.side-item,.side-recent,.bottom-nav a,.adm-nav a{min-height:44px}
   .btn-sm{min-height:42px}
-  .icon-btn,
-  .btb-icon{min-width:44px}
+  .icon-btn,.btb-icon{min-width:44px}
 }
 
 /* Product defaults and responsive shell boundaries. Keep the reader light on
@@ -1883,3 +1779,53 @@ html,body{max-width:100%;overflow-x:clip}
 /* Custom EQ sits within both the full settings page and compact player. */
 .custom-eq{border:1px solid var(--line, rgba(128,128,128,.35));border-radius:12px;padding:12px 16px;margin:12px 0;min-width:0}
 .custom-eq legend{padding:0 6px;font-weight:600}
+
+/* ============================================================
+   Category cards — shaped photo windows on a navy panel.
+   After the approved reference: bright cards on a dark panel, the photo
+   seen through a shape with a lighter halo band, title bottom-left and a
+   round arrow bottom-right. Mapped to the brand blue: brand-100 cards,
+   a white halo, brand-900 type, navy panel.
+   ============================================================ */
+.cat-panel{background:var(--navy);color:#fff;border-radius:var(--r-32);padding:clamp(28px,4.5vw,64px)}
+.cp-head{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap;margin-bottom:clamp(28px,3.5vw,44px)}
+.cp-eyebrow{display:inline-block;border:1px solid rgba(255,255,255,.28);border-radius:var(--r-pill);padding:7px 14px;font-size:10.5px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--tint1)}
+.cp-title{color:var(--white);margin-top:20px;max-width:22ch}
+.cp-accent{color:var(--tint2)}
+.cp-lede{margin-top:14px;color:var(--tint2);font-size:15px;max-width:52ch}
+.cat-panel .btn-light{flex:none}
+.cp-row{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(240px,1fr);gap:18px;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:6px;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.25) transparent}
+.cp-row>*{scroll-snap-align:start}
+@media (min-width:1100px){.cp-row{grid-auto-columns:calc((100% - 3*18px)/4)}}
+.cat-panel .tgrid{grid-template-columns:repeat(auto-fill,minmax(240px,1fr))}
+
+.tcard{--t-bg:var(--tint1);--t-halo:rgba(255,255,255,.55);--t-fill:var(--tint2);--t-ink:var(--deep);
+  position:relative;display:flex;flex-direction:column;background:var(--t-bg);color:var(--t-ink);border-radius:var(--r-24);overflow:hidden;
+  min-height:330px;transition:transform .35s var(--ease),box-shadow .35s var(--ease)}
+.tcard:hover{transform:translateY(-6px);box-shadow:0 22px 48px rgba(0,7,45,.32)}
+.tcard .t-art{display:block;aspect-ratio:300/230;position:relative}
+.tcard .t-art svg{position:absolute;inset:0;width:100%;height:100%;overflow:hidden}
+.tcard .t-halo path{fill:none;stroke:var(--t-halo);stroke-width:46;stroke-linejoin:round}
+.tcard .t-fill path{fill:var(--t-fill)}
+.tcard .t-img{transition:transform .8s var(--ease);transform-origin:50% 40%}
+.tcard:hover .t-img{transform:scale(1.05)}
+.tcard .t-foot{margin-top:auto;display:flex;align-items:flex-end;justify-content:space-between;gap:12px;padding:16px 20px 20px}
+.tcard .t-text{display:flex;flex-direction:column;gap:4px;min-width:0}
+.tcard h3{font-family:var(--disp);font-size:19px;line-height:1.2;font-weight:600;letter-spacing:-.005em;color:var(--t-ink)}
+.tcard .t-meta{font-size:12px;color:var(--n600)}
+.tcard .t-orb{flex:none;width:42px;height:42px;border-radius:50%;background:#fff;color:var(--t-ink);display:flex;align-items:center;justify-content:center;transition:background .25s,color .25s}
+.tcard:hover .t-orb,.tcard:focus-visible .t-orb{background:var(--t-ink);color:#fff}
+.tcard:focus-visible{outline:2px solid var(--tint2);outline-offset:3px}
+/* Data saver: no photo, the shape alone carries the card. */
+[data-saver="on"] .tcard .t-img{display:none}
+[data-theme="dark"] .tcard{--t-bg:#1B2450;--t-halo:rgba(255,255,255,.08);--t-fill:var(--n200);--t-ink:var(--white)}
+[data-theme="dark"] .tcard .t-meta{color:var(--n500)}
+[data-theme="dark"] .tcard .t-orb{background:rgba(255,255,255,.12);color:#fff}
+[data-theme="dark"] .tcard:hover .t-orb{background:#fff;color:var(--deep)}
+[data-theme="dark"] .cat-panel{background:var(--n50);border:1px solid var(--n100)}
+@media (prefers-reduced-motion:reduce){.tcard,.tcard .t-img{transition:none}.tcard:hover{transform:none}.tcard:hover .t-img{transform:none}}
+
+/* Stacked brand lockup on dark panels (About). Vector, from the traced mark. */
+.brand-lockup{display:inline-flex;flex-direction:column;align-items:center;gap:14px;color:#fff;text-align:center}
+.brand-lockup b{font-family:var(--disp);font-weight:700;font-size:clamp(30px,4vw,44px);letter-spacing:.06em;line-height:1}
+.brand-lockup span{font-size:12px;font-weight:600;letter-spacing:.28em;text-transform:uppercase;color:var(--tint2)}

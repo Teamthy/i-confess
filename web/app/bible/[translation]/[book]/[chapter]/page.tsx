@@ -16,8 +16,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return {
     title: `${reference}${translation && translation !== "-" ? ` — ${translation.toUpperCase()}` : ""}`,
     description: canonical
-      ? `Read ${reference} in the iCONFESS Bible reader: highlight, bookmark and follow the verse back to the confessions written from it.`
-      : "Read Scripture in the iCONFESS Bible reader.",
+      ? `Read ${reference} in the I CONFESS Bible reader: highlight, bookmark and follow the verse back to the confessions written from it.`
+      : "Read Scripture in the I CONFESS Bible reader.",
     alternates: {
       canonical: `/bible/${encodeURIComponent(translation)}/${encodeURIComponent(book)}/${chapter}`,
     },

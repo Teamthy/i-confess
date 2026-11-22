@@ -13,7 +13,7 @@ import (
 	"strings"
 )
 
-//go:embed index.html
+//go:embed index.html favicon.svg
 var files embed.FS
 
 // Handler serves the listener web app. Unknown paths fall back to index.html so
