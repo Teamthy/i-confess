@@ -29,26 +29,9 @@ func (h *Handler) analyticsBatch(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusBadRequest, "max 100 events per batch")
 		return
 	}
-	// Validate allowlist and stamp timestamp
-	allowed := map[string]bool{}
-	for _, n := range []string{
-		analytics.EventAppOpened, analytics.EventSessionCreated, analytics.EventSessionStarted,
-		analytics.EventSessionPaused, analytics.EventSessionResumed, analytics.EventSessionSkipped,
-		analytics.EventSessionCompleted, analytics.EventScheduleCreated, analytics.EventScheduleTriggered,
-		analytics.EventDownloadCreated, analytics.EventDownloadRevoked, analytics.EventTrialDayViewed,
-		analytics.EventSubscriptionStarted, analytics.EventSubscriptionVerified, analytics.EventSubscriptionCancelled,
-		analytics.EventSearchPerformed, analytics.EventCategoryViewed, analytics.EventVoicePreviewed,
-		analytics.EventTemplateCreated, analytics.EventTemplateShared, analytics.EventPlaybackProgressSynced,
-		// Client-observed funnel events. Day *completion* is deliberately not
-		// here: it is written by the server from a real session completion, and
-		// accepting it from a client would make the conversion rate a number
-		// the app could set.
-		analytics.EventTrialStarted, analytics.EventTrialConverted, analytics.EventTrialExpired,
-	} {
-		allowed[n] = true
-	}
+	// Validate against the centralized allowlist and stamp timestamp
 	for i := range req.Events {
-		if !allowed[req.Events[i].Name] {
+		if !analytics.IsClientSubmittable(req.Events[i].Name) {
 			httpx.WriteError(w, http.StatusBadRequest, "unknown event: "+req.Events[i].Name)
 			return
 		}
@@ -57,12 +40,8 @@ func (h *Handler) analyticsBatch(w http.ResponseWriter, r *http.Request) {
 		if req.Events[i].Timestamp == "" {
 			req.Events[i].Timestamp = time.Now().UTC().Format(time.RFC3339)
 		}
-		// strip any unexpected PII props keys
-		if req.Events[i].Props != nil {
-			delete(req.Events[i].Props, "body")
-			delete(req.Events[i].Props, "email")
-			delete(req.Events[i].Props, "scripture_text")
-		}
+		// strip any PII props keys so private text never reaches analytics
+		req.Events[i].Props = analytics.StripPII(req.Events[i].Props)
 	}
 	// Persist. The endpoint used to answer 202 and hand the batch to a no-op
 	// LogSink, so a client was told its event was accepted and the server then
