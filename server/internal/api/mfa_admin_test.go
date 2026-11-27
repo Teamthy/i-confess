@@ -11,7 +11,6 @@ import (
 
 	"github.com/Teamthy/i-confess/internal/auth"
 	"github.com/Teamthy/i-confess/internal/db"
-	"github.com/Teamthy/i-confess/internal/db/dbtest"
 	"github.com/Teamthy/i-confess/internal/mfa"
 	"github.com/Teamthy/i-confess/internal/oauth"
 	"github.com/Teamthy/i-confess/internal/store"
