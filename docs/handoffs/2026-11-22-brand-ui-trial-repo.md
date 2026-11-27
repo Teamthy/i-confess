@@ -1,6 +1,6 @@
 # Handoff — brand, category cards, UI pass, trial journey, repo cleanup, Bible
 
-**Date:** 2026-11-22 · **Branch:** `claude/dreamy-faraday-7th0my` · **Commits:** `c9395ee`, `281a169`, `29d31ce`, `bb03913` (+ this) · **PR:** [Teamthy/i-confess#96](https://github.com/Teamthy/i-confess/pull/96) covers the earlier latency/Go 1.26 commits on this branch
+**Date:** 2026-11-22 · **Branch:** `claude/dreamy-faraday-7th0my` · **Commits:** `c9395ee`, `281a169`, `29d31ce`, `bb03913` (+ this) · **PR:** [Teamthy/i-confess#96](https://github.com/Teamthy/i-confess/pull/96) covers the earlier latency/Go 1.26 commits on this branch; these commits went in through #97
 
 ## Goal
 

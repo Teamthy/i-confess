@@ -1,6 +1,6 @@
 # Handoff — the account and library come from the server
 
-**Date:** 2026-11-22 · **Branch:** `claude/dreamy-faraday-7th0my` · **Commits:** `03eefb8`, `46caeec` (+ this) · **PR:** [Teamthy/i-confess#96](https://github.com/Teamthy/i-confess/pull/96)
+**Date:** 2026-11-22 · **Branch:** `claude/dreamy-faraday-7th0my` · **Commits:** `03eefb8`, `46caeec` (+ this) · **PR:** [Teamthy/i-confess#97](https://github.com/Teamthy/i-confess/pull/97), merged through #98 with review fixes (this line said #96 until 2026-11-27)
 
 ## Goal
 
