@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"net/http"
+	"net/url"
 	"testing"
 	"time"
 
@@ -178,5 +179,97 @@ func TestEmptyFavoritesAndHistoryAreArrays(t *testing.T) {
 		if code != http.StatusOK || list == nil {
 			t.Fatalf("%s: %d %v, want 200 []", p, code, list)
 		}
+	}
+}
+
+// Older entries must stay reachable: the list pages with a cursor instead of
+// stopping at the first 100.
+func TestJournalPagesThroughEveryEntry(t *testing.T) {
+	a := newAuthHarness(t)
+	me, _ := a.register(t, "pages@example.com")
+	for i := 0; i < 5; i++ {
+		if code, _ := a.do("POST", "/me/journal", me, map[string]string{"body": "entry"}); code != http.StatusCreated {
+			t.Fatalf("create %d: %d", i, code)
+		}
+	}
+	seen := map[string]bool{}
+	cursor := ""
+	for page := 0; page < 10; page++ {
+		path := "/me/journal?limit=2"
+		if cursor != "" {
+			path += "&cursor=" + url.QueryEscape(cursor)
+		}
+		code, out := a.do("GET", path, me, nil)
+		if code != http.StatusOK {
+			t.Fatalf("page %d: %d %v", page, code, out)
+		}
+		for _, e := range out["entries"].([]any) {
+			id := e.(map[string]any)["id"].(string)
+			if seen[id] {
+				t.Fatalf("entry %s returned twice", id)
+			}
+			seen[id] = true
+		}
+		cursor, _ = out["next_cursor"].(string)
+		if cursor == "" {
+			break
+		}
+	}
+	if len(seen) != 5 {
+		t.Fatalf("paged through %d entries, want 5", len(seen))
+	}
+	if code, _ := a.do("GET", "/me/journal?cursor=garbage", me, nil); code != http.StatusBadRequest {
+		t.Fatalf("bad cursor: %d, want 400", code)
+	}
+}
+
+// "Deleted" must mean the words are gone, not hidden: the tombstone row keeps
+// no title, body or mood.
+func TestDeletedJournalTextIsErased(t *testing.T) {
+	a := newAuthHarness(t)
+	me, _ := a.register(t, "erase@example.com")
+	_, e := a.do("POST", "/me/journal", me, map[string]string{"title": "Private", "body": "A prayer only I should read.", "mood": "Heavy"})
+	id := e["id"].(string)
+	if code, _ := a.do("DELETE", "/me/journal/"+id, me, nil); code != http.StatusNoContent {
+		t.Fatalf("delete: %d", code)
+	}
+	var title, body, mood string
+	if err := a.db.QueryRowContext(context.Background(),
+		`SELECT title, body, mood FROM journal_entries WHERE id = ?`, id).Scan(&title, &body, &mood); err != nil {
+		t.Fatal(err)
+	}
+	if title != "" || body != "" || mood != "" {
+		t.Fatalf("deleted entry still holds text: title=%q body=%q mood=%q", title, body, mood)
+	}
+
+	_, v := a.do("POST", "/me/memory", me, map[string]string{"reference": "Psalm 23:1", "text": "The Lord is my shepherd.", "title": "Shepherd"})
+	vid := v["verse"].(map[string]any)["id"].(string)
+	a.do("DELETE", "/me/memory/"+vid, me, nil)
+	var text, vtitle string
+	if err := a.db.QueryRowContext(context.Background(),
+		`SELECT text, title FROM memory_verses WHERE id = ?`, vid).Scan(&text, &vtitle); err != nil {
+		t.Fatal(err)
+	}
+	if text != "" || vtitle != "" {
+		t.Fatalf("removed verse still holds text: %q %q", text, vtitle)
+	}
+}
+
+// The export says it is everything; it must not stop at a page size.
+func TestExportIsNotCappedAtAPage(t *testing.T) {
+	a := newAuthHarness(t)
+	me, _ := a.register(t, "export-all@example.com")
+	const n = 205 // past the old 200 journal cap
+	for i := 0; i < n; i++ {
+		if code, _ := a.do("POST", "/me/journal", me, map[string]string{"body": "kept"}); code != http.StatusCreated {
+			t.Fatalf("create %d: %d", i, code)
+		}
+	}
+	code, out := a.do("GET", "/me/export", me, nil)
+	if code != http.StatusOK {
+		t.Fatalf("export: %d", code)
+	}
+	if got := len(out["journal"].([]any)); got != n {
+		t.Fatalf("export holds %d journal entries, want %d", got, n)
 	}
 }

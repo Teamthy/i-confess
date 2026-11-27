@@ -27,6 +27,7 @@ If the deployment enables it, the free-text description you give the session bui
 ## 5. Data Retention & Account Deletion (Right to Erasure)
 - **7-Day Grace Period:** When deletion is requested (`POST /me/deletion`), all active sessions and tokens are immediately revoked. The account is permanently erased following a 7-day grace period.
 - **Complete Erasure:** All personal profiles, preferences, listening histories, audio references, device tokens, and security telemetry records are irreversibly purged across all tables.
+- **Journal entries and memory verses:** Deleting an entry or verse erases its words at once. A blank record stays so your other devices learn it was deleted; it holds no title, text or mood.
 - **Newsletter and contact data:** These are not tied to an account, so account deletion does not remove them. Unsubscribing stops all mail at once. To have a newsletter address or contact message erased, write to the address in section 7.
 - **Retained Records:** Only minimal compliance records (financial subscription receipts and consent withdrawal audit tombstones) are retained in detached, non-identifying form to satisfy legal obligations.
 

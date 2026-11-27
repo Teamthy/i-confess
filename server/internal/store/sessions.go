@@ -187,16 +187,22 @@ func (s *SessionStore) UpdateStatus(ctx context.Context, id, status string) erro
 }
 
 func (s *SessionStore) ListByUser(ctx context.Context, userID string, limit int) ([]models.Session, error) {
-	if limit <= 0 || limit > 100 {
-		limit = 20
-	}
-	rows, err := s.db.QueryContext(ctx,
-		`SELECT id,user_id,type,duration_seconds,COALESCE(strategy,''),COALESCE(target_duration,0),COALESCE(actual_duration,0),
+	q := `SELECT id,user_id,type,duration_seconds,COALESCE(strategy,''),COALESCE(target_duration,0),COALESCE(actual_duration,0),
 		        COALESCE(title,''),COALESCE(description,''),COALESCE(voice_id,''),status,created_at,
 		        COALESCE(started_at,''),COALESCE(completed_at,'')
 		 FROM sessions
 		 WHERE user_id = ? AND (deleted_at IS NULL OR deleted_at = '')
-		 ORDER BY created_at DESC LIMIT ?`, userID, limit)
+		 ORDER BY created_at DESC`
+	args := []any{userID}
+	// ExportAll is the data export: every session, not a page of them.
+	if limit != ExportAll {
+		if limit <= 0 || limit > 100 {
+			limit = 20
+		}
+		q += ` LIMIT ?`
+		args = append(args, limit)
+	}
+	rows, err := s.db.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/Teamthy/i-confess/internal/db"
@@ -28,28 +29,66 @@ type JournalEntry struct {
 	RowVersion int    `json:"row_version"`
 }
 
-// ListJournal returns the owner's entries, newest first.
+// ExportAll asks a list function for every row, with no page cap. Only the
+// data export uses it: an export that stops at a page size tells the person
+// it is complete when it is not.
+const ExportAll = -1
+
+// ListJournal returns the owner's entries, newest first. A negative limit
+// (ExportAll) returns every entry.
 func (s *StudyStore) ListJournal(ctx context.Context, userID string, limit int) ([]JournalEntry, error) {
-	if limit <= 0 || limit > 200 {
-		limit = 100
+	list, _, err := s.ListJournalPage(ctx, userID, limit, "")
+	return list, err
+}
+
+// ListJournalPage returns one page of entries, newest first, after the
+// opaque cursor a previous page returned. next is empty on the last page.
+func (s *StudyStore) ListJournalPage(ctx context.Context, userID string, limit int, cursor string) (list []JournalEntry, next string, err error) {
+	q := `SELECT id,title,body,mood,created_at,updated_at,row_version FROM journal_entries
+		 WHERE user_id=? AND deleted_at IS NULL`
+	args := []any{userID}
+	if cursor != "" {
+		at, id, ok := strings.Cut(cursor, "|")
+		if !ok {
+			return nil, "", ErrBadCursor
+		}
+		q += ` AND (created_at < ? OR (created_at = ? AND id < ?))`
+		args = append(args, at, at, id)
 	}
-	rows, err := s.db.QueryContext(ctx,
-		`SELECT id,title,body,mood,created_at,updated_at,row_version FROM journal_entries
-		 WHERE user_id=? AND deleted_at IS NULL ORDER BY created_at DESC LIMIT ?`, userID, limit)
+	q += ` ORDER BY created_at DESC, id DESC`
+	if limit != ExportAll {
+		if limit <= 0 || limit > 200 {
+			limit = 100
+		}
+		q += ` LIMIT ?`
+		args = append(args, limit+1)
+	}
+	rows, err := s.db.QueryContext(ctx, q, args...)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	defer rows.Close()
 	out := make([]JournalEntry, 0)
 	for rows.Next() {
 		var e JournalEntry
 		if err := rows.Scan(&e.ID, &e.Title, &e.Body, &e.Mood, &e.CreatedAt, &e.UpdatedAt, &e.RowVersion); err != nil {
-			return nil, err
+			return nil, "", err
 		}
 		out = append(out, e)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, "", err
+	}
+	if limit != ExportAll && len(out) > limit {
+		out = out[:limit]
+		last := out[len(out)-1]
+		next = last.CreatedAt + "|" + last.ID
+	}
+	return out, next, nil
 }
+
+// ErrBadCursor is a page cursor this server did not issue.
+var ErrBadCursor = errors.New("invalid page cursor")
 
 // CreateJournal stores a new entry.
 func (s *StudyStore) CreateJournal(ctx context.Context, userID string, e *JournalEntry) error {
@@ -87,11 +126,14 @@ func (s *StudyStore) UpdateJournal(ctx context.Context, userID string, e *Journa
 	return ErrStudyConflict
 }
 
-// DeleteJournal removes an entry. Deleting is a soft delete so the retention
-// sweep, not a request, decides when bytes leave the database.
+// DeleteJournal removes an entry. The row stays as a tombstone so other
+// devices learn of the delete through its row_version, but the private text
+// (title, body, mood) is erased in the same statement: nothing that was
+// written goes on living in the database or its backups after "Deleted".
 func (s *StudyStore) DeleteJournal(ctx context.Context, userID, id string) error {
 	res, err := s.db.ExecContext(ctx,
-		`UPDATE journal_entries SET deleted_at=?, row_version=row_version+1 WHERE id=? AND user_id=? AND deleted_at IS NULL`,
+		`UPDATE journal_entries SET deleted_at=?, title='', body='', mood='', row_version=row_version+1
+		 WHERE id=? AND user_id=? AND deleted_at IS NULL`,
 		now(), id, userID)
 	if err != nil {
 		return err
@@ -119,11 +161,25 @@ type MemoryVerse struct {
 // MemoryIntervals are the days until the next return for each box (Leitner).
 var MemoryIntervals = [6]int{1, 1, 3, 7, 14, 30}
 
-// ListMemory returns the owner's verses, soonest due first.
+// ListMemory returns the owner's verses, soonest due first (at most 500).
 func (s *StudyStore) ListMemory(ctx context.Context, userID string) ([]MemoryVerse, error) {
-	rows, err := s.db.QueryContext(ctx,
-		`SELECT id,reference,text,title,box,due_at,created_at FROM memory_verses
-		 WHERE user_id=? AND deleted_at IS NULL ORDER BY due_at ASC LIMIT 500`, userID)
+	return s.listMemory(ctx, userID, 500)
+}
+
+// ListAllMemory returns every verse, for the data export.
+func (s *StudyStore) ListAllMemory(ctx context.Context, userID string) ([]MemoryVerse, error) {
+	return s.listMemory(ctx, userID, ExportAll)
+}
+
+func (s *StudyStore) listMemory(ctx context.Context, userID string, limit int) ([]MemoryVerse, error) {
+	q := `SELECT id,reference,text,title,box,due_at,created_at FROM memory_verses
+		 WHERE user_id=? AND deleted_at IS NULL ORDER BY due_at ASC, id ASC`
+	args := []any{userID}
+	if limit != ExportAll {
+		q += ` LIMIT ?`
+		args = append(args, limit)
+	}
+	rows, err := s.db.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -191,10 +247,12 @@ func (s *StudyStore) GradeMemory(ctx context.Context, userID, id string, remembe
 	return m, err
 }
 
-// DeleteMemory takes a verse out of practice.
+// DeleteMemory takes a verse out of practice. The reference stays so adding
+// it again resumes the same row; the stored text and title are erased.
 func (s *StudyStore) DeleteMemory(ctx context.Context, userID, id string) error {
 	res, err := s.db.ExecContext(ctx,
-		`UPDATE memory_verses SET deleted_at=?, row_version=row_version+1 WHERE id=? AND user_id=? AND deleted_at IS NULL`,
+		`UPDATE memory_verses SET deleted_at=?, text='', title='', row_version=row_version+1
+		 WHERE id=? AND user_id=? AND deleted_at IS NULL`,
 		now(), id, userID)
 	if err != nil {
 		return err

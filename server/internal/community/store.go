@@ -101,14 +101,20 @@ func (s *Store) React(ctx context.Context, postID, userID string, r Reaction) er
 // writer can see what is private, in review, published or declined. It is
 // the only read that returns private posts, and only to their author.
 func (s *Store) ByAuthor(ctx context.Context, authorID string, limit int) ([]Post, error) {
-	if limit <= 0 || limit > 100 {
-		limit = 50
-	}
-	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, body, visibility, status, created_at
+	q := `SELECT id, body, visibility, status, created_at
 		 FROM community_posts
 		 WHERE author_id = ? AND deleted_at IS NULL
-		 ORDER BY created_at DESC LIMIT ?`, authorID, limit)
+		 ORDER BY created_at DESC`
+	args := []any{authorID}
+	// A negative limit is the data export: every post, not a page of them.
+	if limit >= 0 {
+		if limit == 0 || limit > 100 {
+			limit = 50
+		}
+		q += ` LIMIT ?`
+		args = append(args, limit)
+	}
+	rows, err := s.db.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}

@@ -3,6 +3,7 @@ package api
 import (
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -20,13 +21,30 @@ const (
 	maxMood         = 32
 )
 
+// listJournal returns one page of entries, newest first. `next_cursor` is
+// set while older entries remain; pass it back as `?cursor=` for the next
+// page. Without paging, entries past the first page could not be seen or
+// deleted from any client.
 func (h *Handler) listJournal(w http.ResponseWriter, r *http.Request) {
-	list, err := h.study.ListJournal(r.Context(), h.userID(r), 100)
+	limit := 100
+	if v := r.URL.Query().Get("limit"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 || n > 200 {
+			writeCode(w, http.StatusBadRequest, "JOURNAL_INVALID", "limit must be between 1 and 200")
+			return
+		}
+		limit = n
+	}
+	list, next, err := h.study.ListJournalPage(r.Context(), h.userID(r), limit, r.URL.Query().Get("cursor"))
+	if errors.Is(err, store.ErrBadCursor) {
+		writeCode(w, http.StatusBadRequest, "JOURNAL_INVALID", "invalid cursor")
+		return
+	}
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to load your journal")
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, map[string]any{"entries": list})
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"entries": list, "next_cursor": next})
 }
 
 type journalInput struct {
