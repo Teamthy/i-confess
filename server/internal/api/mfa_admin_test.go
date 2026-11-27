@@ -200,7 +200,7 @@ func TestSocialSignInWithoutMFAIssuesSession(t *testing.T) {
 		"google": &fakeVerifier{id: &oauth.Identity{Provider: "google", Subject: "sub-2", Email: "social2@test.com", EmailVerified: true}},
 	})
 
-	code, out := m.do("POST", "/auth/social/google", "", nil)
+	code, out := m.do("POST", "/auth/social/google", "", map[string]string{"id_token": "whatever"})
 	if code != http.StatusOK {
 		t.Fatalf("social sign-in without MFA rejected: got %d; body=%v", code, out)
 	}
