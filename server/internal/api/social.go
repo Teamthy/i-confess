@@ -82,7 +82,31 @@ func (h *Handler) socialSignIn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.issueToken(w, r, u)
+	// A federated assertion proves who the user is, but it carries no second
+	// factor. If the account has MFA enrolled, refuse to issue a session and
+	// tell the client to prompt for the code before anything sensitive can be
+	// done (PRD S41). An account without MFA enrolled proceeds directly.
+	enrolment, mErr := h.getMFAEnrolment(r.Context(), u.ID)
+	if mErr != nil && !errors.Is(mErr, store.ErrNotFound) {
+		log.Printf("auth: cannot read MFA enrolment for %s, refusing federated sign-in: %v", u.ID, mErr)
+		httpx.WriteJSON(w, http.StatusServiceUnavailable, map[string]string{
+			"error": "sign-in is temporarily unavailable, try again",
+			"code":  "AUTH_UNAVAILABLE",
+		})
+		return
+	}
+	if mErr == nil && enrolment.Enabled {
+		h.metrics.Inc(MetricMFAChallenge)
+		httpx.WriteJSON(w, http.StatusOK, map[string]any{
+			"mfa_required": true,
+			"message":      "Enter the code from your authenticator app.",
+		})
+		return
+	}
+
+	// No second factor is enrolled, so the federated session is MFA-verified
+	// by default (there is no factor to satisfy).
+	h.issueToken(w, r, u, true)
 }
 
 // errLinkRequiresProof signals that automatic linking was refused.

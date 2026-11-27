@@ -26,6 +26,10 @@ type SessionState struct {
 	// Role is the authoritative admin role, read at request time rather than
 	// trusted from the token: a demoted admin must lose access immediately (§56).
 	Role string
+	// MFAVerified reports whether this session was created after the account's
+	// enrolled second factor (if any) was satisfied. Privileged routes refuse
+	// sessions that are not MFA-verified (§41, §42).
+	MFAVerified bool
 }
 
 // Stable reason codes (§49).
@@ -91,8 +95,9 @@ func RequireRoleWithSessions(secret string, v SessionValidator, allowed ...strin
 				return
 			}
 			role := c.Role
+			var state SessionState
 			if v != nil {
-				state := v.ValidateSession(r.Context(), c.Sub, c.SessionID)
+				state = v.ValidateSession(r.Context(), c.Sub, c.SessionID)
 				if !state.Valid {
 					unauthorized(w, state.Reason, reasonMessage(state.Reason))
 					return
@@ -102,6 +107,13 @@ func RequireRoleWithSessions(secret string, v SessionValidator, allowed ...strin
 			if role == "" || !permitted[role] {
 				// Deliberately does not reveal which roles would suffice.
 				forbidden(w, "your role does not permit this action")
+				return
+			}
+			// Every privileged role requires a session that passed a second
+			// factor. A password-only or federated session that skipped the
+			// enrolled factor is refused here, before any admin work runs.
+			if v != nil && !state.MFAVerified {
+				forbiddenCode(w, "AUTH_MFA_REQUIRED", "this action requires a second factor")
 				return
 			}
 			c.Role = role
@@ -187,6 +199,14 @@ func unauthorized(w http.ResponseWriter, code, msg string) {
 func forbidden(w http.ResponseWriter, msg string) {
 	httpx.WriteJSON(w, http.StatusForbidden, map[string]string{
 		"error": msg, "code": "AUTH_INSUFFICIENT_PERMISSION",
+	})
+}
+
+// forbiddenCode writes a 403 with a stable machine-readable code, so clients
+// can distinguish "wrong role" from "missing second factor".
+func forbiddenCode(w http.ResponseWriter, code, msg string) {
+	httpx.WriteJSON(w, http.StatusForbidden, map[string]string{
+		"error": msg, "code": code,
 	})
 }
 

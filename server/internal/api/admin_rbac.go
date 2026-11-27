@@ -593,8 +593,10 @@ func (h *Handler) adminImpersonateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create a session for the target user, but mark it as impersonated
-	// Use a short TTL for impersonation sessions (15m)
-	sessionID, err := h.users.CreateAuthSession(r.Context(), userID, "impersonation", r.UserAgent(), clientIP(r), 15*time.Minute)
+	// Use a short TTL for impersonation sessions (15m). Impersonation carries
+	// no admin role on the resulting token, so it is not a privileged session
+	// and does not need its own MFA mark (the acting admin already proved it).
+	sessionID, err := h.users.CreateAuthSession(r.Context(), userID, "impersonation", r.UserAgent(), clientIP(r), 15*time.Minute, false)
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to create impersonation session")
 		return
