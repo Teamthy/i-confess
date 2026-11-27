@@ -7,9 +7,9 @@ on:
         options: [staging, production]
         required: true
       operation:
-        description: Use migrate-only to prepare a new schema before granting runtime access.
+        description: migrate-only prepares a new schema before granting runtime access; load-bible loads the registered public-domain Bible text (once per environment).
         type: choice
-        options: [migrate-and-deploy, migrate-only]
+        options: [migrate-and-deploy, migrate-only, load-bible]
         default: migrate-and-deploy
         required: true
       image_digest:

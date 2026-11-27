@@ -95,7 +95,7 @@ New render requests deduplicate by the verified plan hash (including purpose,
 user-text scope, and the owner for private jobs), not by replaying saved HTTP
 responses or signed URLs. Stored `audio/voices/` outputs are never worker
 reference or training inputs; the API sends master bytes for encoding. See
-[private job and playlist delivery](../docs/AUDIO-VOICE-PLATFORM-BUILD.md#private-minister-voice-jobs-and-playlists). Older
+[private job and playlist delivery](../docs/archive/AUDIO-VOICE-PLATFORM-BUILD.md#private-minister-voice-jobs-and-playlists). Older
 cache rows cannot satisfy that lookup. A permitted same-voice fallback after an
 infrastructure failure uses its own verified revision and separate row key and
 object path; a later primary request cannot hit the substitution. This change

@@ -245,7 +245,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!("mediaSession" in navigator)) return;
     const session = navigator.mediaSession;
-    if (playerTrack && typeof MediaMetadata !== "undefined") session.metadata = new MediaMetadata({ title: playerTrack.title, artist: "iCONFESS", album: playerTrack.subtitle });
+    if (playerTrack && typeof MediaMetadata !== "undefined") session.metadata = new MediaMetadata({ title: playerTrack.title, artist: "I CONFESS", album: playerTrack.subtitle });
     else session.metadata = null;
     session.playbackState = state.status === "playing" ? "playing" : state.status === "idle" ? "none" : "paused";
     const handlers: Partial<Record<MediaSessionAction, MediaSessionActionHandler>> = {

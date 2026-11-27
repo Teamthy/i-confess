@@ -64,6 +64,9 @@ func (h *Handler) listFavorites(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to load favorites")
 		return
 	}
+	if list == nil { // an empty list is [], never null
+		list = []models.Favorite{}
+	}
 	httpx.WriteJSON(w, http.StatusOK, list)
 }
 
@@ -72,6 +75,9 @@ func (h *Handler) history(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to load history")
 		return
+	}
+	if list == nil {
+		list = []models.PlaybackRecord{}
 	}
 	httpx.WriteJSON(w, http.StatusOK, list)
 }

@@ -5,13 +5,15 @@ import { useRouter } from "next/navigation";
 import { Icon } from "./ui";
 import { useAudio, useToast, useSearch } from "@/lib/ui";
 import { useApp, mutate, track } from "@/lib/store";
+import { appApi } from "@/lib/app-api";
+import { useAuth } from "@/lib/auth-context";
 import { confBySlug, queueItem, sessionBySlug, buildQueue, catBySlug, CONFESSIONS, type Confession, type Category } from "@/lib/data";
 
 export function HeroCtas() {
   return (
     <>
       <Link className="btn btn-primary btn-lg" href="/register" onClick={() => track("hero_clicked")}>Start Your Experience</Link>
-      <Link className="btn btn-ghost btn-lg" href="/explore">Explore iCONFESS</Link>
+      <Link className="btn btn-ghost btn-lg" href="/explore">Explore I CONFESS</Link>
     </>
   );
 }
@@ -48,14 +50,19 @@ export function FavBtn({ slug, ghost }: { slug: string; ghost?: boolean }) {
     </button>
   );
 }
+/** Shares a confession's public page — a link that works for anyone,
+ *  anywhere, because the page is served from the published library. */
 export function ShareBtn({ slug }: { slug: string }) {
   const toast = useToast();
   return (
-    <button className="btn btn-ghost" onClick={() => {
-      const token = "sh-" + slug;
-      mutate((s) => { s.shared[token] = { slug, at: Date.now() }; });
-      track("content_shared", { token });
-      toast("Share link created — " + location.origin + "/app/shared/" + token);
+    <button className="btn btn-ghost" onClick={async () => {
+      const url = `${location.origin}/confessions/${encodeURIComponent(slug)}`;
+      track("content_shared", { slug });
+      try {
+        if (navigator.share) { await navigator.share({ url }); return; }
+        await navigator.clipboard.writeText(url);
+        toast("Link copied");
+      } catch { toast(url); }
     }}><Icon n="share" s={14} /> Share</button>
   );
 }
@@ -82,10 +89,10 @@ export function ConfTile({ c }: { c: Confession }) {
     </div>
   );
 }
-export function ConfessionFilter() {
-  const cats = [...new Set(CONFESSIONS.map((c) => c.category))];
+export function ConfessionFilter({ items = CONFESSIONS }: { items?: Confession[] }) {
+  const cats = [...new Set(items.map((c) => c.category))];
   const [f, setF] = useState("All");
-  const list = f === "All" ? CONFESSIONS : CONFESSIONS.filter((c) => c.category === f);
+  const list = f === "All" ? items : items.filter((c) => c.category === f);
   return (
     <>
       <div className="chip-row" style={{ marginBottom: 28 }}>
@@ -125,39 +132,64 @@ export function RailScroll({ target }: { target: string }) {
     </div>
   );
 }
+/** Newsletter sign-up, stored by POST /newsletter. Success is reported only
+ *  when the server confirms; an outage says so instead of pretending. */
 export function NewsletterForm() {
   const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+  const submit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const f = e.currentTarget;
+    if (!f.reportValidity()) return;
+    const email = (new FormData(f).get("email") as string).trim();
+    setBusy(true);
+    const r = await appApi<{ status: string }>("/newsletter", { method: "POST", body: { email } });
+    setBusy(false);
+    if (!r.ok) { toast(r.message); return; }
+    track("newsletter_subscribed");
+    setDone(true);
+    f.reset();
+  };
+  if (done) return <p className="news-done" role="status"><Icon n="check" s={16} /> You're on the list — one email when new words land.</p>;
   return (
-    <form className="news-form" onSubmit={(e) => { e.preventDefault(); const f = e.target as HTMLFormElement; if (!f.reportValidity()) return; track("newsletter_subscribed"); toast("Subscribed — one email when new words land."); f.reset(); }}>
-      <input type="email" required placeholder="Your email address" aria-label="Email address" />
-      <button className="btn btn-blue" type="submit">Subscribe</button>
-    </form>
-  );
-}
-export function ContactForm() {
-  const toast = useToast();
-  return (
-    <form className="form-card rv in" style={{ maxWidth: 640 }} onSubmit={(e) => { e.preventDefault(); if (!(e.target as HTMLFormElement).reportValidity()) return; toast("Message sent — we read everything."); (e.target as HTMLFormElement).reset(); }}>
-      <div className="field"><label>Your name</label><input required /></div>
-      <div className="field"><label>Email</label><input type="email" required /></div>
-      <div className="field"><label>Message</label><textarea rows={5} required /></div>
-      <button className="btn btn-primary" style={{ marginTop: 18 }} type="submit">Send message</button>
+    <form className="news-form" onSubmit={submit}>
+      <input type="email" name="email" required autoComplete="email" placeholder="Your email address" aria-label="Email address" />
+      <button className="btn btn-light" type="submit" disabled={busy}>{busy ? "Subscribing…" : "Subscribe"}</button>
     </form>
   );
 }
 
-export function StoryTabs() {
-  const TABS = [
-    "iCONFESS is built by people who keep a practice themselves — curated words, a licensed narration voice, and a library checked line by line before you ever see it.",
-    "Every confession is drafted, edited and verified against the Scripture it claims to stand on. Nothing publishes automatically — not ever.",
-    "The design is quiet on purpose: no streak guilt, no autoplay, no noise. The loudest thing in iCONFESS should be the words themselves.",
-  ];
-  const [i, setI] = useState(0);
-  return (
-    <div>
-      <div className="tabs" role="tablist">{["01", "02", "03"].map((t, k) => <button key={t} role="tab" aria-selected={i === k} onClick={() => setI(k)}>{t}</button>)}</div>
-      <p style={{ fontSize: 15, color: "var(--n600)", lineHeight: 1.7 }}>{TABS[i]}</p>
+/** Contact form, stored and forwarded to support by POST /contact. */
+export function ContactForm() {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const [ref, setRef] = useState<string | null>(null);
+  const submit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const f = e.currentTarget;
+    if (!f.reportValidity()) return;
+    const fd = new FormData(f);
+    setBusy(true);
+    const r = await appApi<{ reference: string }>("/contact", { method: "POST", body: { name: fd.get("name"), email: fd.get("email"), message: fd.get("message") } });
+    setBusy(false);
+    if (!r.ok) { toast(r.message); return; }
+    setRef(r.data.reference);
+    f.reset();
+  };
+  if (ref) return (
+    <div className="form-card rv in" style={{ maxWidth: 640 }} role="status">
+      <h3 className="h4">Message received.</h3>
+      <p className="small" style={{ marginTop: 8 }}>A person reads every message and replies to the address you gave. Your reference is <b>{ref.slice(0, 8)}</b>.</p>
     </div>
+  );
+  return (
+    <form className="form-card rv in" style={{ maxWidth: 640 }} onSubmit={submit}>
+      <div className="field"><label htmlFor="ct-name">Your name</label><input id="ct-name" name="name" required maxLength={120} autoComplete="name" /></div>
+      <div className="field"><label htmlFor="ct-email">Email</label><input id="ct-email" name="email" type="email" required autoComplete="email" /></div>
+      <div className="field"><label htmlFor="ct-msg">Message</label><textarea id="ct-msg" name="message" rows={5} required maxLength={5000} /></div>
+      <button className="btn btn-primary" style={{ marginTop: 18 }} type="submit" disabled={busy}>{busy ? "Sending…" : "Send message"}</button>
+    </form>
   );
 }
 
@@ -299,4 +331,44 @@ export function SnippetAuto({ slug }: { slug: string }) {
     return () => clearTimeout(t);
   }, [slug]);
   return null;
+}
+
+/** A link into the app that respects sign-in: signed-in listeners go straight
+ * to `href`; everyone else creates an account first and lands there after. */
+export function AuthLink({ href, className, children, style, "aria-label": label }: { href: string; className?: string; children: React.ReactNode; style?: React.CSSProperties; "aria-label"?: string }) {
+  const auth = useAuth();
+  const to = auth.token ? href : `/register?next=${encodeURIComponent(href)}`;
+  return <Link className={className} href={to} style={style} aria-label={label}>{children}</Link>;
+}
+
+/** Opened from the link in a newsletter mail; `?token=` unsubscribes on click. */
+export function NewsletterUnsubscribe() {
+  const [token, setToken] = useState("");
+  const [state, setState] = useState<"ready" | "working" | "done" | "failed">("ready");
+  const [msg, setMsg] = useState("");
+  React.useEffect(() => { setToken(new URLSearchParams(window.location.search).get("token") || ""); }, []);
+  // A button, not an automatic request on load: mail scanners prefetch links,
+  // and a prefetch must not unsubscribe anyone.
+  const go = async () => {
+    setState("working");
+    const r = await appApi("/newsletter/unsubscribe", { method: "POST", body: { token } });
+    setState(r.ok ? "done" : "failed");
+    if (!r.ok) setMsg(r.message);
+  };
+  return (
+    <div className="rv in" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 18 }}>
+      <span className="eyebrow">Newsletter</span>
+      <h1 className="h2">{state === "done" ? "You're unsubscribed." : state === "failed" ? "That link didn't work." : "Leave the list?"}</h1>
+      <p className="lede" role="status">
+        {state === "done" ? "We won't email this address again. Sign up from the home page any time to come back."
+          : state === "failed" ? msg || "This unsubscribe link is no longer valid."
+          : token ? "One click and we'll stop emailing this address." : "Open this page from the link at the bottom of one of our emails."}
+      </p>
+      {state === "done" || state === "failed" ? (
+        <Link className="btn btn-primary" href="/">Back to I CONFESS</Link>
+      ) : (
+        <button className="btn btn-primary" onClick={go} disabled={!token || state === "working"}>{state === "working" ? "Unsubscribing…" : "Unsubscribe"}</button>
+      )}
+    </div>
+  );
 }

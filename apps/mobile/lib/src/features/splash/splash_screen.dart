@@ -34,7 +34,7 @@ class SplashScreen extends ConsumerWidget {
     final surfaces = AppSurfaces.of(context);
 
     return Semantics(
-      label: 'I Confess',
+      label: 'I CONFESS',
       child: Scaffold(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         body: SafeArea(

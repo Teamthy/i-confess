@@ -85,7 +85,7 @@ New tests are in `server/internal/api/latency_test.go`:
   - **G-33, breached passwords:** which privacy-preserving source to use (for
     example a k-anonymity range API or a bundled hash list), and what to do
     when it's unreachable.
-  - **`PRIVACY.md`:** wording for the Claude parser (carried over).
+  - **`docs/legal/PRIVACY.md`:** wording for the Claude parser (carried over).
 - **Carried over:**
   - One live staging request with `AI_PROVIDER=anthropic`.
   - No client calls `/ai/parse` yet.

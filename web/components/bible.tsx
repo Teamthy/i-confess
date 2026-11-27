@@ -1,11 +1,11 @@
 "use client";
 
 /* ============================================================================
-   iCONFESS web — Bible home, and the pieces every Bible route shares.
+   I CONFESS web — Bible home, and the pieces every Bible route shares.
 
    The structure (books, chapters, sections, verse bounds) is local and always
    available: it comes from lib/canon.json, generated from the Go canon. The
-   text is not — it is fetched from the iCONFESS API, which is the only place
+   text is not — it is fetched from the I CONFESS API, which is the only place
    translation rights are evaluated. So this page can always draw the whole
    Bible, and says plainly when the words behind it cannot be served.
    ========================================================================= */
@@ -37,7 +37,7 @@ import {
 } from "@/lib/bible";
 
 export const CATALOG_UNAVAILABLE =
-  "The approved Scripture catalogue is temporarily unreachable. Verse text is served by the iCONFESS API and is not bundled with this website.";
+  "The approved Scripture catalogue is temporarily unreachable. Verse text is served by the I CONFESS API and is not bundled with this website.";
 const VERSE_UNAVAILABLE =
   "Verse text is temporarily unavailable from the approved Scripture service. Nothing is substituted for it.";
 
@@ -584,7 +584,7 @@ export function BiblePage() {
           </h1>
           <p className="lede" style={{ marginTop: 22, maxWidth: "48ch" }}>
             The whole canon — {CANON.book_count} books, {CANON.chapter_count.toLocaleString()} chapters — open to read,
-            mark and keep. Every confession on iCONFESS stands on Scripture you can follow back to its source.
+            mark and keep. Every confession on I CONFESS stands on Scripture you can follow back to its source.
           </p>
           <div style={{ marginTop: 26 }}>
             <ReferenceSearch translation={catalog.currentID} />
@@ -782,7 +782,7 @@ export function BiblePage() {
       {citedChapters.length > 0 && (
         <section className="container-wide" style={{ paddingBottom: 96 }}>
           <div className="bible-section-head">
-            <h2 className="h2">Chapters iCONFESS stands on</h2>
+            <h2 className="h2">Chapters I CONFESS stands on</h2>
             <p className="small">
               The passages the reviewed confession corpus cites most. Open one and every confession written from it is
               listed beside the text.

@@ -23,7 +23,7 @@ LINT    := golangci-lint
 
 .PHONY: help build test race vet lint lint-fix fmt fmt-check tidy verify clean \
 	design design-check design-contrast routes mobile-check dart-symbols \
-	bible-structure bible-corpus r2-staging-check
+	bible-structure bible-corpus bible-load r2-staging-check
 
 PY ?= python3
 DESIGN := design
@@ -91,6 +91,18 @@ bible-structure: ## Regenerate web/lib/canon.json from the Go canon
 
 bible-corpus: ## Fetch the public-domain Bible corpus the dev fixture serves (writes /tmp, never committed)
 	$(PY) scripts/dev-bible-corpus.py
+
+# The Bible reader shows nothing until at least one translation is loaded: the
+# repository ships the registry (which edition, licence, checksum), never the
+# text. Run this once per environment, against that environment's database.
+# Needs outbound HTTPS to GitHub; refuses any file whose checksum differs.
+BIBLE_SOURCES ?= /tmp/iconfess-bible
+BIBLE_ONLY    ?= kjv,web
+bible-load: ## Fetch, verify and load the public-domain Bible text (needs BIBLE_DSN)
+	@test -n "$(BIBLE_DSN)" || { echo "bible-load: set BIBLE_DSN to the target database (migration role)"; exit 1; }
+	cd $(SERVER) && $(GO) run ./cmd/bible-import fetch  -sources $(BIBLE_SOURCES) -only $(BIBLE_ONLY)
+	cd $(SERVER) && $(GO) run ./cmd/bible-import verify -sources $(BIBLE_SOURCES) -only $(BIBLE_ONLY)
+	cd $(SERVER) && $(GO) run ./cmd/bible-import load   -sources $(BIBLE_SOURCES) -only $(BIBLE_ONLY) -dsn "$(BIBLE_DSN)"
 
 routes: ## Re-export the live route table to design/routes.json
 	cd $(SERVER) && EXPORT_ROUTES=1 EXPORT_ROUTES_PATH=$(CURDIR)/$(DESIGN)/routes.json \

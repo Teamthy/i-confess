@@ -3,11 +3,9 @@ package api
 import (
 	"net/http"
 
-	"github.com/Teamthy/i-confess/internal/adminui"
 	"github.com/Teamthy/i-confess/internal/auth"
 	"github.com/Teamthy/i-confess/internal/ratelimit"
 	"github.com/Teamthy/i-confess/internal/tracing"
-	"github.com/Teamthy/i-confess/internal/webapp"
 )
 
 // Routes builds the full HTTP handler with all routes registered.
@@ -54,12 +52,12 @@ func (h *Handler) Routes() http.Handler {
 	h.route(mux, "GET /metrics", "admin", "admin-ops", "Prometheus metrics", admin, h.promMetrics)
 	h.route(mux, "GET /openapi.json", "public", "ops", "OpenAPI JSON specification", nil, h.serveOpenAPI)
 
-	// Listener web application (SPA), served at the site root.
-	mux.Handle("GET /", webapp.Handler())
-
-	// Admin console (SPA)
-	mux.Handle("GET /admin", http.RedirectHandler("/admin/", http.StatusMovedPermanently))
-	mux.Handle("GET /admin/", http.StripPrefix("/admin/", adminui.Handler()))
+	// This binary is the API. The public site, the signed-in app and the admin
+	// console are the Next.js app in web/; the Go server used to embed older,
+	// differently designed copies of both at "/" and "/admin/", and its "/"
+	// catch-all answered every unknown GET with that HTML page instead of 404.
+	mux.HandleFunc("GET /{$}", serviceInfo)
+	mux.HandleFunc("GET /", notFoundJSON)
 
 	// Placeholder/dev audio assets (generated locally; replaced by CDN in production).
 	// Development audio origin. Previously this served the media directory
@@ -69,6 +67,12 @@ func (h *Handler) Routes() http.Handler {
 	if h.mediaHandler != nil {
 		mux.Handle("GET /media/", h.mediaHandler)
 	}
+
+	// The website's public forms, each rate-limited per address in its own
+	// bucket; both answer the same way for known and unknown addresses.
+	h.route(mux, "POST /newsletter", "public", "site", "Subscribe an address to the newsletter", perIP(ratelimit.PublicForm, "newsletter"), h.newsletterSubscribe)
+	h.route(mux, "POST /newsletter/unsubscribe", "public", "site", "Unsubscribe from the newsletter with the token from its link", perIP(ratelimit.PublicForm, "newsletter-unsubscribe"), h.newsletterUnsubscribe)
+	h.route(mux, "POST /contact", "public", "site", "Send a message to support", perIP(ratelimit.PublicForm, "contact"), h.contactMessage)
 
 	// Public auth
 	h.route(mux, "POST /auth/register", "public", "auth", "Create an account and send a verification email", registerLimit, h.register)
@@ -82,6 +86,7 @@ func (h *Handler) Routes() http.Handler {
 	h.route(mux, "GET /collections", "public", "content", "Published collections", nil, h.listCollections)
 	h.route(mux, "GET /categories", "public", "content", "Published categories (cached SWR 5m)", nil, h.cachedListCategories)
 	h.route(mux, "GET /categories/{id}/confessions", "public", "content", "Confessions in a category (cached SWR 2m)", nil, h.cachedCategoryConfessions)
+	h.route(mux, "GET /confessions", "public", "content", "Library index: every published confession with its slug and text", nil, h.libraryIndex)
 	h.route(mux, "GET /confessions/{id}", "public", "content", "One confession", nil, h.getConfession)
 	h.route(mux, "GET /voices", "public", "content", "Available voices (cached SWR 5m)", nil, h.cachedListVoices)
 
@@ -419,6 +424,7 @@ func (h *Handler) Routes() http.Handler {
 	})
 	h.route(mux, "GET /subscriptions/trial/status", "user", "subscription", "Current trial lifecycle state", authed, h.getTrialStatus)
 	h.route(mux, "GET /subscriptions/trial/engagement", "user", "subscription", "Measured trial journey: completed days and funnel", authed, h.getTrialEngagement)
+	h.route(mux, "POST /subscriptions/trial/today", "user", "subscription", "Build today's trial-journey session(s); idempotent per day", authed, h.startTrialToday)
 	h.route(mux, "POST /subscriptions/trial/convert", "user", "subscription", "Finish the trial before store verification", authed, func(w http.ResponseWriter, r *http.Request) {
 		idempotent(http.HandlerFunc(h.convertTrial)).ServeHTTP(w, r)
 	})
@@ -434,6 +440,15 @@ func (h *Handler) Routes() http.Handler {
 		"App Store Server Notifications V2 (JWS verified against the pinned Apple root)", nil, h.appleStoreWebhook)
 	h.route(mux, "POST /subscriptions/webhooks/google", "public", "subscription",
 		"Play real-time developer notification via Pub/Sub push (OIDC verified)", nil, h.googleStoreWebhook)
+	h.route(mux, "GET /me/journal", "user", "study", "List your private journal entries", authed, h.listJournal)
+	h.route(mux, "POST /me/journal", "user", "study", "Add a private journal entry", authed, h.createJournal)
+	h.route(mux, "PATCH /me/journal/{id}", "user", "study", "Edit a journal entry (row_version conflict protected)", authed, h.updateJournal)
+	h.route(mux, "DELETE /me/journal/{id}", "user", "study", "Delete a journal entry", authed, h.deleteJournal)
+	h.route(mux, "GET /me/memory", "user", "study", "List verses in Scripture-memory practice", authed, h.listMemory)
+	h.route(mux, "POST /me/memory", "user", "study", "Put a verse into memory practice", authed, h.addMemory)
+	h.route(mux, "POST /me/memory/{id}/review", "user", "study", "Record one recall; the server schedules the next", authed, h.gradeMemory)
+	h.route(mux, "DELETE /me/memory/{id}", "user", "study", "Take a verse out of practice", authed, h.deleteMemory)
+	h.route(mux, "GET /me/community/posts", "user", "community", "List your own community posts in every status", authed, h.myCommunityPosts)
 	h.route(mux, "POST /community/posts", "user", "community", "Create community post (moderated, never auto-publish)", authed, h.createCommunityPost)
 	h.route(mux, "GET /community/feed", "public", "community", "Approved community feed", nil, h.feedCommunity)
 	h.route(mux, "GET /community/confessions", "public", "community", "Published user confessions (public UGC reader, anonymous)", nil, h.feedUserConfessions)
@@ -449,6 +464,9 @@ func (h *Handler) Routes() http.Handler {
 	// Legacy without prefix is kept for backward compat until minVersion forces upgrade.
 	// Idempotency (§47) is enforced on mutating session/progress/subscription/download endpoints.
 	// Public auth (v1)
+	h.route(mux, "POST /v1/newsletter", "public", "site", "Subscribe an address to the newsletter", perIP(ratelimit.PublicForm, "newsletter"), h.newsletterSubscribe)
+	h.route(mux, "POST /v1/newsletter/unsubscribe", "public", "site", "Unsubscribe from the newsletter with the token from its link", perIP(ratelimit.PublicForm, "newsletter-unsubscribe"), h.newsletterUnsubscribe)
+	h.route(mux, "POST /v1/contact", "public", "site", "Send a message to support", perIP(ratelimit.PublicForm, "contact"), h.contactMessage)
 	h.route(mux, "POST /v1/auth/register", "public", "auth", "Create an account and send a verification email", registerLimit, h.register)
 	h.route(mux, "POST /v1/auth/login", "public", "auth", "Sign in; returns mfa_required when a second factor is enrolled", loginLimit, h.login)
 	h.route(mux, "POST /v1/auth/verify-email", "public", "auth", "Verify an email address with a one-time token", nil, h.verifyEmail)
@@ -460,6 +478,7 @@ func (h *Handler) Routes() http.Handler {
 	h.route(mux, "GET /v1/collections", "public", "content", "Published collections", nil, h.listCollections)
 	h.route(mux, "GET /v1/categories", "public", "content", "Published categories (cached SWR 5m)", nil, h.cachedListCategories)
 	h.route(mux, "GET /v1/categories/{id}/confessions", "public", "content", "Confessions in a category (cached SWR 2m)", nil, h.cachedCategoryConfessions)
+	h.route(mux, "GET /v1/confessions", "public", "content", "Library index: every published confession with its slug and text", nil, h.libraryIndex)
 	h.route(mux, "GET /v1/confessions/{id}", "public", "content", "One confession", nil, h.getConfession)
 	h.route(mux, "GET /v1/voices", "public", "content", "Available voices (cached SWR 5m)", nil, h.cachedListVoices)
 	// Health versioned
@@ -584,6 +603,7 @@ func (h *Handler) Routes() http.Handler {
 	})
 	h.route(mux, "GET /v1/subscriptions/trial/status", "user", "subscription", "Current trial lifecycle state", authed, h.getTrialStatus)
 	h.route(mux, "GET /v1/subscriptions/trial/engagement", "user", "subscription", "Measured trial journey: completed days and funnel", authed, h.getTrialEngagement)
+	h.route(mux, "POST /v1/subscriptions/trial/today", "user", "subscription", "Build today's trial-journey session(s); idempotent per day", authed, h.startTrialToday)
 	h.route(mux, "POST /v1/subscriptions/trial/convert", "user", "subscription", "Finish the trial before store verification", authed, func(w http.ResponseWriter, r *http.Request) {
 		idempotent(http.HandlerFunc(h.convertTrial)).ServeHTTP(w, r)
 	})
@@ -595,6 +615,15 @@ func (h *Handler) Routes() http.Handler {
 		"App Store Server Notifications V2 (JWS verified against the pinned Apple root)", nil, h.appleStoreWebhook)
 	h.route(mux, "POST /v1/subscriptions/webhooks/google", "public", "subscription",
 		"Play real-time developer notification via Pub/Sub push (OIDC verified)", nil, h.googleStoreWebhook)
+	h.route(mux, "GET /v1/me/journal", "user", "study", "List your private journal entries", authed, h.listJournal)
+	h.route(mux, "POST /v1/me/journal", "user", "study", "Add a private journal entry", authed, h.createJournal)
+	h.route(mux, "PATCH /v1/me/journal/{id}", "user", "study", "Edit a journal entry (row_version conflict protected)", authed, h.updateJournal)
+	h.route(mux, "DELETE /v1/me/journal/{id}", "user", "study", "Delete a journal entry", authed, h.deleteJournal)
+	h.route(mux, "GET /v1/me/memory", "user", "study", "List verses in Scripture-memory practice", authed, h.listMemory)
+	h.route(mux, "POST /v1/me/memory", "user", "study", "Put a verse into memory practice", authed, h.addMemory)
+	h.route(mux, "POST /v1/me/memory/{id}/review", "user", "study", "Record one recall; the server schedules the next", authed, h.gradeMemory)
+	h.route(mux, "DELETE /v1/me/memory/{id}", "user", "study", "Take a verse out of practice", authed, h.deleteMemory)
+	h.route(mux, "GET /v1/me/community/posts", "user", "community", "List your own community posts in every status", authed, h.myCommunityPosts)
 	h.route(mux, "POST /v1/community/posts", "user", "community", "Create community post (moderated, never auto-publish)", authed, h.createCommunityPost)
 	h.route(mux, "GET /v1/community/feed", "public", "community", "Approved community feed", nil, h.feedCommunity)
 	h.route(mux, "GET /v1/community/confessions", "public", "community", "Published user confessions (public UGC reader, anonymous)", nil, h.feedUserConfessions)

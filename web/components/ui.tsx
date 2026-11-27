@@ -1,6 +1,8 @@
 import React from "react";
 import Link from "next/link";
-import { CAT_IMAGES, motifStyle, type Category, type Session, type Article } from "@/lib/data";
+import { MARK_ASPECT, MARK_PATH, MARK_VIEWBOX } from "@/lib/brand-mark";
+import { SHAPE_KEYS, shapeClipPaths } from "@/lib/card-shapes";
+import { type Session, type Article } from "@/lib/data";
 
 const IC: Record<string, React.ReactNode> = {
   arrow: <path d="M5 12h14M13 6l6 6-6 6" />, arrowL: <path d="M19 12H5M11 6l-6 6 6 6" />,
@@ -41,52 +43,54 @@ export function Icon({ n, s = 18 }: { n: string; s?: number }) {
   return <svg className="ic" width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{IC[n]}</svg>;
 }
 
+/** The category-card cut-out shapes, defined once per document (root layout). */
+export function CardShapeDefs() {
+  return (
+    <svg width="0" height="0" style={{ position: "absolute" }} aria-hidden="true" focusable="false">
+      <defs>
+        {/* Fallback fill when a category has no licensed photo (objectBoundingBox
+            units, so one gradient serves every card). */}
+        <linearGradient id="tshape-motif" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#425EAF" />
+          <stop offset="1" stopColor="#051650" />
+        </linearGradient>
+        {SHAPE_KEYS.map((k) => (
+          <clipPath key={k} id={`tshape-${k}`} clipPathUnits="objectBoundingBox">
+            {shapeClipPaths(k).map((d, i) => <path key={i} d={d} />)}
+          </clipPath>
+        ))}
+      </defs>
+    </svg>
+  );
+}
+
+/** The I CONFESS mark, traced from the approved logo (design/brand). */
 export function Mark({ s = 30 }: { s?: number }) {
   return (
-    <svg className="mark" width={s} height={s} viewBox="0 0 100 96" fill="none" stroke="currentColor" strokeWidth="9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M50 5 L63 23 L50 40 L37 23 Z" />
-      <path d="M47 51 C40 42 27 42 20 52 C12 63 13 77 24 81 C32 84 40 79 47 71 L58 59" />
-      <path d="M53 51 C60 42 73 42 80 52 C88 63 87 77 76 81 C68 84 60 79 53 71 L42 59" />
+    <svg className="mark" width={s} height={Math.round(s * MARK_ASPECT)} viewBox={MARK_VIEWBOX} aria-hidden="true">
+      <path fill="currentColor" fillRule="evenodd" d={MARK_PATH} />
     </svg>
   );
 }
 export function Logo({ onDark, tagline }: { onDark?: boolean; tagline?: boolean }) {
   return (
-    <Link className={"logo" + (onDark ? " on-dark" : "")} href="/" style={onDark ? { color: "#fff" } : undefined} aria-label="iCONFESS home">
+    <Link className={"logo" + (onDark ? " on-dark" : "")} href="/" style={onDark ? { color: "#fff" } : undefined} aria-label="I CONFESS home">
       <Mark />
       <span className="lw"><b>I CONFESS</b>{tagline && <span>SPEAK IT. BELIEVE IT. LIVE IT.</span>}</span>
     </Link>
   );
 }
 
-export function SectionHead({ eyebrow, title, lede, right, onDark }: { eyebrow?: React.ReactNode; title?: React.ReactNode; lede?: React.ReactNode; right?: React.ReactNode; onDark?: boolean }) {
+export function SectionHead({ eyebrow, title, lede, right, onDark, as: H = "h2" }: { eyebrow?: React.ReactNode; title?: React.ReactNode; lede?: React.ReactNode; right?: React.ReactNode; onDark?: boolean; /** "h1" when this heads the page. */ as?: "h1" | "h2" }) {
   return (
     <div className="section-head rv in">
       <div>
         {eyebrow && <span className={"eyebrow" + (onDark ? " on-dark" : "")}>{eyebrow}</span>}
-        {title && <h2 className="h1" style={{ marginTop: eyebrow ? 14 : 0 }}>{title}</h2>}
+        {title && <H className="h1" style={{ marginTop: eyebrow ? 14 : 0 }}>{title}</H>}
         {lede && <p className="lede" style={{ marginTop: 14, maxWidth: "52ch" }}>{lede}</p>}
       </div>
       {right}
     </div>
-  );
-}
-
-export function CatCard({ cat, i, featured }: { cat: Category; i: number; featured?: boolean }) {
-  const img = CAT_IMAGES[cat.slug];
-  return (
-    <Link className={"cat-card rv in" + (featured ? " featured" : "")} href={`/categories/${cat.slug}`}>
-      <div className="cc-blob">
-        {img ? (
-          <div className="blob"><img src={`/assets/${img}`} alt="" loading="lazy" /></div>
-        ) : (
-          <div className="blob motif" style={motifStyle(cat.slug)}><span className="m-glyph" style={{ fontSize: 44, color: "rgba(255,255,255,.9)" }}>{cat.name[0]}</span></div>
-        )}
-      </div>
-      <div className="cc-name">{cat.name}</div>
-      <div className="cc-tag">{cat.tagline}</div>
-      <div className="cc-foot"><span className="cc-arrow"><Icon n="ne" s={15} /></span></div>
-    </Link>
   );
 }
 

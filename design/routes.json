@@ -1233,10 +1233,24 @@
   },
   {
     "method": "GET",
+    "path": "/confessions",
+    "auth": "public",
+    "summary": "Library index: every published confession with its slug and text",
+    "tag": "content"
+  },
+  {
+    "method": "GET",
     "path": "/confessions/{id}",
     "auth": "public",
     "summary": "One confession",
     "tag": "content"
+  },
+  {
+    "method": "POST",
+    "path": "/contact",
+    "auth": "public",
+    "summary": "Send a message to support",
+    "tag": "site"
   },
   {
     "method": "GET",
@@ -1597,6 +1611,13 @@
   },
   {
     "method": "GET",
+    "path": "/me/community/posts",
+    "auth": "user",
+    "summary": "List your own community posts in every status",
+    "tag": "community"
+  },
+  {
+    "method": "GET",
     "path": "/me/confessions",
     "auth": "user",
     "summary": "List personal confessions",
@@ -1744,6 +1765,62 @@
   },
   {
     "method": "GET",
+    "path": "/me/journal",
+    "auth": "user",
+    "summary": "List your private journal entries",
+    "tag": "study"
+  },
+  {
+    "method": "POST",
+    "path": "/me/journal",
+    "auth": "user",
+    "summary": "Add a private journal entry",
+    "tag": "study"
+  },
+  {
+    "method": "DELETE",
+    "path": "/me/journal/{id}",
+    "auth": "user",
+    "summary": "Delete a journal entry",
+    "tag": "study"
+  },
+  {
+    "method": "PATCH",
+    "path": "/me/journal/{id}",
+    "auth": "user",
+    "summary": "Edit a journal entry (row_version conflict protected)",
+    "tag": "study"
+  },
+  {
+    "method": "GET",
+    "path": "/me/memory",
+    "auth": "user",
+    "summary": "List verses in Scripture-memory practice",
+    "tag": "study"
+  },
+  {
+    "method": "POST",
+    "path": "/me/memory",
+    "auth": "user",
+    "summary": "Put a verse into memory practice",
+    "tag": "study"
+  },
+  {
+    "method": "DELETE",
+    "path": "/me/memory/{id}",
+    "auth": "user",
+    "summary": "Take a verse out of practice",
+    "tag": "study"
+  },
+  {
+    "method": "POST",
+    "path": "/me/memory/{id}/review",
+    "auth": "user",
+    "summary": "Record one recall; the server schedules the next",
+    "tag": "study"
+  },
+  {
+    "method": "GET",
     "path": "/me/notifications",
     "auth": "user",
     "summary": "Notification preferences",
@@ -1797,6 +1874,20 @@
     "auth": "public",
     "summary": "Licensed minister voice library",
     "tag": "voice"
+  },
+  {
+    "method": "POST",
+    "path": "/newsletter",
+    "auth": "public",
+    "summary": "Subscribe an address to the newsletter",
+    "tag": "site"
+  },
+  {
+    "method": "POST",
+    "path": "/newsletter/unsubscribe",
+    "auth": "public",
+    "summary": "Unsubscribe from the newsletter with the token from its link",
+    "tag": "site"
   },
   {
     "method": "GET",
@@ -2006,6 +2097,13 @@
     "path": "/subscriptions/trial/status",
     "auth": "user",
     "summary": "Current trial lifecycle state",
+    "tag": "subscription"
+  },
+  {
+    "method": "POST",
+    "path": "/subscriptions/trial/today",
+    "auth": "user",
+    "summary": "Build today's trial-journey session(s); idempotent per day",
     "tag": "subscription"
   },
   {
@@ -3312,10 +3410,24 @@
   },
   {
     "method": "GET",
+    "path": "/v1/confessions",
+    "auth": "public",
+    "summary": "Library index: every published confession with its slug and text",
+    "tag": "content"
+  },
+  {
+    "method": "GET",
     "path": "/v1/confessions/{id}",
     "auth": "public",
     "summary": "One confession",
     "tag": "content"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/contact",
+    "auth": "public",
+    "summary": "Send a message to support",
+    "tag": "site"
   },
   {
     "method": "GET",
@@ -3676,6 +3788,13 @@
   },
   {
     "method": "GET",
+    "path": "/v1/me/community/posts",
+    "auth": "user",
+    "summary": "List your own community posts in every status",
+    "tag": "community"
+  },
+  {
+    "method": "GET",
     "path": "/v1/me/confessions",
     "auth": "user",
     "summary": "List personal confessions",
@@ -3823,6 +3942,62 @@
   },
   {
     "method": "GET",
+    "path": "/v1/me/journal",
+    "auth": "user",
+    "summary": "List your private journal entries",
+    "tag": "study"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/me/journal",
+    "auth": "user",
+    "summary": "Add a private journal entry",
+    "tag": "study"
+  },
+  {
+    "method": "DELETE",
+    "path": "/v1/me/journal/{id}",
+    "auth": "user",
+    "summary": "Delete a journal entry",
+    "tag": "study"
+  },
+  {
+    "method": "PATCH",
+    "path": "/v1/me/journal/{id}",
+    "auth": "user",
+    "summary": "Edit a journal entry (row_version conflict protected)",
+    "tag": "study"
+  },
+  {
+    "method": "GET",
+    "path": "/v1/me/memory",
+    "auth": "user",
+    "summary": "List verses in Scripture-memory practice",
+    "tag": "study"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/me/memory",
+    "auth": "user",
+    "summary": "Put a verse into memory practice",
+    "tag": "study"
+  },
+  {
+    "method": "DELETE",
+    "path": "/v1/me/memory/{id}",
+    "auth": "user",
+    "summary": "Take a verse out of practice",
+    "tag": "study"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/me/memory/{id}/review",
+    "auth": "user",
+    "summary": "Record one recall; the server schedules the next",
+    "tag": "study"
+  },
+  {
+    "method": "GET",
     "path": "/v1/me/notifications",
     "auth": "user",
     "summary": "Notification preferences",
@@ -3876,6 +4051,20 @@
     "auth": "public",
     "summary": "Licensed minister voice library",
     "tag": "voice"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/newsletter",
+    "auth": "public",
+    "summary": "Subscribe an address to the newsletter",
+    "tag": "site"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/newsletter/unsubscribe",
+    "auth": "public",
+    "summary": "Unsubscribe from the newsletter with the token from its link",
+    "tag": "site"
   },
   {
     "method": "GET",
@@ -4085,6 +4274,13 @@
     "path": "/v1/subscriptions/trial/status",
     "auth": "user",
     "summary": "Current trial lifecycle state",
+    "tag": "subscription"
+  },
+  {
+    "method": "POST",
+    "path": "/v1/subscriptions/trial/today",
+    "auth": "user",
+    "summary": "Build today's trial-journey session(s); idempotent per day",
     "tag": "subscription"
   },
   {

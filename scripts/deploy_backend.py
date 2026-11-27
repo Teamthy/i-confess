@@ -54,10 +54,10 @@ def check_cutover(kube):
         raise RuntimeError("a prior migration Job is not terminal; inspect it before retrying")
 
 
-def wait_for_migration(kube, job):
+def wait_for_migration(kube, job, deadline_seconds=660):
     # kubectl wait --for=condition=Complete also waits to timeout on a Failed
     # Job. Report a terminal failure immediately, without dumping secret-bearing logs.
-    deadline = time.monotonic() + 660  # Job activeDeadlineSeconds plus controller grace
+    deadline = time.monotonic() + deadline_seconds  # Job activeDeadlineSeconds plus controller grace
     while time.monotonic() < deadline:
         conditions = true_conditions(json.loads(kube("get", job, "--request-timeout=15s", "-o", "json")))
         if conditions & {"Failed", "FailureTarget"}:
@@ -98,13 +98,39 @@ def deploy(environment, digest, *, migrate_only=False):
         raise RuntimeError("the rolled-out backend does not match the approved digest")
 
 
+def load_bible(environment, digest):
+    """Load the registered public-domain Bible text into an environment.
+
+    A one-off per environment (and again when the registry adds an edition),
+    not part of every release: it fetches sources from GitHub and the loader
+    is idempotent. Runs with the migration role, which owns the Bible tables.
+    """
+    if not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
+        raise ValueError("a full lowercase sha256 image digest is required")
+    namespace = NAMESPACES[environment]
+    image = f"{IMAGE}@{digest}"
+    manifest = render("bible-load-job.yaml", image)
+
+    def kube(*args, manifest=None):
+        return subprocess.run(["kubectl", "-n", namespace, *args], input=manifest,
+                              text=True, check=True, stdout=subprocess.PIPE).stdout.strip()
+
+    job = kube("create", "-f", "-", "-o", "name", manifest=manifest)
+    print(f"{namespace}: waiting for {job} ({image})", flush=True)
+    wait_for_migration(kube, job, deadline_seconds=1860)
+    print("Bible text loaded; the reader can serve it now.")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("environment", choices=NAMESPACES)
     parser.add_argument("digest")
-    parser.add_argument("--operation", choices=("migrate-and-deploy", "migrate-only"), default="migrate-and-deploy")
+    parser.add_argument("--operation", choices=("migrate-and-deploy", "migrate-only", "load-bible"), default="migrate-and-deploy")
     args = parser.parse_args()
     try:
-        deploy(args.environment, args.digest, migrate_only=args.operation == "migrate-only")
+        if args.operation == "load-bible":
+            load_bible(args.environment, args.digest)
+        else:
+            deploy(args.environment, args.digest, migrate_only=args.operation == "migrate-only")
     except (ValueError, RuntimeError, subprocess.CalledProcessError) as exc:
         sys.exit(str(exc))

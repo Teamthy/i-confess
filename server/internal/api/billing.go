@@ -68,10 +68,17 @@ func (h *Handler) getTrial(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		completed = []int{}
 	}
+	// "today" comes from the personalised journey, so Day 3 advertises the
+	// listener's own categories rather than the generic default.
+	journey := h.personalizedJourney(r, userID)
+	var today *billing.TrialDay
+	if dayNum >= 1 && dayNum <= len(journey) {
+		today = &journey[dayNum-1]
+	}
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{
-		"journey":        h.personalizedJourney(r, userID),
+		"journey":        journey,
 		"current_day":    dayNum,
-		"today":          billing.Day(dayNum),
+		"today":          today,
 		"state":          current.State,
 		"trial":          current,
 		"completed_days": completed,

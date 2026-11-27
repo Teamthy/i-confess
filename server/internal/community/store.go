@@ -96,3 +96,38 @@ func (s *Store) React(ctx context.Context, postID, userID string, r Reaction) er
 		uuid.NewString(), postID, userID, string(r), time.Now().UTC().Format(time.RFC3339))
 	return err
 }
+
+// ByAuthor lists one author's own posts, newest first, in every status, so a
+// writer can see what is private, in review, published or declined. It is
+// the only read that returns private posts, and only to their author.
+func (s *Store) ByAuthor(ctx context.Context, authorID string, limit int) ([]Post, error) {
+	q := `SELECT id, body, visibility, status, created_at
+		 FROM community_posts
+		 WHERE author_id = ? AND deleted_at IS NULL
+		 ORDER BY created_at DESC`
+	args := []any{authorID}
+	// A negative limit is the data export: every post, not a page of them.
+	if limit >= 0 {
+		if limit == 0 || limit > 100 {
+			limit = 50
+		}
+		q += ` LIMIT ?`
+		args = append(args, limit)
+	}
+	rows, err := s.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]Post, 0)
+	for rows.Next() {
+		var p Post
+		var ts string
+		if err := rows.Scan(&p.ID, &p.Body, &p.Visibility, &p.Status, &ts); err != nil {
+			return nil, err
+		}
+		p.CreatedAt, _ = time.Parse(time.RFC3339, ts)
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}

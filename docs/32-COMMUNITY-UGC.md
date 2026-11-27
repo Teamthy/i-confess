@@ -9,7 +9,7 @@
 
 Close G-40: approved/published UGC has no reader. The moderation pipeline in PHASE 31 now ends at `published` for public-intent user confessions, but no public surface served them. This phase adds a real cross-surface reader while preserving anonymity and moderation boundaries.
 
-Per `docs/NEXT-PHASE-COMMUNITY.md`:
+Per `docs/archive/NEXT-PHASE-COMMUNITY.md`:
 - Backend returns only moderated public posts and never author identity; shared/private/unreviewed excluded by PostgreSQL-backed tests.
 - Typed Dart client exposes feed and authenticated idempotent reactions (already done) plus the new public confessions feed.
 - Mobile Explore links to a refreshable feed with loading, empty, retry, reaction-progress and reaction-error states, now with two tabs.
@@ -133,7 +133,7 @@ Fault injection — each introduced, observed to fail, reverted:
 ## DOCUMENTATION
 
 - This document: `docs/32-COMMUNITY-UGC.md`.
-- `docs/NEXT-PHASE-COMMUNITY.md` — acceptance criteria now satisfied; can be retired or kept as reference.
+- `docs/archive/NEXT-PHASE-COMMUNITY.md` — acceptance criteria now satisfied; can be retired or kept as reference.
 - `docs/PROJECT-STATUS.md` — to be updated: PHASE 32 PASS, G-40 closed.
 - `design/ia.json` — surgical edit, community endpoints now 4.
 - `design/routes.json` and `contracts/openapi.json` — regenerated from live route table, never hand-edited.

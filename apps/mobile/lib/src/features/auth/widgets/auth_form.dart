@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../core/brand/brand_mark.dart';
 import '../../../core/theme/theme.dart';
 import '../../../core/theme/tokens.dart';
 
@@ -586,25 +587,18 @@ class BrandMark extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: large ? 56 : 40,
-            height: large ? 56 : 40,
-            decoration: BoxDecoration(
-              color: surfaces.primary,
-              borderRadius: BorderRadius.circular(IConfess.radiusMd),
-            ),
-            alignment: Alignment.center,
-            child: Icon(
-              Icons.graphic_eq_rounded,
-              color: surfaces.onPrimary,
-              size: large ? 28 : 20,
-            ),
-          ),
+          BrandMarkGlyph(color: surfaces.primary, size: large ? 56 : 40),
           const SizedBox(height: IConfess.space4),
           Text(
             'I CONFESS',
             style: (large ? IConfess.display : IConfess.heading)
                 .copyWith(color: surfaces.textPrimary, letterSpacing: 1.2),
+          ),
+          const SizedBox(height: IConfess.space1),
+          Text(
+            'SPEAK IT. BELIEVE IT. LIVE IT.',
+            style: IConfess.caption
+                .copyWith(color: surfaces.textSecondary, letterSpacing: 2),
           ),
         ],
       ),

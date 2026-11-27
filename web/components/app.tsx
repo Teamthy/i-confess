@@ -12,7 +12,11 @@ import { VoiceLibrary } from "@/components/voices";
 import { SoundSettings } from "./sound-settings";
 import { SessionPlayer } from "./session-player";
 import { SchedulePage, ScheduleReminderSettings } from "./schedules";
+import { useSchedules } from "@/lib/schedule-context";
 import { useAuth } from "@/lib/auth-context";
+import { appApi, useApiData, newIdempotencyKey } from "@/lib/app-api";
+import { addJournal, deleteJournal, addMemoryVerse, reviewMemoryVerse, libraryIndex } from "@/lib/account-sync";
+import { TrialCard } from "./trial";
 
 const SIDE_LIBRARY: [string, string, string][] = [
   ["/app", "home", "Home"],
@@ -140,7 +144,7 @@ const Head = ({ title, sub, right }: { title: React.ReactNode; sub?: string; rig
   <div className="app-top"><div><h2 className="h2" style={{ fontSize: "clamp(22px,3vw,32px)" }}>{title}</h2>{sub && <p className="small" style={{ marginTop: 4 }}>{sub}</p>}</div>{right}</div>
 );
 const NeedAuth = () => (
-  <div style={{ maxWidth: 520, margin: "40px auto" }}><EmptyState icon="lock" title="Sign in to continue" sub="This area belongs to your iCONFESS account." cta={<><Link className="btn btn-primary" href="/login">Log in</Link><Link className="btn btn-ghost" href="/register">Create account</Link></>} /></div>
+  <div style={{ maxWidth: 520, margin: "40px auto" }}><EmptyState icon="lock" title="Sign in to continue" sub="This area belongs to your I CONFESS account." cta={<><Link className="btn btn-primary" href="/login">Log in</Link><Link className="btn btn-ghost" href="/register">Create account</Link></>} /></div>
 );
 const greet = () => { const h = new Date().getHours(); return h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening"; };
 const slugOfName = (name: string) => CATEGORIES.find((c) => c.name === name)?.slug || "";
@@ -189,10 +193,12 @@ export function AppPage({ kind, slug, token }: { kind: string; slug?: string; to
   const st = useApp();
   const auth = useAuth();
   useEffect(() => {
-    if (auth.user && (!st.user || st.user.email !== auth.user.email)) mutate((s) => {
+    // Also re-sync when the server's display name differs from the local one,
+    // so a session started before a rename (or from the email) corrects itself.
+    if (auth.user && (!st.user || st.user.email !== auth.user.email || (!!auth.user.display_name && st.user.name !== auth.user.display_name))) mutate((s) => {
       s.user = { name: auth.user!.display_name || auth.user!.email.split("@")[0], email: auth.user!.email, plan: "free", interests: s.user?.email === auth.user!.email ? s.user.interests : [] };
     });
-  }, [auth.user, st.user?.email]);
+  }, [auth.user, st.user?.email, st.user?.name]);
   const needsAuth = !["player", "shared"].includes(kind);
   useEffect(() => { }, [kind, slug]);
   if (needsAuth && !st.user) return <NeedAuth />;
@@ -233,15 +239,11 @@ export function AppPage({ kind, slug, token }: { kind: string; slug?: string; to
     case "history": { const cnt: Record<string, number> = {}; st.history.forEach((h) => { cnt[h.slug] = (cnt[h.slug] || 0) + 1; }); const chart = Object.entries(cnt).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([sl, n]) => ({ c: confBySlug(sl), n })).filter((x) => x.c); return <><Head title="History" sub="Everything you've returned to" />
       {chart.length > 0 && <div className="app-section" style={{ marginTop: 0, marginBottom: 24 }}><div className="section-head"><h3>Your chart — most returned to</h3></div><div className="form-card">{chart.map((x, i) => <div className="list-row" key={x.c!.slug}><div className="lr-main"><h4>{i + 1}. {x.c!.title}</h4><p>{x.c!.category} · {x.n} return{x.n === 1 ? "" : "s"}</p></div><PlayChip slug={x.c!.slug} /></div>)}</div><p className="small" style={{ marginTop: 8 }}>Your data only. We never publish global charts.</p></div>}{st.history.length ? st.history.map((h, i) => <div className="list-row" key={i}><div className="lr-main"><h4>{h.title}</h4><p>{h.category} · {new Date(h.at).toLocaleString()}</p></div><PlayChip slug={h.slug} /></div>) : <EmptyState icon="clock" title="No history yet" sub="Play a confession or start a session and it will appear here." cta={<Link className="btn btn-primary" href="/app/explore">Explore</Link>} />}</>; }
     case "favorites": { const favs = st.favs.map(confBySlug).filter(Boolean); return <><Head title="Favorites" sub="Saved words" />{favs.length ? <div className="grid4">{favs.map((c) => <ConfTile key={c!.slug} c={c!} />)}</div> : <EmptyState icon="heart" title="No favorites yet" sub="Tap the heart on any confession to keep it here." />}</>; }
-    case "downloads": { const dl = st.downloads.filter((d) => !d.includes(":")).map(sessionBySlug).filter(Boolean); const pins = st.downloads.filter((d) => d.startsWith("cat:")); const packs = st.downloads.filter((d) => d.startsWith("pack:")); return <><Head title="Downloads" sub="Premium · available offline on this device" />
-      {packs.length > 0 && <div className="app-section" style={{ marginTop: 0 }}><div className="section-head"><h3>Mixtapes</h3></div><div className="downloads-grid">{packs.map((p) => { const pk = PACKS.find((x) => "pack:" + x.id === p); return pk ? <div className="tile" key={p}><span className="t-meta">Pack</span><h4>{pk.title}</h4><p>{pk.desc}</p></div> : null; })}</div></div>}
-      {pins.length > 0 && <div className="app-section"><div className="section-head"><h3>Pinned categories</h3></div><div className="downloads-grid downloads-categories">{pins.map((p) => { const c = catBySlug(p.slice(4)); return c ? <TCard key={p} c={c} /> : null; })}</div></div>}
-      {dl.length ? <div className="app-section"><div className="section-head"><h3>Sessions</h3></div><div className="downloads-grid">{dl.map((x) => <SessionTile key={x!.slug} s={x!} />)}</div></div> : !pins.length && !packs.length ? <EmptyState icon="dl" title="Nothing saved offline yet" sub="Pin a category, grab a mixtape pack, or save any session — Premium keeps it on this device for bad-network mornings." cta={<Link className="btn btn-primary" href="/app/sessions">Browse sessions</Link>} /> : null}</>; }
+    case "downloads": return <DownloadsPage />;
     case "schedule": return <SchedulePage />;
     case "routines": return <Routines />;
     case "notifications": return <><Head title="Notifications" /><div className="form-card" style={{ maxWidth: 560 }}><Switch title="Daily words" sub="A quiet nudge with today's confession" path="notifications.daily" /><Switch title="Reminders" sub="If you miss a morning, we offer the words again at midday" path="notifications.reminders" /><ScheduleReminderSettings /><Switch title="Community" sub="When a submission you follow is approved" path="notifications.community" /><Switch title="Weekly review digest" sub="One optional Sunday email: the words you returned to, plus a journal prompt. Never more." path="notifications.digest" /><div className="setting-row"><div><b>Quiet hours</b><span>Browser schedule reminders are suppressed in this window. Mobile push follows your account preference.</span></div><div style={{ display: "flex", gap: 8, alignItems: "center" }}><input type="time" defaultValue={st.settings.notifications.quietStart} style={{ width: 110 }} onChange={(e) => mutate((x) => { x.settings.notifications.quietStart = e.target.value; })} aria-label="Quiet hours start" /><span>–</span><input type="time" defaultValue={st.settings.notifications.quietEnd} style={{ width: 110 }} onChange={(e) => mutate((x) => { x.settings.notifications.quietEnd = e.target.value; })} aria-label="Quiet hours end" /></div></div></div></>;
-    case "community": { const pub = st.community.filter((c) => c.status === "public" || c.status === "approved"); return <><Head title="Community" sub="Private by default. Shared intentionally." right={<Link className="btn btn-primary btn-sm" href="/app/community/create"><Icon n="plus" s={12} /> Create</Link>} />
-      <div className="form-card rv in" style={{ maxWidth: 640, marginBottom: 20 }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><div><h4>Your creator page</h4><p className="small">{pub.length} published · {st.community.filter((c) => c.status === "pending_review").length} in review · decisions always recorded with a reason</p></div><span className="tag shared">reviewed</span></div><p className="small" style={{ marginTop: 8 }}>When your words publish, this page lists them. Followers get a quiet "new words" notice — never a feed, never a feed algorithm.</p></div>{st.community.length ? st.community.map((c) => <Link className="list-row" href={`/app/community/${c.slug}`} key={c.slug} style={{ display: "flex" }}><div className="lr-main"><h4>{c.title}</h4><p>{new Date(c.at).toLocaleDateString()}</p></div><span className={"tag " + (c.status === "pending_review" ? "pending" : c.visibility)}>{c.status.replace("_", " ")}</span></Link>) : <EmptyState icon="edit" title="No confessions yet" sub="Write your first words — they stay private unless you say otherwise." />}</>; }
+    case "community": return <CommunityList />;
     case "communityCreate": return <CreateConfession />;
     case "communityDetail": return <CommunityDetail slug={slug!} />;
     case "profile": return <Profile />;
@@ -264,11 +266,43 @@ export function AppPage({ kind, slug, token }: { kind: string; slug?: string; to
     case "invite": case "referrals": return <Invite />;
     case "feedback": return <><Head title="Feedback" sub="Tell us what to fix." /><FeedbackForm /></>;
     case "support": return <><Head title="Support" /><div className="card-row snap">{[["/help", "Help Center", "Guides and answers"], ["/faq", "FAQ", "The honest eleven"], ["/contact", "Contact", "We read everything"]].map(([h, t, s]) => <Link className="tile" href={h} key={t}><h4>{t}</h4><p>{s}</p></Link>)}</div></>;
-    default: return <EmptyState icon="info" title="Not found" sub="This area doesn't exist in your iCONFESS." cta={<Link className="btn btn-primary" href="/app">Go home</Link>} />;
+    default: return <EmptyState icon="info" title="Not found" sub="This area doesn't exist in your I CONFESS." cta={<Link className="btn btn-primary" href="/app">Go home</Link>} />;
   }
 }
 
-function ExportBtn() { const toast = useToast(); return <button className="btn btn-ghost btn-sm" onClick={() => toast("Export queued — you'll receive a download link (demo).")}>Export</button>; }
+/** Downloads everything the account holds (GET /me/export) as a JSON file. */
+function ExportBtn() {
+  const toast = useToast(); const auth = useAuth(); const st = useApp();
+  const [busy, setBusy] = useState(false);
+  const save = (data: unknown) => {
+    const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }));
+    const a = document.createElement("a"); a.href = url; a.download = `iconfess-export-${new Date().toISOString().slice(0, 10)}.json`; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+  const go = async () => {
+    if (!auth.token) { save({ note: "Local data on this device only", user: st.user, favs: st.favs, history: st.history, community: st.community }); return; }
+    setBusy(true);
+    const r = await appApi<unknown>("/me/export", { token: auth.token });
+    setBusy(false);
+    if (!r.ok) { toast(r.message); return; }
+    save(r.data); toast("Your data has been downloaded");
+  };
+  return <button className="btn btn-ghost btn-sm" onClick={go} disabled={busy}>{busy ? "Preparing…" : "Export"}</button>;
+}
+
+/** The listener's schedules (from the account when signed in). */
+function HomeRoutines() {
+  const sch = useSchedules();
+  if (sch.loading) return <p className="small">Loading…</p>;
+  if (!sch.schedules.length) return <div className="tile"><span className="t-meta">Routine</span><h4>Nothing yet</h4><p>Choose a time and a few areas, and the practice is ready when you are.</p><Link className="textlink" href="/app/schedule" style={{ marginTop: 4 }}>Set one up <Icon n="arrow" s={12} /></Link></div>;
+  return (
+    <div className="card-row snap" style={{ gridTemplateColumns: "repeat(2,1fr)" }}>
+      {sch.schedules.slice(0, 4).map((r) => (
+        <div className="tile" key={r.id}><span className="t-meta">{r.time} · {Math.round(r.duration_seconds / 60)} min</span><h4>{r.label}</h4><p>{(r.category_ids || []).map((c) => catBySlug(c)?.name).filter(Boolean).join(" · ") || (r.enabled ? "Ready when you are." : "Paused")}</p><Link className="textlink" href="/app/schedule" style={{ marginTop: 4 }}>Open <Icon n="arrow" s={12} /></Link></div>
+      ))}
+    </div>
+  );
+}
 
 function AppHome() {
   const st = useApp(); const u = st.user!;
@@ -283,6 +317,7 @@ function AppHome() {
         <Link className="icon-btn" href="/app/notifications" aria-label="Notifications" title="Notifications"><Icon n="bell" s={17} /></Link>
       </div>
       <Head title={`${greet()}, ${u.name.split(" ")[0]}.`} sub="What do you want to return to today?" />
+      <TrialCard compact />
       <HandoffCard />
       <div className="app-section"><div className="section-head"><h3>Morning Mix</h3><Link className="textlink" href="/app/recommendations">Why? <Icon n="arrow" s={12} /></Link></div>
         <div className="big-tile rv in" style={{ background: "linear-gradient(140deg, var(--navy), var(--deep))" }}><div><span className="eyebrow on-dark">Made for you</span><h3 style={{ marginTop: 8 }}>Built from the categories you follow</h3><p>One confession from each of your areas — queued, never autoplayed.</p></div><MixBtn cats={recCats.map((c) => c!.slug)} label="Play Morning Mix" /></div></div>
@@ -299,9 +334,9 @@ function AppHome() {
       <div className="app-section"><div className="section-head"><h3>Your Journal</h3><Link className="textlink" href="/app/journal">Open <Icon n="arrow" s={12} /></Link></div>
         {st.journals.length ? <div className="list-row"><div className="lr-main"><h4>{st.journals[0].title}</h4><p>{st.journals[0].mood} · {new Date(st.journals[0].date).toLocaleDateString()}</p></div><Link className="btn btn-ghost btn-sm" href="/app/journal">Continue</Link></div> : <EmptyState icon="edit" title="A quiet page, kept for you" sub="Journal entries stay on your account. No review, no publishing — ever." cta={<Link className="btn btn-primary" href="/app/journal">Write today's entry</Link>} />}</div>
       <div className="app-section"><div className="section-head"><h3>More practice tools</h3></div>
-        <div className="card-row snap">{[["/app/memory", "Scripture memory", "Spaced returns to the verses your words stand on."], ["/app/partners", "Practice partner", "One confession a week, shared with consent."], ["/app/family", "Family space", "Guardians and kids, age-appropriate words. Premium."], ["/app/languages", "Languages", "English live; Yoruba, Igbo and Hausa in review."], ["/app/widget", "Home-screen widget", "Today's line, one tap from your phone."], ["/review-log", "Review log", "The transparency ledger for everything published."], ["/app/wrapped", "Year in Words", "Your private annual review of returned words."]].map(([h, t, x]) => <Link className="tile" href={h} key={h}><h4>{t}</h4><p>{x}</p><span className="textlink" style={{ marginTop: 6 }}>Open <Icon n="arrow" s={12} /></span></Link>)}</div></div>
+        <div className="card-row snap">{[["/app/memory", "Scripture memory", "Spaced returns to the verses your words stand on."], ["/app/languages", "Languages", "English live; Yoruba, Igbo and Hausa in review."], ["/app/widget", "Home-screen widget", "Today's line, one tap from your phone."], ["/review-log", "Review log", "The transparency ledger for everything published."], ["/app/wrapped", "Year in Words", "Your private annual review of returned words."]].map(([h, t, x]) => <Link className="tile" href={h} key={h}><h4>{t}</h4><p>{x}</p><span className="textlink" style={{ marginTop: 6 }}>Open <Icon n="arrow" s={12} /></span></Link>)}</div></div>
       <div className="app-section"><div className="section-head"><h3>Your Routines</h3><Link className="textlink" href="/app/routines">Manage <Icon n="arrow" s={12} /></Link></div>
-        <div className="card-row snap" style={{ gridTemplateColumns: "repeat(2,1fr)" }}>{["Morning", "Evening"].map((slot) => { const r = st.routines.find((x) => x.slot === slot); return <div className="tile" key={slot}><span className="t-meta">{slot}</span><h4>{r && r.cats.length ? r.cats.map((s) => catBySlug(s)?.name || s).join(" · ") : "Nothing yet"}</h4><p>{r && r.cats.length ? "Ready when you are." : "Add a category to begin."}</p><Link className="textlink" href="/app/routines" style={{ marginTop: 4 }}>Open <Icon n="arrow" s={12} /></Link></div>; })}</div></div>
+        <HomeRoutines /></div>
       <div className="app-section"><div className="section-head"><h3>Recently Played</h3><Link className="textlink" href="/app/history">History <Icon n="arrow" s={12} /></Link></div>
         {st.history.length ? st.history.slice(0, 5).map((h, i) => <div className="list-row" key={i}><div className="lr-main"><h4>{h.title}</h4><p>{h.category} · {new Date(h.at).toLocaleDateString()}</p></div><PlayChip slug={h.slug} /></div>) : <EmptyState icon="play" title="Nothing played yet" sub="Your history appears after your first session." />}</div>
     </>
@@ -343,12 +378,34 @@ function AppSession({ slug }: { slug: string }) {
 }
 
 function Builder() {
-  const sp = useSearchParams();
+  const sp = useSearchParams(); const auth = useAuth(); const toast = useToast();
   const [cat, setCat] = useState(sp.get("cat") || "peace");
-  const [min, setMin] = useState(5);
+  const [min, setMin] = useState(() => { const m = Number(sp.get("min")); return [5, 10, 15].includes(m) ? m : m > 10 ? 15 : 5; });
   const [tone, setTone] = useState("any");
+  const [need, setNeed] = useState("");
+  const [why, setWhy] = useState("");
+  const [busy, setBusy] = useState<"" | "parse" | "build">("");
   const [out, setOut] = useState<Session | null>(null);
   const audio = useAudio(); const router = useRouter();
+  const nearest = (secs: number) => [5, 10, 15].reduce((a, b) => Math.abs(b * 60 - secs) < Math.abs(a * 60 - secs) ? b : a, 10);
+
+  // "Describe what you need" → category and length (POST /ai/parse). The
+  // parser only chooses among published categories; it never writes words.
+  const interpret = async () => {
+    if (!auth.token || !need.trim()) return;
+    setBusy("parse");
+    const r = await appApi<{ parsed: { categories: string[]; duration_seconds: number; reason?: string; parser?: string } }>("/ai/parse", { token: auth.token, method: "POST", body: { utterance: need.trim() } });
+    setBusy("");
+    if (!r.ok) { toast(r.message); return; }
+    const p = r.data.parsed;
+    const slug = p.categories.find((c) => catBySlug(c)) || cat;
+    const m = p.duration_seconds ? nearest(p.duration_seconds) : min;
+    setCat(slug); setMin(m);
+    // Always shown before anything is built: the listener confirms the choice.
+    const picked = `${catBySlug(slug)!.name}, ${m} minutes. Change either below, then build.`;
+    setWhy(p.parser === "claude" && p.reason ? `${p.reason} — ${picked}` : `Suggested: ${picked}`);
+  };
+
   const preview = () => {
     let items = CONFESSIONS.filter((c) => c.category === catBySlug(cat)!.name);
     if (tone === "gentle") items = items.filter((c) => c.intensity <= 2) || items;
@@ -356,14 +413,38 @@ function Builder() {
     if (!items.length) items = CONFESSIONS.filter((c) => c.category === catBySlug(cat)!.name);
     setOut({ slug: "built", category: cat, minutes: min, title: `${catBySlug(cat)!.name} — ${min} minutes (built)`, description: "Your custom session.", items });
   };
+
+  // Signed in, the server composes the session (POST /sessions) from the
+  // published library with signed audio, so it counts in history and the trial.
+  const build = async () => {
+    if (!auth.token) return;
+    setBusy("build");
+    const cats = await appApi<{ id: string; slug: string }[]>("/categories");
+    const id = cats.ok && Array.isArray(cats.data) ? cats.data.find((c) => c.slug === cat)?.id : undefined;
+    if (!id) { setBusy(""); toast("That category isn't available right now."); return; }
+    const r = await appApi<{ id: string }>("/sessions", { token: auth.token, method: "POST", idempotencyKey: newIdempotencyKey(), body: { category_ids: [id], duration_seconds: min * 60, strategy: "BALANCED" } });
+    setBusy("");
+    if (!r.ok) { toast(r.message); return; }
+    track("session_started", { built: true });
+    router.push(`/app/player?session=${encodeURIComponent(r.data.id)}`);
+  };
+
   return (
     <>
       <Head title="Session Builder" sub="Choose a category and a length — the engine assembles the rest." />
-      <form className="form-card rv in" style={{ maxWidth: 640 }} onSubmit={(e) => { e.preventDefault(); preview(); }}>
-        <div className="field"><label>Category</label><select value={cat} onChange={(e) => setCat(e.target.value)}>{CATEGORIES.map((c) => <option value={c.slug} key={c.slug}>{c.name}</option>)}</select></div>
+      {auth.token && (
+        <form className="form-card rv in" style={{ maxWidth: 640, marginBottom: 20 }} onSubmit={(e) => { e.preventDefault(); void interpret(); }}>
+          <div className="field"><label htmlFor="sb-need">Describe what you need <span className="small">(optional)</span></label>
+            <textarea id="sb-need" rows={2} maxLength={500} value={need} onChange={(e) => setNeed(e.target.value)} placeholder="e.g. Ten quiet minutes before a hard conversation at work" /></div>
+          <button className="btn btn-ghost" type="submit" disabled={!need.trim() || busy !== ""}>{busy === "parse" ? "Choosing…" : "Choose for me"}</button>
+          {why && <p className="small" role="status" style={{ marginTop: 10 }}>{why}</p>}
+        </form>
+      )}
+      <form className="form-card rv in" style={{ maxWidth: 640 }} onSubmit={(e) => { e.preventDefault(); if (auth.token) void build(); else preview(); }}>
+        <div className="field"><label htmlFor="sb-cat">Category</label><select id="sb-cat" value={cat} onChange={(e) => setCat(e.target.value)}>{CATEGORIES.map((c) => <option value={c.slug} key={c.slug}>{c.name}</option>)}</select></div>
         <div className="field"><label>Length</label><div className="chip-row">{[5, 10, 15].map((m) => <button type="button" className="chip" key={m} aria-pressed={min === m} onClick={() => setMin(m)}>{m} minutes</button>)}</div></div>
-        <div className="field"><label>Tone</label><select value={tone} onChange={(e) => setTone(e.target.value)}><option value="any">Any intensity</option><option value="gentle">Gentle (1–2)</option><option value="urgent">Urgent (3+)</option></select></div>
-        <button className="btn btn-primary btn-lg" type="submit" style={{ marginTop: 20 }}>Preview Session</button>
+        {!auth.token && <div className="field"><label htmlFor="sb-tone">Tone</label><select id="sb-tone" value={tone} onChange={(e) => setTone(e.target.value)}><option value="any">Any intensity</option><option value="gentle">Gentle (1–2)</option><option value="urgent">Urgent (3+)</option></select></div>}
+        <button className="btn btn-primary btn-lg" type="submit" style={{ marginTop: 20 }} disabled={busy !== ""}>{auth.token ? (busy === "build" ? "Building…" : "Build and start") : "Preview Session"}</button>
       </form>
       {out && <div className="form-card" style={{ marginTop: 24, maxWidth: 640 }}><h3 className="h4" style={{ marginBottom: 12 }}>{buildQueue(out).length} confessions · ~{out.minutes} min</h3>
         {buildQueue(out).map((q, i) => <div className="list-row" key={i}><div className="lr-main"><h4>{q.title}</h4><p>{q.category}</p></div></div>)}
@@ -384,63 +465,98 @@ function Switch({ title, sub, path }: { title: string; sub: string; path: string
   );
 }
 
-function Routines() {
-  const st = useApp(); const toast = useToast();
-  return (
-    <>
-      <Head title="Routines" sub="Morning and evening anchors" />
-      {["Morning", "Evening"].map((slot) => {
-        const r = st.routines.find((x) => x.slot === slot);
-        return (
-          <div className="app-section" key={slot}>
-            <div className="section-head"><h3>{slot}</h3></div>
-            <div className="form-card">{r && r.cats.length ? r.cats.map((s) => <div className="list-row" key={s}><div className="lr-main"><h4>{catBySlug(s)?.name || s}</h4><p>{catBySlug(s)?.tagline || ""}</p></div><PlaySessionBtn slug={`${s}-5-min`} /></div>) : <p className="small">Add categories below.</p>}</div>
-            <div className="chip-row" style={{ marginTop: 12 }}>{CATEGORIES.slice(0, 10).map((c) => <button className="chip" key={c.slug} onClick={() => { mutate((s) => { const rt = s.routines.find((x) => x.slot === slot) || (s.routines.push({ slot, cats: [] }), s.routines.find((x) => x.slot === slot))!; if (!rt.cats.includes(c.slug)) rt.cats.push(c.slug); }); toast(`Added to ${slot} routine`); }}>+ {c.name}</button>)}</div>
-          </div>
-        );
-      })}
-    </>
-  );
-}
+/** Morning and evening routines are schedules: one server-backed list. */
+function Routines() { return <SchedulePage />; }
 
 function CreateConfession() {
-  const router = useRouter(); const toast = useToast();
+  const router = useRouter(); const toast = useToast(); const auth = useAuth();
   const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
   const onFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]; if (!f) return;
     if (f.size > 200000) { toast("File too large — 200KB max"); return; }
     const r = new FileReader();
-    r.onload = () => { setText(String(r.result || "").slice(0, 4000)); toast("Loaded from " + f.name); };
+    r.onload = () => { setText(String(r.result || "").slice(0, 1900)); toast("Loaded from " + f.name); };
     r.readAsText(f);
+  };
+  const submit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const f = new FormData(e.currentTarget);
+    const title = String(f.get("title") || "My confession").trim();
+    const vis = String(f.get("vis"));
+    if (auth.token) {
+      // The server stores one body; its first line is the title.
+      setBusy(true);
+      const r = await appApi("/community/posts", { token: auth.token, method: "POST", idempotencyKey: newIdempotencyKey(), body: { body: `${title}\n${text.trim()}`, visibility: vis } });
+      setBusy(false);
+      if (!r.ok) {
+        toast(r.status === 403 ? "Verify your email before sharing — the link is in your inbox. Private confessions don't need it." : r.message);
+        return;
+      }
+    } else {
+      mutate((s) => { s.community.unshift({ slug: "mine-" + Date.now().toString(36), title, text, visibility: vis, status: vis === "public" ? "pending_review" : vis, category: String(f.get("cat")), at: Date.now() }); });
+    }
+    track("content_saved", { kind: "community" });
+    toast(vis === "public" ? "Submitted — a person reviews it before anyone else sees it" : vis === "shared" ? "Saved — shared once it's approved" : "Saved privately");
+    router.push("/app/community");
   };
   return (
     <>
-      <Head title="Create a confession" sub="Type it or upload it. Your words, your visibility. Human review for anything public." />
-      <form className="form-card rv in" style={{ maxWidth: 640 }} onSubmit={(e) => {
-        e.preventDefault();
-        const f = new FormData(e.currentTarget);
-        const vis = String(f.get("vis"));
-        mutate((s) => { s.community.unshift({ slug: "mine-" + Date.now().toString(36), title: String(f.get("title") || "My confession"), text: text, visibility: vis === "mentor" ? "private" : vis, status: vis === "public" ? "pending_review" : vis === "mentor" ? "mentor_review" : vis, category: String(f.get("cat")), at: Date.now() }); });
-        track("content_saved", { kind: "community" });
-        toast(vis === "public" ? "Submitted for human review" : "Saved — " + vis);
-        router.push("/app/community");
-      }}>
-        <div className="field"><label>Title</label><input name="title" required maxLength={60} /></div>
-        <div className="field"><label>Your confession</label><textarea name="text" rows={6} required value={text} onChange={(e) => setText(e.target.value)} placeholder="Write in the first person, present tense…" /></div>
+      <Head title="Create a confession" sub="Type it or upload it. Your words, your visibility. A person reviews anything you offer to others." />
+      <form className="form-card rv in" style={{ maxWidth: 640 }} onSubmit={submit}>
+        <div className="field"><label htmlFor="cc-title">Title</label><input id="cc-title" name="title" required maxLength={60} /></div>
+        <div className="field"><label htmlFor="cc-text">Your confession</label><textarea id="cc-text" name="text" rows={6} required maxLength={1900} value={text} onChange={(e) => setText(e.target.value)} placeholder="Write in the first person, present tense…" /><span className="small">{text.length} / 1,900</span></div>
         <div className="field"><label>…or upload it</label>
           <label className="upload-box" htmlFor="conf-file"><Icon n="dl" s={16} /> <span>{text ? "Replace from a file (.txt / .md)" : "Upload a text file (.txt / .md)"}</span></label>
           <input id="conf-file" type="file" accept=".txt,.md,text/plain,text/markdown" style={{ display: "none" }} onChange={onFile} /></div>
-        <div className="field"><label>Category</label><select name="cat">{CATEGORIES.map((c) => <option value={c.slug} key={c.slug}>{c.name}</option>)}</select></div>
-        <div className="field"><label>Visibility</label><select name="vis"><option value="private">Private — only me, forever</option><option value="shared">Shared — anyone with my link</option><option value="public">Public — submit for human review</option><option value="mentor">Mentor — Premium written feedback, never published</option></select></div>
-        <button className="btn btn-primary btn-lg" type="submit" style={{ marginTop: 18 }}>Save</button>
+        <div className="field"><label htmlFor="cc-vis">Visibility</label><select id="cc-vis" name="vis"><option value="private">Private — only me</option><option value="shared">Shared — people I share it with, after review</option><option value="public">Community — everyone, after review</option></select></div>
+        <button className="btn btn-primary btn-lg" type="submit" style={{ marginTop: 18 }} disabled={busy}>{busy ? "Saving…" : "Save"}</button>
       </form>
     </>
   );
 }
+type MyPost = { id: string; body: string; visibility: string; status: string; created_at: string };
+const POST_STATUS: Record<string, string> = { submitted: "in review", under_review: "in review", approved: "approved", published: "published", rejected: "declined", archived: "archived", draft: "draft" };
+/** A post's first line is its title; the rest is the confession. */
+const splitPost = (body: string) => { const [first, ...rest] = body.split("\n"); return { title: first.slice(0, 80) || "Untitled", text: rest.join("\n").trim() || first }; };
+const postTag = (p: { visibility: string; status: string }) => p.visibility === "private" ? "private" : POST_STATUS[p.status] || p.status;
+
+function CommunityList() {
+  const st = useApp(); const auth = useAuth();
+  const mine = useApiData<{ posts: MyPost[] }>(auth.token, "/me/community/posts");
+  const create = <Link className="btn btn-primary btn-sm" href="/app/community/create"><Icon n="plus" s={12} /> Create</Link>;
+  const rows = auth.token
+    ? (mine.data?.posts || []).map((p) => ({ key: p.id, href: `/app/community/${p.id}`, title: splitPost(p.body).title, at: new Date(p.created_at), tag: postTag(p) }))
+    : st.community.map((c) => ({ key: c.slug, href: `/app/community/${c.slug}`, title: c.title, at: new Date(c.at), tag: c.status.replace("_", " ") }));
+  const inReview = rows.filter((r) => r.tag === "in review").length;
+  const published = rows.filter((r) => r.tag === "published" || r.tag === "approved").length;
+  return (
+    <>
+      <Head title="Community" sub="Private by default. Shared intentionally." right={create} />
+      <div className="form-card rv in" style={{ maxWidth: 640, marginBottom: 20 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><div><h4>Your words</h4><p className="small">{published} published · {inReview} in review · a person reviews anything you offer to the community</p></div><span className="tag shared">reviewed</span></div>
+      </div>
+      {auth.token && mine.loading ? <p className="small">Loading your confessions…</p>
+        : auth.token && mine.error ? <div className="feature-notice" role="alert"><p>{mine.error.message}</p><button className="btn btn-ghost btn-sm" onClick={mine.reload}>Retry</button></div>
+        : rows.length ? rows.map((r) => <Link className="list-row" href={r.href} key={r.key} style={{ display: "flex" }}><div className="lr-main"><h4>{r.title}</h4><p>{r.at.toLocaleDateString()}</p></div><span className={"tag " + (r.tag === "in review" ? "pending" : r.tag === "private" ? "private" : "shared")}>{r.tag}</span></Link>)
+        : <EmptyState icon="edit" title="No confessions yet" sub="Write your first words — they stay private unless you say otherwise." />}
+    </>
+  );
+}
+
 function CommunityDetail({ slug }: { slug: string }) {
-  const st = useApp(); const c = st.community.find((x) => x.slug === slug);
+  const st = useApp(); const auth = useAuth();
+  const mine = useApiData<{ posts: MyPost[] }>(auth.token, "/me/community/posts");
+  if (auth.token) {
+    if (mine.loading) return <p className="small">Loading…</p>;
+    const p = mine.data?.posts.find((x) => x.id === slug);
+    if (!p) return <EmptyState icon="info" title="Not found" sub="This confession doesn't exist, or isn't yours." />;
+    const { title, text } = splitPost(p.body);
+    return <><Head title={title} sub={p.visibility === "private" ? "Private — only you can see this" : `${p.visibility === "public" ? "Community" : "Shared"} · ${POST_STATUS[p.status] || p.status}`} /><div className="form-card"><p style={{ fontSize: 16, lineHeight: 1.7, whiteSpace: "pre-wrap" }}>“{text}”</p></div></>;
+  }
+  const c = st.community.find((x) => x.slug === slug);
   if (!c) return <EmptyState icon="info" title="Not found" sub="This confession doesn't exist." />;
-  return <><Head title={c.title} sub={"Visibility: " + c.status.replace("_", " ")} /><div className="form-card"><p style={{ fontSize: 16, lineHeight: 1.7 }}>“{c.text}”</p></div><div style={{ marginTop: 16 }}><ShareBtn slug={c.slug} /></div></>;
+  return <><Head title={c.title} sub={"Visibility: " + c.status.replace("_", " ")} /><div className="form-card"><p style={{ fontSize: 16, lineHeight: 1.7 }}>“{c.text}”</p></div></>;
 }
 
 function Profile() {
@@ -472,18 +588,16 @@ function SpeedChips() {
 }
 
 function Sub({ manage }: { manage?: boolean }) {
-  const st = useApp(); const toast = useToast();
-  const prem = st.user!.plan !== "free";
+  const st = useApp();
+  const paid = st.user!.plan !== "free" && st.user!.plan !== "trial";
   return (
     <>
-      <Head title={manage ? "Manage subscription" : "Subscription"} sub={prem ? "Premium active — 7-day trial" : "Free plan"} />
-      {prem && (
-        <div className="form-card" style={{ maxWidth: 640, marginBottom: 24 }}>
-          {[["Current plan", st.user!.plan === "annual" ? "Premium Annual" : "Premium Monthly"], ["Renewal", "In 30 days (demo)"], ["Benefits", "Additional licensed voices when available · offline downloads · long sessions"]].map(([b, s]) => <div className="setting-row" key={b}><div><b>{b}</b><span>{s}</span></div></div>)}
-          <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
-            <button className="btn btn-ghost btn-sm" onClick={() => { mutate((s) => { s.user!.plan = "free"; }); track("subscription_cancelled"); toast("Subscription cancelled — you keep Premium until period end"); }}>Cancel subscription</button>
-            <button className="btn btn-ghost btn-sm" onClick={() => toast("Purchase restore checked — nothing to restore (demo).")}>Restore purchase</button>
-          </div>
+      <Head title={manage ? "Manage subscription" : "Subscription"} sub={paid ? "Premium" : st.user!.plan === "trial" ? "Premium trial" : "Free plan"} />
+      <TrialCard />
+      {paid && (
+        <div className="feature-notice" style={{ maxWidth: 640 }}>
+          <b>Premium is active.</b>
+          <p>Billing, renewal, cancellation and restoring a purchase are handled by the App Store or Google Play, wherever you subscribed.</p>
         </div>
       )}
       <div className="plan-grid">
@@ -492,7 +606,9 @@ function Sub({ manage }: { manage?: boolean }) {
             <h3 className="h3">{p.name}</h3>
             <div><span className="price">{p.prices.USD}</span> <span className="per">/ {p.interval} · {p.prices.NGN}</span></div>
             <ul>{["Additional licensed voices when available", "Offline downloads (mobile)", "Longer sessions", "7-day trial"].map((f) => <li key={f}><Icon n="check" s={14} /> {f}</li>)}</ul>
-            <button className={"btn " + (p.interval === "year" ? "btn-light" : "btn-primary")} onClick={() => { mutate((s) => { s.user!.plan = p.id; }); track("subscription_started", { plan: p.id }); toast("Premium trial started"); }}>{prem ? "Switch to " + p.name : "Start 7-day trial"}</button>
+            {/* Purchases are verified store receipts (IC-003); the web cannot take
+                payment, so it sends the listener to the app rather than faking one. */}
+            <Link className={"btn " + (p.interval === "year" ? "btn-light" : "btn-primary")} href="/download">Subscribe in the app</Link>
           </div>
         ))}
       </div>
@@ -513,10 +629,13 @@ function SearchPage() {
     </>
   );
 }
+/** Old device-local share links ("sh-<slug>") now open the public page. */
 function Shared({ token }: { token: string }) {
-  const st = useApp(); const sh = st.shared[token]; const c = sh && confBySlug(sh.slug);
-  if (!c) return <div style={{ maxWidth: 520, margin: "40px auto" }}><EmptyState icon="share" title="This share link has expired or doesn't exist" sub="Shared links live only as long as the sharer wants." /></div>;
-  return <><Head title="Shared with you" sub={c.category} /><div className="form-card"><p style={{ fontSize: 18, lineHeight: 1.7 }}>“{c.long}”</p>{c.scriptures.map((s, i) => <div className="scripture" key={i}><b>{s.book} {s.chapter}:{s.verse}</b></div>)}</div><div style={{ marginTop: 16 }}><PlayBtn slug={c.slug} /></div></>;
+  const router = useRouter();
+  const c = token.startsWith("sh-") ? confBySlug(token.slice(3)) : undefined;
+  useEffect(() => { if (c) router.replace(`/confessions/${c.slug}`); }, [c, router]);
+  if (!c) return <div style={{ maxWidth: 520, margin: "40px auto" }}><EmptyState icon="share" title="This link doesn't open anything" sub="Shared confessions open on their public page." cta={<Link className="btn btn-primary" href="/confessions">Browse confessions</Link>} /></div>;
+  return <p className="small">Opening…</p>;
 }
 function Invite() {
   const toast = useToast();
@@ -531,33 +650,62 @@ function Invite() {
     </>
   );
 }
+/** Feedback reaches the same support inbox as the contact form (POST /contact). */
 function FeedbackForm() {
-  const toast = useToast();
-  return <form className="form-card" style={{ maxWidth: 560 }} onSubmit={(e) => { e.preventDefault(); toast("Thank you — feedback recorded"); (e.target as HTMLFormElement).reset(); }}>
-    <div className="field"><label>What's on your mind?</label><textarea rows={5} required /></div>
+  const toast = useToast(); const auth = useAuth(); const st = useApp();
+  return <form className="form-card" style={{ maxWidth: 560 }} onSubmit={async (e) => {
+    e.preventDefault();
+    const form = e.currentTarget;
+    const message = String(new FormData(form).get("msg") || "").trim();
+    const email = auth.user?.email || st.user?.email || "";
+    if (!email) { toast("Sign in, or use the contact page, so we can reply."); return; }
+    const r = await appApi("/contact", { method: "POST", body: { name: auth.user?.display_name || st.user?.name || "Listener", email, message: "[In-app feedback]\n\n" + message } });
+    if (!r.ok) { toast(r.message); return; }
+    toast("Thank you — your feedback reached the team"); form.reset();
+  }}>
+    <div className="field"><label htmlFor="fb-msg">What's on your mind?</label><textarea id="fb-msg" name="msg" rows={5} required maxLength={4000} /></div>
     <button className="btn btn-primary" type="submit" style={{ marginTop: 14 }}>Send</button>
   </form>;
 }
 
-function SaveOffline({ slug }: { slug: string }) {
-  const st = useApp(); const toast = useToast();
-  const on = st.downloads.includes(slug);
+/** Offline listening is a mobile-app feature: the app takes a licence
+ *  (POST /me/downloads) and stores the audio. A browser caches nothing, so the
+ *  web never claims to have saved anything offline. */
+/** The account's offline licences, taken in the mobile app. */
+function DownloadsPage() {
+  const auth = useAuth();
+  const list = useApiData<{ downloads: { id: string; title?: string; duration_seconds: number; expires_at?: string }[]; limit: number; used: number }>(auth.token, "/me/downloads");
+  const cta = <Link className="btn btn-primary btn-sm" href="/download">Get the app</Link>;
   return (
-    <button className="btn btn-ghost" onClick={() => {
-      if (!on && st.user?.plan === "free") { toast("Offline downloads are a Premium feature"); return; }
-      mutate((s) => { s.downloads = on ? s.downloads.filter((x) => x !== slug) : [...s.downloads, slug]; });
-      toast(on ? "Removed from offline" : "Saved for offline");
-    }}>{on ? "Saved offline ✓" : "Save for offline"}</button>
+    <>
+      <Head title="Downloads" sub="Offline listening lives in the I CONFESS mobile app (Premium). Downloads you make there are listed here." right={cta} />
+      {list.loading ? <p className="small">Loading…</p>
+        : list.error ? <div className="feature-notice" role="alert"><p>{list.error.message}</p><button className="btn btn-ghost btn-sm" onClick={list.reload}>Retry</button></div>
+        : list.data && list.data.downloads.length ? <>
+          <p className="small" style={{ marginBottom: 12 }}>{list.data.used} of {list.data.limit} offline slots used</p>
+          {list.data.downloads.map((d) => <div className="list-row" key={d.id}><div className="lr-main"><h4>{d.title || "Confession"}</h4><p>{Math.round(d.duration_seconds / 60) || 1} min{d.expires_at ? ` · offline until ${new Date(d.expires_at).toLocaleDateString()}` : ""}</p></div><span className="tag private">offline</span></div>)}
+        </>
+        : <EmptyState icon="dl" title="Nothing downloaded yet" sub="In the mobile app, save any confession for bad-network mornings. It will appear here." cta={cta} />}
+    </>
   );
 }
 
+function SaveOffline({ slug: _slug }: { slug: string }) {
+  return <Link className="btn btn-ghost" href="/download"><Icon n="dl" s={14} /> Listen offline in the app</Link>;
+}
+
 function JournalApp() {
-  const st = useApp(); const toast = useToast();
+  const st = useApp(); const toast = useToast(); const auth = useAuth();
+  const [saving, setSaving] = useState(false);
   const [title, setTitle] = useState(""); const [text, setText] = useState(""); const [mood, setMood] = useState("Grateful"); const [audioNote, setAudioNote] = useState("");
-  const save = (e: React.FormEvent) => {
+  const save = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!text.trim()) { toast("Write a line first"); return; }
-    mutate((s) => { s.journals.unshift({ id: Date.now(), date: new Date().toISOString(), title: title.trim() || "Entry — " + new Date().toLocaleDateString(), text: text.trim(), mood, audio: audioNote || undefined }); }); setAudioNote("");
+    setSaving(true);
+    const r = await addJournal(auth.token, { title: title.trim() || "Entry — " + new Date().toLocaleDateString(), text: text.trim(), mood, audio: auth.token ? undefined : audioNote || undefined });
+    setSaving(false);
+    if (!r.ok) { toast(r.message); return; }
+    setAudioNote("");
     track("content_saved", { kind: "journal" });
     toast("Journal saved — private to you");
     setTitle(""); setText("");
@@ -570,7 +718,7 @@ function JournalApp() {
           <div className="chip-row">{["Grateful", "Hopeful", "Heavy", "Quiet", "Bold"].map((m) => <button type="button" className="chip" key={m} aria-pressed={mood === m} onClick={() => setMood(m)}>{m}</button>)}</div></div>
         <div className="field"><label>Title (optional)</label><input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={80} placeholder={new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })} /></div>
         <div className="field"><label>Entry</label><textarea rows={6} value={text} onChange={(e) => setText(e.target.value)} placeholder="What did the words meet in you today?" /></div>
-        <div className="field"><label>Voice note (optional, 30s, stays private)</label>
+        {!auth.token && <div className="field"><label>Voice note (optional, 30s, stays on this device)</label>
           <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
             <button type="button" className="btn btn-ghost" onClick={() => {
               const MR = (window as any).MediaRecorder; if (!MR) { toast("Recording not supported here"); return; }
@@ -582,15 +730,15 @@ function JournalApp() {
               }).catch(() => toast("Microphone permission denied"));
             }}><Icon n="mic" s={14} /> Record</button>
             {audioNote && <><span className="tag private">attached</span><audio controls src={audioNote} style={{ height: 36, flex: 1 }} /><button type="button" className="icon-btn" aria-label="Remove voice note" onClick={() => setAudioNote("")}><Icon n="x" s={12} /></button></>}
-          </div></div>
-        <button className="btn btn-primary btn-lg" type="submit" style={{ marginTop: 16 }}>Save entry</button>
+          </div></div>}
+        <button className="btn btn-primary btn-lg" type="submit" style={{ marginTop: 16 }} disabled={saving}>{saving ? "Saving…" : "Save entry"}</button>
       </form>
       <div style={{ maxWidth: 640, marginTop: 24, display: "flex", flexDirection: "column", gap: 14 }}>
         {st.journals.map((j) => (
           <div className="form-card rv in" key={j.id}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
               <div><span className="tag private">{j.mood}</span><h4 style={{ marginTop: 8 }}>{j.title}</h4><p className="small">{new Date(j.date).toLocaleString()}</p></div>
-              <button className="icon-btn" aria-label="Delete entry" onClick={() => { mutate((s) => { s.journals = s.journals.filter((x) => x.id !== j.id); }); toast("Entry deleted"); }}><Icon n="x" s={14} /></button>
+              <button className="icon-btn" aria-label="Delete entry" onClick={async () => { const r = await deleteJournal(auth.token, j.id); toast(r.ok ? "Entry deleted" : r.message); }}><Icon n="x" s={14} /></button>
             </div>
             <p style={{ marginTop: 12, lineHeight: 1.7 }}>{j.text}</p>{j.audio && <audio controls src={j.audio} style={{ marginTop: 10, width: "100%", height: 36 }} />}
           </div>
@@ -601,19 +749,19 @@ function JournalApp() {
 }
 
 function MemoryApp() {
-  const st = useApp(); const toast = useToast();
+  const st = useApp(); const toast = useToast(); const auth = useAuth();
   const now = Date.now();
   const due = st.memory.filter((m) => m.due <= now);
   const [reveal, setReveal] = useState<string | null>(null);
-  const addToday = () => {
+  const addToday = async () => {
     const c = CONFESSIONS[(new Date().getDate() + st.memory.length) % CONFESSIONS.length];
     const sc = c.scriptures[0];
-    if (st.memory.some((m) => m.ref === `${sc.book} ${sc.chapter}:${sc.verse}`)) { toast("Already in your memory box"); return; }
-    mutate((s) => { s.memory.push({ ref: `${sc.book} ${sc.chapter}:${sc.verse}`, text: c.short, title: c.title, box: 0, due: Date.now() }); });
-    toast("Added to memory practice");
+    const r = await addMemoryVerse(auth.token, { ref: `${sc.book} ${sc.chapter}:${sc.verse}`, text: c.short, title: c.title });
+    toast(!r.ok ? r.message : r.existed ? "Already in your memory box" : "Added to memory practice");
   };
-  const grade = (ref: string, up: boolean) => {
-    mutate((s) => { const m = s.memory.find((x) => x.ref === ref); if (!m) return; m.box = up ? Math.min(m.box + 1, 5) : 0; m.due = Date.now() + [1, 1, 3, 7, 14, 30][m.box] * 864e5; });
+  const grade = async (ref: string, up: boolean) => {
+    const r = await reviewMemoryVerse(auth.token, ref, up);
+    if (!r.ok) toast(r.message);
     setReveal(null);
   };
   return (
@@ -634,55 +782,24 @@ function MemoryApp() {
   );
 }
 
+/** Not built yet: needs real invitations between accounts. Says so plainly
+ *  instead of storing a fake pairing in this browser. */
 function PartnersApp() {
-  const st = useApp(); const toast = useToast();
-  const [name, setName] = useState("");
-  const week = Math.floor(Date.now() / (7 * 864e5));
-  const shared = CONFESSIONS[week % CONFESSIONS.length];
-  const pair = (e: React.FormEvent) => {
-    e.preventDefault();
-    mutate((s) => { s.partners = [{ name: name.trim() || "Partner", code: "IC-" + Math.random().toString(36).slice(2, 7).toUpperCase(), since: Date.now() }]; });
-    track("partner_paired"); toast("Paired — one confession a week, both ways");
-  };
   return (
     <>
-      <Head title="Practice partner" sub="A consensual 1:1 pairing. One confession a week, shared both ways. Unpair any time." />
-      {st.partners.length ? (
-        <>
-          <div className="big-tile rv in"><div><span className="eyebrow on-dark">This week, you and {st.partners[0].name}</span><h3 style={{ marginTop: 8 }}>{shared.title}</h3><p>“{shared.medium}”</p><p className="small" style={{ marginTop: 8, color: "var(--tint2)" }}>Paired since {new Date(st.partners[0].since).toLocaleDateString()} · code {st.partners[0].code}</p></div><div style={{ display: "flex", gap: 10 }}><PlayBtn slug={shared.slug} /><button className="btn btn-ghost on-dark" onClick={() => { mutate((s) => { s.partners = []; }); toast("Unpaired"); }}>Unpair</button></div></div>
-          <div className="form-card rv in" style={{ marginTop: 16, maxWidth: 640 }}><p className="small">Sharing is double opt-in: your partner sees only the weekly confession and never your history, journal or private words.</p></div>
-        </>
-      ) : (
-        <form className="form-card rv in" style={{ maxWidth: 560 }} onSubmit={pair}>
-          <div className="field"><label>Partner's first name</label><input value={name} onChange={(e) => setName(e.target.value)} required maxLength={30} /></div>
-          <div className="field"><label>Their pairing code (they get one when they accept)</label><input placeholder="IC-XXXXX" pattern="IC-[A-Z0-9]{5}" required /></div>
-          <button className="btn btn-primary btn-lg" type="submit" style={{ marginTop: 16 }}>Pair up</button>
-        </form>
-      )}
+      <Head title="Practice partner" sub="A consensual 1:1 pairing: one confession a week, shared both ways." />
+      <EmptyState icon="user" title="Not available yet" sub="Pairing needs both people to accept an invitation, and that isn't built yet. Until it is, nothing here pretends to pair you. Share a confession's public link with someone instead." cta={<Link className="btn btn-primary" href="/app/explore">Back to the library</Link>} />
     </>
   );
 }
 
+/** Not built yet: needs real invitations between accounts. Says so plainly
+ *  instead of storing a fake pairing in this browser. */
 function FamilyApp() {
-  const st = useApp(); const toast = useToast();
-  const [nm, setNm] = useState(""); const [role, setRole] = useState("guardian"); const [band, setBand] = useState("16+");
-  if (st.user?.plan === "free") return <><Head title="Family space" /><EmptyState icon="lock" title="A Premium space" sub="Two guardians plus children, an age-appropriate library and one shared family routine." cta={<Link className="btn btn-primary" href="/premium">See Premium</Link>} /></>;
-  const suggest = (b: string) => b === "Under 10" ? ["children", "family", "gratitude", "joy", "hope"] : b === "11–15" ? ["identity", "confidence", "purpose", "relationships", "discipline"] : [];
   return (
     <>
-      <Head title="Family space" sub="Guardians and kids. Age-appropriate words, one shared routine, nothing tracked on children." />
-      <form className="form-card rv in" style={{ maxWidth: 640 }} onSubmit={(e) => { e.preventDefault(); mutate((s) => { s.family.push({ id: Date.now(), name: nm.trim(), role, band }); }); toast(nm + " added"); setNm(""); }}>
-        <div className="field"><label>Name</label><input value={nm} onChange={(e) => setNm(e.target.value)} required maxLength={30} /></div>
-        <div className="field"><label>Role</label><div className="chip-row">{["guardian", "child"].map((r) => <button type="button" className="chip" key={r} aria-pressed={role === r} onClick={() => setRole(r)}>{r}</button>)}</div></div>
-        <div className="field"><label>Age band</label><div className="chip-row">{["Under 10", "11–15", "16+"].map((b) => <button type="button" className="chip" key={b} aria-pressed={band === b} onClick={() => setBand(b)}>{b}</button>)}</div></div>
-        <button className="btn btn-primary btn-lg" type="submit" style={{ marginTop: 14 }}>Add member</button>
-      </form>
-      {st.family.map((f) => (
-        <div className="form-card rv in" key={f.id} style={{ maxWidth: 640, marginTop: 14 }}>
-          <div style={{ display: "flex", justifyContent: "space-between" }}><div><h4>{f.name}</h4><p className="small">{f.role} · {f.band}</p></div><button className="icon-btn" aria-label={"Remove " + f.name} onClick={() => mutate((s) => { s.family = s.family.filter((x) => x.id !== f.id); })}><Icon n="x" s={12} /></button></div>
-          {suggest(f.band).length > 0 && <><p className="small" style={{ marginTop: 10 }}>Suggested library:</p><div className="chip-row" style={{ marginTop: 6 }}>{suggest(f.band).map((c) => <Link className="chip" key={c} href={`/categories/${c}`}>{catBySlug(c)?.name}</Link>)}</div></>}
-        </div>
-      ))}
+      <Head title="Family space" sub="Guardians and children, age-appropriate words and one shared routine." />
+      <EmptyState icon="user" title="Not available yet" sub="Family accounts need guardian consent and linked accounts, which aren't built yet. Until they are, nothing here pretends to add anyone." cta={<Link className="btn btn-primary" href="/app/explore">Back to the library</Link>} />
     </>
   );
 }
@@ -717,7 +834,7 @@ function WidgetApp() {
     <>
       <Head title="Home-screen widget" sub="Today's one line and a play button, one tap from your phone. The web equivalent ships now; native widgets land with the mobile beta." />
       <div className="widget-mock rv in" aria-label="Widget preview">
-        <span className="small" style={{ color: "var(--tint2)" }}>iCONFESS · today</span>
+        <span className="small" style={{ color: "var(--tint2)" }}>I CONFESS · today</span>
         <h4 style={{ color: "#fff", marginTop: 6 }}>{t.title}</h4>
         <p className="small" style={{ color: "var(--tint2)", marginTop: 4 }}>“{t.short}”</p>
         <span className="orb" style={{ marginTop: 12 }} aria-hidden="true"><Icon n="play" s={14} /></span>
@@ -731,13 +848,11 @@ function WidgetApp() {
   );
 }
 
-function PackCard({ id, title, desc, cats }: { id: string; title: string; desc: string; cats: string[] }) {
-  const st = useApp(); const toast = useToast();
-  const on = st.downloads.includes("pack:" + id);
+function PackCard({ title, desc, cats }: { id: string; title: string; desc: string; cats: string[] }) {
   return (
     <div className="tile"><span className="t-meta">Pack</span><h4>{title}</h4><p>{desc}</p>
       <div style={{ display: "flex", gap: 10, marginTop: 10, flexWrap: "wrap" }}><MixBtn cats={cats} label="Queue pack" />
-      <button className="btn btn-ghost btn-sm" onClick={() => { if (st.user?.plan === "free") { toast("Mixtapes are a Premium feature"); return; } mutate((x) => { x.downloads = on ? x.downloads.filter((d) => d !== "pack:" + id) : [...x.downloads, "pack:" + id]; }); toast(on ? "Pack removed" : "Pack saved offline"); }}>{on ? "Saved ✓" : "Save offline"}</button></div>
+      <Link className="btn btn-ghost btn-sm" href="/download">Offline in the app</Link></div>
     </div>
   );
 }

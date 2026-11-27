@@ -183,7 +183,7 @@ func (h *Handler) searchAll(w http.ResponseWriter, r *http.Request) {
 // The last 501 stubs on this surface were removed in PHASE 31: the moderation
 // queue, user-confession review and confession QA now have a store and live in
 // internal/api/moderation.go. The original six are all real; see
-// docs/AUDIT-2026-09-05.md for the audit that listed them.
+// docs/audits/AUDIT-2026-09-05.md for the audit that listed them.
 
 // recommendations lives in recommendations.go (PHASE 43): the v1 body that
 // stood here ranked on explicit interests alone and left the behavioural

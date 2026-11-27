@@ -32,7 +32,7 @@ type AuthState = {
   user: AuthUser | null;
   token: string | null;
   loading: boolean;
-  login: (email: string, password: string, code?: string) => Promise<{ ok: boolean; error?: string; mfaRequired?: boolean }>;
+  login: (email: string, password: string, code?: string) => Promise<{ ok: boolean; error?: string; mfaRequired?: boolean; user?: AuthUser }>;
   logout: () => void;
   setToken: (token: string, user: AuthUser) => void;
 };
@@ -110,7 +110,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (res.code === "mfa_required") return { ok: false, mfaRequired: true, error: res.message };
       if (!res.ok) return { ok: false, error: res.message ?? "That didn't work." };
       if (res.token && res.user) setToken(res.token, res.user);
-      return { ok: true };
+      return { ok: true, user: res.user };
     },
     [setToken],
   );

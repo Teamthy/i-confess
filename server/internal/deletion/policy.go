@@ -117,6 +117,10 @@ var Policies = []TablePolicy{
 	// history is a record of what a person prayed about, which is exactly the
 	// kind of data a deletion request is usually about.
 	{Table: "playback_history", Action: Erase},
+	// ---- Private study data (0037): a journal and the verses someone is
+	// memorising are among the most personal things the service holds.
+	{Table: "journal_entries", Action: Erase},
+	{Table: "memory_verses", Action: Erase},
 	{Table: "playback_progress", Action: Erase},
 	{Table: "audio_playback_sessions", Action: Erase},
 	{Table: "audio_downloads", Action: Erase},
@@ -193,6 +197,8 @@ var Policies = []TablePolicy{
 	// The measured journey is personal in the same way the trial row is: it
 	// names which days this person listened. Erased with the account.
 	{Table: "trial_day_completions", Action: Erase},
+	// Which sessions the journey built for each day: personal in the same way.
+	{Table: "trial_day_sessions", Action: Erase},
 	// A block names two people, and the row exists only because one of them
 	// asked for it. It goes when either leaves: it is not a record of anything
 	// that happened to the blocked account, it is a preference of the blocker.

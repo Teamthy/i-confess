@@ -21,7 +21,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const parsed = parseReference(text);
   return {
     title: parsed ? text : "Bible passage",
-    description: parsed ? `Read ${text} in the iCONFESS Bible reader.` : "Read Scripture in the iCONFESS Bible reader.",
+    description: parsed ? `Read ${text} in the I CONFESS Bible reader.` : "Read Scripture in the I CONFESS Bible reader.",
     alternates: { canonical: `/bible/passage/${reference.map(encodeURIComponent).join("/")}` },
   };
 }

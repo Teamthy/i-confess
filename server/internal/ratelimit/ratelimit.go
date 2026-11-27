@@ -44,6 +44,9 @@ var (
 	// EmailSend covers reset and verification resends, which cost money and
 	// can be used to spam a third party's inbox (§17).
 	EmailSend = Rule{Burst: 4, Window: 15 * time.Minute}
+	// PublicForm covers the site's newsletter and contact forms, each in its
+	// own bucket so neither eats into the reset/verification budget.
+	PublicForm = Rule{Burst: 5, Window: 15 * time.Minute}
 	// BibleSearch allows interactive reading while bounding automated corpus scraping.
 	BibleSearch = Rule{Burst: 60, Window: time.Minute}
 	// ReportSubmission bounds how fast one account can create moderator work.

@@ -32,7 +32,7 @@ export function DeviceVoicePicker({ id = "device-voice" }: { id?: string }) {
       {settings.deviceVoice && !audio.deviceVoices.some((v) => v.voiceURI === settings.deviceVoice) && <option value={settings.deviceVoice}>Saved voice unavailable on this device — using automatic</option>}
       {audio.deviceVoices.map((voice) => <option key={`${voice.voiceURI}-${voice.lang}`} value={voice.voiceURI}>{voice.name} · {voice.lang}{voice.localService ? " · on-device" : " · online"}</option>)}
     </select>
-    <p className="small" style={{ marginTop: 6 }}>{!audio.speechAvailable ? "Speech synthesis is not supported by this browser. Published audio can still play." : selected ? `Currently using ${selected.name}. Device speech is not a recording of a published iCONFESS voice.` : "Your browser has not listed its voices yet. It can use its default voice; installed voices vary by device."}</p>
+    <p className="small" style={{ marginTop: 6 }}>{!audio.speechAvailable ? "Speech synthesis is not supported by this browser. Published audio can still play." : selected ? `Currently using ${selected.name}. Device speech is not a recording of a published I CONFESS voice.` : "Your browser has not listed its voices yet. It can use its default voice; installed voices vary by device."}</p>
   </div>;
 }
 export function VoicePreferences() {

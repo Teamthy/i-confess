@@ -8,7 +8,7 @@
 
 ### P0 — prerequisites before releasing the minister voice
 
-- [ ] **Voice licensing and real-speech evaluation (P0-1/P0-2).** Identify the exact engine and checkpoint, verify commercial licensing and applicable voice rights, and document approvals before enabling production. Obtain an authorized real-speech sample and assess output, including speaker similarity and human listening; signal-level golden tests do not establish voice quality. Evidence: `docs/model_licenses.json` has `production_allowed: false` and unverified checkpoint fields; `AUDIT-VOICE-ENGINE-2026-10-06.md`, Appendix C, records both blockers. Requires legal/rights and content decisions, not only code.
+- [ ] **Voice licensing and real-speech evaluation (P0-1/P0-2).** Identify the exact engine and checkpoint, verify commercial licensing and applicable voice rights, and document approvals before enabling production. Obtain an authorized real-speech sample and assess output, including speaker similarity and human listening; signal-level golden tests do not establish voice quality. Evidence: `docs/model_licenses.json` has `production_allowed: false` and unverified checkpoint fields; `docs/audits/AUDIT-VOICE-ENGINE-2026-10-06.md`, Appendix C, records both blockers. Requires legal/rights and content decisions, not only code.
 
 ### P1 — security and correctness
 

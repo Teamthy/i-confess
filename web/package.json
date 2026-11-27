@@ -10,7 +10,8 @@
     "dev:api": "node ../scripts/dev-api.mjs",
     "bible:corpus": "python3 ../scripts/dev-bible-corpus.py",
     "test:transcript": "tsc --jsx react-jsx --module commonjs --target es2020 --esModuleInterop --skipLibCheck --outDir node_modules/.cache/transcript-test components/transcript-text.tsx && node --test tests/transcript-text.test.cjs",
-    "test:sound": "tsc --module commonjs --target es2020 --skipLibCheck --outDir node_modules/.cache/sound-test lib/sound-engine.ts lib/preferences.ts && node --test tests/sound-engine.test.cjs"
+    "test:sound": "tsc --module commonjs --target es2020 --skipLibCheck --outDir node_modules/.cache/sound-test lib/sound-engine.ts lib/preferences.ts && node --test tests/sound-engine.test.cjs",
+    "test:safe-next": "tsc --module commonjs --target es2020 --skipLibCheck --outDir node_modules/.cache/safe-next-test lib/safe-next.ts && node --test tests/safe-next.test.cjs"
   },
   "dependencies": {
     "next": "15.5.29",

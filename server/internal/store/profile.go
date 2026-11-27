@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"strings"
 
@@ -170,15 +171,16 @@ func (s *ProfileStore) usernameTaken(ctx context.Context, username, excludeUserI
 func (s *ProfileStore) Preferences(ctx context.Context, userID string) (*models.UserPreferences, error) {
 	p := &models.UserPreferences{UserID: userID}
 	var voiceID sql.NullString
+	var clientSettings string
 
 	err := s.db.QueryRowContext(ctx,
 		`SELECT id, user_id, default_duration, default_voice_id, autoplay, preferred_quality,
 		        download_over_wifi, notifications_enabled, recommendations_enabled,
-		        personalization_enabled, language, theme, updated_at
+		        personalization_enabled, language, theme, updated_at, COALESCE(client_settings,'{}')
 		 FROM user_preferences WHERE user_id = ?`, userID).
 		Scan(&p.ID, &p.UserID, &p.DefaultDuration, &voiceID, &p.Autoplay, &p.PreferredQuality,
 			&p.DownloadOverWifi, &p.NotificationsEnabled, &p.RecommendationsEnabled,
-			&p.PersonalizationEnabled, &p.Language, &p.Theme, &p.UpdatedAt)
+			&p.PersonalizationEnabled, &p.Language, &p.Theme, &p.UpdatedAt, &clientSettings)
 
 	if errors.Is(err, sql.ErrNoRows) {
 		return s.createPreferences(ctx, userID)
@@ -187,6 +189,7 @@ func (s *ProfileStore) Preferences(ctx context.Context, userID string) (*models.
 		return nil, err
 	}
 	p.DefaultVoiceID = voiceID.String
+	p.ClientSettings = json.RawMessage(clientSettings)
 	return p, nil
 }
 
@@ -196,7 +199,7 @@ func (s *ProfileStore) createPreferences(ctx context.Context, userID string) (*m
 		DefaultDuration: 1800, Autoplay: true, PreferredQuality: "standard",
 		DownloadOverWifi: true, NotificationsEnabled: true,
 		RecommendationsEnabled: true, PersonalizationEnabled: true,
-		Language: "en", Theme: "system", UpdatedAt: now(),
+		Language: "en", Theme: "system", UpdatedAt: now(), ClientSettings: json.RawMessage("{}"),
 	}
 	_, err := s.db.ExecContext(ctx,
 		`INSERT INTO user_preferences (id,user_id,updated_at) VALUES (?,?,?)
@@ -220,6 +223,7 @@ type PreferencesUpdate struct {
 	PersonalizationEnabled *bool
 	Language               *string
 	Theme                  *string
+	ClientSettings         *json.RawMessage
 }
 
 // UpdatePreferences applies a partial update.
@@ -237,6 +241,9 @@ func (s *ProfileStore) UpdatePreferences(ctx context.Context, userID string, u P
 
 	if u.DefaultDuration != nil {
 		add("default_duration", *u.DefaultDuration)
+	}
+	if u.ClientSettings != nil {
+		add("client_settings", string(*u.ClientSettings))
 	}
 	if u.DefaultVoiceID != nil {
 		add("default_voice_id", nullIfEmpty(*u.DefaultVoiceID))

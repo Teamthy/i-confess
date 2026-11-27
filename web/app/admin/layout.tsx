@@ -4,7 +4,7 @@ import type { Metadata } from "next";
 import { Mark } from "@/components/ui";
 
 export const metadata: Metadata = {
-  title: { default: "Admin console", template: "%s — iCONFESS admin" },
+  title: { default: "Admin console", template: "%s — I CONFESS admin" },
   robots: { index: false, follow: false },
 };
 
@@ -56,7 +56,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <Link className="adm-brand" href="/">
             <Mark s={28} />
             <span>
-              iCONFESS <b>admin</b>
+              I CONFESS <b>admin</b>
             </span>
           </Link>
           <span className="adm-badge">SUPER ADMIN CONSOLE</span>

@@ -1,13 +1,13 @@
 "use client";
 
 /* ============================================================================
-   iCONFESS web — the Bible reader.
+   I CONFESS web — the Bible reader.
 
    Reading comfort first: one column, generous measure, verse numbers that a
    screen reader announces as verses, and controls that stay out of the way.
    Everything else hangs off a selected verse — highlight, bookmark, note,
    copy, share, listen, compare, cross references, and the two actions that
-   make this a Bible inside iCONFESS rather than beside it: reflect on the
+   make this a Bible inside I CONFESS rather than beside it: reflect on the
    verse, and confess from it.
 
    Rights are the server's decision, and the reader obeys them rather than

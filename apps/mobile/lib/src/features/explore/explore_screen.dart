@@ -6,6 +6,7 @@ import 'package:iconfess_api/iconfess_api.dart';
 import '../../core/routing/routes.dart';
 import '../../core/theme/theme.dart';
 import '../../core/theme/tokens.dart';
+import '../../core/widgets/category_card.dart';
 import '../../core/widgets/screen.dart';
 import 'explore_providers.dart';
 
@@ -237,17 +238,25 @@ class _CategoryGrid extends StatelessWidget {
         ),
       );
     }
-    return Wrap(
-      spacing: IConfess.space2,
-      runSpacing: IConfess.space2,
-      children: [
-        for (final category in categories)
-          ActionChip(
-            label: Text(category.name),
-            onPressed: () =>
-                context.go(AppRoutes.categoryDetail(category.id)),
-          ),
-      ],
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      padding: EdgeInsets.zero,
+      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+        maxCrossAxisExtent: 220,
+        mainAxisSpacing: IConfess.space3,
+        crossAxisSpacing: IConfess.space3,
+        childAspectRatio: 0.74,
+      ),
+      itemCount: categories.length,
+      itemBuilder: (context, index) {
+        final category = categories[index];
+        return CategoryCard(
+          name: category.name,
+          index: index,
+          onTap: () => context.go(AppRoutes.categoryDetail(category.id)),
+        );
+      },
     );
   }
 }

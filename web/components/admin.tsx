@@ -1,7 +1,7 @@
 "use client";
 
 /* ============================================================================
-   iCONFESS web — the admin console.
+   I CONFESS web — the admin console.
 
    One web app now serves both audiences, so the console lives here rather than
    in a second Next.js project with its own visual language. Three rules keep
@@ -14,7 +14,7 @@
       a security boundary.
    2. NO SECOND DESIGN SYSTEM. The old console shipped an indigo/violet
       palette the design system had already retired. These panels use the
-      iCONFESS tokens, so the admin surface reads as the same product.
+      I CONFESS tokens, so the admin surface reads as the same product.
    3. HONEST STATES. Loading, empty, forbidden and unreachable are four
       different sentences, and none of them is a status code.
    ========================================================================= */

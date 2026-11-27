@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -161,20 +162,28 @@ func (h *Handler) getPreferences(w http.ResponseWriter, r *http.Request) {
 // updatePreferences applies a partial preference update.
 func (h *Handler) updatePreferences(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		DefaultDuration        *int    `json:"default_duration"`
-		DefaultVoiceID         *string `json:"default_voice_id"`
-		Autoplay               *bool   `json:"autoplay"`
-		PreferredQuality       *string `json:"preferred_quality"`
-		DownloadOverWifi       *bool   `json:"download_over_wifi"`
-		NotificationsEnabled   *bool   `json:"notifications_enabled"`
-		RecommendationsEnabled *bool   `json:"recommendations_enabled"`
-		PersonalizationEnabled *bool   `json:"personalization_enabled"`
-		Language               *string `json:"language"`
-		Theme                  *string `json:"theme"`
+		DefaultDuration        *int             `json:"default_duration"`
+		DefaultVoiceID         *string          `json:"default_voice_id"`
+		Autoplay               *bool            `json:"autoplay"`
+		PreferredQuality       *string          `json:"preferred_quality"`
+		DownloadOverWifi       *bool            `json:"download_over_wifi"`
+		NotificationsEnabled   *bool            `json:"notifications_enabled"`
+		RecommendationsEnabled *bool            `json:"recommendations_enabled"`
+		PersonalizationEnabled *bool            `json:"personalization_enabled"`
+		Language               *string          `json:"language"`
+		Theme                  *string          `json:"theme"`
+		ClientSettings         *json.RawMessage `json:"client_settings"`
 	}
 	if err := httpx.DecodeJSON(r, &req); err != nil {
 		writeCode(w, http.StatusBadRequest, "PROFILE_INVALID", "invalid request body")
 		return
+	}
+	if req.ClientSettings != nil {
+		var obj map[string]any
+		if len(*req.ClientSettings) > 16<<10 || json.Unmarshal(*req.ClientSettings, &obj) != nil || obj == nil {
+			writeCode(w, http.StatusBadRequest, "PROFILE_INVALID", "client_settings must be a JSON object under 16 KB")
+			return
+		}
 	}
 
 	userID := h.userID(r)
@@ -184,6 +193,7 @@ func (h *Handler) updatePreferences(w http.ResponseWriter, r *http.Request) {
 		NotificationsEnabled:   req.NotificationsEnabled,
 		RecommendationsEnabled: req.RecommendationsEnabled,
 		PersonalizationEnabled: req.PersonalizationEnabled,
+		ClientSettings:         req.ClientSettings,
 	}
 
 	if req.DefaultDuration != nil {

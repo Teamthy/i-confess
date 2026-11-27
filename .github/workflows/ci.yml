@@ -115,6 +115,7 @@ jobs:
         working-directory: .
         run: |
           python3 design/generate.py --check
+          python3 design/brand/generate.py --check
           python3 design/test_design.py
           python3 design/test_ia.py
 
@@ -355,6 +356,10 @@ jobs:
       - name: Sound engine tests
         if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
         run: ../scripts/ci-check.sh npm run test:sound
+
+      - name: Sign-in redirect guard tests
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        run: ../scripts/ci-check.sh npm run test:safe-next
 
       - name: Build
         if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}

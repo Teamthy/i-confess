@@ -1,7 +1,7 @@
 "use client";
 
 /* ============================================================================
-   iCONFESS web — the Bible domain layer.
+   I CONFESS web — the Bible domain layer.
 
    Three things live here, and nothing else does:
 
@@ -10,7 +10,7 @@
       chapter before its first request resolves, and keep drawing them when
       the catalogue is empty or unreachable.
 
-   2. THE CLIENT. Every call goes to the iCONFESS API over the same-origin
+   2. THE CLIENT. Every call goes to the I CONFESS API over the same-origin
       /api proxy. The browser never talks to a Bible provider: rights are
       evaluated server-side, and a translation the server has not approved is
       simply absent from the catalogue.
@@ -34,7 +34,7 @@ export * from "./canon";
 
 /* ------------------------------------------------- confessions ↔ scripture */
 
-/** The link that makes this a Bible inside iCONFESS rather than a Bible beside
+/** The link that makes this a Bible inside I CONFESS rather than a Bible beside
  *  it: which confessions in the reviewed corpus stand on a given verse. Built
  *  once from the same corpus the rest of the site renders. */
 export type VerseConfession = { confession: Confession; reference: string; direct: boolean };
@@ -78,7 +78,7 @@ export const confessionsForVerse = (bookID: string, chapter: number, verse: numb
 export const confessionsForChapter = (bookID: string, chapter: number): VerseConfession[] =>
   CONFESSION_INDEX.get(`${bookID}.${chapter}`) || [];
 
-/** Books the corpus cites at all — used to surface "passages iCONFESS stands
+/** Books the corpus cites at all — used to surface "passages I CONFESS stands
  *  on" without inventing a popularity metric the platform does not measure. */
 export const citedChapters: { bookID: string; chapter: number; count: number }[] = (() => {
   const counts = new Map<string, number>();

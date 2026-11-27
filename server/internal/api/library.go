@@ -8,6 +8,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/Teamthy/i-confess/internal/community"
 	"github.com/Teamthy/i-confess/internal/httpx"
 	"github.com/Teamthy/i-confess/internal/models"
 	"github.com/Teamthy/i-confess/internal/store"
@@ -351,17 +352,51 @@ func (h *Handler) exportData(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to build export")
 		return
 	}
-	profile, _ := h.profiles.Profile(ctx, userID)
-	prefs, _ := h.profiles.Preferences(ctx, userID)
-	interests, _ := h.profiles.Interests(ctx, userID)
-	notifications, _ := h.library.NotificationPreferences(ctx, userID)
-	collections, _ := h.library.Collections(ctx, userID)
-	devices, _ := h.library.Devices(ctx, userID)
-	identities, _ := h.users.ListIdentities(ctx, userID)
-	userConfessions, _ := h.eng.ListUserConfessions(ctx, userID)
-	favorites, _ := h.eng.ListFavorites(ctx, userID, "")
-	sessions, _ := h.sess.ListByUser(ctx, userID, 500)
-	schedules, _ := h.sched.ListByUser(ctx, userID)
+	// An export claims to be everything the account holds, so every section is
+	// read in full and any failed read fails the export. Before, each read had
+	// a page cap (sessions silently stopped at 20) and errors were dropped, so
+	// a person could be handed a partial file presented as complete.
+	var firstErr error
+	keep := func(err error) {
+		if err != nil && firstErr == nil && !errors.Is(err, store.ErrNotFound) {
+			firstErr = err
+		}
+	}
+	profile, err := h.profiles.Profile(ctx, userID)
+	keep(err)
+	prefs, err := h.profiles.Preferences(ctx, userID)
+	keep(err)
+	interests, err := h.profiles.Interests(ctx, userID)
+	keep(err)
+	notifications, err := h.library.NotificationPreferences(ctx, userID)
+	keep(err)
+	collections, err := h.library.Collections(ctx, userID)
+	keep(err)
+	devices, err := h.library.Devices(ctx, userID)
+	keep(err)
+	identities, err := h.users.ListIdentities(ctx, userID)
+	keep(err)
+	userConfessions, err := h.eng.ListUserConfessions(ctx, userID)
+	keep(err)
+	favorites, err := h.eng.ListFavorites(ctx, userID, "")
+	keep(err)
+	sessions, err := h.sess.ListByUser(ctx, userID, store.ExportAll)
+	keep(err)
+	schedules, err := h.sched.ListByUser(ctx, userID)
+	keep(err)
+	history, err := h.eng.History(ctx, userID, store.ExportAll)
+	keep(err)
+	posts, err := community.NewStore(h.db).ByAuthor(ctx, userID, store.ExportAll)
+	keep(err)
+	journal, err := h.study.ListJournal(ctx, userID, store.ExportAll)
+	keep(err)
+	memory, err := h.study.ListAllMemory(ctx, userID)
+	keep(err)
+	if firstErr != nil {
+		log.Printf("export: failed to read account data for %s: %v", userID, firstErr)
+		httpx.WriteError(w, http.StatusInternalServerError, "failed to build export")
+		return
+	}
 
 	// Attachment disposition so a browser saves the file rather than rendering
 	// personal data inline.
@@ -383,6 +418,10 @@ func (h *Handler) exportData(w http.ResponseWriter, r *http.Request) {
 		"sessions":                 sessions,
 		"schedules":                schedules,
 		"my_confessions":           userConfessions,
+		"listening_history":        history,
+		"community_posts":          posts,
+		"journal":                  journal,
+		"memory_verses":            memory,
 		"excluded": []string{
 			"password hashes",
 			"session and refresh tokens",

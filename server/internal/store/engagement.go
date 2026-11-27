@@ -168,12 +168,17 @@ func (s *EngagementStore) RecordPlayback(ctx context.Context, rec *models.Playba
 }
 
 func (s *EngagementStore) History(ctx context.Context, userID string, limit int) ([]models.PlaybackRecord, error) {
-	if limit <= 0 || limit > 100 {
-		limit = 50
+	q := `SELECT id,user_id,COALESCE(session_id,''),COALESCE(confession_id,''),COALESCE(duration_seconds,0),completed,skipped,listened_at
+		 FROM playback_history WHERE user_id=? ORDER BY listened_at DESC`
+	args := []any{userID}
+	if limit != ExportAll {
+		if limit <= 0 || limit > 100 {
+			limit = 50
+		}
+		q += ` LIMIT ?`
+		args = append(args, limit)
 	}
-	rows, err := s.db.QueryContext(ctx,
-		`SELECT id,user_id,COALESCE(session_id,''),COALESCE(confession_id,''),COALESCE(duration_seconds,0),completed,skipped,listened_at
-		 FROM playback_history WHERE user_id=? ORDER BY listened_at DESC LIMIT ?`, userID, limit)
+	rows, err := s.db.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
