@@ -94,13 +94,23 @@ func TestNewsletterUnsubscribeLink(t *testing.T) {
 		t.Fatal("address is still subscribed")
 	}
 
-	// Signing up again re-subscribes and rotates the token: the old link is dead.
+	// The form is anonymous, so anyone can type this address in again. That
+	// must neither put the address back on the list nor kill the link in
+	// mails already sent; the answer looks the same so the form reveals
+	// nothing, and no new token is mailed.
 	old := token
-	if code, _ := a.do("POST", "/newsletter", "", map[string]string{"email": "leaver@example.com"}); code != http.StatusAccepted || unsubscribed() {
-		t.Fatalf("re-subscribe: %d, unsubscribed=%v", code, unsubscribed())
+	token = ""
+	if code, _ := a.do("POST", "/newsletter", "", map[string]string{"email": "Leaver@Example.com"}); code != http.StatusAccepted {
+		t.Fatalf("re-subscribe: %d", code)
 	}
-	if code, _ := a.do("POST", "/newsletter/unsubscribe", "", map[string]string{"token": old}); code != http.StatusNotFound {
-		t.Fatalf("old token after re-subscribe: %d, want 404", code)
+	if !unsubscribed() {
+		t.Fatal("an anonymous sign-up undid an unsubscribe")
+	}
+	if token != "" {
+		t.Fatal("a new unsubscribe token was mailed for a known address")
+	}
+	if code, _ := a.do("POST", "/newsletter/unsubscribe", "", map[string]string{"token": old}); code != http.StatusOK {
+		t.Fatalf("old link after a repeat sign-up: %d, want 200", code)
 	}
 }
 

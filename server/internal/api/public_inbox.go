@@ -39,13 +39,18 @@ func (h *Handler) newsletterSubscribe(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusInternalServerError, "could not save your subscription")
 		return
 	}
-	if err := h.inbox.Subscribe(r.Context(), req.Email, "web", hash, time.Now()); err != nil {
+	created, err := h.inbox.Subscribe(r.Context(), req.Email, "web", hash, time.Now())
+	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "could not save your subscription")
 		return
 	}
 	// The welcome mail carries the unsubscribe link, so the address's owner
-	// can leave even if someone else typed it in.
-	if h.devTokenSink != nil {
+	// can leave even if someone else typed it in. It goes only to a new
+	// address: a known one already has a working link, and the answer below
+	// is the same either way so the form does not reveal who is on the list.
+	if !created {
+		// Nothing to send.
+	} else if h.devTokenSink != nil {
 		h.devTokenSink("newsletter_unsubscribe", req.Email, token)
 	} else if h.mail != nil {
 		h.mail.Enqueue(h.mailCfg.NewsletterWelcomeMessage(strings.TrimSpace(req.Email), token))

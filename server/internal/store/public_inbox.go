@@ -15,19 +15,27 @@ type PublicInboxStore struct{ db *db.DB }
 // NewPublicInboxStore returns a store over the given database.
 func NewPublicInboxStore(d *db.DB) *PublicInboxStore { return &PublicInboxStore{db: d} }
 
-// Subscribe records a newsletter address, idempotently, and stores the hash
-// of a fresh unsubscribe token. Re-subscribing an address that had
-// unsubscribed clears the unsubscribe and rotates the token.
-func (s *PublicInboxStore) Subscribe(ctx context.Context, email, source, unsubscribeTokenHash string, at time.Time) error {
+// Subscribe records a new newsletter address with the hash of its
+// unsubscribe token, and reports whether the address was new.
+//
+// An address already on file is left exactly as it is. The form is public
+// and anonymous, so it cannot prove it is the address's owner asking: it must
+// not undo an unsubscribe (that would put someone back on the list against
+// their wishes) and must not rotate the token (that would break the
+// unsubscribe link in every mail already sent). Coming back after leaving
+// needs a confirmed opt-in, which is not built yet.
+func (s *PublicInboxStore) Subscribe(ctx context.Context, email, source, unsubscribeTokenHash string, at time.Time) (created bool, err error) {
 	now := at.UTC().Format(time.RFC3339)
-	_, err := s.db.ExecContext(ctx,
+	res, err := s.db.ExecContext(ctx,
 		`INSERT INTO newsletter_subscriptions (id,email,source,unsubscribe_token_hash,created_at,updated_at)
 		 VALUES (?,?,?,?,?,?)
-		 ON CONFLICT (email) DO UPDATE SET unsubscribed_at=NULL, deleted_at=NULL,
-		   unsubscribe_token_hash=excluded.unsubscribe_token_hash, updated_at=excluded.updated_at,
-		   row_version=newsletter_subscriptions.row_version+1`,
+		 ON CONFLICT (email) DO NOTHING`,
 		newID(), strings.ToLower(strings.TrimSpace(email)), source, unsubscribeTokenHash, now, now)
-	return err
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	return n == 1, nil
 }
 
 // Unsubscribe marks the subscription holding this token hash as unsubscribed.
