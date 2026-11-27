@@ -192,7 +192,7 @@ func TestSocialSignInWithoutMFAIssuesSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	u, err := users.Create(context.Background(), "social2@test.com", hash, "Social2", "UTC")
+	_, err := users.Create(context.Background(), "social2@test.com", hash, "Social2", "UTC")
 	if err != nil {
 		t.Fatal(err)
 	}
