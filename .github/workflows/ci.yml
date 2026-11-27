@@ -357,6 +357,10 @@ jobs:
         if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
         run: ../scripts/ci-check.sh npm run test:sound
 
+      - name: Sign-in redirect guard tests
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        run: ../scripts/ci-check.sh npm run test:safe-next
+
       - name: Build
         if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
         run: ../scripts/ci-check.sh npm run build

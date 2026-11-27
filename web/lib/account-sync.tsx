@@ -17,12 +17,18 @@
    need server ids and versions, so they use the explicit actions below.
 
    Signed out (or with no API at all) the state is this device's own, as
-   before. Signing out of a synced account wipes its data from the device.
+   before. Signing out of a synced account wipes its data from the device,
+   and switching accounts wipes the previous account's data before the new
+   one loads, so a failed fetch can never show one person another's journal.
+
+   A write that the server refuses is rolled back on screen and announced,
+   so "Saved" always means saved.
    ============================================================ */
 import { useEffect, useRef } from "react";
+import { useToast } from "./ui";
 import { useAuth } from "./auth-context";
-import { appApi, newIdempotencyKey } from "./app-api";
-import { getAppState, mutate, subscribeApp, type AppState } from "./store";
+import { appApi, newIdempotencyKey, type AppApiResult } from "./app-api";
+import { defaults, getAppState, mutate, subscribeApp, type AppState } from "./store";
 import { hydrateSettings, type AppSettings } from "./preferences";
 import { CATEGORIES } from "./data";
 
@@ -71,6 +77,39 @@ export function streakFrom(history: AppState["history"]): AppState["streak"] {
 const DEVICE_ONLY: (keyof AppSettings)[] = ["deviceVoice"];
 const portable = (s: AppSettings) => { const o: Record<string, unknown> = { ...s }; for (const k of DEVICE_ONLY) delete o[k]; return o; };
 
+/**
+ * Everything personal goes; what describes the device stays: its voice, the
+ * dismissed tour card, and journal entries written here while signed out
+ * that no account has claimed yet. Entries kept for an account (`owner`) go
+ * with that account.
+ */
+export function wipePersonalData(s: AppState): void {
+  const fresh = defaults();
+  const keepJournals = s.journals.filter((j) => typeof j.id === "number" && !j.owner);
+  const deviceVoice = s.settings.deviceVoice;
+  const promoHidden = s.promoHidden;
+  Object.assign(s, fresh);
+  s.journals = keepJournals;
+  s.settings.deviceVoice = deviceVoice;
+  s.promoHidden = promoHidden;
+  s.syncedAs = null;
+}
+
+/** Every journal entry, following the API's pages (it answers 100 at a time). */
+async function allJournal(token: string): Promise<AppApiResult<{ entries: Journal[] }>> {
+  const entries: Journal[] = [];
+  let cursor = "";
+  for (let page = 0; page < 100; page++) {
+    const r = await appApi<{ entries: Journal[]; next_cursor?: string }>(
+      "/me/journal?limit=200" + (cursor ? "&cursor=" + encodeURIComponent(cursor) : ""), { token });
+    if (!r.ok) return r;
+    entries.push(...(r.data.entries || []));
+    cursor = r.data.next_cursor || "";
+    if (!cursor) break;
+  }
+  return { ok: true, data: { entries } };
+}
+
 /* ---------------- the sync ---------------- */
 
 /** Mounted once in the root layout. */
@@ -78,6 +117,8 @@ export function AccountSync() {
   const auth = useAuth();
   const userId = auth.user?.id || null;
   const hydrating = useRef(false);
+  const toast = useToast();
+  const toastRef = useRef(toast); toastRef.current = toast;
   const token = useRef(auth.token); token.current = auth.token;
 
   // Load the account's data when a session appears.
@@ -85,12 +126,14 @@ export function AccountSync() {
     if (auth.loading) return;
     if (!auth.token || !userId) {
       // Signed out of a synced account: its data must not stay on the device.
-      if (getAppState().syncedAs) mutate((s) => {
-        s.favs = []; s.history = []; s.journals = []; s.memory = []; s.community = []; s.streak = { count: 0, last: null };
-        s.user = null; s.syncedAs = null;
-      });
+      if (getAppState().syncedAs) { hydrating.current = true; mutate(wipePersonalData); hydrating.current = false; }
       return;
     }
+    // Another account was loaded here and nobody signed out (a second person
+    // signed in over it). Clear it now, before any fetch can fail and leave a
+    // field holding the previous person's data under the new person's name.
+    const prior = getAppState().syncedAs;
+    if (prior && prior !== userId) { hydrating.current = true; mutate(wipePersonalData); hydrating.current = false; }
     let cancelled = false;
     void (async () => {
       const t = auth.token!;
@@ -100,7 +143,7 @@ export function AccountSync() {
         appApi<Fav[]>("/me/favorites?type=confession", { token: t }),
         appApi<Play[]>("/me/history", { token: t }),
         appApi<{ subscription: { plan: string }; interests: string[] }>("/me/bootstrap", { token: t }),
-        appApi<{ entries: Journal[] }>("/me/journal", { token: t }),
+        allJournal(t),
         appApi<{ verses: Verse[] }>("/me/memory", { token: t }),
         appApi<{ client_settings?: Record<string, unknown> }>("/me/preferences", { token: t }),
         appApi<{ id: string; slug: string }[]>("/categories"),
@@ -119,14 +162,24 @@ export function AccountSync() {
         }
         if (favs.ok) favs.data = [...serverFavs].map((id) => ({ entity_type: "confession", entity_id: id }));
       }
+      // Entries that cannot join the account stay on this device rather than
+      // vanish: voice notes (audio is not uploaded) and any upload that failed.
+      const keptJournals: AppState["journals"] = [];
+      const keptMemory: AppState["memory"] = [];
       if (adopt) {
         for (const j of local.journals.filter((x) => typeof x.id === "number")) {
-          const r = await appApi<Journal>("/me/journal", { token: t, method: "POST", body: { title: j.title, body: j.text, mood: j.mood } });
+          if (j.audio) { keptJournals.push({ ...j, owner: userId }); continue; }
+          const r = await appApi<Journal>("/me/journal", { token: t, method: "POST", idempotencyKey: newIdempotencyKey(), body: { title: j.title, body: j.text, mood: j.mood } });
           if (r.ok && journal.ok) journal.data.entries.unshift(r.data);
+          else keptJournals.push({ ...j, owner: userId });
         }
         for (const m of local.memory.filter((x) => !x.id)) {
           const r = await appApi<{ verse: Verse }>("/me/memory", { token: t, method: "POST", body: { reference: m.ref, text: m.text, title: m.title } });
-          if (r.ok && memory.ok && !memory.data.verses.some((v) => v.id === r.data.verse.id)) memory.data.verses.push(r.data.verse);
+          if (r.ok && memory.ok) { if (!memory.data.verses.some((v) => v.id === r.data.verse.id)) memory.data.verses.push(r.data.verse); }
+          else keptMemory.push({ ...m, owner: userId });
+        }
+        if (keptJournals.length || keptMemory.length) {
+          toastRef.current("Some entries stayed on this device only. Voice notes and anything that failed to upload were kept here.");
         }
       }
 
@@ -137,6 +190,11 @@ export function AccountSync() {
         // First device for this account: its current settings become the account's.
         void appApi("/me/preferences", { token: t, method: "PATCH", body: { client_settings: portable(local.settings) } });
       }
+
+      // Device-only entries this account kept on an earlier visit.
+      const current = getAppState();
+      keptJournals.push(...current.journals.filter((j) => j.owner === userId && !keptJournals.some((k) => k.id === j.id)));
+      keptMemory.push(...current.memory.filter((m) => m.owner === userId && !keptMemory.some((k) => k.ref === m.ref)));
 
       hydrating.current = true;
       mutate((s) => {
@@ -155,8 +213,8 @@ export function AccountSync() {
           s.user.plan = boot.data.subscription?.plan === "premium" ? "premium" : boot.data.subscription?.plan === "trial" ? "trial" : "free";
           s.user.interests = (boot.data.interests || []).map((id) => catSlug.get(id)).filter((x): x is string => !!x && CATEGORIES.some((c) => c.slug === x));
         }
-        if (journal.ok) s.journals = (journal.data.entries || []).map(toJournal);
-        if (memory.ok) s.memory = (memory.data.verses || []).map(toVerse);
+        if (journal.ok) s.journals = [...(journal.data.entries || []).map(toJournal), ...keptJournals];
+        if (memory.ok) s.memory = [...(memory.data.verses || []).map(toVerse), ...keptMemory.filter((m) => !(memory.data.verses || []).some((v) => v.reference === m.ref))];
         if (hasServerSettings) s.settings = hydrateSettings({ ...serverSettings, deviceVoice: s.settings.deviceVoice });
       });
       hydrating.current = false;
@@ -168,6 +226,7 @@ export function AccountSync() {
   useEffect(() => {
     let prev = getAppState();
     let settingsTimer: ReturnType<typeof setTimeout> | undefined;
+    const failed = (message: string) => toastRef.current(message);
     const unsub = subscribeApp(() => {
       const next = getAppState();
       const before = prev; prev = next;
@@ -177,19 +236,37 @@ export function AccountSync() {
       if (next.favs !== before.favs) {
         const added = next.favs.filter((x) => !before.favs.includes(x));
         const removed = before.favs.filter((x) => !next.favs.includes(x));
+        // A refused write is undone on screen; the toast that said "Saved"
+        // is corrected rather than left standing.
+        const undo = (slug: string, wasAdded: boolean) => {
+          hydrating.current = true;
+          mutate((s) => { s.favs = wasAdded ? s.favs.filter((x) => x !== slug) : s.favs.includes(slug) ? s.favs : [...s.favs, slug]; });
+          hydrating.current = false;
+          failed(wasAdded ? "We couldn't save that favourite. Please try again." : "We couldn't remove that favourite. Please try again.");
+        };
         void libraryIndex().then(async (idx) => {
-          for (const slug of added) { const id = idx.bySlug.get(slug)?.id; if (id) await appApi("/me/favorites", { token: t, method: "POST", body: { entity_type: "confession", entity_id: id } }); }
-          for (const slug of removed) { const id = idx.bySlug.get(slug)?.id; if (id) await appApi("/me/favorites", { token: t, method: "DELETE", body: { entity_type: "confession", entity_id: id } }); }
-        }).catch(() => {});
+          for (const slug of added) {
+            const id = idx.bySlug.get(slug)?.id; if (!id) continue;
+            const r = await appApi("/me/favorites", { token: t, method: "POST", body: { entity_type: "confession", entity_id: id } });
+            if (!r.ok) undo(slug, true);
+          }
+          for (const slug of removed) {
+            const id = idx.bySlug.get(slug)?.id; if (!id) continue;
+            const r = await appApi("/me/favorites", { token: t, method: "DELETE", body: { entity_type: "confession", entity_id: id } });
+            if (!r.ok && r.status !== 404) undo(slug, false);
+          }
+        }).catch(() => failed("We couldn't reach the library to save that. Please try again."));
       }
 
       // A completed play is prepended to history by the player.
       if (next.history !== before.history && next.history.length && next.history[0] !== before.history[0] && next.history[0].at > (before.history[0]?.at || 0)) {
         const play = next.history[0];
-        void libraryIndex().then((idx) => {
+        void libraryIndex().then(async (idx) => {
           const id = idx.bySlug.get(play.slug)?.id;
-          if (id) return appApi("/me/history", { token: t, method: "POST", idempotencyKey: newIdempotencyKey(), body: { confession_id: id, completed: true } });
-        }).catch(() => {});
+          if (!id) return;
+          const r = await appApi("/me/history", { token: t, method: "POST", idempotencyKey: newIdempotencyKey(), body: { confession_id: id, completed: true } });
+          if (!r.ok) failed("This listen wasn't recorded, so it may not count toward your streak.");
+        }).catch(() => failed("This listen wasn't recorded, so it may not count toward your streak."));
         mutate((s) => { s.streak = streakFrom(s.history); });
       }
 
@@ -199,12 +276,15 @@ export function AccountSync() {
           const rows = cats.ok && Array.isArray(cats.data) ? cats.data : [];
           const ids = ni.map((slug) => rows.find((c) => c.slug === slug)?.id).filter((x): x is string => !!x);
           return appApi("/me/interests", { token: t, method: "PUT", body: { category_ids: ids, source: "EXPLICIT_SELECTION" } });
-        });
+        }).then((r) => { if (!r.ok) failed("We couldn't save your interests. Please try again."); });
       }
 
       if (next.settings !== before.settings && JSON.stringify(portable(next.settings)) !== JSON.stringify(portable(before.settings))) {
         clearTimeout(settingsTimer);
-        settingsTimer = setTimeout(() => { void appApi("/me/preferences", { token: t, method: "PATCH", body: { client_settings: portable(getAppState().settings) } }); }, 800);
+        settingsTimer = setTimeout(() => {
+          void appApi("/me/preferences", { token: t, method: "PATCH", body: { client_settings: portable(getAppState().settings) } })
+            .then((r) => { if (!r.ok) failed("Your settings changed on this device but weren't saved to your account."); });
+        }, 800);
       }
     });
     return () => { unsub(); clearTimeout(settingsTimer); };

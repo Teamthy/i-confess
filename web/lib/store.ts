@@ -15,9 +15,11 @@ export type AppState = {
   streak: { count: number; last: string | null };
   recentSearches: string[];
   /** Signed in, `id` is the server's entry id and `rowVersion` its version. */
-  journals: { id: number | string; date: string; title: string; text: string; mood: string; audio?: string; rowVersion?: number }[];
+  /** `owner` marks a device-only entry that belongs to that account (a voice
+   *  note, or an upload that failed when it first signed in here). */
+  journals: { id: number | string; date: string; title: string; text: string; mood: string; audio?: string; rowVersion?: number; owner?: string }[];
   downloads: string[];
-  memory: { ref: string; text: string; title: string; box: number; due: number; id?: string }[];
+  memory: { ref: string; text: string; title: string; box: number; due: number; id?: string; owner?: string }[];
   seasons: { id: number; name: string; cats: string[]; active: boolean; archived: boolean }[];
   partners: { name: string; code: string; since: number }[];
   family: { id: number; name: string; role: string; band: string }[];
@@ -30,7 +32,7 @@ export type AppState = {
   promoHidden?: boolean;
 };
 
-const defaults = (): AppState => ({
+export const defaults = (): AppState => ({
   user: null, favs: [], history: [], routines: [], schedule: [], community: [], shared: {},
   settings: defaultSettings(),
   streak: { count: 0, last: null }, recentSearches: [], journals: [], downloads: [], memory: [], seasons: [], partners: [], family: [], partnerQueue: [], annotations: {},

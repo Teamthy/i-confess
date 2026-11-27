@@ -10,6 +10,10 @@ import { appApi } from "@/lib/app-api";
 import { useToast } from "@/lib/ui";
 import { CATEGORIES } from "@/lib/data";
 import { ALL_DAYS, deviceTimezone } from "@/lib/schedules";
+import { safeNext } from "@/lib/safe-next";
+
+/** Set only for the static demo build, which has no API behind it. */
+const STATIC_DEMO = process.env.NEXT_PUBLIC_STATIC_DEMO === "1";
 
 type PasswordFieldProps = Omit<React.InputHTMLAttributes<HTMLInputElement>, "type"> & {
   label: string;
@@ -176,12 +180,6 @@ export default function AuthPage({ kind }: { kind: string }) {
   return <div className="auth-card rv in">{card[kind]}</div>;
 }
 
-/** A same-origin path from `?next=`, else the app. */
-function safeNext(search: string) {
-  const raw = new URLSearchParams(search).get("next") || "";
-  return raw.startsWith("/") && !raw.startsWith("//") ? raw : "/app";
-}
-
 /** Opened from the verification email: `?token=` is consumed once, on mount. */
 function VerifyEmail() {
   const [state, setState] = useState<"working" | "done" | "failed">("working");
@@ -226,8 +224,10 @@ function Onboarding() {
     setBusy(true);
     const r = await authFetch("/auth/register", { email: email.trim(), password, display_name: name.trim(), timezone: deviceTimezone() });
     setBusy(false);
-    // No API in front of the site (the static demo): keep the setup walkable locally.
-    if (!r.ok && r.status === 0) { setStep(2); return; }
+    // Only the static demo build (no API at all) may walk the setup locally.
+    // Anywhere else an unreachable API means no account exists, so saying
+    // otherwise would leave the visitor thinking they had registered.
+    if (!r.ok && r.status === 0 && STATIC_DEMO) { setStep(2); return; }
     if (!r.ok) { toast(r.message || "We couldn't create your account."); return; }
     if (!r.token || !r.user) { setStep(1); return; }
     auth.setToken(r.token, r.user);
