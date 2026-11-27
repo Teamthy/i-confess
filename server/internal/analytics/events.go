@@ -55,3 +55,87 @@ type LogSink struct{}
 func (LogSink) Track(e Event) error {
 	return nil
 }
+
+// AllowedEvents returns the complete set of event names that may reach
+// analytics, whether emitted by a client or by the server. Anything not in
+// this set is rejected: analytics take IDs/counts/enums from the per-event
+// allowlist only (§1 master prompt rule).
+//
+// EventTrialDayCompleted is included because the server emits it from a real
+// session completion, but it is NOT in ClientSubmittableEvents — a client
+// must never be able to assert its own trial progress.
+func AllowedEvents() map[string]bool {
+	return map[string]bool{
+		EventAppOpened:              true,
+		EventSessionCreated:         true,
+		EventSessionStarted:         true,
+		EventSessionPaused:          true,
+		EventSessionResumed:         true,
+		EventSessionCompleted:       true,
+		EventSessionSkipped:         true,
+		EventScheduleCreated:        true,
+		EventScheduleTriggered:      true,
+		EventDownloadCreated:        true,
+		EventDownloadRevoked:        true,
+		EventTrialDayViewed:         true,
+		EventTrialStarted:           true,
+		EventTrialDayCompleted:      true,
+		EventTrialConverted:         true,
+		EventTrialExpired:           true,
+		EventSubscriptionStarted:    true,
+		EventSubscriptionVerified:   true,
+		EventSubscriptionCancelled:  true,
+		EventSearchPerformed:        true,
+		EventCategoryViewed:         true,
+		EventVoicePreviewed:         true,
+		EventTemplateCreated:        true,
+		EventTemplateShared:         true,
+		EventPlaybackProgressSynced: true,
+	}
+}
+
+// ClientSubmittableEvents returns the subset of AllowedEvents that an
+// authenticated client may POST to /analytics/batch. Server-only events
+// (currently only trial_day_completed) are excluded: they are emitted by the
+// server from authoritative state, never accepted from a caller.
+func ClientSubmittableEvents() map[string]bool {
+	allowed := AllowedEvents()
+	delete(allowed, EventTrialDayCompleted)
+	return allowed
+}
+
+// IsAllowed reports whether name is a registered analytics event.
+func IsAllowed(name string) bool {
+	return AllowedEvents()[name]
+}
+
+// IsClientSubmittable reports whether an authenticated client may submit
+// an event with the given name.
+func IsClientSubmittable(name string) bool {
+	return ClientSubmittableEvents()[name]
+}
+
+// PIIPropKeys are event-prop keys that are never allowed in analytics,
+// stripped at every ingestion point so private spiritual text, emails,
+// confessions, notes and highlights never reach analytics or logs.
+var PIIPropKeys = []string{"body", "email", "scripture_text", "scripture", "confession", "note", "highlight", "prayer"}
+
+// StripPII removes any known PII prop keys from an event's props, returning
+// the (possibly same) map. It never adds keys and preserves the map when
+// nothing is stripped.
+func StripPII(props map[string]any) map[string]any {
+	if len(props) == 0 {
+		return props
+	}
+	stripped := false
+	for _, key := range PIIPropKeys {
+		if _, ok := props[key]; ok {
+			delete(props, key)
+			stripped = true
+		}
+	}
+	if !stripped {
+		return props
+	}
+	return props
+}

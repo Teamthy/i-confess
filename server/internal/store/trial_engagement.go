@@ -255,9 +255,14 @@ func NewAnalyticsStore(database *db.DB) *AnalyticsStore { return &AnalyticsStore
 
 // Record writes one event. A missing timestamp is stamped now so an event
 // cannot be inserted with an empty occurred_at and vanish from a range query.
+// Defense-in-depth: only allowlisted events may reach the table, so no code
+// path — client or server — can exfiltrate an undeclared event name.
 func (s *AnalyticsStore) Record(ctx context.Context, ev analytics.Event) error {
 	if ev.Name == "" {
 		return errors.New("analytics: event name is required")
+	}
+	if !analytics.IsAllowed(ev.Name) {
+		return fmt.Errorf("analytics: event not allowlisted: %s", ev.Name)
 	}
 	if ev.Timestamp == "" {
 		ev.Timestamp = time.Now().UTC().Format(time.RFC3339)
