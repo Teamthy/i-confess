@@ -75,3 +75,20 @@ func (s *TrialStore) ReleaseDaySlot(ctx context.Context, userID string, day, slo
 		userID, day, slot)
 	return err
 }
+
+// TakeOverStaleDaySlot claims an unattached slot whose claim is older than
+// staleBefore. A claim stays unattached forever if the request that made it
+// died between claiming and attaching (a crash, a dropped connection); without
+// this, every later request would be told "still being prepared" for good.
+// It reports true when this caller now owns the slot.
+func (s *TrialStore) TakeOverStaleDaySlot(ctx context.Context, userID string, day, slot int, staleBefore, at time.Time) (bool, error) {
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE trial_day_sessions SET updated_at=?, row_version=row_version+1
+		 WHERE user_id=? AND day=? AND slot=? AND session_id IS NULL AND deleted_at IS NULL AND updated_at < ?`,
+		at.UTC().Format(time.RFC3339), userID, day, slot, staleBefore.UTC().Format(time.RFC3339))
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	return n == 1, nil
+}

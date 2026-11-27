@@ -115,11 +115,20 @@ func (h *Handler) startTrialToday(w http.ResponseWriter, r *http.Request) {
 		}
 		label := slotLabel(slots, slot)
 
-		if prior, ok := existing[slot]; ok {
-			if prior.SessionID == "" {
+		if prior, ok := existing[slot]; ok && prior.SessionID == "" {
+			// Another request is building this slot, or one died while doing
+			// so. A claim older than the longest build is abandoned and is
+			// taken over rather than blocking the day forever.
+			took, err := h.trials.TakeOverStaleDaySlot(ctx, userID, day.Day, slot, now.Add(-trialSlotClaimTTL), now)
+			if err != nil {
+				httpx.WriteError(w, http.StatusInternalServerError, "failed to prepare today's session")
+				return
+			}
+			if !took {
 				writeCode(w, http.StatusConflict, "TRIAL_DAY_PREPARING", "today's session is still being prepared; try again in a moment")
 				return
 			}
+		} else if ok {
 			if sess, err := h.sess.ByID(ctx, prior.SessionID); err == nil && sess.UserID == userID {
 				h.signSessionAudio(ctx, sess, ent)
 				built = append(built, map[string]any{"slot": slot, "label": label, "session": sess})
@@ -141,13 +150,12 @@ func (h *Handler) startTrialToday(w http.ResponseWriter, r *http.Request) {
 
 		sess, err := h.buildTrialSession(ctx, userID, day, label, slotCats, duration, voiceID, ent)
 		if err != nil {
-			if relErr := h.trials.ReleaseDaySlot(ctx, userID, day.Day, slot); relErr != nil {
-				log.Printf("trial today: release slot %d/%d: %v", day.Day, slot, relErr)
-			}
+			h.releaseTrialSlot(ctx, userID, day.Day, slot)
 			writeEngineError(w, err, ent)
 			return
 		}
 		if err := h.trials.AttachDaySession(ctx, userID, day.Day, slot, sess.ID, now); err != nil {
+			h.releaseTrialSlot(ctx, userID, day.Day, slot)
 			httpx.WriteError(w, http.StatusInternalServerError, "failed to record today's session")
 			return
 		}
@@ -161,6 +169,22 @@ func (h *Handler) startTrialToday(w http.ResponseWriter, r *http.Request) {
 	}
 	resp["sessions"] = built
 	httpx.WriteJSON(w, http.StatusOK, resp)
+}
+
+// trialSlotClaimTTL is how long an unattached claim is trusted to belong to a
+// build still in progress. A build takes seconds; anything older was abandoned.
+const trialSlotClaimTTL = 2 * time.Minute
+
+// releaseTrialSlot drops a claim whose build or attach failed. It runs on a
+// context that outlives the request: when the failure *is* the client going
+// away, the request context is already cancelled and a release on it would
+// fail too, leaving the slot claimed.
+func (h *Handler) releaseTrialSlot(ctx context.Context, userID string, day, slot int) {
+	rctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	if err := h.trials.ReleaseDaySlot(rctx, userID, day, slot); err != nil {
+		log.Printf("trial today: release slot %d/%d: %v", day, slot, err)
+	}
 }
 
 // buildTrialSession builds and saves one journey session through the same
