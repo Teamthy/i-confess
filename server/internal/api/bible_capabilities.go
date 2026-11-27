@@ -503,11 +503,11 @@ func (h *Handler) applyBibleSyncMutation(r *http.Request, mutation bibleSyncMuta
 			if id == "" {
 				return "", "invalid_reference"
 			}
-			table := "verse_bookmarks"
 			if mutation.Entity == "highlight" {
-				table = "verse_highlights"
+				_, err = tx.ExecContext(r.Context(), `UPDATE verse_highlights SET deleted_at=?,updated_at=?,row_version=row_version+1 WHERE id=? AND user_id=? AND deleted_at IS NULL`, now, now, id, userID)
+			} else {
+				_, err = tx.ExecContext(r.Context(), `UPDATE verse_bookmarks SET deleted_at=?, label='', note='', updated_at=?, row_version=row_version+1 WHERE id=? AND user_id=? AND deleted_at IS NULL`, now, now, id, userID)
 			}
-			_, err = tx.ExecContext(r.Context(), `UPDATE `+table+` SET deleted_at=?,updated_at=?,row_version=row_version+1 WHERE id=? AND user_id=? AND deleted_at IS NULL`, now, now, id, userID)
 			if err != nil {
 				return "", "storage_error"
 			}
@@ -542,7 +542,7 @@ func (h *Handler) applyBibleSyncMutation(r *http.Request, mutation bibleSyncMuta
 		}
 		entityID = id
 		if mutation.Operation == "delete" {
-			_, err = tx.ExecContext(r.Context(), `UPDATE user_bible_notes SET deleted_at=?,updated_at=?,row_version=row_version+1 WHERE id=? AND user_id=? AND deleted_at IS NULL`, now, now, id, userID)
+			_, err = tx.ExecContext(r.Context(), `UPDATE user_bible_notes SET deleted_at=?, title='', body='', updated_at=?, row_version=row_version+1 WHERE id=? AND user_id=? AND deleted_at IS NULL`, now, now, id, userID)
 			if err != nil {
 				return "", "storage_error"
 			}

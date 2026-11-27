@@ -87,7 +87,8 @@ func (h *Handler) saveMyBibleBookmark(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{"id": savedID, "translation_id": in.TranslationID, "book_id": verse.BookID, "chapter": in.Chapter, "verse": in.Verse, "reference": verse.ID, "label": strings.TrimSpace(in.Label), "note": strings.TrimSpace(in.Note), "row_version": version})
 }
 func (h *Handler) deleteMyBibleBookmark(w http.ResponseWriter, r *http.Request) {
-	result, err := h.db.ExecContext(r.Context(), `UPDATE verse_bookmarks SET deleted_at=?,updated_at=?,row_version=row_version+1 WHERE id=? AND user_id=? AND deleted_at IS NULL`, time.Now().UTC().Format(time.RFC3339Nano), time.Now().UTC().Format(time.RFC3339Nano), r.PathValue("id"), h.userID(r))
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	result, err := h.db.ExecContext(r.Context(), `UPDATE verse_bookmarks SET deleted_at=?, label='', note='', updated_at=?, row_version=row_version+1 WHERE id=? AND user_id=? AND deleted_at IS NULL`, now, now, r.PathValue("id"), h.userID(r))
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "Unable to remove this bookmark.")
 		return
@@ -281,7 +282,7 @@ func (h *Handler) patchMyBibleNote(w http.ResponseWriter, r *http.Request) {
 }
 func (h *Handler) deleteMyBibleNote(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	result, err := h.db.ExecContext(r.Context(), `UPDATE user_bible_notes SET deleted_at=?,updated_at=?,row_version=row_version+1 WHERE id=? AND user_id=? AND deleted_at IS NULL`, now, now, r.PathValue("id"), h.userID(r))
+	result, err := h.db.ExecContext(r.Context(), `UPDATE user_bible_notes SET deleted_at=?, title='', body='', updated_at=?, row_version=row_version+1 WHERE id=? AND user_id=? AND deleted_at IS NULL`, now, now, r.PathValue("id"), h.userID(r))
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "Unable to delete your note.")
 		return

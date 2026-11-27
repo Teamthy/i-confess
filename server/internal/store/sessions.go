@@ -398,8 +398,8 @@ func (s *SessionStore) contentSnapshots(ctx context.Context, tx *db.Tx, items []
 // 404 rather than confirming a deletion that did not happen.
 func (s *SessionStore) SoftDelete(ctx context.Context, id, at string) (bool, error) {
 	res, err := s.db.ExecContext(ctx,
-		`UPDATE sessions SET deleted_at = ?
-		 WHERE id = ? AND (deleted_at IS NULL OR deleted_at = '')`, at, id)
+		`UPDATE sessions SET deleted_at = ?, title = '', description = ''
+		WHERE id = ? AND (deleted_at IS NULL OR deleted_at = '')`, at, id)
 	if err != nil {
 		return false, err
 	}
