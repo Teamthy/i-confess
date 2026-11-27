@@ -83,5 +83,5 @@ func (v sessionValidator) ValidateSession(ctx context.Context, userID, sessionID
 		return auth.SessionState{Reason: auth.ReasonSessionExpired}
 	}
 
-	return auth.SessionState{Valid: true, Role: state.Role}
+	return auth.SessionState{Valid: true, Role: state.Role, MFAVerified: st.MFAVerified}
 }

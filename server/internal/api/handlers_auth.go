@@ -93,7 +93,9 @@ func (h *Handler) register(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	h.issueToken(w, r, u)
+	// A fresh registration has no second factor enrolled, so the session is
+	// MFA-verified by default (there is no factor to satisfy).
+	h.issueToken(w, r, u, true)
 }
 
 func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
@@ -196,13 +198,18 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	h.issueToken(w, r, u)
+	// The password check passed and, if a second factor is enrolled, it was
+	// satisfied above. Issue an MFA-verified session.
+	h.issueToken(w, r, u, true)
 }
 
 // issueToken opens a server-side session and returns an access token bound to
 // it. The binding is what makes logout, suspension and password changes able to
 // invalidate a token that has already been handed out (PRD S22, S28, S54).
-func (h *Handler) issueToken(w http.ResponseWriter, r *http.Request, u *models.User) {
+//
+// mfaVerified records whether the session passed a second factor. Privileged
+// routes refuse sessions that are not mfa_verified.
+func (h *Handler) issueToken(w http.ResponseWriter, r *http.Request, u *models.User, mfaVerified bool) {
 	role, _ := h.users.AdminRole(r.Context(), u.ID)
 
 	ttl, err := time.ParseDuration(h.cfg.TokenTTL)
@@ -210,7 +217,7 @@ func (h *Handler) issueToken(w http.ResponseWriter, r *http.Request, u *models.U
 		ttl = auth.FallbackTokenTTL
 	}
 	sessionID, err := h.users.CreateAuthSession(r.Context(), u.ID,
-		r.Header.Get("X-Platform"), r.UserAgent(), clientIP(r), ttl)
+		r.Header.Get("X-Platform"), r.UserAgent(), clientIP(r), ttl, mfaVerified)
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to create session")
 		return

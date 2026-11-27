@@ -678,38 +678,49 @@ func boolToInt(v bool) int {
 
 // CreateAuthSession opens a server-side session and returns its id, which is
 // embedded in the access token so the token can later be revoked.
-func (s *UserStore) CreateAuthSession(ctx context.Context, userID, platform, userAgent, ip string, ttl time.Duration) (string, error) {
+//
+// mfaVerified records whether this session was created after the account's
+// enrolled second factor (if any) was satisfied. Privileged routes refuse
+// sessions that are not mfa_verified.
+func (s *UserStore) CreateAuthSession(ctx context.Context, userID, platform, userAgent, ip string, ttl time.Duration, mfaVerified bool) (string, error) {
 	id := uuid.New().String()
 	expires := time.Now().UTC().Add(ttl).Format(time.RFC3339)
+	mfa := 0
+	if mfaVerified {
+		mfa = 1
+	}
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO refresh_tokens (id, user_id, token_hash, platform, user_agent, ip_address, expires_at, created_at, last_used_at)
-		 VALUES (?,?,?,?,?,?,?,?,?)`,
+		`INSERT INTO refresh_tokens (id, user_id, token_hash, platform, user_agent, ip_address, expires_at, created_at, last_used_at, mfa_verified)
+		VALUES (?,?,?,?,?,?,?,?,?,?)`,
 		id, userID, id, nullIfEmpty(platform), nullIfEmpty(userAgent), nullIfEmpty(ip),
-		expires, now(), now())
+		expires, now(), now(), mfa)
 	return id, err
 }
 
-// SessionStatus reports whether a session row is live.
+// SessionStatus reports whether a session row is live and whether it passed
+// a second factor.
 type SessionStatus struct {
-	Exists  bool
-	Revoked bool
-	Expired bool
+	Exists      bool
+	Revoked     bool
+	Expired     bool
+	MFAVerified bool
 }
 
 // AuthSessionStatus looks up a single session.
 func (s *UserStore) AuthSessionStatus(ctx context.Context, sessionID string) (SessionStatus, error) {
 	var revokedAt sql.NullString
 	var expiresAt string
+	var mfaVerified int
 	err := s.db.QueryRowContext(ctx,
-		`SELECT revoked_at, expires_at FROM refresh_tokens WHERE id = ?`, sessionID).
-		Scan(&revokedAt, &expiresAt)
+		`SELECT revoked_at, expires_at, COALESCE(mfa_verified, 0) FROM refresh_tokens WHERE id = ?`, sessionID).
+		Scan(&revokedAt, &expiresAt, &mfaVerified)
 	if errors.Is(err, sql.ErrNoRows) {
 		return SessionStatus{}, nil
 	}
 	if err != nil {
 		return SessionStatus{}, err
 	}
-	st := SessionStatus{Exists: true, Revoked: revokedAt.Valid && revokedAt.String != ""}
+	st := SessionStatus{Exists: true, Revoked: revokedAt.Valid && revokedAt.String != "", MFAVerified: mfaVerified == 1}
 	if t, perr := time.Parse(time.RFC3339, expiresAt); perr == nil {
 		st.Expired = time.Now().UTC().After(t)
 	}
@@ -1024,11 +1035,18 @@ func (s *UserStore) RotateSession(ctx context.Context, userID, oldSessionID, pla
 	newID := uuid.New().String()
 	expires := time.Now().UTC().Add(ttl).Format(time.RFC3339)
 
+	// Preserve the second-factor state: a rotated session must not lose the
+	// MFA verification the original login established, or refresh would quietly
+	// demote an admin session back to password-only.
+	var oldMFA int
+	_ = tx.QueryRowContext(ctx, `SELECT COALESCE(mfa_verified, 0) FROM refresh_tokens WHERE id = ? AND user_id = ?`,
+		oldSessionID, userID).Scan(&oldMFA)
+
 	if _, err := tx.ExecContext(ctx,
-		`INSERT INTO refresh_tokens (id,user_id,token_hash,platform,user_agent,ip_address,expires_at,created_at,last_used_at)
-		 VALUES (?,?,?,?,?,?,?,?,?)`,
+		`INSERT INTO refresh_tokens (id,user_id,token_hash,platform,user_agent,ip_address,expires_at,created_at,last_used_at,mfa_verified)
+		VALUES (?,?,?,?,?,?,?,?,?,?)`,
 		newID, userID, newID, nullIfEmpty(platform), nullIfEmpty(userAgent),
-		nullIfEmpty(ip), expires, now(), now()); err != nil {
+		nullIfEmpty(ip), expires, now(), now(), oldMFA); err != nil {
 		return "", err
 	}
 

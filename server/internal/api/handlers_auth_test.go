@@ -435,10 +435,10 @@ func TestIdentityFlows(t *testing.T) {
 	// identifier they would have stored grants nothing without the JWT
 	// signature over it.
 	ttl := time.Hour
-	if _, err := h.users.CreateAuthSession(context.Background(), user.ID, "ios", "test-agent", "127.0.0.1", ttl); err != nil {
+	if _, err := h.users.CreateAuthSession(context.Background(), user.ID, "ios", "test-agent", "127.0.0.1", ttl, false); err != nil {
 		t.Fatalf("create session: %v", err)
 	}
-	if _, err := h.users.CreateAuthSession(context.Background(), user.ID, "android", "test-agent", "127.0.0.1", ttl); err != nil {
+	if _, err := h.users.CreateAuthSession(context.Background(), user.ID, "android", "test-agent", "127.0.0.1", ttl, false); err != nil {
 		t.Fatalf("create second session: %v", err)
 	}
 	if err := h.users.RevokeAllSessions(context.Background(), user.ID); err != nil {
