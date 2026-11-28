@@ -15,6 +15,11 @@
 - [ ] Build / tooling / CI
 - [ ] Other
 
+## Scope
+
+- [ ] One theme per PR (no unrelated changes bundled together)
+- [ ] Under ~400 lines changed (including tests)
+
 ## Test plan
 
 <!-- How did you verify this? Commands, manual steps, screenshots. -->
@@ -32,3 +37,8 @@ go test ./...
 - [ ] I have updated documentation (`README.md`, `docs/API.md`) where relevant.
 - [ ] I have kept the SQLite dev schema and PostgreSQL migration in sync (if schema changed).
 - [ ] The change follows the [contributing guide](CONTRIBUTING.md).
+- [ ] CI required checks are green on this PR.
+- [ ] A written review has been posted on this PR.
+- [ ] Handoff doc written to `docs/handoffs/YYYY-MM-DD-<topic>.md` (named after this PR) and committed on this branch.
+
+<!-- Handoff path: docs/handoffs/YYYY-MM-DD-pr-###-<topic>.md -->

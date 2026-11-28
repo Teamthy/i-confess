@@ -1,0 +1,30 @@
+# CODEOWNERS — who reviews what. Any change to a path needs an approval from
+# at least one listed owner; the default owner covers everything else.
+
+# Default owner for the whole repository.
+* @olusanyatimothy
+
+# Go backend (server/): API, stores, engine, auth, MFA, analytics, deletion.
+/server/ @olusanyatimothy
+
+# Web frontend (web/): Next.js app, components, pages, lib.
+/web/ @olusanyatimothy
+
+# Mobile client (apps/mobile/): Flutter app.
+/apps/mobile/ @olusanyatimothy
+
+# Dart client (clients/dart/): shared Dart SDK.
+/clients/dart/ @olusanyatimothy
+
+# Voice engine worker (voice-engine/): Python TTS worker and tests.
+/voice-engine/ @olusanyatimothy
+
+# Design tokens and IA (design/): design system source of truth.
+/design/ @olusanyatimothy
+
+# CI/CD workflows (.github/workflows/): pipeline changes need owner review.
+/.github/workflows/ @olusanyatimothy
+
+# Infrastructure (infrastructure/): Kubernetes, CloudFormation, deployment scripts.
+/infrastructure/ @olusanyatimothy
+/scripts/ @olusanyatimothy
