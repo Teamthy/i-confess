@@ -1,8 +1,7 @@
 package api
 
 import (
-	"github.com/Teamthy/i-confess/internal/voiceengine"
-	"github.com/Teamthy/i-confess/internal/voiceeval"
+	"context"
 	"net/http"
 	"sync"
 	"time"
@@ -17,6 +16,7 @@ import (
 	"github.com/Teamthy/i-confess/internal/deletion"
 	"github.com/Teamthy/i-confess/internal/email"
 	"github.com/Teamthy/i-confess/internal/engine"
+	"github.com/Teamthy/i-confess/internal/featureflags"
 	"github.com/Teamthy/i-confess/internal/jobs"
 	"github.com/Teamthy/i-confess/internal/models"
 	"github.com/Teamthy/i-confess/internal/oauth"
@@ -26,6 +26,8 @@ import (
 	"github.com/Teamthy/i-confess/internal/storage"
 	"github.com/Teamthy/i-confess/internal/store"
 	"github.com/Teamthy/i-confess/internal/voice"
+	"github.com/Teamthy/i-confess/internal/voiceengine"
+	"github.com/Teamthy/i-confess/internal/voiceeval"
 )
 
 // Handler bundles all stores and config needed by the API.
@@ -108,6 +110,10 @@ type Handler struct {
 	library *store.LibraryStore
 	// deletion performs account erasure under an explicit retention policy.
 	deletion *deletion.Service
+	// features is the feature-status register: consulted on every
+	// feature-gated request. Loaded from the feature_flags table at
+	// construction; fail-closed if the table is unavailable.
+	features featureflags.Register
 	// dispatcher delivers scheduled-session reminders (S19, S47).
 	dispatcher *scheduler.Dispatcher
 	// downloads manages offline licences (S28).
@@ -213,6 +219,7 @@ func NewHandler(cfg Config, db *db.DB) *Handler {
 		library:      store.NewLibraryStore(db),
 		deletion:     deletion.NewService(db),
 		downloads:    store.NewDownloadStore(db),
+		features:     featureflags.NewDBStore(context.Background(), db),
 		idem:         store.NewIdempotencyStore(db),
 		catCache:     cache.New[[]models.Category](5*time.Minute, 10*time.Minute),
 		catConfCache: cache.New[[]models.Confession](2*time.Minute, 5*time.Minute),

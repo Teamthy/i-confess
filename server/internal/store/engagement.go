@@ -211,7 +211,7 @@ func (s *EngagementStore) CreateUserConfession(ctx context.Context, uc *models.U
 
 func (s *EngagementStore) ListUserConfessions(ctx context.Context, userID string) ([]models.UserConfession, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT `+ucColumns+` FROM user_confessions WHERE user_id=? ORDER BY created_at DESC`, userID)
+		`SELECT `+ucColumns+` FROM user_confessions WHERE user_id=? AND deleted_at IS NULL ORDER BY created_at DESC`, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -225,6 +225,27 @@ func (s *EngagementStore) ListUserConfessions(ctx context.Context, userID string
 		out = append(out, uc)
 	}
 	return out, rows.Err()
+}
+
+// DeleteUserConfession soft-deletes a confession owned by userID and wipes its
+// private text (title and body) in the same statement so a tombstoned row can
+// never disclose what the author wrote.
+//
+// It reports false when the confession does not exist or does not belong to
+// userID, so the caller can answer 404 rather than confirming a deletion that
+// did not happen.
+func (s *EngagementStore) DeleteUserConfession(ctx context.Context, id, userID, at string) (bool, error) {
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE user_confessions SET deleted_at = ?, title = '', text = '', updated_at = ?
+		WHERE id = ? AND user_id = ? AND deleted_at IS NULL`, at, at, id, userID)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
 }
 
 // ListPublishedUserConfessions returns the public UGC reader: only confessions
